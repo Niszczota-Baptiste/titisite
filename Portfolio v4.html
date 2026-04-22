@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baptiste Niszczota</title>
+  <meta name="description" content="Développeur créatif & compositeur — Baptiste Niszczota">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <style>
+    /* ── CSS Design Tokens ── */
+    :root {
+      --bg:#050511; --surface:rgba(14,9,28,0.72); --surface-hov:rgba(22,14,42,0.92); --surface-solid:rgba(10,7,22,0.82);
+      --border:rgba(80,50,130,0.24); --border-dim:rgba(60,40,100,0.12);
+      --text:#ede8f8; --text-muted:#7a6888; --text-faint:#4a3860; --text-dim:#c8c0d8;
+      --nav-link:#6a6080; --nav-bg:rgba(5,5,17,0.84); --nav-border:rgba(120,80,200,0.14);
+      --tag-bg:rgba(60,30,100,0.3); --tag-border:rgba(100,60,160,0.22); --tag-color:#8060a8;
+      --code-muted:rgba(100,70,160,0.55); --input-bg:rgba(14,8,32,0.72); --track-hov:rgba(20,12,40,0.55);
+      --section-alt:rgba(4,3,14,0.45); --filter-bg:rgba(20,14,38,0.72); --player-bg:rgba(10,7,24,0.78);
+      --lang-bg:rgba(20,15,40,0.82); --exp-current:rgba(22,10,48,0.76); --exp-default:rgba(12,8,28,0.62);
+    }
+    body.mode-light {
+      --bg:#ece5f7; --surface:rgba(248,242,255,0.82); --surface-hov:rgba(238,230,252,0.96); --surface-solid:rgba(238,232,250,0.88);
+      --border:rgba(140,90,200,0.2); --border-dim:rgba(130,80,190,0.1);
+      --text:#180e2a; --text-muted:#4a3870; --text-faint:#7060a0; --text-dim:#2c1e50;
+      --nav-link:#7050a0; --nav-bg:rgba(240,234,252,0.92); --nav-border:rgba(140,90,200,0.16);
+      --tag-bg:rgba(180,140,220,0.16); --tag-border:rgba(140,90,200,0.22); --tag-color:#6040a0;
+      --code-muted:rgba(100,60,160,0.45); --input-bg:rgba(238,232,252,0.78); --track-hov:rgba(228,218,248,0.68);
+      --section-alt:rgba(228,220,248,0.42); --filter-bg:rgba(228,218,248,0.72); --player-bg:rgba(240,234,254,0.78);
+      --lang-bg:rgba(228,218,248,0.82); --exp-current:rgba(238,228,255,0.82); --exp-default:rgba(246,240,255,0.68);
+    }
+    body.mode-transitioning * {
+      transition: background-color 0.45s ease, color 0.45s ease, border-color 0.45s ease, box-shadow 0.45s ease, opacity 0.35s ease !important;
+    }
+
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+    html { scroll-behavior:smooth; }
+    body { background:var(--bg); color:var(--text); overflow-x:hidden; }
+    ::-webkit-scrollbar { width:3px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:rgba(100,60,180,0.35); border-radius:2px; }
+    ::selection { background:rgba(170,130,230,0.22); color:var(--text); }
+    input,textarea { color-scheme:dark; }
+    body.mode-light input,body.mode-light textarea { color-scheme:light; }
+    input::placeholder,textarea::placeholder { color:var(--text-faint); }
+
+    .reveal { opacity:0; transform:translateY(26px); transition:opacity 0.75s cubic-bezier(.22,1,.36,1),transform 0.75s cubic-bezier(.22,1,.36,1); }
+    .reveal.visible { opacity:1; transform:none; }
+
+    /* ── Core keyframes ── */
+    @keyframes fadeUp { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:none} }
+    @keyframes float { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(-7px)} }
+    @keyframes easterSlide { from{transform:translateY(40px);opacity:0} to{transform:none;opacity:1} }
+    @keyframes spinCw  { to{transform:rotate(360deg)} }
+    @keyframes spinCcw { to{transform:rotate(-360deg)} }
+
+    /* ── Waveform ── */
+    @keyframes wave1 { from{height:3px}  to{height:22px} }
+    @keyframes wave2 { from{height:10px} to{height:5px}  }
+    @keyframes wave3 { from{height:6px}  to{height:20px} }
+    @keyframes wave4 { from{height:14px} to{height:4px}  }
+
+    /* ── Glitch ── */
+    @keyframes glitch1 {
+      0%,87%,100% { clip-path:inset(0 0 100% 0); transform:none; opacity:0; }
+      89% { clip-path:inset(12% 0 58% 0); transform:skewX(-10deg) translateX(-7px); opacity:0.78; }
+      91% { clip-path:inset(52% 0 10% 0); transform:skewX(7deg) translateX(6px); opacity:0.55; }
+      93% { clip-path:inset(28% 0 42% 0); transform:skewX(-4deg) translateX(-2px); opacity:0.88; }
+      95% { clip-path:inset(0 0 100% 0); transform:none; opacity:0; }
+    }
+    @keyframes glitch2 {
+      0%,87%,100% { clip-path:inset(100% 0 0 0); transform:none; opacity:0; }
+      89% { clip-path:inset(68% 0 0 0); transform:skewX(6deg) translateX(9px); opacity:0.65; }
+      92% { clip-path:inset(38% 0 22% 0); transform:skewX(-7deg) translateX(-6px); opacity:0.5; }
+      94% { clip-path:inset(100% 0 0 0); transform:none; opacity:0; }
+    }
+
+    /* ── Live pulse ── */
+    @keyframes livePulse { 0%,100%{box-shadow:0 0 12px rgba(var(--pulse-rgb,201,168,232),0.7)} 50%{box-shadow:0 0 20px rgba(var(--pulse-rgb,201,168,232),0.2)} }
+
+    /* ── Responsive layout classes ── */
+    .r-section     { max-width:1160px; margin:0 auto; padding:0 80px; }
+    .r-hero        { padding:0 88px; max-width:980px; }
+    .r-grid-2col   { display:grid; grid-template-columns:1fr 1.5fr; gap:80px; align-items:start; }
+    .r-grid-proj   { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:18px; }
+    .r-contact     { display:grid; grid-template-columns:1fr 1fr; gap:80px; }
+    .r-footer      { padding:36px 80px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-dim); }
+    .r-currently   { display:grid; grid-template-columns:1fr auto; gap:32px; align-items:center; }
+    .nav-desktop   { display:flex; align-items:center; gap:28px; }
+    .nav-mobile    { display:none; align-items:center; gap:12px; }
+
+    /* ── Reveal left / right variants ── */
+    .reveal-left  { opacity:0; transform:translateX(-28px); transition:opacity 0.75s cubic-bezier(.22,1,.36,1),transform 0.75s cubic-bezier(.22,1,.36,1); }
+    .reveal-left.visible { opacity:1; transform:none; }
+    .reveal-right { opacity:0; transform:translateX(28px); transition:opacity 0.75s cubic-bezier(.22,1,.36,1),transform 0.75s cubic-bezier(.22,1,.36,1); }
+    .reveal-right.visible { opacity:1; transform:none; }
+
+    @media (max-width:960px) {
+      .nav-desktop  { display:none !important; }
+      .nav-mobile   { display:flex !important; }
+      .r-section    { padding:0 28px; }
+      .r-hero       { padding:0 28px; }
+      .r-grid-2col  { grid-template-columns:1fr !important; gap:44px !important; }
+      .r-grid-proj  { grid-template-columns:1fr !important; }
+      .r-contact    { grid-template-columns:1fr !important; gap:44px !important; }
+      .r-footer     { flex-direction:column; gap:14px; text-align:center; padding:28px 28px; }
+      .r-currently  { grid-template-columns:1fr !important; }
+      .player-hd    { flex-direction:column !important; gap:20px !important; align-items:flex-start !important; }
+      .exp-hd       { flex-direction:column !important; align-items:flex-start !important; }
+    }
+    @media (max-width:600px) {
+      .r-section { padding:0 18px; }
+      .r-hero    { padding:0 18px; }
+      .r-footer  { padding:24px 18px; }
+    }
+  </style>
+
+  <script>
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "accent": "violet",
+      "fontStyle": "humanist",
+      "heroDensity": "dense"
+    }/*EDITMODE-END*/;
+
+    const ACCENTS = {
+      amber:  { hex:'#e8a87c', rgb:'232,168,124', dim:'#b07a50' },
+      violet: { hex:'#c9a8e8', rgb:'201,168,232', dim:'#8a60b0' },
+      sage:   { hex:'#9ad4ae', rgb:'154,212,174', dim:'#5a9470' },
+    };
+
+    const i18n = {
+      fr: {
+        nav:{ projects:'Projets', music:'Musique', about:'À propos', education:'Formation', experience:'Expérience', contact:'Contact' },
+        hero:{ greeting:'Bonjour, je suis', tagline:'Créer, coder, composer.', role:'Développeur Low-Code · AllShare', cta1:'Voir mes projets', cta2:'Me contacter' },
+        projects:{ title:'Projets', subtitle:'Applications & créations', filters:['Tous','Web','Mobile','Expérimental'], demo:'Démo', code:'Code', wip:'En cours' },
+        music:{ title:'Musique', subtitle:'Compositions & productions', noFile:'Fichier local — bientôt disponible' },
+        about:{ title:'À propos',
+          bio:"Je suis développeur créatif et compositeur. Pour moi, écrire du code et composer de la musique, c'est la même chose : partir d'une structure, la faire vivre, la faire résonner. Je construis des outils comme j'écris des mélodies — avec patience, précision, et une attention aux détails invisibles.",
+          mindset:"Je crois que la technique sans sensibilité produit des outils froids. Et la créativité sans rigueur produit du chaos. Mon travail se situe à l'intersection.",
+          traits:['Créatif','Calme','Curieux'],
+          vision:'Vision',
+          visionText:"Construire des expériences numériques qui ont une âme — où chaque interaction est pensée, chaque transition a un sens." },
+        education:{ title:'Formation' },
+        experience:{ title:'Expérience', current:'Poste actuel' },
+        contact:{ title:'Contact', subtitle:'Une idée ? Un projet ? Dites-moi.', send:'Envoyer', name:'Nom', email:'Email', message:'Message', social:'Retrouvez-moi sur' },
+        footer:{ rights:'Tous droits réservés' }
+      },
+      en: {
+        nav:{ projects:'Projects', music:'Music', about:'About', education:'Education', experience:'Experience', contact:'Contact' },
+        hero:{ greeting:"Hi, I'm", tagline:'Create, code, compose.', role:'Low-Code Developer · AllShare', cta1:'View my projects', cta2:'Contact me' },
+        projects:{ title:'Projects', subtitle:'Applications & creations', filters:['All','Web','Mobile','Experimental'], demo:'Demo', code:'Code', wip:'In progress' },
+        music:{ title:'Music', subtitle:'Compositions & productions', noFile:'Local file — coming soon' },
+        about:{ title:'About',
+          bio:"I'm a creative developer and composer. For me, writing code and composing music are the same thing: start with a structure, bring it to life, make it resonate. I build tools the way I write melodies — with patience, precision, and attention to the invisible details.",
+          mindset:"I believe technique without sensitivity creates cold tools. And creativity without rigor creates chaos. My work lives at the intersection.",
+          traits:['Creative','Calm','Curious'],
+          vision:'Vision',
+          visionText:"Build digital experiences that have a soul — where every interaction is intentional, every transition meaningful." },
+        education:{ title:'Education' },
+        experience:{ title:'Experience', current:'Current position' },
+        contact:{ title:'Contact', subtitle:"An idea? A project? Let's talk.", send:'Send', name:'Name', email:'Email', message:'Message', social:'Find me on' },
+        footer:{ rights:'All rights reserved' }
+      },
+      ko: {
+        nav:{ projects:'프로젝트', music:'음악', about:'소개', education:'학력', experience:'경력', contact:'연락' },
+        hero:{ greeting:'안녕하세요, 저는', tagline:'창조하고, 코딩하고, 작곡하다.', role:'로우코드 개발자 · AllShare', cta1:'프로젝트 보기', cta2:'연락하기' },
+        projects:{ title:'프로젝트', subtitle:'애플리케이션 & 창작물', filters:['전체','웹','모바일','실험적'], demo:'데모', code:'코드', wip:'진행 중' },
+        music:{ title:'음악', subtitle:'작곡 & 프로덕션', noFile:'로컬 파일 — 곧 제공됩니다' },
+        about:{ title:'소개',
+          bio:"저는 창의적인 개발자이자 작곡가입니다. 코드를 작성하는 것과 음악을 작곡하는 것은 저에게 같은 행위입니다: 구조에서 출발하여, 생명을 불어넣고, 울림을 만드는 것. 저는 도구를 만들 때 멜로디를 쓰듯 합니다 — 인내심, 정밀함, 그리고 보이지 않는 디테일에 대한 집중으로.",
+          mindset:"감수성 없는 기술은 차가운 도구를 만들고, 엄밀함 없는 창의성은 혼돈을 만든다고 믿습니다. 저의 작업은 그 교차점에 있습니다.",
+          traits:['창의적','차분한','호기심'],
+          vision:'비전',
+          visionText:"영혼이 있는 디지털 경험을 만드는 것 — 모든 인터랙션이 의도적이고, 모든 전환이 의미 있는." },
+        education:{ title:'학력' },
+        experience:{ title:'경력', current:'현재 직책' },
+        contact:{ title:'연락', subtitle:'아이디어나 프로젝트가 있으신가요?', send:'보내기', name:'이름', email:'이메일', message:'메시지', social:'소셜 미디어' },
+        footer:{ rights:'모든 권리 보유' }
+      }
+    };
+
+    const projects = [
+      { id:1, title:'AllShare Dashboard', type:'web', tags:['Low-Code','REST API','React'], color:'#0a0d1e', wip:false,
+        desc:{ fr:"Tableau de bord interne pour la gestion des données clients sur plateforme low-code.", en:"Internal dashboard for client data management on a low-code platform.", ko:"로우코드 플랫폼에서 고객 데이터 관리를 위한 내부 대시보드." },
+        problem:{ fr:"Les équipes perdaient du temps à naviguer entre 5 outils différents pour suivre les clients.", en:"Teams lost time switching between 5 different tools to track clients.", ko:"팀이 고객 추적을 위해 5가지 도구를 오가며 시간을 낭비했습니다." },
+        solution:{ fr:"Tableau de bord unifié avec intégrations API temps réel et automatisation des flux.", en:"Unified dashboard with real-time API integrations and workflow automation.", ko:"실시간 API 통합 및 워크플로우 자동화를 갖춘 통합 대시보드." },
+        impact:{ fr:"↓ 40% temps opérationnel · ↑ satisfaction équipe · 0 formation nécessaire", en:"↓ 40% operational time · ↑ team satisfaction · 0 training required", ko:"↓ 운영 시간 40% 감소 · ↑ 팀 만족도 · 교육 불필요" } },
+      { id:2, title:'Rhythm Lab', type:'experimental', tags:['Web Audio API','Canvas','JS'], color:'#0d1a14', wip:false,
+        desc:{ fr:"Visualiseur audio interactif qui transforme la musique en formes géométriques animées.", en:"Interactive audio visualizer turning music into animated geometric shapes.", ko:"음악을 애니메이션 기하학적 형태로 변환하는 인터랙티브 오디오 시각화 도구." },
+        problem:{ fr:"L'écoute musicale est passive. Comment rendre l'expérience sonore visuelle et immersive ?", en:"Music listening is passive. How to make the sonic experience visual and immersive?", ko:"음악 감상은 수동적입니다. 어떻게 음향 경험을 시각적이고 몰입감 있게 만들까요?" },
+        solution:{ fr:"Analyse FFT en temps réel → formes géométriques réactives dans un canvas WebGL.", en:"Real-time FFT analysis → reactive geometric shapes in a WebGL canvas.", ko:"실시간 FFT 분석 → WebGL 캔버스의 반응형 기하학적 형태." },
+        impact:{ fr:"Présenté dans 2 événements créatifs · 400+ utilisateurs · Open source", en:"Featured at 2 creative events · 400+ users · Open source", ko:"2개 창작 행사 소개 · 400명 이상 사용자 · 오픈소스" } },
+      { id:3, title:'Kanji Quest', type:'mobile', tags:['React Native','Firebase'], color:'#1a0d12', wip:false,
+        desc:{ fr:"Application mobile d'apprentissage du coréen et du japonais par cartes mémoire adaptatives.", en:"Mobile app for learning Korean and Japanese with adaptive flashcards.", ko:"적응형 플래시카드로 한국어와 일본어를 배우는 모바일 앱." },
+        problem:{ fr:"Les apps d'apprentissage standard ne s'adaptent pas au rythme de l'utilisateur.", en:"Standard learning apps don't adapt to the user's individual pace.", ko:"표준 학습 앱은 사용자의 개별 속도에 맞게 적응하지 않습니다." },
+        solution:{ fr:"Algorithme de répétition espacée personnalisé + gamification légère.", en:"Personalized spaced repetition algorithm + light gamification.", ko:"개인화된 간격 반복 알고리즘 + 가벼운 게임화." },
+        impact:{ fr:"Rétention +60% vs apps standard · 4.8/5 étoiles · 200+ utilisateurs actifs", en:"60% better retention vs standard apps · 4.8/5 stars · 200+ active users", ko:"표준 앱 대비 60% 향상된 보존율 · 4.8/5점 · 200명 이상 활성 사용자" } },
+      { id:4, title:'Code Canvas', type:'web', tags:['WebSockets','Node.js','Canvas'], color:'#0a0e1e', wip:false,
+        desc:{ fr:"Tableau blanc collaboratif en temps réel pour développeurs.", en:"Real-time collaborative whiteboard for developers.", ko:"개발자를 위한 실시간 협업 화이트보드." },
+        problem:{ fr:"Les outils collaboratifs généralistes ignorent les besoins spécifiques des développeurs.", en:"Generic collaborative tools ignore the specific needs of developers.", ko:"일반적인 협업 도구는 개발자의 특정 요구를 무시합니다." },
+        solution:{ fr:"Whiteboard natif avec blocs de code, diagrammes UML et partage instantané.", en:"Native whiteboard with code blocks, UML diagrams and instant sharing.", ko:"코드 블록, UML 다이어그램, 즉시 공유가 있는 네이티브 화이트보드." },
+        impact:{ fr:"Adopté par 3 équipes dev · Réunions techniques -30% plus courtes", en:"Adopted by 3 dev teams · Tech meetings 30% shorter", ko:"3개 개발팀 채택 · 기술 회의 30% 단축" } },
+      { id:5, title:'Ambient Forge', type:'experimental', tags:['Python','ML','Web Audio'], color:'#12081e', wip:true,
+        desc:{ fr:"Générateur de musique ambiante assisté par IA, contrôlable en temps réel.", en:"AI-assisted ambient music generator, controllable in real time.", ko:"실시간으로 제어 가능한 AI 보조 앰비언트 음악 생성기." },
+        problem:{ fr:"Créer une ambiance sonore adaptée à son humeur demande des compétences musicales.", en:"Creating a sound atmosphere suited to your mood requires musical skills.", ko:"기분에 맞는 음향 분위기 조성에는 음악적 기술이 필요합니다." },
+        solution:{ fr:"Modèle ML entraîné sur 10k pistes ambient + interface web intuitive.", en:"ML model trained on 10k ambient tracks + intuitive web interface.", ko:"10,000개 앰비언트 트랙으로 훈련된 ML 모델 + 직관적인 웹 인터페이스." },
+        impact:{ fr:"En cours · Beta prévue T3 2024 · 50 inscrits en liste d'attente", en:"In progress · Beta planned Q3 2024 · 50 waitlist signups", ko:"진행 중 · 2024년 3분기 베타 예정 · 50명 대기 등록" } },
+    ];
+
+    const tracks = [
+      { title:'Nuit de Séoul',  genre:'Ambient',    duration:'3:42' },
+      { title:'Drift',          genre:'Electronic', duration:'4:15' },
+      { title:'Hangang',        genre:'Cinematic',  duration:'5:01' },
+      { title:'Static Garden',  genre:'Lo-fi',      duration:'2:58' },
+    ];
+
+    const education = [
+      { year:'2023', degree:{ fr:"Licence Pro Développement Web & Mobile", en:"Bachelor's in Web & Mobile Development", ko:"웹 & 모바일 개발 학사" }, school:'Université de Lyon' },
+      { year:'2022', degree:{ fr:"BTS Services Informatiques aux Organisations", en:"HND IT Services", ko:"IT 서비스 전문학사" }, school:'Lycée Claude Fauriel' },
+      { year:'2021–', degree:{ fr:"Coréen — autoformation continue", en:"Korean — ongoing self-study", ko:"한국어 자기학습" }, school:'Autoformation' },
+    ];
+
+    const experience = [
+      { company:'AllShare', role:{ fr:'Développeur Low-Code', en:'Low-Code Developer', ko:'로우코드 개발자' },
+        period:'2023 — Présent', current:true,
+        desc:{ fr:"Conception et développement d'applications métier sur plateforme low-code. Intégrations API, automatisation de processus, création d'interfaces utilisateur adaptées aux besoins opérationnels.", en:"Design and development of business applications on a low-code platform. API integrations, process automation, creation of interfaces tailored to operational needs.", ko:"로우코드 플랫폼에서 비즈니스 애플리케이션 설계 및 개발. API 통합, 프로세스 자동화, 운영 요구에 맞춘 인터페이스 생성." },
+        outcomes:[
+          { fr:"↓ 40% temps opérationnel", en:"↓ 40% operational time", ko:"↓ 운영 시간 40%" },
+          { fr:"8 apps déployées", en:"8 apps deployed", ko:"8개 앱 배포" },
+          { fr:"3 intégrations API", en:"3 API integrations", ko:"3개 API 통합" }
+        ]},
+      { company:'Freelance', role:{ fr:'Développeur Web', en:'Web Developer', ko:'웹 개발자' },
+        period:'2021 — 2023', current:false,
+        desc:{ fr:"Création de sites web et d'applications sur mesure pour des clients variés (startups, PME, associations). Spécialisation en React, performance web et intégrations CMS.", en:"Custom website and application creation for various clients (startups, SMEs, associations). Specialization in React, web performance and CMS integrations.", ko:"다양한 고객(스타트업, 중소기업, 단체)을 위한 맞춤형 웹사이트 및 애플리케이션 제작. React, 웹 성능 및 CMS 통합 전문화." },
+        outcomes:[
+          { fr:"12 projets livrés", en:"12 projects delivered", ko:"12개 프로젝트 납품" },
+          { fr:"Score Lighthouse 95+", en:"Lighthouse score 95+", ko:"라이트하우스 점수 95+" },
+        ]},
+    ];
+
+    const currently = [
+      { title:'Ambient Forge — Beta',
+        desc:{ fr:"Générateur de musique ambiante IA, actuellement en phase de test avec 50 utilisateurs pilotes. Chaque mood génère une texture sonore unique.", en:"AI ambient music generator, currently in testing with 50 pilot users. Each mood generates a unique sonic texture.", ko:"50명의 파일럿 사용자와 테스트 중인 AI 앰비언트 음악 생성기. 각 무드가 독특한 음향 질감을 생성합니다." },
+        stack:['Python','Web Audio API','React','FastAPI'],
+        progress:68,
+        since:'Mars 2024' }
+    ];
+  </script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="portfolio-fx.jsx"></script>
+<script type="text/babel" src="portfolio-ui.jsx"></script>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+function App() {
+  const [lang,  setLang]  = useState(() => localStorage.getItem('portfolio_lang')  || 'fr');
+  const [mode,  setMode]  = useState(() => localStorage.getItem('portfolio_mode')  || 'dark');
+  const [tweaksVisible, setTweaksVis] = useState(false);
+  const [easter, setEaster] = useState(false);
+  const [tweaks, setTweaksState] = useState(() => {
+    try { return { ...TWEAK_DEFAULTS, ...JSON.parse(localStorage.getItem('portfolio_tweaks') || '{}') }; }
+    catch { return { ...TWEAK_DEFAULTS }; }
+  });
+
+  const scrollRef        = useRef(0);
+  const activeSectionRef = useRef('hero');
+  const { accent } = tweaks;
+  const t = i18n[lang] || i18n.fr;
+
+  useEffect(() => { localStorage.setItem('portfolio_lang', lang); }, [lang]);
+
+  // Mode toggle + transition
+  useEffect(() => {
+    localStorage.setItem('portfolio_mode', mode);
+    document.body.classList.add('mode-transitioning');
+    document.body.classList.toggle('mode-light', mode === 'light');
+    const tid = setTimeout(() => document.body.classList.remove('mode-transitioning'), 520);
+    return () => clearTimeout(tid);
+  }, [mode]);
+
+  // Font style
+  useEffect(() => {
+    const ff = tweaks.fontStyle === 'humanist' ? "'Georgia','Times New Roman',serif" : "'Space Grotesk',sans-serif";
+    document.querySelectorAll('h1,h2,h3').forEach(el => el.style.fontFamily = ff);
+  }, [tweaks.fontStyle]);
+
+  // Scroll tracking for ambient parallax
+  useEffect(() => {
+    const fn = () => { scrollRef.current = window.scrollY; };
+    window.addEventListener('scroll', fn, { passive:true });
+    return () => window.removeEventListener('scroll', fn);
+  }, []);
+
+  // Active section detection for atmosphere system
+  useEffect(() => {
+    const ids = ['hero','projects','music','about','education','experience','contact','current'];
+    const obs = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) activeSectionRef.current = e.target.id; });
+    }, { threshold: 0.45 });
+    ids.forEach(id => { const el = document.getElementById(id); if (el) obs.observe(el); });
+    return () => obs.disconnect();
+  }, []);
+
+  // Tweaks host bridge (hidden from end visitors — panel removed)
+  useEffect(() => {
+    const fn = e => {
+      if (e.data?.type === '__activate_edit_mode')   setTweaksVis(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksVis(false);
+    };
+    window.addEventListener('message', fn);
+    return () => window.removeEventListener('message', fn);
+  }, []);
+
+  const setTweaksValue = next => {
+    setTweaksState(next);
+    try { localStorage.setItem('portfolio_tweaks', JSON.stringify(next)); } catch(e) {}
+  };
+
+  const bodyFont = lang === 'ko' ? "'Noto Sans KR','Inter',sans-serif" : "'Inter',sans-serif";
+
+  return (
+    <div style={{ fontFamily:bodyFont, minHeight:'100vh', position:'relative' }}>
+      <ScrollProgress accent={accent}/>
+      <AmbientCanvas scrollRef={scrollRef} activeSectionRef={activeSectionRef} accent={accent} mode={mode}/>
+      <CursorEffect accent={accent} activeSectionRef={activeSectionRef}/>
+
+      <div style={{ position:'relative', zIndex:1 }}>
+        <Nav lang={lang} setLang={setLang} t={t} accent={accent} mode={mode} toggleMode={() => setMode(m => m==='dark'?'light':'dark')}/>
+        <Hero       t={t} lang={lang} accent={accent} mode={mode}/>
+        <Projects   t={t} lang={lang} accent={accent}/>
+        <Music      t={t} lang={lang} accent={accent}/>
+        <About      t={t} lang={lang} accent={accent}/>
+        <Education  t={t} lang={lang} accent={accent}/>
+        <Experience t={t} lang={lang} accent={accent}/>
+        <CurrentlyBuilding t={t} lang={lang} accent={accent}/>
+        <Contact    t={t} lang={lang} accent={accent}/>
+        <Footer     t={t} accent={accent} onEaster={() => setEaster(true)}/>
+      </div>
+
+      <EasterEgg visible={easter} onClose={() => setEaster(false)} accent={accent}/>
+      <TweaksPanel tweaks={tweaks} setTweaks={setTweaksValue} visible={tweaksVisible}/>
+      <FloatingPauseButton accent={accent}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
