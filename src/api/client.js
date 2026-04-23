@@ -111,6 +111,9 @@ export const api = {
 
   // Project workspace
   users:    () => request('GET', '/users'),
+  createUser: (body) => request('POST', '/users', body),
+  updateUser: (id, body) => request('PUT', `/users/${id}`, body),
+  deleteUser: (id) => request('DELETE', `/users/${id}`),
   comments: (targetType, targetId = 0) =>
     request('GET', `/comments?target_type=${targetType}&target_id=${targetId}`),
   addComment:    (targetType, targetId, body) =>

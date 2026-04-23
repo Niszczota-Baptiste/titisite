@@ -7,13 +7,15 @@ import { EducationEditor } from './editors/EducationEditor';
 import { ExperienceEditor } from './editors/ExperienceEditor';
 import { ProjectsEditor } from './editors/ProjectsEditor';
 import { TracksEditor } from './editors/TracksEditor';
+import { UsersEditor } from './editors/UsersEditor';
 
 const TABS = [
-  { key: 'projects',   label: 'Projets',    Editor: ProjectsEditor },
-  { key: 'tracks',     label: 'Musique',    Editor: TracksEditor },
-  { key: 'experience', label: 'Expérience', Editor: ExperienceEditor },
-  { key: 'education',  label: 'Formation',  Editor: EducationEditor },
-  { key: 'currently',  label: 'En cours',   Editor: CurrentlyEditor },
+  { key: 'projects',   label: 'Projets',      Editor: ProjectsEditor },
+  { key: 'tracks',     label: 'Musique',      Editor: TracksEditor },
+  { key: 'experience', label: 'Expérience',   Editor: ExperienceEditor },
+  { key: 'education',  label: 'Formation',    Editor: EducationEditor },
+  { key: 'currently',  label: 'En cours',     Editor: CurrentlyEditor },
+  { key: 'users',      label: 'Utilisateurs', Editor: UsersEditor },
 ];
 
 export function Dashboard() {

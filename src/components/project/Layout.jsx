@@ -5,6 +5,7 @@ import { ACC, ACC_RGB, Button } from '../admin/ui';
 const TABS = [
   { to: 'overview',   label: 'Vue d\'ensemble' },
   { to: 'kanban',     label: 'Kanban' },
+  { to: 'calendar',   label: 'Calendrier' },
   { to: 'documents',  label: 'Documents' },
   { to: 'builds',     label: 'Builds' },
   { to: 'meetings',   label: 'Réunions' },

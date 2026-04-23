@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Login } from '../components/admin/Login';
 import { BuildsTab } from '../components/project/Builds';
+import { CalendarTab } from '../components/project/Calendar';
 import { DiscussionTab } from '../components/project/Discussion';
 import { DocumentsTab } from '../components/project/Documents';
 import { KanbanTab } from '../components/project/Kanban';
@@ -55,6 +56,7 @@ export default function Project() {
         <Route index              element={<Navigate to="overview" replace />} />
         <Route path="overview"    element={<OverviewTab />} />
         <Route path="kanban"      element={<KanbanTab />} />
+        <Route path="calendar"    element={<CalendarTab />} />
         <Route path="documents"   element={<DocumentsTab />} />
         <Route path="builds"      element={<BuildsTab />} />
         <Route path="meetings"    element={<MeetingsTab />} />

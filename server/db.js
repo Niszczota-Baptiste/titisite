@@ -83,11 +83,17 @@ export function migrate() {
       assignee_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
       position     INTEGER NOT NULL DEFAULT 0,
+      due_date     INTEGER,                          -- unix seconds, nullable
+      tags         TEXT NOT NULL DEFAULT '[]',       -- JSON array of strings
       created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
       updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_features_status_pos ON features(status, position);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_features_due_date ON features(due_date);`);
+  // Backfill columns on pre-existing installs
+  ensureColumn('features', 'due_date', 'INTEGER');
+  ensureColumn('features', 'tags', `TEXT NOT NULL DEFAULT '[]'`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS meetings (
@@ -113,6 +119,26 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_comments_target ON comments(target_type, target_id, created_at);`);
+
+  // ── Attachments (document ↔ feature|meeting) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS attachments (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_type TEXT NOT NULL,   -- 'feature' | 'meeting'
+      target_id   INTEGER NOT NULL,
+      document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      UNIQUE(target_type, target_id, document_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_attachments_target ON attachments(target_type, target_id);`);
+}
+
+function ensureColumn(table, column, ddl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!cols.includes(column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
 }
 
 // ── Generic JSON-blob CRUD (public collections) ──

@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
+import { FeatureModal } from './FeatureModal';
 import {
-  ACC, ACC_RGB, Button, ErrorBanner, Field, Input, Modal, Section, Textarea,
-  Empty, card, formatDate, muted, relativeDate,
+  ACC, ACC_RGB, Button, ErrorBanner, Section, Tag, dueStatus, DUE_STYLES,
+  Empty, card, formatDate, muted,
 } from './shared';
-import { Comments } from './Comments';
 
 const COLUMNS = [
   { key: 'backlog', label: 'Backlog' },
@@ -14,55 +14,79 @@ const COLUMNS = [
 ];
 
 const PRIORITY_COLORS = {
-  low:    { hex: '#9ad4ae', rgb: '154,212,174' },
-  medium: { hex: ACC,       rgb: ACC_RGB },
-  high:   { hex: '#ff8a9b', rgb: '255,138,155' },
+  low:    '#9ad4ae',
+  medium: ACC,
+  high:   '#ff8a9b',
 };
 
 export function KanbanTab() {
   const [items, setItems] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(null); // feature or 'new'
+  const [editing, setEditing] = useState(null);
+  const [tagFilter, setTagFilter] = useState(null);
   const [err, setErr] = useState(null);
 
   const load = async () => {
     try {
       const [f, u] = await Promise.all([api.get('/features'), api.get('/users')]);
-      setItems(f);
-      setUsers(u);
+      setItems(f); setUsers(u);
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
 
-  const move = async (feature, newStatus) => {
-    try {
-      await api.put(`/features/${feature.id}`, { status: newStatus });
-      await load();
-    } catch (e) { setErr(e.message); }
-  };
+  const allTags = useMemo(() => {
+    const set = new Set();
+    for (const it of items) for (const t of (it.tags || [])) set.add(t);
+    return [...set].sort();
+  }, [items]);
 
-  const remove = async (id) => {
-    if (!window.confirm('Supprimer cette carte ?')) return;
-    try { await api.del(`/features/${id}`); await load(); }
-    catch (e) { setErr(e.message); }
-  };
-
+  const filtered = tagFilter ? items.filter((i) => (i.tags || []).includes(tagFilter)) : items;
   const grouped = COLUMNS.reduce((acc, c) => {
-    acc[c.key] = items.filter((i) => i.status === c.key);
+    acc[c.key] = filtered.filter((i) => i.status === c.key);
     return acc;
   }, {});
+
+  const move = async (feature, newStatus) => {
+    try { await api.put(`/features/${feature.id}`, { status: newStatus }); await load(); }
+    catch (e) { setErr(e.message); }
+  };
 
   return (
     <Section
       title="Kanban"
-      actions={<Button onClick={() => setEditing('new')}>+ Nouvelle carte</Button>}
+      actions={<Button onClick={() => setEditing({})}>+ Nouvelle carte</Button>}
     >
       <ErrorBanner error={err} onDismiss={() => setErr(null)} />
 
+      {allTags.length > 0 && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16,
+          alignItems: 'center',
+        }}>
+          <span style={{ ...muted, fontSize: 11, marginRight: 4 }}>Filtrer :</span>
+          <TagFilterBtn active={!tagFilter} onClick={() => setTagFilter(null)}>Tous</TagFilterBtn>
+          {allTags.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTagFilter(tagFilter === t ? null : t)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                opacity: tagFilter && tagFilter !== t ? 0.45 : 1,
+                transition: 'opacity 0.15s',
+              }}
+            >
+              <Tag name={t} />
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>
+      ) : items.length === 0 ? (
+        <Empty>Aucune carte. Crée la première tâche du projet.</Empty>
       ) : (
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14,
@@ -93,9 +117,7 @@ export function KanbanTab() {
               </header>
 
               {grouped[col.key].length === 0 ? (
-                <div style={{ ...muted, fontSize: 11, textAlign: 'center', padding: '12px 4px' }}>
-                  —
-                </div>
+                <div style={{ ...muted, fontSize: 11, textAlign: 'center', padding: '12px 4px' }}>—</div>
               ) : (
                 grouped[col.key].map((f) => (
                   <KanbanCard
@@ -103,7 +125,6 @@ export function KanbanTab() {
                     feature={f}
                     onOpen={() => setEditing(f)}
                     onMove={(to) => move(f, to)}
-                    onDelete={() => remove(f.id)}
                   />
                 ))
               )}
@@ -114,7 +135,7 @@ export function KanbanTab() {
 
       <FeatureModal
         open={!!editing}
-        feature={editing === 'new' ? null : editing}
+        feature={editing}
         users={users}
         onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); load(); }}
@@ -123,16 +144,35 @@ export function KanbanTab() {
   );
 }
 
-function KanbanCard({ feature, onOpen, onMove, onDelete }) {
-  const pr = PRIORITY_COLORS[feature.priority] || PRIORITY_COLORS.medium;
+function TagFilterBtn({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: active ? `rgba(${ACC_RGB},0.14)` : 'rgba(20,14,38,0.6)',
+        border: `1px solid ${active ? ACC : 'rgba(80,50,130,0.28)'}`,
+        color: active ? ACC : 'rgba(180,170,200,0.6)',
+        borderRadius: 4, padding: '2px 8px', cursor: 'pointer',
+        fontFamily: "'Inter',sans-serif", fontSize: 10.5,
+        fontWeight: active ? 700 : 500, letterSpacing: '0.2px',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function KanbanCard({ feature, onOpen, onMove }) {
+  const borderColor = PRIORITY_COLORS[feature.priority] || ACC;
   const idx = COLUMNS.findIndex((c) => c.key === feature.status);
   const prevCol = COLUMNS[idx - 1];
   const nextCol = COLUMNS[idx + 1];
+  const due = dueStatus(feature.dueDate, feature.status);
 
   return (
     <article style={{
       ...card, padding: 12, cursor: 'pointer', position: 'relative',
-      borderLeft: `3px solid ${pr.hex}`,
+      borderLeft: `3px solid ${borderColor}`,
     }} onClick={onOpen}>
       <h4 style={{
         fontFamily: "'Space Grotesk',sans-serif", fontSize: 13.5, fontWeight: 600,
@@ -140,6 +180,7 @@ function KanbanCard({ feature, onOpen, onMove, onDelete }) {
       }}>
         {feature.title}
       </h4>
+
       {feature.description && (
         <p style={{
           fontFamily: "'Inter',sans-serif", fontSize: 12,
@@ -151,19 +192,43 @@ function KanbanCard({ feature, onOpen, onMove, onDelete }) {
           {feature.description}
         </p>
       )}
+
+      {(feature.tags || []).length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+          {feature.tags.map((t) => <Tag key={t} name={t} />)}
+        </div>
+      )}
+
       <div style={{
         display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
         ...muted, fontSize: 10.5,
       }}>
         <span style={{
           padding: '1px 6px', borderRadius: 3,
-          background: `rgba(${pr.rgb},0.14)`, color: pr.hex, fontWeight: 600,
-          textTransform: 'uppercase', letterSpacing: '0.5px',
+          background: `${borderColor}22`, color: borderColor, fontWeight: 600,
+          textTransform: 'uppercase', letterSpacing: '0.5px', border: `1px solid ${borderColor}40`,
         }}>{feature.priority}</span>
+
+        {due && (
+          <span
+            title={feature.dueDate ? formatDate(feature.dueDate) : ''}
+            style={{
+              padding: '1px 6px', borderRadius: 3,
+              background: DUE_STYLES[due].bg,
+              border: `1px solid ${DUE_STYLES[due].color}33`,
+              color: DUE_STYLES[due].color, fontWeight: 600,
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+            }}
+          >
+            {due === 'overdue' ? '⚠' : '📅'} {DUE_STYLES[due].label}
+          </span>
+        )}
+
         {feature.assigneeName && (
           <span style={{ color: 'rgba(200,192,216,0.7)' }}>@{feature.assigneeName}</span>
         )}
         {feature.commentsCount > 0 && <span>💬 {feature.commentsCount}</span>}
+        {(feature.documents || []).length > 0 && <span>📎 {feature.documents.length}</span>}
       </div>
 
       <div
@@ -174,27 +239,19 @@ function KanbanCard({ feature, onOpen, onMove, onDelete }) {
         }}
       >
         {prevCol && (
-          <button
-            onClick={() => onMove(prevCol.key)}
-            style={moveBtnStyle}
-            title={`→ ${prevCol.label}`}
-          >← {prevCol.label}</button>
+          <button onClick={() => onMove(prevCol.key)} style={moveBtnStyle} title={`→ ${prevCol.label}`}>
+            ← {prevCol.label}
+          </button>
         )}
         {nextCol && (
           <button
             onClick={() => onMove(nextCol.key)}
             style={{ ...moveBtnStyle, marginLeft: 'auto' }}
             title={`→ ${nextCol.label}`}
-          >{nextCol.label} →</button>
+          >
+            {nextCol.label} →
+          </button>
         )}
-        <button
-          onClick={onDelete}
-          style={{
-            ...moveBtnStyle, color: 'rgba(255,138,155,0.7)',
-            borderColor: 'rgba(255,138,155,0.25)',
-          }}
-          title="Supprimer"
-        >×</button>
       </div>
     </article>
   );
@@ -207,116 +264,3 @@ const moveBtnStyle = {
   fontFamily: "'Inter',sans-serif", fontSize: 10.5,
   transition: 'all 0.15s',
 };
-
-function FeatureModal({ open, feature, users, onClose, onSaved }) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [status, setStatus] = useState('backlog');
-  const [priority, setPriority] = useState('medium');
-  const [assigneeId, setAssigneeId] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState(null);
-
-  const isEdit = !!feature;
-
-  useEffect(() => {
-    if (!open) return;
-    if (feature) {
-      setTitle(feature.title || '');
-      setDescription(feature.description || '');
-      setStatus(feature.status || 'backlog');
-      setPriority(feature.priority || 'medium');
-      setAssigneeId(feature.assigneeId ? String(feature.assigneeId) : '');
-    } else {
-      setTitle(''); setDescription(''); setStatus('backlog');
-      setPriority('medium'); setAssigneeId('');
-    }
-    setErr(null);
-  }, [open, feature]);
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!title.trim()) { setErr('Titre requis'); return; }
-    setSaving(true); setErr(null);
-    try {
-      const payload = {
-        title, description, status, priority,
-        assigneeId: assigneeId ? Number(assigneeId) : null,
-      };
-      if (isEdit) await api.put(`/features/${feature.id}`, payload);
-      else await api.post('/features', payload);
-      onSaved();
-    } catch (ex) { setErr(ex.message); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={isEdit ? feature?.title || 'Carte' : 'Nouvelle carte'}
-      width={720}
-    >
-      <form onSubmit={submit}>
-        <ErrorBanner error={err} onDismiss={() => setErr(null)} />
-        <Field label="Titre">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus required />
-        </Field>
-        <Field label="Description">
-          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} />
-        </Field>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-          <Field label="Statut">
-            <Select value={status} onChange={setStatus} options={COLUMNS.map((c) => [c.key, c.label])} />
-          </Field>
-          <Field label="Priorité">
-            <Select value={priority} onChange={setPriority} options={[['low', 'Basse'], ['medium', 'Moyenne'], ['high', 'Haute']]} />
-          </Field>
-          <Field label="Assigné">
-            <Select
-              value={assigneeId}
-              onChange={setAssigneeId}
-              options={[['', '— non assigné —'], ...users.map((u) => [String(u.id), u.name || u.email])]}
-            />
-          </Field>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Annuler</Button>
-          <Button type="submit" disabled={saving}>{saving ? '…' : 'Enregistrer'}</Button>
-        </div>
-      </form>
-
-      {isEdit && (
-        <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid rgba(60,40,100,0.18)' }}>
-          <div style={{
-            fontSize: 11, color: 'rgba(180,170,200,0.55)',
-            letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 10,
-            fontFamily: "'Inter',sans-serif",
-          }}>
-            Commentaires · créée {relativeDate(feature.createdAt)}
-            {feature.createdByName && ` par ${feature.createdByName}`}
-          </div>
-          <Comments targetType="feature" targetId={feature.id} />
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-function Select({ value, onChange, options }) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        width: '100%', background: 'rgba(14,8,32,0.72)',
-        border: '1px solid rgba(80,50,130,0.24)', borderRadius: 8,
-        padding: '10px 12px', color: '#ede8f8',
-        fontFamily: "'Inter',sans-serif", fontSize: 13.5, outline: 'none',
-      }}
-    >
-      {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-    </select>
-  );
-}

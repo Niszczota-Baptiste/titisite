@@ -26,28 +26,47 @@ Les comptes sont créés au **1er démarrage** à partir des variables d'environ
 
 Mots de passe hashés en **bcrypt** (10 rounds). Tokens JWT signés HS256, 7 jours.
 
+### Gestion depuis l'admin
+
+L'onglet **Utilisateurs** dans `/admin` permet à un compte admin de :
+- créer de nouveaux users (email + mot de passe + rôle)
+- changer le nom ou le rôle d'un user existant
+- réinitialiser un mot de passe
+- supprimer un user
+
+Garde-fous serveur :
+- Impossible de supprimer son propre compte (`cannot_delete_self`)
+- Impossible de supprimer le dernier admin ou de le rétrograder (`last_admin`)
+- Un email unique est garanti (`email_taken`)
+
 ---
 
 ## Espace projet — `/project`
 
-6 onglets :
+7 onglets :
 
 ### Vue d'ensemble
 Dashboard : compteurs par colonne Kanban, progression globale, prochaines réunions, derniers builds, derniers documents.
 
 ### Kanban
 4 colonnes (Backlog / À faire / En cours / Terminé).
-Chaque carte : titre, description, priorité, assigné, compteur de commentaires. Boutons ← / → pour déplacer entre colonnes. Modal d'édition avec fil de commentaires attaché.
+Chaque carte affiche : titre, description, **priorité** (bordure colorée), **tags personnalisés** (chips), **échéance** avec statut visuel (`En retard` / `Aujourd'hui` / `Bientôt` / `Planifié`), assigné, compteur de commentaires, nombre de fichiers liés.
+Boutons ← / → pour déplacer entre colonnes. Filtre par tag en haut.
+Modal d'édition : titre, description, statut, priorité, assigné, **échéance (datetime)**, **tags** (input avec chips et `Entrée`/`,` pour valider), **fichiers liés** (picker dans la lib de documents), fil de commentaires.
+
+### Calendrier
+Vue mois avec navigation ← / → / Aujourd'hui.
+Affiche sur chaque jour : **réunions** (violet, avec l'heure) et **échéances de cartes Kanban** (rouge si en retard, gris sinon). Clic sur un événement → ouvre le modal correspondant. Bouton `+` sur une case → crée une réunion pré-remplie à cette date.
 
 ### Documents
-Upload de fichiers de conception (≤ 1 Go) avec progression. Liste avec taille, auteur, date, notes. Téléchargement authentifié. Chaque document a son propre fil de commentaires.
+Upload de fichiers de conception (≤ 1 Go) avec progression. Liste avec taille, auteur, date, notes. Téléchargement authentifié. Chaque document a son propre fil de commentaires. Les documents peuvent être **liés** depuis une carte Kanban ou une réunion (clic → téléchargement).
 
 ### Builds
 Liste des MVPs/livrables avec version (`v0.3.1`), statut (alpha/beta/release), notes (changelog).
 **Deux modes d'ajout :** fichier direct (≤ 1 Go) **ou** lien externe (Itch.io, Drive, etc.) pour les fichiers trop gros.
 
 ### Réunions
-Agenda split en **à venir** / **passées**, avec horodatage, description, auteur. Triable par date.
+Agenda split en **à venir** / **passées**, avec horodatage, description, auteur, **fichiers liés** (téléchargeables). Triable par date.
 
 ### Discussion
 Fil général pour les sujets divers qui ne rentrent pas ailleurs. Commentaires avec auteur, date, suppression (propre commentaire ou admin).
