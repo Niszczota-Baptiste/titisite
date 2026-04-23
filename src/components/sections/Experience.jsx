@@ -1,15 +1,14 @@
 import { ACCENTS } from '../../data/constants';
-import { experience } from '../../data/experience';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
 
-export function Experience({ t, lang, accent }) {
+export function Experience({ t, lang, accent, items = [] }) {
   const acc = ACCENTS[accent] || ACCENTS.violet;
   return (
     <Section id="experience">
       <SectionHeader title={t.experience.title} accent={accent} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        {experience.map((e, i) => (
+        {items.map((e, i) => (
           <div
             key={i}
             className="reveal"

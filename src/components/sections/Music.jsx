@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ACCENTS } from '../../data/constants';
-import { tracks } from '../../data/tracks';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
 
@@ -166,7 +165,7 @@ function TrackRow({ track, playing, progress, onToggle, accent }) {
   );
 }
 
-export function Music({ t, accent }) {
+export function Music({ t, accent, tracks = [] }) {
   const [playing, setPlaying] = useState(null);
   const [progress, setProgress] = useState({});
   const [volume, setVolume] = useState(0.72);

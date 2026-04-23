@@ -1,19 +1,26 @@
 # titisite — Portfolio Baptiste Niszczota
 
-Portfolio one-page bilingue (FR / EN / KO) — **Développeur créatif & compositeur**.
+Portfolio one-page bilingue (FR / EN / KO) — **Développeur créatif & compositeur** — avec interface admin pour éditer les contenus à chaud.
 
-Stack : **Vite + React 18**. 100% statique côté client, pas de backend, pas de SSR.
+**Stack :** Vite + React 18 · Express + SQLite · JWT auth.
 
 ---
 
 ## ✨ Fonctionnalités
 
-- Site one-page avec ancres (`#projects`, `#music`, `#about`, `#education`, `#experience`, `#contact`)
+### Site public (`/`)
+- One-page avec ancres (`#projects`, `#music`, `#about`, `#education`, `#experience`, `#contact`)
 - 3 langues (FR / EN / KO), 2 thèmes (dark / light), 3 accents (violet / ambre / sauge)
-- Canvas ambiant réactif (orbes qui s'adaptent à la section active)
-- Cursor custom (ring + trail + label contextuel), effet glitch sur le nom, code rain sur le hero
-- Lecteur musical factice (shuffle / repeat / volume), carte "Currently Building" avec jauge de progression, formulaire contact, easter egg coréen
-- Bouton pause flottant pour couper toutes les animations (perf)
+- Canvas ambiant réactif, curseur custom + trail, code rain hero, glitch text
+- Lecteur musical, carte "Currently Building", formulaire contact, easter egg coréen
+- Le contenu est chargé dynamiquement depuis l'API — **fallback automatique** sur les données statiques de `src/data/` si l'API est injoignable (le site reste visible même serveur éteint)
+
+### Admin (`/admin`)
+- Login par mot de passe (stocké en `.env`)
+- CRUD complet : projets, musique, expérience, formation, projet en cours
+- Édition des textes localisés (FR / EN / KO) en ligne
+- Réordonnancement (flèches ↑/↓)
+- Token JWT valable 7 jours, stocké en `localStorage`
 
 ---
 
@@ -21,49 +28,67 @@ Stack : **Vite + React 18**. 100% statique côté client, pas de backend, pas de
 
 ```
 titisite/
-├── index.html              ← entry Vite
-├── vite.config.js
-├── package.json
-├── public/
-│   └── uploads/            ← photo "à propos" (à déposer ici)
-└── src/
-    ├── main.jsx            ← bootstrap React
-    ├── App.jsx             ← état global (lang, mode, tweaks) + assemblage
-    ├── styles.css          ← tokens CSS, keyframes, classes responsive
-    ├── data/               ← contenu et constantes (sans logique)
-    │   ├── constants.js    ← ACCENTS, TWEAK_DEFAULTS, SECTION_MOODS, CURSOR_LABELS
-    │   ├── i18n.js         ← traductions FR / EN / KO
-    │   ├── projects.js
-    │   ├── tracks.js
-    │   ├── education.js
-    │   ├── experience.js
-    │   └── currently.js
-    ├── hooks/
-    │   ├── useReveal.js    ← IntersectionObserver → class "visible"
-    │   └── useMagnetic.js  ← attraction curseur
-    └── components/
-        ├── ambient/        ← AmbientCanvas, CursorEffect, ScrollProgress,
-        │                     FloatingPauseButton, CodeCanvas
-        ├── layout/         ← Nav, Section, SectionHeader, Footer
-        ├── sections/       ← Hero, Projects, Music, About, Education,
-        │                     Experience, CurrentlyBuilding, Contact
-        ├── ui/             ← GlitchText
-        └── overlays/       ← EasterEgg, TweaksPanel
+├── server/                   ← Backend Express
+│   ├── index.js              ← serveur HTTP
+│   ├── db.js                 ← SQLite + helpers CRUD
+│   ├── auth.js               ← JWT + comparaison mdp
+│   ├── seed.js               ← seed initial depuis src/data/
+│   └── routes/
+│       ├── auth.js           ← POST /api/auth/login, GET /api/auth/me
+│       └── collection.js     ← CRUD générique (projects, tracks, …)
+│
+├── src/                      ← Frontend
+│   ├── main.jsx              ← bootstrap + BrowserRouter
+│   ├── App.jsx               ← routes (Public / Admin lazy)
+│   ├── styles.css            ← tokens, keyframes, responsive
+│   ├── api/client.js         ← fetch wrapper + gestion token
+│   ├── data/                 ← données seed + fallback
+│   ├── hooks/
+│   │   ├── useContent.js     ← fetch API + fallback
+│   │   ├── useReveal.js
+│   │   └── useMagnetic.js
+│   ├── pages/
+│   │   ├── Public.jsx        ← site portfolio
+│   │   └── Admin.jsx         ← gating auth + dashboard
+│   └── components/
+│       ├── ambient/          ← AmbientCanvas, CursorEffect, ScrollProgress, …
+│       ├── layout/           ← Nav, Section, SectionHeader, Footer
+│       ├── sections/         ← Hero, Projects, Music, About, …
+│       ├── ui/               ← GlitchText
+│       ├── overlays/         ← EasterEgg, TweaksPanel
+│       └── admin/
+│           ├── ui.jsx        ← primitives (Input, LocalizedField, …)
+│           ├── Login.jsx
+│           ├── Dashboard.jsx
+│           ├── ItemList.jsx  ← shell CRUD générique
+│           └── editors/
+│               ├── ProjectsEditor.jsx
+│               ├── TracksEditor.jsx
+│               ├── EducationEditor.jsx
+│               ├── ExperienceEditor.jsx
+│               └── CurrentlyEditor.jsx
+│
+├── index.html / vite.config.js / package.json
+├── .env.example
+└── data.sqlite               ← (généré au 1er run, ignoré par git)
 ```
 
-**Conventions :**
-- Les composants reçoivent `accent`, `lang`, `t` en props — aucun état global caché.
-- `window.__animPaused` / `window.__musicPlaying` sont utilisés comme bus global pour synchroniser le pause des boucles `requestAnimationFrame` entre canvases sans re-render React.
-- Toutes les couleurs passent par des CSS custom properties (`--text`, `--surface`…) définies dans `styles.css` → bascule dark/light en modifiant une classe sur `<body>`.
+**Schéma DB :** une table par collection (`projects`, `tracks`, `education`, `experience`, `currently`) avec colonnes `id`, `position`, `data` (JSON blob), `created_at`, `updated_at`. C'est dénormalisé volontairement — la structure de chaque item est flexible et évolue sans migration.
 
 ---
 
 ## 🚀 Installation
 
-Prérequis : **Node.js 18+** et **npm** (ou pnpm / yarn).
-
 ```bash
 npm install
+cp .env.example .env
+# puis éditer .env pour définir ADMIN_PASSWORD et JWT_SECRET
+```
+
+**Générer un JWT_SECRET fort :**
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# ou :  openssl rand -hex 32
 ```
 
 ---
@@ -74,66 +99,98 @@ npm install
 npm run dev
 ```
 
-Ouvre http://localhost:5173 — HMR actif.
+Lance **en parallèle** :
+- `dev:server` — Express sur http://localhost:3001 avec `node --watch` (reload auto)
+- `dev:client` — Vite sur http://localhost:5173 avec HMR
 
-### Ajouter la photo "À propos"
+Vite proxifie `/api/*` vers le backend → rien à configurer côté client.
 
-La section About référence `/uploads/photo-1776888150170.jpg`. Déposez votre image dans `public/uploads/` — le chemin sera résolu automatiquement par Vite (les fichiers de `public/` sont servis tels quels).
+**Premier lancement :** si `data.sqlite` n'existe pas, les données de `src/data/*.js` sont importées automatiquement (voir `server/seed.js`).
+
+**Forcer un re-seed :**
+```bash
+rm data.sqlite* && npm run seed -- --force
+```
 
 ---
 
-## 📦 Build & preview
+## 📦 Build & production
 
 ```bash
-npm run build     # génère dist/
-npm run preview   # sert dist/ en local pour vérifier le build
+npm run build     # compile le frontend dans dist/
+npm start         # lance Express en mode prod (sert l'API + dist/)
 ```
 
-Le build produit un bundle unique (React + app) dans `dist/assets/` + `dist/index.html`. Poids typique : ~200 ko JS / ~66 ko gzip, ~6 ko CSS.
+En prod, **un seul process Node** sert à la fois `/api/*` et le SPA (fallback `index.html` sur toutes les routes non-API).
+
+### Variables d'env requises en prod
+
+| Variable         | Obligatoire | Description                              |
+|------------------|-------------|------------------------------------------|
+| `ADMIN_PASSWORD` | oui         | Mot de passe d'accès à `/admin`          |
+| `JWT_SECRET`     | oui         | Secret pour signer les tokens            |
+| `PORT`           | non         | Port d'écoute (défaut 3001)              |
+| `DB_PATH`        | non         | Chemin de la DB SQLite (défaut `./data.sqlite`) |
+| `NODE_ENV`       | oui         | Doit valoir `production` pour servir `dist/` |
 
 ---
 
 ## ☁️ Déploiement
 
-Le site étant entièrement statique, n'importe quel hôte statique fonctionne.
+Le site n'est plus purement statique — il faut un runtime Node persistant avec un **filesystem persistant** (pour SQLite).
 
-### Vercel
-```bash
-npm i -g vercel
-vercel
-```
-(Vercel détecte Vite automatiquement — `Build command: npm run build`, `Output: dist`.)
+### Railway (recommandé, setup rapide)
+1. Connecter le repo
+2. Définir les env vars `ADMIN_PASSWORD`, `JWT_SECRET`, `NODE_ENV=production`
+3. Build command : `npm run build`
+4. Start command : `npm start`
+5. Ajouter un volume persistant monté sur `/app/data/` et positionner `DB_PATH=/app/data/data.sqlite`
 
-### Netlify
-- Build command : `npm run build`
-- Publish directory : `dist`
+### Render
+- Service type : **Web Service**
+- Build : `npm install && npm run build`
+- Start : `npm start`
+- Ajouter un **Persistent Disk** monté sur `/var/data`, avec `DB_PATH=/var/data/data.sqlite`
 
-### GitHub Pages
-Ajouter `base: '/<repo-name>/'` dans `vite.config.js`, puis :
-```bash
-npm run build
-npx gh-pages -d dist
-```
+### Fly.io
+- `fly launch`, puis `fly volumes create data --size 1` et monter sur `/data`
+- Dans `fly.toml`, env `DB_PATH=/data/data.sqlite`
+- Secrets : `fly secrets set ADMIN_PASSWORD=… JWT_SECRET=…`
 
-### Cloudflare Pages / Render / S3 + CloudFront
-Pointer sur le dossier `dist/` après `npm run build`.
+### VPS / Docker
+Un `Dockerfile` simple suffirait : `node:20-alpine`, copier, `npm ci && npm run build`, `CMD ["npm","start"]`, volume sur le dossier de la DB.
 
----
-
-## 🛠️ Personnalisation rapide
-
-| Tu veux…                          | Modifier…                          |
-|-----------------------------------|------------------------------------|
-| Changer les textes                | `src/data/i18n.js`                 |
-| Ajouter un projet                 | `src/data/projects.js`             |
-| Ajouter une expérience / diplôme  | `src/data/experience.js` / `education.js` |
-| Changer le projet "en cours"      | `src/data/currently.js`            |
-| Ajouter/modifier une couleur      | `src/data/constants.js` (`ACCENTS`) |
-| Ajuster les tokens de thème       | `src/styles.css` (`:root` / `body.mode-light`) |
+### ⚠️ Vercel / Netlify
+**Ne marcheront pas directement** : ces plateformes n'ont pas de filesystem persistant pour SQLite. Pour y déployer, il faudrait migrer la DB vers un service externe (Supabase / Neon / Turso).
 
 ---
 
-## 🔒 Notes
+## 🛠️ Utilisation de l'admin
 
-- **`TweaksPanel`** est caché par défaut. Il s'active via un `postMessage({ type: '__activate_edit_mode' })` envoyé depuis une fenêtre parente — utile en édition embarquée, inutile en production publique.
+1. Aller sur `/admin`
+2. Se connecter avec le `ADMIN_PASSWORD` du `.env`
+3. Naviguer entre les onglets : Projets, Musique, Expérience, Formation, En cours
+4. Chaque élément a les actions : **Éditer**, **Supprimer**, **↑ / ↓** (réordonnancer)
+5. Bouton **+ Ajouter** en haut à droite
+6. Les textes multilingues ont trois champs côte-à-côte (`FR / EN / KO`)
+7. Les modifications sont **instantanément visibles** sur le site public (refresh)
+
+---
+
+## 🔒 Sécurité
+
+- Mot de passe comparé en temps constant (pas de timing attack)
+- JWT signé HS256, expire après 7 jours
+- Les endpoints de lecture (`GET`) sont **publics** (le site public en dépend)
+- Les endpoints d'écriture (`POST / PUT / DELETE`) exigent `Authorization: Bearer <token>`
+- CORS désactivé en prod (même origine), activé en dev
+
+**Pour une utilisation sérieuse**, envisager : rate-limiting sur `/api/auth/login`, rotation du JWT_SECRET, hash bcrypt du mot de passe.
+
+---
+
+## 🔎 Notes
+
+- **Fallback statique** : le site public tente de fetch `/api/*` au chargement ; en cas d'échec il utilise les données de `src/data/*.js`. Les fichiers `src/data/*.js` servent donc **à la fois** de seed initial et de roue de secours.
 - **Easter egg** : cliquer 3 fois sur le caractère `한` en bas à droite du footer.
+- **Tweaks panel** : activé via `postMessage({ type: '__activate_edit_mode' })` depuis une fenêtre parente (édition embarquée, non utilisé en prod publique).

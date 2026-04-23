@@ -7,6 +7,10 @@ dist-ssr
 .env
 .env.*
 !.env.example
+data.sqlite
+data.sqlite-journal
+data.sqlite-wal
+data.sqlite-shm
 .vscode/*
 !.vscode/extensions.json
 .idea
