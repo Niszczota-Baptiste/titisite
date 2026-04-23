@@ -152,3 +152,76 @@ export function relativeDate(unixSeconds) {
   if (diff < 86400 * 7) return `il y a ${Math.floor(diff / 86400)} j`;
   return formatDate(unixSeconds, { withTime: false });
 }
+
+/**
+ * Returns the due-date status for a feature:
+ *   null          no due date
+ *   'done'        task is done (no more deadline pressure)
+ *   'overdue'     due in the past and not done
+ *   'today'       due today
+ *   'soon'        due within 3 days
+ *   'upcoming'    later
+ */
+export function dueStatus(unixSeconds, featureStatus) {
+  if (!unixSeconds) return null;
+  if (featureStatus === 'done') return 'done';
+  const now = Date.now() / 1000;
+  const startOfToday = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
+  const startOfTomorrow = startOfToday + 86400;
+  if (unixSeconds < now) return 'overdue';
+  if (unixSeconds < startOfTomorrow) return 'today';
+  if (unixSeconds < startOfToday + 86400 * 4) return 'soon';
+  return 'upcoming';
+}
+
+export const DUE_STYLES = {
+  overdue:  { color: '#ff8a9b', bg: 'rgba(255,138,155,0.14)', label: 'En retard' },
+  today:    { color: '#e8a87c', bg: 'rgba(232,168,124,0.16)', label: "Aujourd'hui" },
+  soon:     { color: '#e8d27c', bg: 'rgba(232,210,124,0.14)', label: 'Bientôt' },
+  upcoming: { color: 'rgba(180,170,200,0.75)', bg: 'rgba(80,50,130,0.18)', label: 'Planifié' },
+  done:     { color: '#9ad4ae', bg: 'rgba(154,212,174,0.14)', label: 'OK' },
+};
+
+/** Deterministic tag color from its name hash. */
+const TAG_PALETTE = [
+  { hex: '#c9a8e8', rgb: '201,168,232' },
+  { hex: '#e8a87c', rgb: '232,168,124' },
+  { hex: '#9ad4ae', rgb: '154,212,174' },
+  { hex: '#80c8e8', rgb: '128,200,232' },
+  { hex: '#e88cb8', rgb: '232,140,184' },
+  { hex: '#e8d27c', rgb: '232,210,124' },
+];
+
+export function tagColor(name) {
+  let h = 0;
+  const s = String(name || '').toLowerCase();
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return TAG_PALETTE[h % TAG_PALETTE.length];
+}
+
+export function Tag({ name, onRemove }) {
+  const c = tagColor(name);
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '2px 8px', borderRadius: 4,
+      background: `rgba(${c.rgb},0.12)`,
+      border: `1px solid rgba(${c.rgb},0.32)`,
+      color: c.hex, fontSize: 10.5, fontWeight: 600,
+      fontFamily: "'Inter',sans-serif",
+      letterSpacing: '0.2px',
+    }}>
+      #{name}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: c.hex, padding: 0, marginLeft: 2, fontSize: 13, lineHeight: 1,
+          }}
+        >×</button>
+      )}
+    </span>
+  );
+}
