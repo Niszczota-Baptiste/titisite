@@ -1,196 +1,228 @@
-# titisite — Portfolio Baptiste Niszczota
+# titisite — Portfolio + espace projet
 
-Portfolio one-page bilingue (FR / EN / KO) — **Développeur créatif & compositeur** — avec interface admin pour éditer les contenus à chaud.
+Portfolio one-page bilingue (FR / EN / KO) **+** admin du contenu **+** workspace projet multi-utilisateurs pour gérer la création d'un jeu vidéo.
 
-**Stack :** Vite + React 18 · Express + SQLite · JWT auth.
-
----
-
-## ✨ Fonctionnalités
-
-### Site public (`/`)
-- One-page avec ancres (`#projects`, `#music`, `#about`, `#education`, `#experience`, `#contact`)
-- 3 langues (FR / EN / KO), 2 thèmes (dark / light), 3 accents (violet / ambre / sauge)
-- Canvas ambiant réactif, curseur custom + trail, code rain hero, glitch text
-- Lecteur musical, carte "Currently Building", formulaire contact, easter egg coréen
-- Le contenu est chargé dynamiquement depuis l'API — **fallback automatique** sur les données statiques de `src/data/` si l'API est injoignable (le site reste visible même serveur éteint)
-
-### Admin (`/admin`)
-- Login par mot de passe (stocké en `.env`)
-- CRUD complet : projets, musique, expérience, formation, projet en cours
-- Édition des textes localisés (FR / EN / KO) en ligne
-- Réordonnancement (flèches ↑/↓)
-- Token JWT valable 7 jours, stocké en `localStorage`
+**Stack :** Vite + React 18 · Express + SQLite · JWT auth (bcrypt) · multer (upload 1 Go).
 
 ---
 
-## 🗂️ Architecture
+## Pages
+
+| Route       | Qui                         | Ce qu'on y fait                                                                 |
+|-------------|-----------------------------|---------------------------------------------------------------------------------|
+| `/`         | Tout le monde               | Portfolio public                                                                |
+| `/admin`    | `role=admin` seulement      | Éditer projets / musique / expérience / formation / en cours                    |
+| `/project`  | `role=admin` ou `role=member`| Espace projet jeu vidéo : Kanban, docs, builds, réunions, discussion          |
+
+---
+
+## Comptes utilisateurs
+
+Deux rôles :
+- **`admin`** : accès total (/admin + /project)
+- **`member`** : accès à /project uniquement
+
+Les comptes sont créés au **1er démarrage** à partir des variables d'environnement. Voir `.env.example`.
+
+Mots de passe hashés en **bcrypt** (10 rounds). Tokens JWT signés HS256, 7 jours.
+
+---
+
+## Espace projet — `/project`
+
+6 onglets :
+
+### Vue d'ensemble
+Dashboard : compteurs par colonne Kanban, progression globale, prochaines réunions, derniers builds, derniers documents.
+
+### Kanban
+4 colonnes (Backlog / À faire / En cours / Terminé).
+Chaque carte : titre, description, priorité, assigné, compteur de commentaires. Boutons ← / → pour déplacer entre colonnes. Modal d'édition avec fil de commentaires attaché.
+
+### Documents
+Upload de fichiers de conception (≤ 1 Go) avec progression. Liste avec taille, auteur, date, notes. Téléchargement authentifié. Chaque document a son propre fil de commentaires.
+
+### Builds
+Liste des MVPs/livrables avec version (`v0.3.1`), statut (alpha/beta/release), notes (changelog).
+**Deux modes d'ajout :** fichier direct (≤ 1 Go) **ou** lien externe (Itch.io, Drive, etc.) pour les fichiers trop gros.
+
+### Réunions
+Agenda split en **à venir** / **passées**, avec horodatage, description, auteur. Triable par date.
+
+### Discussion
+Fil général pour les sujets divers qui ne rentrent pas ailleurs. Commentaires avec auteur, date, suppression (propre commentaire ou admin).
+
+---
+
+## Architecture
 
 ```
 titisite/
-├── server/                   ← Backend Express
-│   ├── index.js              ← serveur HTTP
-│   ├── db.js                 ← SQLite + helpers CRUD
-│   ├── auth.js               ← JWT + comparaison mdp
-│   ├── seed.js               ← seed initial depuis src/data/
+├── server/
+│   ├── index.js, db.js, auth.js, users.js, seed.js, uploads.js
 │   └── routes/
-│       ├── auth.js           ← POST /api/auth/login, GET /api/auth/me
-│       └── collection.js     ← CRUD générique (projects, tracks, …)
+│       ├── auth.js           ← /api/auth/{login,me}
+│       ├── collection.js     ← /api/{projects,tracks,education,experience,currently} (admin-only writes)
+│       ├── users.js          ← /api/users (listing for assignees)
+│       ├── documents.js      ← /api/documents + upload + download
+│       ├── builds.js         ← /api/builds + upload + download
+│       ├── features.js       ← /api/features (kanban)
+│       ├── meetings.js       ← /api/meetings
+│       └── comments.js       ← /api/comments (polymorphic target)
 │
-├── src/                      ← Frontend
-│   ├── main.jsx              ← bootstrap + BrowserRouter
-│   ├── App.jsx               ← routes (Public / Admin lazy)
-│   ├── styles.css            ← tokens, keyframes, responsive
-│   ├── api/client.js         ← fetch wrapper + gestion token
-│   ├── data/                 ← données seed + fallback
-│   ├── hooks/
-│   │   ├── useContent.js     ← fetch API + fallback
-│   │   ├── useReveal.js
-│   │   └── useMagnetic.js
+├── src/
+│   ├── main.jsx, App.jsx, styles.css
+│   ├── api/client.js         ← fetch + upload XHR (with progress) + download
+│   ├── auth/AuthContext.jsx  ← AuthProvider, useAuth, role helpers
+│   ├── data/                 ← i18n, projects.js, tracks.js, …  (seed + fallback)
+│   ├── hooks/                ← useContent, useReveal, useMagnetic
 │   ├── pages/
-│   │   ├── Public.jsx        ← site portfolio
-│   │   └── Admin.jsx         ← gating auth + dashboard
+│   │   ├── Public.jsx        ← portfolio
+│   │   ├── Admin.jsx         ← admin gate (role=admin)
+│   │   └── Project.jsx       ← project gate + nested router
 │   └── components/
-│       ├── ambient/          ← AmbientCanvas, CursorEffect, ScrollProgress, …
-│       ├── layout/           ← Nav, Section, SectionHeader, Footer
-│       ├── sections/         ← Hero, Projects, Music, About, …
-│       ├── ui/               ← GlitchText
-│       ├── overlays/         ← EasterEgg, TweaksPanel
-│       └── admin/
-│           ├── ui.jsx        ← primitives (Input, LocalizedField, …)
-│           ├── Login.jsx
-│           ├── Dashboard.jsx
-│           ├── ItemList.jsx  ← shell CRUD générique
-│           └── editors/
-│               ├── ProjectsEditor.jsx
-│               ├── TracksEditor.jsx
-│               ├── EducationEditor.jsx
-│               ├── ExperienceEditor.jsx
-│               └── CurrentlyEditor.jsx
+│       ├── ambient|layout|sections|ui|overlays/   ← portfolio
+│       ├── admin/            ← Login, Dashboard, editors/*
+│       └── project/
+│           ├── Layout.jsx    ← header + tab nav
+│           ├── Overview.jsx, Kanban.jsx, Documents.jsx, Builds.jsx,
+│           │   Meetings.jsx, Discussion.jsx
+│           ├── Comments.jsx  ← réutilisé dans docs, features, discussion
+│           ├── FileDrop.jsx  ← drag-drop + ProgressBar
+│           └── shared.jsx    ← Modal, Section, formatters, primitives
 │
-├── index.html / vite.config.js / package.json
-├── .env.example
-└── data.sqlite               ← (généré au 1er run, ignoré par git)
+├── data.sqlite               ← (auto-créée, gitignore)
+├── uploads/                  ← fichiers (gitignore)
+└── .env.example
 ```
 
-**Schéma DB :** une table par collection (`projects`, `tracks`, `education`, `experience`, `currently`) avec colonnes `id`, `position`, `data` (JSON blob), `created_at`, `updated_at`. C'est dénormalisé volontairement — la structure de chaque item est flexible et évolue sans migration.
+### Schéma DB
+
+- **Public** (JSON-blob) : `projects`, `tracks`, `education`, `experience`, `currently`
+- **Users** : `users(id, email, name, password_hash, role, created_at)`
+- **Workspace** :
+  - `documents(id, title, filename, original_name, mime_type, size, notes, uploaded_by, created_at)`
+  - `builds(id, version, title, status, filename?, original_name?, mime_type?, size?, external_url?, notes, uploaded_by, released_at)`
+  - `features(id, title, description, status, priority, assignee_id, created_by, position, created_at, updated_at)`
+  - `meetings(id, title, description, starts_at, ends_at, created_by, created_at)`
+  - `comments(id, target_type, target_id, author_id, body, created_at)` — polymorphique sur `{document, feature, discussion}`
+
+Les fichiers uploadés sont stockés sous un nom UUID dans `UPLOADS_DIR` ; la DB garde le nom d'origine pour le téléchargement.
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ```bash
 npm install
 cp .env.example .env
-# puis éditer .env pour définir ADMIN_PASSWORD et JWT_SECRET
+# Éditer .env (JWT_SECRET, ADMIN_*, MEMBER_*)
 ```
 
-**Générer un JWT_SECRET fort :**
+Générer un JWT_SECRET :
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# ou :  openssl rand -hex 32
 ```
 
 ---
 
-## 🧑‍💻 Développement
+## Développement
 
 ```bash
 npm run dev
 ```
 
-Lance **en parallèle** :
-- `dev:server` — Express sur http://localhost:3001 avec `node --watch` (reload auto)
-- `dev:client` — Vite sur http://localhost:5173 avec HMR
+Lance en parallèle :
+- Express (port 3001, `node --watch`)
+- Vite (port 5173, HMR)
 
-Vite proxifie `/api/*` vers le backend → rien à configurer côté client.
+Vite proxifie `/api/*` vers le backend. Aller sur :
+- http://localhost:5173/ — site public
+- http://localhost:5173/admin — login admin
+- http://localhost:5173/project — login équipe projet
 
-**Premier lancement :** si `data.sqlite` n'existe pas, les données de `src/data/*.js` sont importées automatiquement (voir `server/seed.js`).
+Au 1er lancement : seed automatique des users depuis `.env` + seed des données publiques depuis `src/data/*.js`.
 
-**Forcer un re-seed :**
+**Re-seed forcé** (remplace tout le contenu public, pas les users) :
 ```bash
 rm data.sqlite* && npm run seed -- --force
 ```
 
 ---
 
-## 📦 Build & production
+## Build & production
 
 ```bash
-npm run build     # compile le frontend dans dist/
-npm start         # lance Express en mode prod (sert l'API + dist/)
+npm run build
+npm start
 ```
 
-En prod, **un seul process Node** sert à la fois `/api/*` et le SPA (fallback `index.html` sur toutes les routes non-API).
+Un seul process Node sert `/api/*` + le SPA.
 
-### Variables d'env requises en prod
+### Variables d'env
 
-| Variable         | Obligatoire | Description                              |
-|------------------|-------------|------------------------------------------|
-| `ADMIN_PASSWORD` | oui         | Mot de passe d'accès à `/admin`          |
-| `JWT_SECRET`     | oui         | Secret pour signer les tokens            |
-| `PORT`           | non         | Port d'écoute (défaut 3001)              |
-| `DB_PATH`        | non         | Chemin de la DB SQLite (défaut `./data.sqlite`) |
-| `NODE_ENV`       | oui         | Doit valoir `production` pour servir `dist/` |
+| Variable          | Obligatoire | Défaut         | Description                                     |
+|-------------------|-------------|----------------|-------------------------------------------------|
+| `JWT_SECRET`      | oui         | —              | Secret pour signer les tokens                   |
+| `ADMIN_EMAIL`     | oui         | —              | Email du compte admin                           |
+| `ADMIN_PASSWORD`  | oui         | —              | Mot de passe admin (hashé au seed)              |
+| `ADMIN_NAME`      | non         | `Admin`        | Nom affiché                                     |
+| `MEMBER_EMAIL`    | oui         | —              | Email du compte collaborateur                   |
+| `MEMBER_PASSWORD` | oui         | —              | Mot de passe collaborateur                      |
+| `MEMBER_NAME`     | non         | `Member`       | Nom affiché                                     |
+| `NODE_ENV`        | oui en prod | —              | `production` pour servir `dist/`                |
+| `PORT`            | non         | `3001`         | Port d'écoute                                   |
+| `DB_PATH`         | non         | `./data.sqlite`| Chemin SQLite                                   |
+| `UPLOADS_DIR`     | non         | `./uploads`    | Dossier des fichiers uploadés                   |
+| `MAX_UPLOAD_BYTES`| non         | `1073741824`   | Taille max upload (1 Go)                        |
 
 ---
 
-## ☁️ Déploiement
+## Déploiement
 
-Le site n'est plus purement statique — il faut un runtime Node persistant avec un **filesystem persistant** (pour SQLite).
+Node persistant + **volume persistant** requis pour SQLite **et** `uploads/`. Monter un disque partagé et pointer `DB_PATH` + `UPLOADS_DIR` dessus.
 
-### Railway (recommandé, setup rapide)
-1. Connecter le repo
-2. Définir les env vars `ADMIN_PASSWORD`, `JWT_SECRET`, `NODE_ENV=production`
-3. Build command : `npm run build`
-4. Start command : `npm start`
-5. Ajouter un volume persistant monté sur `/app/data/` et positionner `DB_PATH=/app/data/data.sqlite`
+### Railway
+1. Build : `npm run build` · Start : `npm start`
+2. Env : toutes les vars du tableau ci-dessus
+3. Ajouter un volume sur `/app/data`, puis `DB_PATH=/app/data/data.sqlite` et `UPLOADS_DIR=/app/data/uploads`
 
 ### Render
-- Service type : **Web Service**
-- Build : `npm install && npm run build`
-- Start : `npm start`
-- Ajouter un **Persistent Disk** monté sur `/var/data`, avec `DB_PATH=/var/data/data.sqlite`
+- **Web Service** · Build : `npm ci && npm run build` · Start : `npm start`
+- **Persistent Disk** monté sur `/var/data` (au moins 2-5 Go si les builds font 1 Go)
+- Env : `DB_PATH=/var/data/data.sqlite`, `UPLOADS_DIR=/var/data/uploads`
 
 ### Fly.io
-- `fly launch`, puis `fly volumes create data --size 1` et monter sur `/data`
-- Dans `fly.toml`, env `DB_PATH=/data/data.sqlite`
-- Secrets : `fly secrets set ADMIN_PASSWORD=… JWT_SECRET=…`
+```toml
+[mounts]
+  source = "data"
+  destination = "/data"
+```
+`DB_PATH=/data/data.sqlite`, `UPLOADS_DIR=/data/uploads`. `fly secrets set` pour les secrets.
 
-### VPS / Docker
-Un `Dockerfile` simple suffirait : `node:20-alpine`, copier, `npm ci && npm run build`, `CMD ["npm","start"]`, volume sur le dossier de la DB.
+### ⚠️ Limites d'upload
+Beaucoup d'hébergeurs ont un cap sur la taille des requêtes :
+- **Cloudflare (gratuit)** : 100 Mo max → builds > 100 Mo forcément en lien externe
+- **Railway / Render** : OK jusqu'à plusieurs Go
+- **Nginx devant Express** : `client_max_body_size 1200M;`
 
-### ⚠️ Vercel / Netlify
-**Ne marcheront pas directement** : ces plateformes n'ont pas de filesystem persistant pour SQLite. Pour y déployer, il faudrait migrer la DB vers un service externe (Supabase / Neon / Turso).
-
----
-
-## 🛠️ Utilisation de l'admin
-
-1. Aller sur `/admin`
-2. Se connecter avec le `ADMIN_PASSWORD` du `.env`
-3. Naviguer entre les onglets : Projets, Musique, Expérience, Formation, En cours
-4. Chaque élément a les actions : **Éditer**, **Supprimer**, **↑ / ↓** (réordonnancer)
-5. Bouton **+ Ajouter** en haut à droite
-6. Les textes multilingues ont trois champs côte-à-côte (`FR / EN / KO`)
-7. Les modifications sont **instantanément visibles** sur le site public (refresh)
+**Vercel / Netlify statique** : incompatibles (pas de filesystem persistant ni d'Express).
 
 ---
 
-## 🔒 Sécurité
+## Sécurité
 
-- Mot de passe comparé en temps constant (pas de timing attack)
-- JWT signé HS256, expire après 7 jours
-- Les endpoints de lecture (`GET`) sont **publics** (le site public en dépend)
-- Les endpoints d'écriture (`POST / PUT / DELETE`) exigent `Authorization: Bearer <token>`
-- CORS désactivé en prod (même origine), activé en dev
-
-**Pour une utilisation sérieuse**, envisager : rate-limiting sur `/api/auth/login`, rotation du JWT_SECRET, hash bcrypt du mot de passe.
+- Mots de passe hashés en bcrypt (10 rounds)
+- JWT HS256, 7 jours, stocké en `localStorage` (XSS → compte compromis : standard)
+- Endpoints en lecture public-site : **publics** (`GET /api/projects`, etc.)
+- Endpoints en écriture public-site : **admin only**
+- Endpoints `/project/**` : **admin ou member**
+- CORS off en prod (même origine)
+- Rate-limiting sur `/auth/login` : **à ajouter** si exposition publique élevée (paquet `express-rate-limit`)
 
 ---
 
-## 🔎 Notes
+## Easter egg & tweaks panel
 
-- **Fallback statique** : le site public tente de fetch `/api/*` au chargement ; en cas d'échec il utilise les données de `src/data/*.js`. Les fichiers `src/data/*.js` servent donc **à la fois** de seed initial et de roue de secours.
-- **Easter egg** : cliquer 3 fois sur le caractère `한` en bas à droite du footer.
-- **Tweaks panel** : activé via `postMessage({ type: '__activate_edit_mode' })` depuis une fenêtre parente (édition embarquée, non utilisé en prod publique).
+- Cliquer 3 fois sur `한` en bas à droite du footer → easter egg coréen
+- Le `TweaksPanel` (accent/police) s'active via `postMessage({ type: '__activate_edit_mode' })` — inutile en prod publique, présent pour édition embarquée

@@ -1,6 +1,8 @@
 import { Router } from 'express';
-import { requireAuth } from '../auth.js';
+import { requireAuth, requireRole } from '../auth.js';
 import { getOne, insert, listAll, remove, reorder, update } from '../db.js';
+
+const ADMIN = [requireAuth, requireRole('admin')];
 
 export function collectionRouter(name) {
   const router = Router();
@@ -15,7 +17,7 @@ export function collectionRouter(name) {
     res.json(item);
   });
 
-  router.post('/', requireAuth, (req, res) => {
+  router.post('/', ...ADMIN, (req, res) => {
     if (!req.body || typeof req.body !== 'object') {
       return res.status(400).json({ error: 'invalid_body' });
     }
@@ -23,7 +25,7 @@ export function collectionRouter(name) {
     res.status(201).json(created);
   });
 
-  router.put('/:id', requireAuth, (req, res) => {
+  router.put('/:id', ...ADMIN, (req, res) => {
     if (!req.body || typeof req.body !== 'object') {
       return res.status(400).json({ error: 'invalid_body' });
     }
@@ -32,13 +34,13 @@ export function collectionRouter(name) {
     res.json(updated);
   });
 
-  router.delete('/:id', requireAuth, (req, res) => {
+  router.delete('/:id', ...ADMIN, (req, res) => {
     const ok = remove(name, Number(req.params.id));
     if (!ok) return res.status(404).json({ error: 'not_found' });
     res.status(204).end();
   });
 
-  router.post('/reorder', requireAuth, (req, res) => {
+  router.post('/reorder', ...ADMIN, (req, res) => {
     const { order } = req.body || {};
     if (!Array.isArray(order)) return res.status(400).json({ error: 'invalid_order' });
     res.json(reorder(name, order.map(Number)));

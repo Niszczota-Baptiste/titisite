@@ -11,6 +11,7 @@ data.sqlite
 data.sqlite-journal
 data.sqlite-wal
 data.sqlite-shm
+uploads/
 .vscode/*
 !.vscode/extensions.json
 .idea

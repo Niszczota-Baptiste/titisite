@@ -1,30 +1,20 @@
 import jwt from 'jsonwebtoken';
+import { findById } from './users.js';
 
 const SECRET = process.env.JWT_SECRET;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const TOKEN_TTL = '7d';
 
 if (!SECRET) {
-  console.warn('[auth] JWT_SECRET is not set — admin endpoints will reject all requests.');
-}
-if (!ADMIN_PASSWORD) {
-  console.warn('[auth] ADMIN_PASSWORD is not set — login will always fail.');
+  console.warn('[auth] JWT_SECRET is not set — protected endpoints will reject all requests.');
 }
 
-export function verifyPassword(password) {
-  if (!ADMIN_PASSWORD) return false;
-  if (typeof password !== 'string') return false;
-  if (password.length !== ADMIN_PASSWORD.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < password.length; i++) {
-    mismatch |= password.charCodeAt(i) ^ ADMIN_PASSWORD.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
-
-export function signToken(payload = {}) {
+export function signToken(user) {
   if (!SECRET) throw new Error('JWT_SECRET not configured');
-  return jwt.sign({ role: 'admin', ...payload }, SECRET, { expiresIn: TOKEN_TTL });
+  return jwt.sign(
+    { sub: user.id, email: user.email, role: user.role, name: user.name },
+    SECRET,
+    { expiresIn: TOKEN_TTL },
+  );
 }
 
 export function requireAuth(req, res, next) {
@@ -33,9 +23,20 @@ export function requireAuth(req, res, next) {
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'missing_token' });
   try {
-    req.user = jwt.verify(token, SECRET);
+    const decoded = jwt.verify(token, SECRET);
+    const user = findById(decoded.sub);
+    if (!user) return res.status(401).json({ error: 'user_not_found' });
+    req.user = user;
     next();
   } catch {
     res.status(401).json({ error: 'invalid_token' });
   }
+}
+
+export function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'not_authenticated' });
+    if (!roles.includes(req.user.role)) return res.status(403).json({ error: 'forbidden' });
+    next();
+  };
 }

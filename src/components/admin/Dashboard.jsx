@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { clearToken } from '../../api/client';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
 import { ACC, ACC_RGB, Button } from './ui';
 import { CurrentlyEditor } from './editors/CurrentlyEditor';
 import { EducationEditor } from './editors/EducationEditor';
@@ -15,14 +16,10 @@ const TABS = [
   { key: 'currently',  label: 'En cours',   Editor: CurrentlyEditor },
 ];
 
-export function Dashboard({ onLogout }) {
+export function Dashboard() {
+  const { user, logout } = useAuth();
   const [active, setActive] = useState('projects');
   const ActiveEditor = TABS.find((t) => t.key === active).Editor;
-
-  const handleLogout = () => {
-    clearToken();
-    onLogout();
-  };
 
   return (
     <div style={{
@@ -49,22 +46,19 @@ export function Dashboard({ onLogout }) {
               textTransform: 'uppercase', letterSpacing: '1.5px', marginLeft: 8,
             }}>Admin</span>
           </span>
+          {user && (
+            <span style={{
+              fontSize: 12, color: 'rgba(180,170,200,0.55)',
+              fontFamily: "'Inter',sans-serif",
+            }}>
+              {user.name || user.email}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <a
-            href="/"
-            style={{
-              color: 'rgba(180,170,200,0.7)', textDecoration: 'none',
-              fontSize: 13, padding: '8px 14px',
-              border: '1px solid rgba(80,50,130,0.28)', borderRadius: 8,
-              transition: 'all 0.18s',
-            }}
-            onMouseEnter={(e) => { e.target.style.borderColor = ACC; e.target.style.color = ACC; }}
-            onMouseLeave={(e) => { e.target.style.borderColor = 'rgba(80,50,130,0.28)'; e.target.style.color = 'rgba(180,170,200,0.7)'; }}
-          >
-            ↗ Voir le site
-          </a>
-          <Button variant="ghost" onClick={handleLogout}>Déconnexion</Button>
+          <Link to="/project" style={navLinkStyle}>Espace projet</Link>
+          <Link to="/" style={navLinkStyle}>↗ Voir le site</Link>
+          <Button variant="ghost" onClick={logout}>Déconnexion</Button>
         </div>
       </header>
 
@@ -101,3 +95,11 @@ export function Dashboard({ onLogout }) {
     </div>
   );
 }
+
+const navLinkStyle = {
+  color: 'rgba(180,170,200,0.7)', textDecoration: 'none',
+  fontSize: 13, padding: '8px 14px',
+  border: '1px solid rgba(80,50,130,0.28)', borderRadius: 8,
+  transition: 'all 0.18s',
+  fontFamily: "'Inter',sans-serif",
+};

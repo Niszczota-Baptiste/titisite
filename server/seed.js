@@ -2,6 +2,7 @@ import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { COLLECTIONS, count, insert, migrate } from './db.js';
+import { ensureSeedUsers } from './users.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '..', 'src', 'data');
@@ -21,7 +22,7 @@ async function loadSource(file, key) {
 
 export async function seedIfEmpty({ force = false } = {}) {
   migrate();
-  const results = {};
+  const results = { users: ensureSeedUsers() };
   for (const name of COLLECTIONS) {
     const existing = count(name);
     if (existing > 0 && !force) {

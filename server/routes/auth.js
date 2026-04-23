@@ -1,16 +1,23 @@
 import { Router } from 'express';
-import { requireAuth, signToken, verifyPassword } from '../auth.js';
+import { requireAuth, signToken } from '../auth.js';
+import { findByEmail, verifyPassword } from '../users.js';
 
 export const authRouter = Router();
 
 authRouter.post('/login', (req, res) => {
-  const { password } = req.body || {};
-  if (!verifyPassword(password)) {
+  const { email, password } = req.body || {};
+  const user = findByEmail(email);
+  if (!user || !verifyPassword(user, password)) {
     return res.status(401).json({ error: 'invalid_credentials' });
   }
-  res.json({ token: signToken(), expiresIn: '7d' });
+  res.json({
+    token: signToken(user),
+    user: { id: user.id, email: user.email, name: user.name, role: user.role },
+    expiresIn: '7d',
+  });
 });
 
 authRouter.get('/me', requireAuth, (req, res) => {
-  res.json({ authenticated: true, role: req.user?.role || 'admin' });
+  const { id, email, name, role } = req.user;
+  res.json({ id, email, name, role });
 });
