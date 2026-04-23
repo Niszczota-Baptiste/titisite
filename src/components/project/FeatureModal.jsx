@@ -8,10 +8,10 @@ import {
 } from './shared';
 import { TagsInput } from './TagsInput';
 
-const STATUSES  = [['backlog', 'Backlog'], ['todo', 'À faire'], ['doing', 'En cours'], ['done', 'Terminé']];
+const STATUSES   = [['backlog', 'Backlog'], ['todo', 'À faire'], ['doing', 'En cours'], ['done', 'Terminé']];
 const PRIORITIES = [['low', 'Basse'], ['medium', 'Moyenne'], ['high', 'Haute']];
 
-export function FeatureModal({ open, feature, users = [], onClose, onSaved }) {
+export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose, onSaved }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('backlog');
@@ -24,6 +24,7 @@ export function FeatureModal({ open, feature, users = [], onClose, onSaved }) {
   const [err, setErr] = useState(null);
 
   const isEdit = !!(feature && feature.id);
+  const ws = workspaceSlug ? api.ws(workspaceSlug) : null;
 
   useEffect(() => {
     if (!open) return;
@@ -48,6 +49,7 @@ export function FeatureModal({ open, feature, users = [], onClose, onSaved }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!ws) { setErr('Projet introuvable'); return; }
     if (!title.trim()) { setErr('Titre requis'); return; }
     setSaving(true); setErr(null);
     try {
@@ -58,20 +60,18 @@ export function FeatureModal({ open, feature, users = [], onClose, onSaved }) {
         tags,
         documentIds,
       };
-      if (isEdit) await api.put(`/features/${feature.id}`, payload);
-      else await api.post('/features', payload);
+      if (isEdit) await ws.features.update(feature.id, payload);
+      else await ws.features.create(payload);
       onSaved?.();
     } catch (ex) { setErr(ex.message); }
     finally { setSaving(false); }
   };
 
   const remove = async () => {
-    if (!isEdit) return;
+    if (!isEdit || !ws) return;
     if (!window.confirm('Supprimer cette carte ?')) return;
-    try {
-      await api.del(`/features/${feature.id}`);
-      onSaved?.();
-    } catch (ex) { setErr(ex.message); }
+    try { await ws.features.remove(feature.id); onSaved?.(); }
+    catch (ex) { setErr(ex.message); }
   };
 
   return (
@@ -123,7 +123,11 @@ export function FeatureModal({ open, feature, users = [], onClose, onSaved }) {
         </Field>
 
         <Field label="Fichiers liés">
-          <AttachmentsEditor value={documentIds} onChange={setDocumentIds} />
+          <AttachmentsEditor
+            value={documentIds}
+            onChange={setDocumentIds}
+            workspaceSlug={workspaceSlug}
+          />
         </Field>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 14 }}>

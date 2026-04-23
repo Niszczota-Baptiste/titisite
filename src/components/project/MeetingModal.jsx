@@ -6,7 +6,7 @@ import {
   toLocalDatetimeInput,
 } from './shared';
 
-export function MeetingModal({ open, meeting, onClose, onSaved, defaultStart }) {
+export function MeetingModal({ open, meeting, workspaceSlug, onClose, onSaved, defaultStart }) {
   const [title, setTitle] = useState('');
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
@@ -16,6 +16,7 @@ export function MeetingModal({ open, meeting, onClose, onSaved, defaultStart }) 
   const [err, setErr] = useState(null);
 
   const isEdit = !!(meeting && meeting.id);
+  const ws = workspaceSlug ? api.ws(workspaceSlug) : null;
 
   useEffect(() => {
     if (!open) return;
@@ -37,24 +38,23 @@ export function MeetingModal({ open, meeting, onClose, onSaved, defaultStart }) 
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!ws) { setErr('Projet introuvable'); return; }
     if (!title.trim() || !startsAt) { setErr('Titre et date requis'); return; }
     setSaving(true); setErr(null);
     try {
       const payload = { title, description, startsAt, endsAt: endsAt || null, documentIds };
-      if (isEdit) await api.put(`/meetings/${meeting.id}`, payload);
-      else await api.post('/meetings', payload);
+      if (isEdit) await ws.meetings.update(meeting.id, payload);
+      else await ws.meetings.create(payload);
       onSaved?.();
     } catch (ex) { setErr(ex.message); }
     finally { setSaving(false); }
   };
 
   const remove = async () => {
-    if (!isEdit) return;
+    if (!isEdit || !ws) return;
     if (!window.confirm('Supprimer cette réunion ?')) return;
-    try {
-      await api.del(`/meetings/${meeting.id}`);
-      onSaved?.();
-    } catch (ex) { setErr(ex.message); }
+    try { await ws.meetings.remove(meeting.id); onSaved?.(); }
+    catch (ex) { setErr(ex.message); }
   };
 
   return (
@@ -76,7 +76,11 @@ export function MeetingModal({ open, meeting, onClose, onSaved, defaultStart }) 
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} />
         </Field>
         <Field label="Fichiers liés">
-          <AttachmentsEditor value={documentIds} onChange={setDocumentIds} />
+          <AttachmentsEditor
+            value={documentIds}
+            onChange={setDocumentIds}
+            workspaceSlug={workspaceSlug}
+          />
         </Field>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 14 }}>

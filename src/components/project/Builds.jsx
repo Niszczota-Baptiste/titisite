@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, triggerDownload, uploadFile } from '../../api/client';
+import { useWorkspace } from '../../hooks/useWorkspace';
 import {
   ACC, ACC_RGB, Button, ErrorBanner, Field, Input, Modal, Section, Textarea,
   Empty, card, formatBytes, formatDate, muted,
@@ -9,6 +10,8 @@ import { FileDrop, ProgressBar } from './FileDrop';
 const STATUSES = ['alpha', 'beta', 'release'];
 
 export function BuildsTab() {
+  const { workspace } = useWorkspace();
+  const ws = api.ws(workspace.slug);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -16,25 +19,22 @@ export function BuildsTab() {
   const [err, setErr] = useState(null);
 
   const load = async () => {
-    try { setItems(await api.get('/builds')); }
+    try { setItems(await ws.builds.list()); }
     catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
 
   const remove = async (id) => {
     if (!window.confirm('Supprimer ce build ?')) return;
-    try { await api.del(`/builds/${id}`); await load(); }
+    try { await ws.builds.remove(id); await load(); }
     catch (e) { setErr(e.message); }
   };
-
-  const openNew = () => { setEditing(null); setModalOpen(true); };
-  const openEdit = (b) => { setEditing(b); setModalOpen(true); };
 
   return (
     <Section
       title="Builds / MVPs"
-      actions={<Button onClick={openNew}>+ Nouveau build</Button>}
+      actions={<Button onClick={() => { setEditing(null); setModalOpen(true); }}>+ Nouveau build</Button>}
     >
       <ErrorBanner error={err} onDismiss={() => setErr(null)} />
 
@@ -45,15 +45,10 @@ export function BuildsTab() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {items.map((b) => (
-            <div key={b.id} style={{
-              ...card,
-              display: 'flex', alignItems: 'flex-start', gap: 14,
-            }}>
+            <div key={b.id} style={{ ...card, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
               <StatusBadge status={b.status} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
-                }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{
                     fontFamily: 'monospace', fontSize: 13, color: ACC,
                     background: `rgba(${ACC_RGB},0.1)`, padding: '2px 8px', borderRadius: 4,
@@ -72,8 +67,7 @@ export function BuildsTab() {
                 {b.notes && (
                   <p style={{
                     fontFamily: "'Inter',sans-serif", fontSize: 12.5,
-                    color: 'rgba(200,192,216,0.8)', marginTop: 6,
-                    whiteSpace: 'pre-wrap',
+                    color: 'rgba(200,192,216,0.8)', marginTop: 6, whiteSpace: 'pre-wrap',
                   }}>{b.notes}</p>
                 )}
               </div>
@@ -81,7 +75,10 @@ export function BuildsTab() {
                 {b.hasFile && (
                   <Button
                     variant="ghost"
-                    onClick={() => triggerDownload('builds', b.id, b.originalName).catch((e) => setErr(e.message))}
+                    onClick={() =>
+                      triggerDownload(ws.builds.downloadUrl(b.id), b.originalName)
+                        .catch((e) => setErr(e.message))
+                    }
                   >↓</Button>
                 )}
                 {b.externalUrl && (
@@ -98,7 +95,7 @@ export function BuildsTab() {
                     }}
                   >↗ Ouvrir</a>
                 )}
-                <Button variant="ghost" onClick={() => openEdit(b)}>Éditer</Button>
+                <Button variant="ghost" onClick={() => { setEditing(b); setModalOpen(true); }}>Éditer</Button>
                 <Button variant="danger" onClick={() => remove(b.id)}>Suppr.</Button>
               </div>
             </div>
@@ -107,6 +104,7 @@ export function BuildsTab() {
       )}
 
       <BuildModal
+        workspace={workspace}
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         build={editing}
@@ -130,17 +128,16 @@ function StatusBadge({ status }) {
       letterSpacing: '1px', textTransform: 'uppercase',
       color: s.color, background: s.bg, border: `1px solid ${s.color}33`,
       flexShrink: 0, marginTop: 2,
-    }}>
-      {status}
-    </span>
+    }}>{status}</span>
   );
 }
 
-function BuildModal({ open, onClose, build, onSaved }) {
+function BuildModal({ workspace, open, onClose, build, onSaved }) {
+  const ws = api.ws(workspace.slug);
   const [version, setVersion] = useState('');
   const [title, setTitle] = useState('');
   const [status, setStatus] = useState('alpha');
-  const [mode, setMode] = useState('file'); // 'file' | 'url'
+  const [mode, setMode] = useState('file');
   const [file, setFile] = useState(null);
   const [externalUrl, setExternalUrl] = useState('');
   const [notes, setNotes] = useState('');
@@ -162,8 +159,7 @@ function BuildModal({ open, onClose, build, onSaved }) {
       setNotes(build.notes || '');
     } else {
       setVersion(''); setTitle(''); setStatus('alpha');
-      setMode('file'); setFile(null); setExternalUrl('');
-      setNotes('');
+      setMode('file'); setFile(null); setExternalUrl(''); setNotes('');
     }
     setProgress(0); setErr(null);
   }, [open, build]);
@@ -177,7 +173,7 @@ function BuildModal({ open, onClose, build, onSaved }) {
     setSaving(true); setErr(null);
     try {
       if (isEdit) {
-        await api.put(`/builds/${build.id}`, {
+        await ws.builds.update(build.id, {
           version, title, status, notes,
           externalUrl: mode === 'url' ? externalUrl : build.externalUrl,
         });
@@ -188,17 +184,15 @@ function BuildModal({ open, onClose, build, onSaved }) {
         fd.append('title', title);
         fd.append('status', status);
         if (notes) fd.append('notes', notes);
-        await uploadFile('/builds', fd, { onProgress: setProgress });
+        await uploadFile(ws.builds.uploadPath, fd, { onProgress: setProgress });
       } else {
-        await api.post('/builds', { version, title, status, externalUrl, notes });
+        await ws.builds.create({ version, title, status, externalUrl, notes });
       }
       onSaved();
     } catch (ex) {
       if (ex.status === 413) setErr('Fichier trop volumineux (> 1 Go). Utilise plutôt un lien externe.');
       else setErr(ex.message);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   return (

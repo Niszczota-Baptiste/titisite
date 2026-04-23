@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
+import { useWorkspace } from '../../hooks/useWorkspace';
 import { AttachmentList } from './Attachments';
 import { MeetingModal } from './MeetingModal';
 import {
@@ -8,17 +9,19 @@ import {
 } from './shared';
 
 export function MeetingsTab() {
+  const { workspace } = useWorkspace();
+  const ws = api.ws(workspace.slug);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [err, setErr] = useState(null);
 
   const load = async () => {
-    try { setItems(await api.get('/meetings')); }
+    try { setItems(await ws.meetings.list()); }
     catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
 
   const now = Math.floor(Date.now() / 1000);
   const { upcoming, past } = useMemo(() => {
@@ -43,11 +46,11 @@ export function MeetingsTab() {
           <SubSection title="À venir" count={upcoming.length}>
             {upcoming.length === 0
               ? <Empty>Rien de planifié.</Empty>
-              : upcoming.map((m) => <MeetingRow key={m.id} m={m} onEdit={() => setEditing(m)} highlighted />)}
+              : upcoming.map((m) => <MeetingRow key={m.id} m={m} workspaceSlug={workspace.slug} onEdit={() => setEditing(m)} highlighted />)}
           </SubSection>
           {past.length > 0 && (
             <SubSection title="Passées" count={past.length}>
-              {past.map((m) => <MeetingRow key={m.id} m={m} onEdit={() => setEditing(m)} />)}
+              {past.map((m) => <MeetingRow key={m.id} m={m} workspaceSlug={workspace.slug} onEdit={() => setEditing(m)} />)}
             </SubSection>
           )}
         </>
@@ -56,6 +59,7 @@ export function MeetingsTab() {
       <MeetingModal
         open={!!editing}
         meeting={editing}
+        workspaceSlug={workspace.slug}
         onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); load(); }}
       />
@@ -79,7 +83,7 @@ function SubSection({ title, count, children }) {
   );
 }
 
-function MeetingRow({ m, onEdit, highlighted }) {
+function MeetingRow({ m, workspaceSlug, onEdit, highlighted }) {
   const d = new Date(m.startsAt * 1000);
   const day = d.toLocaleDateString('fr-FR', { day: '2-digit' });
   const month = d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '');
@@ -132,7 +136,7 @@ function MeetingRow({ m, onEdit, highlighted }) {
         )}
         {(m.documents?.length || 0) > 0 && (
           <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
-            <AttachmentList documents={m.documents} />
+            <AttachmentList documents={m.documents} workspaceSlug={workspaceSlug} />
           </div>
         )}
       </div>

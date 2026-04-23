@@ -41,12 +41,43 @@ export function migrate() {
     );
   `);
 
-  // ── Project workspace ──
+  // ── Workspaces (team projects) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug        TEXT NOT NULL UNIQUE,
+      name        TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      color       TEXT NOT NULL DEFAULT '#c9a8e8',
+      icon        TEXT NOT NULL DEFAULT '🎮',
+      start_date  INTEGER,
+      end_date    INTEGER,
+      tags        TEXT NOT NULL DEFAULT '[]',
+      status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_workspaces_status ON workspaces(status);`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS workspace_members (
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      PRIMARY KEY (workspace_id, user_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON workspace_members(user_id);`);
+
+  // ── Per-project workspace data ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS documents (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id  INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
       title         TEXT NOT NULL,
-      filename      TEXT NOT NULL,           -- on-disk uuid name
+      filename      TEXT NOT NULL,
       original_name TEXT NOT NULL,
       mime_type     TEXT,
       size          INTEGER NOT NULL,
@@ -55,36 +86,42 @@ export function migrate() {
       created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
   `);
+  ensureColumn('documents', 'workspace_id', 'INTEGER REFERENCES workspaces(id) ON DELETE CASCADE');
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_documents_workspace ON documents(workspace_id);`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS builds (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id  INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
       version       TEXT NOT NULL,
       title         TEXT NOT NULL DEFAULT '',
-      status        TEXT NOT NULL DEFAULT 'alpha',  -- alpha|beta|release
-      filename      TEXT,                            -- nullable if external
+      status        TEXT NOT NULL DEFAULT 'alpha',
+      filename      TEXT,
       original_name TEXT,
       mime_type     TEXT,
       size          INTEGER,
-      external_url  TEXT,                            -- nullable if local file
+      external_url  TEXT,
       notes         TEXT DEFAULT '',
       uploaded_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
       released_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
   `);
+  ensureColumn('builds', 'workspace_id', 'INTEGER REFERENCES workspaces(id) ON DELETE CASCADE');
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_builds_workspace ON builds(workspace_id);`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS features (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
       title        TEXT NOT NULL,
       description  TEXT DEFAULT '',
-      status       TEXT NOT NULL DEFAULT 'backlog',  -- backlog|todo|doing|done
-      priority     TEXT NOT NULL DEFAULT 'medium',   -- low|medium|high
+      status       TEXT NOT NULL DEFAULT 'backlog',
+      priority     TEXT NOT NULL DEFAULT 'medium',
       assignee_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
       position     INTEGER NOT NULL DEFAULT 0,
-      due_date     INTEGER,                          -- unix seconds, nullable
-      tags         TEXT NOT NULL DEFAULT '[]',       -- JSON array of strings
+      due_date     INTEGER,
+      tags         TEXT NOT NULL DEFAULT '[]',
       created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
       updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
@@ -93,11 +130,14 @@ export function migrate() {
   // Backfill columns on pre-existing installs (must run before indexes that reference new columns)
   ensureColumn('features', 'due_date', 'INTEGER');
   ensureColumn('features', 'tags', `TEXT NOT NULL DEFAULT '[]'`);
+  ensureColumn('features', 'workspace_id', 'INTEGER REFERENCES workspaces(id) ON DELETE CASCADE');
   db.exec(`CREATE INDEX IF NOT EXISTS idx_features_due_date ON features(due_date);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_features_workspace ON features(workspace_id);`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS meetings (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
       title        TEXT NOT NULL,
       description  TEXT DEFAULT '',
       starts_at    INTEGER NOT NULL,
@@ -106,13 +146,15 @@ export function migrate() {
       created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
   `);
+  ensureColumn('meetings', 'workspace_id', 'INTEGER REFERENCES workspaces(id) ON DELETE CASCADE');
   db.exec(`CREATE INDEX IF NOT EXISTS idx_meetings_starts ON meetings(starts_at);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_meetings_workspace ON meetings(workspace_id);`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS comments (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      target_type TEXT NOT NULL,         -- 'document' | 'feature' | 'discussion'
-      target_id   INTEGER NOT NULL,      -- 0 for global discussion
+      target_type TEXT NOT NULL,
+      target_id   INTEGER NOT NULL,
       author_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
       body        TEXT NOT NULL,
       created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
@@ -120,11 +162,10 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_comments_target ON comments(target_type, target_id, created_at);`);
 
-  // ── Attachments (document ↔ feature|meeting) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS attachments (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      target_type TEXT NOT NULL,   -- 'feature' | 'meeting'
+      target_type TEXT NOT NULL,
       target_id   INTEGER NOT NULL,
       document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
       created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),

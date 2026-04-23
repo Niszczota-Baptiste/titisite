@@ -1,30 +1,32 @@
 import { useEffect, useState } from 'react';
 import { api, triggerDownload, uploadFile } from '../../api/client';
+import { useWorkspace } from '../../hooks/useWorkspace';
 import {
-  ACC, ACC_RGB, Button, ErrorBanner, Field, Input, Modal, Section, Textarea,
+  ACC_RGB, Button, ErrorBanner, Field, Input, Modal, Section, Textarea,
   Empty, card, formatBytes, formatDate, muted,
 } from './shared';
 import { Comments } from './Comments';
 import { FileDrop, ProgressBar } from './FileDrop';
 
 export function DocumentsTab() {
+  const { workspace } = useWorkspace();
+  const ws = api.ws(workspace.slug);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [active, setActive] = useState(null); // document being viewed (comments)
+  const [active, setActive] = useState(null);
   const [err, setErr] = useState(null);
 
   const load = async () => {
-    try {
-      setItems(await api.get('/documents'));
-    } catch (e) { setErr(e.message); }
+    try { setItems(await ws.documents.list()); }
+    catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
 
   const remove = async (id) => {
     if (!window.confirm('Supprimer ce document ?')) return;
-    try { await api.del(`/documents/${id}`); await load(); }
+    try { await ws.documents.remove(id); await load(); }
     catch (e) { setErr(e.message); }
   };
 
@@ -38,22 +40,17 @@ export function DocumentsTab() {
       {loading ? (
         <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>
       ) : items.length === 0 ? (
-        <Empty>Aucun document. Téléversez votre premier fichier de conception.</Empty>
+        <Empty>Aucun document. Téléverse ton premier fichier de conception.</Empty>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {items.map((d) => (
-            <div key={d.id} style={{
-              ...card,
-              display: 'flex', alignItems: 'center', gap: 14,
-            }}>
+            <div key={d.id} style={{ ...card, display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{
                 width: 40, height: 40, borderRadius: 8, flexShrink: 0,
                 background: `rgba(${ACC_RGB},0.1)`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: ACC, fontSize: 18,
-              }}>
-                📄
-              </div>
+                fontSize: 18,
+              }}>📄</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{
@@ -70,8 +67,7 @@ export function DocumentsTab() {
                 {d.notes && (
                   <p style={{
                     fontFamily: "'Inter',sans-serif", fontSize: 12.5,
-                    color: 'rgba(200,192,216,0.8)', marginTop: 6,
-                    whiteSpace: 'pre-wrap',
+                    color: 'rgba(200,192,216,0.8)', marginTop: 6, whiteSpace: 'pre-wrap',
                   }}>{d.notes}</p>
                 )}
               </div>
@@ -79,10 +75,11 @@ export function DocumentsTab() {
                 <Button variant="ghost" onClick={() => setActive(d)}>Notes</Button>
                 <Button
                   variant="ghost"
-                  onClick={() => triggerDownload('documents', d.id, d.originalName).catch((e) => setErr(e.message))}
-                >
-                  ↓
-                </Button>
+                  onClick={() =>
+                    triggerDownload(ws.documents.downloadUrl(d.id), d.originalName)
+                      .catch((e) => setErr(e.message))
+                  }
+                >↓</Button>
                 <Button variant="danger" onClick={() => remove(d.id)}>Suppr.</Button>
               </div>
             </div>
@@ -91,6 +88,7 @@ export function DocumentsTab() {
       )}
 
       <UploadModal
+        workspace={workspace}
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onUploaded={() => { setUploadOpen(false); load(); }}
@@ -103,7 +101,15 @@ export function DocumentsTab() {
       >
         {active && (
           <>
-            <DocumentMeta doc={active} />
+            <div style={{
+              background: 'rgba(4,3,14,0.45)', borderRadius: 8, padding: 12,
+              marginBottom: 16, fontSize: 12, ...muted,
+            }}>
+              <div>Fichier : <span style={{ color: '#ede8f8', fontFamily: 'monospace' }}>{active.originalName}</span></div>
+              <div>Taille : {formatBytes(active.size)}</div>
+              <div>Déposé : {formatDate(active.createdAt)} par {active.uploadedByName || '—'}</div>
+              {active.notes && <div style={{ marginTop: 8, color: 'rgba(200,192,216,0.85)' }}>{active.notes}</div>}
+            </div>
             <Comments targetType="document" targetId={active.id} />
           </>
         )}
@@ -112,21 +118,7 @@ export function DocumentsTab() {
   );
 }
 
-function DocumentMeta({ doc }) {
-  return (
-    <div style={{
-      background: 'rgba(4,3,14,0.45)', borderRadius: 8, padding: 12,
-      marginBottom: 16, fontSize: 12, ...muted,
-    }}>
-      <div>Fichier : <span style={{ color: '#ede8f8', fontFamily: 'monospace' }}>{doc.originalName}</span></div>
-      <div>Taille : {formatBytes(doc.size)}</div>
-      <div>Déposé : {formatDate(doc.createdAt)} par {doc.uploadedByName || '—'}</div>
-      {doc.notes && <div style={{ marginTop: 8, color: 'rgba(200,192,216,0.85)' }}>{doc.notes}</div>}
-    </div>
-  );
-}
-
-function UploadModal({ open, onClose, onUploaded }) {
+function UploadModal({ workspace, open, onClose, onUploaded }) {
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -135,32 +127,25 @@ function UploadModal({ open, onClose, onUploaded }) {
   const [err, setErr] = useState(null);
 
   useEffect(() => {
-    if (!open) {
-      setFile(null); setTitle(''); setNotes(''); setProgress(0); setErr(null);
-    }
+    if (!open) { setFile(null); setTitle(''); setNotes(''); setProgress(0); setErr(null); }
   }, [open]);
 
   const submit = async (e) => {
     e.preventDefault();
     if (!file) return;
-    setUploading(true);
-    setErr(null);
+    setUploading(true); setErr(null);
     try {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('title', title || file.name);
       if (notes) fd.append('notes', notes);
-      await uploadFile('/documents', fd, { onProgress: setProgress });
+      await uploadFile(api.ws(workspace.slug).documents.uploadPath, fd, { onProgress: setProgress });
       onUploaded();
     } catch (ex) {
       if (ex.status === 413 || ex.body?.error === 'file_too_large') {
-        setErr('Fichier trop volumineux (> 1 Go). Utilisez un lien externe via un build.');
-      } else {
-        setErr(ex.message);
-      }
-    } finally {
-      setUploading(false);
-    }
+        setErr('Fichier trop volumineux (> 1 Go). Utilise un lien externe via un build.');
+      } else setErr(ex.message);
+    } finally { setUploading(false); }
   };
 
   return (

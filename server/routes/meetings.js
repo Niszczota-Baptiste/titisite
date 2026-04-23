@@ -1,10 +1,7 @@
 import { Router } from 'express';
-import { requireAuth, requireRole } from '../auth.js';
 import { db } from '../db.js';
 
-export const meetingsRouter = Router();
-
-const PROJECT = requireRole('admin', 'member');
+export const meetingsRouter = Router({ mergeParams: true });
 
 const SELECT = `
   SELECT m.*, u.name AS created_by_name
@@ -22,14 +19,14 @@ function getDocumentsFor(targetType, targetId) {
   `).all(targetType, targetId);
 }
 
-function syncAttachments(targetType, targetId, documentIds) {
+function syncAttachments(targetType, targetId, documentIds, workspaceId) {
   if (!Array.isArray(documentIds)) return;
   const ids = [...new Set(documentIds.map(Number).filter(Number.isFinite))];
   const tx = db.transaction(() => {
     db.prepare(`DELETE FROM attachments WHERE target_type = ? AND target_id = ?`).run(targetType, targetId);
     const ins = db.prepare(`INSERT OR IGNORE INTO attachments (target_type, target_id, document_id) VALUES (?, ?, ?)`);
     for (const docId of ids) {
-      const exists = db.prepare(`SELECT 1 FROM documents WHERE id = ?`).get(docId);
+      const exists = db.prepare(`SELECT 1 FROM documents WHERE id = ? AND workspace_id = ?`).get(docId, workspaceId);
       if (exists) ins.run(targetType, targetId, docId);
     }
   });
@@ -40,6 +37,7 @@ function rowToMeeting(r) {
   if (!r) return null;
   return {
     id: r.id,
+    workspaceId: r.workspace_id,
     title: r.title,
     description: r.description,
     startsAt: r.starts_at,
@@ -57,32 +55,33 @@ function parseTs(v) {
   return Number.isFinite(n) ? Math.floor(n / 1000) : null;
 }
 
-meetingsRouter.get('/', requireAuth, PROJECT, (_req, res) => {
-  const rows = db.prepare(`${SELECT} ORDER BY m.starts_at DESC`).all();
+meetingsRouter.get('/', (req, res) => {
+  const rows = db.prepare(`${SELECT} WHERE m.workspace_id = ? ORDER BY m.starts_at DESC`)
+    .all(req.workspace.id);
   res.json(rows.map(rowToMeeting));
 });
 
-meetingsRouter.post('/', requireAuth, PROJECT, (req, res) => {
+meetingsRouter.post('/', (req, res) => {
   const { title, description, startsAt, endsAt, documentIds } = req.body || {};
   if (!title) return res.status(400).json({ error: 'missing_title' });
   const start = parseTs(startsAt);
   if (start === null) return res.status(400).json({ error: 'invalid_starts_at' });
   const end = parseTs(endsAt);
-  const result = db
-    .prepare(`
-      INSERT INTO meetings (title, description, starts_at, ends_at, created_by)
-      VALUES (?, ?, ?, ?, ?)
-    `)
-    .run(title.trim(), (description || '').trim(), start, end, req.user.id);
-  if (Array.isArray(documentIds)) syncAttachments('meeting', result.lastInsertRowid, documentIds);
+  const result = db.prepare(`
+    INSERT INTO meetings (workspace_id, title, description, starts_at, ends_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(req.workspace.id, title.trim(), (description || '').trim(), start, end, req.user.id);
+  if (Array.isArray(documentIds)) syncAttachments('meeting', result.lastInsertRowid, documentIds, req.workspace.id);
   const row = db.prepare(`${SELECT} WHERE m.id = ?`).get(result.lastInsertRowid);
   res.status(201).json(rowToMeeting(row));
 });
 
-meetingsRouter.put('/:id', requireAuth, PROJECT, (req, res) => {
+meetingsRouter.put('/:id', (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare(`SELECT * FROM meetings WHERE id = ?`).get(id);
+  const existing = db.prepare(`SELECT * FROM meetings WHERE id = ? AND workspace_id = ?`)
+    .get(id, req.workspace.id);
   if (!existing) return res.status(404).json({ error: 'not_found' });
+
   const { title, description, startsAt, endsAt, documentIds } = req.body || {};
   const start = startsAt !== undefined ? parseTs(startsAt) : existing.starts_at;
   if (start === null) return res.status(400).json({ error: 'invalid_starts_at' });
@@ -95,14 +94,15 @@ meetingsRouter.put('/:id', requireAuth, PROJECT, (req, res) => {
       ends_at     = ?
     WHERE id = ?
   `).run(title ?? null, description ?? null, start, end, id);
-  if (Array.isArray(documentIds)) syncAttachments('meeting', id, documentIds);
+  if (Array.isArray(documentIds)) syncAttachments('meeting', id, documentIds, req.workspace.id);
   const row = db.prepare(`${SELECT} WHERE m.id = ?`).get(id);
   res.json(rowToMeeting(row));
 });
 
-meetingsRouter.delete('/:id', requireAuth, PROJECT, (req, res) => {
+meetingsRouter.delete('/:id', (req, res) => {
   const id = Number(req.params.id);
-  const r = db.prepare(`DELETE FROM meetings WHERE id = ?`).run(id);
+  const r = db.prepare(`DELETE FROM meetings WHERE id = ? AND workspace_id = ?`)
+    .run(id, req.workspace.id);
   if (r.changes === 0) return res.status(404).json({ error: 'not_found' });
   db.prepare(`DELETE FROM attachments WHERE target_type = 'meeting' AND target_id = ?`).run(id);
   res.status(204).end();

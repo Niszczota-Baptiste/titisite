@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { COLLECTIONS, count, insert, migrate } from './db.js';
 import { ensureSeedUsers } from './users.js';
+import { migrateOrphansToDefault } from './workspaces.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '..', 'src', 'data');
@@ -23,6 +24,7 @@ async function loadSource(file, key) {
 export async function seedIfEmpty({ force = false } = {}) {
   migrate();
   const results = { users: ensureSeedUsers() };
+
   for (const name of COLLECTIONS) {
     const existing = count(name);
     if (existing > 0 && !force) {
@@ -33,6 +35,10 @@ export async function seedIfEmpty({ force = false } = {}) {
     items.forEach((item, idx) => insert(name, item, idx));
     results[name] = { inserted: items.length };
   }
+
+  const wsMigration = migrateOrphansToDefault();
+  if (wsMigration) results.workspaces = wsMigration;
+
   return results;
 }
 

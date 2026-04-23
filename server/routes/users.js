@@ -9,12 +9,10 @@ export const usersRouter = Router();
 const BOTH  = requireRole('admin', 'member');
 const ADMIN = requireRole('admin');
 
-// Any signed-in project user can read the user list (used to pick assignees).
 usersRouter.get('/', requireAuth, BOTH, (_req, res) => {
   res.json(listUsers());
 });
 
-// Admin-only create / update / delete below.
 usersRouter.post('/', requireAuth, ADMIN, (req, res) => {
   const { email, name, password, role } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
@@ -35,7 +33,6 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
 
   const { name, role, password } = req.body || {};
 
-  // Role change: if demoting the only admin, block it
   if (role && role !== existing.role) {
     if (!['admin', 'member'].includes(role)) return res.status(400).json({ error: 'invalid_role' });
     if (existing.role === 'admin' && role !== 'admin') {

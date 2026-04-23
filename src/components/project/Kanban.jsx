@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
+import { useWorkspace } from '../../hooks/useWorkspace';
 import { FeatureModal } from './FeatureModal';
 import {
   ACC, ACC_RGB, Button, ErrorBanner, Section, Tag, dueStatus, DUE_STYLES,
@@ -20,6 +21,7 @@ const PRIORITY_COLORS = {
 };
 
 export function KanbanTab() {
+  const { workspace } = useWorkspace();
   const [items, setItems] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,14 +29,16 @@ export function KanbanTab() {
   const [tagFilter, setTagFilter] = useState(null);
   const [err, setErr] = useState(null);
 
+  const ws = api.ws(workspace.slug);
+
   const load = async () => {
     try {
-      const [f, u] = await Promise.all([api.get('/features'), api.get('/users')]);
+      const [f, u] = await Promise.all([ws.features.list(), api.users()]);
       setItems(f); setUsers(u);
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
 
   const allTags = useMemo(() => {
     const set = new Set();
@@ -49,7 +53,7 @@ export function KanbanTab() {
   }, {});
 
   const move = async (feature, newStatus) => {
-    try { await api.put(`/features/${feature.id}`, { status: newStatus }); await load(); }
+    try { await ws.features.update(feature.id, { status: newStatus }); await load(); }
     catch (e) { setErr(e.message); }
   };
 
@@ -62,8 +66,7 @@ export function KanbanTab() {
 
       {allTags.length > 0 && (
         <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16,
-          alignItems: 'center',
+          display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16, alignItems: 'center',
         }}>
           <span style={{ ...muted, fontSize: 11, marginRight: 4 }}>Filtrer :</span>
           <TagFilterBtn active={!tagFilter} onClick={() => setTagFilter(null)}>Tous</TagFilterBtn>
@@ -108,9 +111,7 @@ export function KanbanTab() {
                   fontFamily: "'Inter',sans-serif", fontSize: 11,
                   color: 'rgba(200,192,216,0.75)',
                   letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700,
-                }}>
-                  {col.label}
-                </span>
+                }}>{col.label}</span>
                 <span style={{ ...muted, fontSize: 11, fontFamily: 'monospace' }}>
                   {grouped[col.key].length}
                 </span>
@@ -137,6 +138,7 @@ export function KanbanTab() {
         open={!!editing}
         feature={editing}
         users={users}
+        workspaceSlug={workspace.slug}
         onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); load(); }}
       />
@@ -177,20 +179,15 @@ function KanbanCard({ feature, onOpen, onMove }) {
       <h4 style={{
         fontFamily: "'Space Grotesk',sans-serif", fontSize: 13.5, fontWeight: 600,
         color: '#ede8f8', marginBottom: 6, letterSpacing: '-0.2px',
-      }}>
-        {feature.title}
-      </h4>
+      }}>{feature.title}</h4>
 
       {feature.description && (
         <p style={{
           fontFamily: "'Inter',sans-serif", fontSize: 12,
-          color: 'rgba(200,192,216,0.7)', lineHeight: 1.5,
-          marginBottom: 8,
+          color: 'rgba(200,192,216,0.7)', lineHeight: 1.5, marginBottom: 8,
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
           overflow: 'hidden',
-        }}>
-          {feature.description}
-        </p>
+        }}>{feature.description}</p>
       )}
 
       {(feature.tags || []).length > 0 && (
@@ -231,24 +228,17 @@ function KanbanCard({ feature, onOpen, onMove }) {
         {(feature.documents || []).length > 0 && <span>📎 {feature.documents.length}</span>}
       </div>
 
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          display: 'flex', gap: 4, marginTop: 10, paddingTop: 8,
-          borderTop: '1px dashed rgba(60,40,100,0.2)',
-        }}
-      >
+      <div onClick={(e) => e.stopPropagation()} style={{
+        display: 'flex', gap: 4, marginTop: 10, paddingTop: 8,
+        borderTop: '1px dashed rgba(60,40,100,0.2)',
+      }}>
         {prevCol && (
           <button onClick={() => onMove(prevCol.key)} style={moveBtnStyle} title={`→ ${prevCol.label}`}>
             ← {prevCol.label}
           </button>
         )}
         {nextCol && (
-          <button
-            onClick={() => onMove(nextCol.key)}
-            style={{ ...moveBtnStyle, marginLeft: 'auto' }}
-            title={`→ ${nextCol.label}`}
-          >
+          <button onClick={() => onMove(nextCol.key)} style={{ ...moveBtnStyle, marginLeft: 'auto' }} title={`→ ${nextCol.label}`}>
             {nextCol.label} →
           </button>
         )}

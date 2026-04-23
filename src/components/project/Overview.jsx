@@ -1,28 +1,30 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
-import { useAuth } from '../../auth/AuthContext';
+import { useWorkspace } from '../../hooks/useWorkspace';
 import {
   ACC, ACC_RGB, ErrorBanner, Section, card, formatDate, muted,
 } from './shared';
 
 export function OverviewTab() {
-  const { user } = useAuth();
+  const { workspace } = useWorkspace();
+  const ws = api.ws(workspace.slug);
   const [state, setState] = useState({ loading: true, features: [], meetings: [], builds: [], documents: [] });
   const [err, setErr] = useState(null);
 
   useEffect(() => {
     Promise.all([
-      api.get('/features').catch(() => []),
-      api.get('/meetings').catch(() => []),
-      api.get('/builds').catch(() => []),
-      api.get('/documents').catch(() => []),
+      ws.features.list().catch(() => []),
+      ws.meetings.list().catch(() => []),
+      ws.builds.list().catch(() => []),
+      ws.documents.list().catch(() => []),
     ])
       .then(([features, meetings, builds, documents]) => {
         setState({ loading: false, features, meetings, builds, documents });
       })
       .catch((e) => setErr(e.message));
-  }, []);
+    /* eslint-disable-next-line */
+  }, [workspace.slug]);
 
   if (state.loading) return <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>;
 
@@ -33,38 +35,35 @@ export function OverviewTab() {
     doing:   state.features.filter((f) => f.status === 'doing').length,
     done:    state.features.filter((f) => f.status === 'done').length,
   };
-  const upcoming = state.meetings
-    .filter((m) => m.startsAt >= now)
-    .sort((a, b) => a.startsAt - b.startsAt)
-    .slice(0, 3);
+  const overdue = state.features.filter((f) => f.dueDate && f.dueDate < now && f.status !== 'done').length;
+  const upcoming = state.meetings.filter((m) => m.startsAt >= now).sort((a, b) => a.startsAt - b.startsAt).slice(0, 3);
   const recentBuilds = state.builds.slice(0, 3);
   const recentDocs = state.documents.slice(0, 3);
-
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   const donePct = total ? Math.round((counts.done / total) * 100) : 0;
 
   return (
     <>
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{
-          fontFamily: "'Space Grotesk',sans-serif", fontSize: 26, fontWeight: 700,
-          color: '#ede8f8', letterSpacing: '-0.5px', marginBottom: 6,
-        }}>
-          Salut {user?.name || user?.email} 👋
-        </h1>
-        <p style={{ ...muted, fontSize: 14 }}>
-          Voici un récap du projet.
-        </p>
+      <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 16 }}>
+        <span style={{
+          fontSize: 42, flexShrink: 0,
+          filter: `drop-shadow(0 0 20px ${workspace.color}44)`,
+        }}>{workspace.icon}</span>
+        <div>
+          <h1 style={{
+            fontFamily: "'Space Grotesk',sans-serif", fontSize: 26, fontWeight: 700,
+            color: '#ede8f8', letterSpacing: '-0.5px', marginBottom: 4,
+          }}>{workspace.name}</h1>
+          {workspace.description && (
+            <p style={{ ...muted, fontSize: 13.5 }}>{workspace.description}</p>
+          )}
+        </div>
       </div>
 
       <ErrorBanner error={err} onDismiss={() => setErr(null)} />
 
-      {/* Kanban stats */}
       <Section title="Avancement">
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12,
-          marginBottom: 14,
-        }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 14 }}>
           {[
             ['Backlog', counts.backlog, 'rgba(180,170,200,0.55)'],
             ['À faire', counts.todo,    '#e8a87c'],
@@ -84,6 +83,21 @@ export function OverviewTab() {
             </div>
           ))}
         </div>
+
+        {overdue > 0 && (
+          <div style={{
+            ...card, padding: '10px 14px', marginBottom: 10,
+            borderColor: 'rgba(255,138,155,0.3)',
+            background: 'rgba(255,138,155,0.05)',
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <span style={{ color: '#ff8a9b', fontWeight: 700, fontSize: 13 }}>⚠ {overdue} carte{overdue > 1 ? 's' : ''} en retard</span>
+            <Link to="../kanban" style={{ color: '#ff8a9b', fontSize: 12, marginLeft: 'auto', textDecoration: 'none' }}>
+              Voir →
+            </Link>
+          </div>
+        )}
+
         {total > 0 && (
           <div style={{ ...card }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -131,9 +145,7 @@ export function OverviewTab() {
                       fontFamily: 'monospace', fontSize: 11, color: ACC,
                       background: `rgba(${ACC_RGB},0.1)`, padding: '1px 6px', borderRadius: 3,
                     }}>v{b.version}</span>
-                    {b.title && (
-                      <span style={{ fontSize: 13, color: '#ede8f8' }}>{b.title}</span>
-                    )}
+                    {b.title && <span style={{ fontSize: 13, color: '#ede8f8' }}>{b.title}</span>}
                   </div>
                   <div style={{ ...muted, fontSize: 11, marginTop: 2 }}>
                     {b.status.toUpperCase()} · {formatDate(b.releasedAt)}
@@ -170,6 +182,5 @@ export function OverviewTab() {
 
 const miniLink = {
   fontFamily: "'Inter',sans-serif", fontSize: 11,
-  color: ACC, textDecoration: 'none',
-  letterSpacing: '0.5px',
+  color: ACC, textDecoration: 'none', letterSpacing: '0.5px',
 };

@@ -1,17 +1,15 @@
 import { Router } from 'express';
 import fs from 'node:fs';
-import { requireAuth, requireRole } from '../auth.js';
 import { db } from '../db.js';
 import { safeUnlink, upload, uploadPath } from '../uploads.js';
 
-export const documentsRouter = Router();
-
-const PROJECT = requireRole('admin', 'member');
+export const documentsRouter = Router({ mergeParams: true });
 
 function rowToDoc(r) {
   if (!r) return null;
   return {
     id: r.id,
+    workspaceId: r.workspace_id,
     title: r.title,
     originalName: r.original_name,
     mimeType: r.mime_type,
@@ -29,29 +27,29 @@ const SELECT = `
   LEFT JOIN users u ON u.id = d.uploaded_by
 `;
 
-documentsRouter.get('/', requireAuth, PROJECT, (_req, res) => {
-  const rows = db.prepare(`${SELECT} ORDER BY d.created_at DESC`).all();
+documentsRouter.get('/', (req, res) => {
+  const rows = db.prepare(`${SELECT} WHERE d.workspace_id = ? ORDER BY d.created_at DESC`)
+    .all(req.workspace.id);
   res.json(rows.map(rowToDoc));
 });
 
-documentsRouter.post('/', requireAuth, PROJECT, upload.single('file'), (req, res) => {
+documentsRouter.post('/', upload.single('file'), (req, res) => {
   const f = req.file;
   if (!f) return res.status(400).json({ error: 'missing_file' });
   const title = (req.body.title || f.originalname || '').trim() || 'Sans titre';
   const notes = (req.body.notes || '').trim();
-  const result = db
-    .prepare(`
-      INSERT INTO documents (title, filename, original_name, mime_type, size, notes, uploaded_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `)
-    .run(title, f.filename, f.originalname, f.mimetype, f.size, notes, req.user.id);
+  const result = db.prepare(`
+    INSERT INTO documents (workspace_id, title, filename, original_name, mime_type, size, notes, uploaded_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(req.workspace.id, title, f.filename, f.originalname, f.mimetype, f.size, notes, req.user.id);
   const row = db.prepare(`${SELECT} WHERE d.id = ?`).get(result.lastInsertRowid);
   res.status(201).json(rowToDoc(row));
 });
 
-documentsRouter.put('/:id', requireAuth, PROJECT, (req, res) => {
+documentsRouter.put('/:id', (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare(`SELECT id FROM documents WHERE id = ?`).get(id);
+  const existing = db.prepare(`SELECT id FROM documents WHERE id = ? AND workspace_id = ?`)
+    .get(id, req.workspace.id);
   if (!existing) return res.status(404).json({ error: 'not_found' });
   const { title, notes } = req.body || {};
   db.prepare(`
@@ -64,17 +62,19 @@ documentsRouter.put('/:id', requireAuth, PROJECT, (req, res) => {
   res.json(rowToDoc(row));
 });
 
-documentsRouter.get('/:id/download', requireAuth, PROJECT, (req, res) => {
-  const row = db.prepare(`SELECT * FROM documents WHERE id = ?`).get(Number(req.params.id));
+documentsRouter.get('/:id/download', (req, res) => {
+  const row = db.prepare(`SELECT * FROM documents WHERE id = ? AND workspace_id = ?`)
+    .get(Number(req.params.id), req.workspace.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
   const p = uploadPath(row.filename);
   if (!fs.existsSync(p)) return res.status(404).json({ error: 'file_missing' });
   res.download(p, row.original_name);
 });
 
-documentsRouter.delete('/:id', requireAuth, PROJECT, (req, res) => {
+documentsRouter.delete('/:id', (req, res) => {
   const id = Number(req.params.id);
-  const row = db.prepare(`SELECT filename FROM documents WHERE id = ?`).get(id);
+  const row = db.prepare(`SELECT filename FROM documents WHERE id = ? AND workspace_id = ?`)
+    .get(id, req.workspace.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
   db.prepare(`DELETE FROM documents WHERE id = ?`).run(id);
   db.prepare(`DELETE FROM comments WHERE target_type = 'document' AND target_id = ?`).run(id);

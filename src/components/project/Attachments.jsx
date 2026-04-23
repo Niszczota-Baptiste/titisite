@@ -3,16 +3,16 @@ import { api, triggerDownload } from '../../api/client';
 import { ACC, ACC_RGB, Button, formatBytes, muted } from './shared';
 
 /**
- * Edit-mode attachment picker:
- *   value = array of document IDs; onChange receives the new array.
+ * Edit-mode attachment picker scoped to a workspace.
  */
-export function AttachmentsEditor({ value = [], onChange }) {
+export function AttachmentsEditor({ value = [], onChange, workspaceSlug }) {
   const [docs, setDocs] = useState(null);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    api.get('/documents').then(setDocs).catch(() => setDocs([]));
-  }, []);
+    if (!workspaceSlug) { setDocs([]); return; }
+    api.ws(workspaceSlug).documents.list().then(setDocs).catch(() => setDocs([]));
+  }, [workspaceSlug]);
 
   const selected = (docs || []).filter((d) => value.includes(d.id));
   const available = (docs || []).filter((d) => !value.includes(d.id));
@@ -29,6 +29,8 @@ export function AttachmentsEditor({ value = [], onChange }) {
             <AttachmentRow
               key={d.id}
               doc={d}
+              workspaceSlug={workspaceSlug}
+              kind="documents"
               onRemove={() => onChange(value.filter((id) => id !== d.id))}
             />
           ))}
@@ -50,7 +52,7 @@ export function AttachmentsEditor({ value = [], onChange }) {
             <p style={{ ...muted, fontSize: 12 }}>Chargement…</p>
           ) : available.length === 0 ? (
             <p style={{ ...muted, fontSize: 12 }}>
-              Aucun autre document disponible. Téléverse-le depuis l'onglet « Documents ».
+              Aucun autre document disponible dans ce projet. Téléverse-le depuis l'onglet « Documents ».
             </p>
           ) : (
             available.map((d) => (
@@ -90,11 +92,12 @@ export function AttachmentsEditor({ value = [], onChange }) {
   );
 }
 
-/** Read-only row: click to download. */
-export function AttachmentRow({ doc, onRemove, onError }) {
+export function AttachmentRow({ doc, workspaceSlug, kind = 'documents', onRemove, onError }) {
   const open = (e) => {
     e.preventDefault();
-    triggerDownload('documents', doc.id, doc.originalName).catch((err) => onError?.(err.message));
+    if (!workspaceSlug) return;
+    const url = api.ws(workspaceSlug)[kind].downloadUrl(doc.id);
+    triggerDownload(url, doc.originalName).catch((err) => onError?.(err.message));
   };
 
   return (
@@ -138,13 +141,12 @@ export function AttachmentRow({ doc, onRemove, onError }) {
   );
 }
 
-/** Read-only list, e.g. on a card or in a calendar popup. */
-export function AttachmentList({ documents, onError }) {
+export function AttachmentList({ documents, workspaceSlug, onError }) {
   if (!documents || documents.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {documents.map((d) => (
-        <AttachmentRow key={d.id} doc={d} onError={onError} />
+        <AttachmentRow key={d.id} doc={d} workspaceSlug={workspaceSlug} onError={onError} />
       ))}
     </div>
   );
