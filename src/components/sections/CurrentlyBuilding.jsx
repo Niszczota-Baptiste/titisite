@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ACCENTS } from '../../data/constants';
-import { currently } from '../../data/currently';
 
-export function CurrentlyBuilding({ lang, accent }) {
+export function CurrentlyBuilding({ lang, accent, items = [] }) {
   const acc = ACCENTS[accent] || ACCENTS.violet;
   const [dots, setDots] = useState('...');
 
@@ -16,7 +15,7 @@ export function CurrentlyBuilding({ lang, accent }) {
     return () => clearInterval(iv);
   }, []);
 
-  const item = currently[0];
+  const item = items[0];
   if (!item) return null;
 
   return (

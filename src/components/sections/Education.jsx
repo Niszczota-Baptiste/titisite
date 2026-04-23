@@ -1,9 +1,8 @@
 import { ACCENTS } from '../../data/constants';
-import { education } from '../../data/education';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
 
-export function Education({ t, lang, accent }) {
+export function Education({ t, lang, accent, items = [] }) {
   const acc = ACCENTS[accent] || ACCENTS.violet;
   return (
     <Section id="education" bg="var(--section-alt)">
@@ -15,7 +14,7 @@ export function Education({ t, lang, accent }) {
             background: 'linear-gradient(to bottom,var(--border) 80%,transparent)',
           }}
         />
-        {education.map((e, i) => (
+        {items.map((e, i) => (
           <div
             key={i}
             className="reveal"

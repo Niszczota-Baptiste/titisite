@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { ACCENTS } from '../../data/constants';
-import { projects } from '../../data/projects';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
 
-export function Projects({ t, lang, accent }) {
+export function Projects({ t, lang, accent, items = [] }) {
   const [filter, setFilter] = useState('all');
   const acc = ACCENTS[accent] || ACCENTS.violet;
   const keys = ['all', 'web', 'mobile', 'experimental'];
-  const vis = filter === 'all' ? projects : projects.filter((p) => p.type === filter);
+  const vis = filter === 'all' ? items : items.filter((p) => p.type === filter);
 
   return (
     <Section id="projects">
