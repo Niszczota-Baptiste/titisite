@@ -3,6 +3,8 @@ import { ACCENTS } from '../../data/constants';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
 
+const CLIP_SEC = 30;
+
 function VolumeSlider({ value, onChange, accent }) {
   const acc = ACCENTS[accent] || ACCENTS.violet;
   const trackRef = useRef(null);
@@ -14,18 +16,11 @@ function VolumeSlider({ value, onChange, accent }) {
   }, []);
 
   useEffect(() => {
-    const onMove = (e) => {
-      if (dragging.current) onChange(getVal(e));
-    };
-    const onUp = () => {
-      dragging.current = false;
-    };
+    const onMove = (e) => { if (dragging.current) onChange(getVal(e)); };
+    const onUp = () => { dragging.current = false; };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
   }, [getVal, onChange]);
 
   return (
@@ -42,38 +37,20 @@ function VolumeSlider({ value, onChange, accent }) {
       <div
         ref={trackRef}
         data-interactive
-        onMouseDown={(e) => {
-          dragging.current = true;
-          onChange(getVal(e));
-        }}
-        style={{
-          position: 'relative', width: 88, height: 18, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', userSelect: 'none',
-        }}
+        onMouseDown={(e) => { dragging.current = true; onChange(getVal(e)); }}
+        style={{ position: 'relative', width: 88, height: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', userSelect: 'none' }}
       >
-        <div
-          style={{
-            width: '100%', height: 3, background: 'var(--border)',
-            borderRadius: 2, overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              height: '100%', width: `${value * 100}%`, background: acc.hex,
-              borderRadius: 2, boxShadow: `0 0 6px rgba(${acc.rgb},0.5)`,
-              transition: 'width 0.05s',
-            }}
-          />
+        <div style={{ width: '100%', height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', width: `${value * 100}%`, background: acc.hex,
+            borderRadius: 2, boxShadow: `0 0 6px rgba(${acc.rgb},0.5)`, transition: 'width 0.05s',
+          }} />
         </div>
-        <div
-          style={{
-            position: 'absolute', left: `${value * 100}%`,
-            transform: 'translate(-50%,-50%)', top: '50%',
-            width: 11, height: 11, borderRadius: '50%',
-            background: acc.hex, boxShadow: `0 0 8px rgba(${acc.rgb},0.55)`,
-            pointerEvents: 'none', transition: 'left 0.05s',
-          }}
-        />
+        <div style={{
+          position: 'absolute', left: `${value * 100}%`, transform: 'translate(-50%,-50%)', top: '50%',
+          width: 11, height: 11, borderRadius: '50%', background: acc.hex,
+          boxShadow: `0 0 8px rgba(${acc.rgb},0.55)`, pointerEvents: 'none', transition: 'left 0.05s',
+        }} />
       </div>
     </div>
   );
@@ -90,8 +67,7 @@ function Waveform({ playing, accent }) {
           style={{
             width: 2.5, borderRadius: 2, background: acc.hex,
             opacity: playing ? 0.65 : 0.18,
-            height: playing ? undefined : '3px',
-            minHeight: 3,
+            height: playing ? undefined : '3px', minHeight: 3,
             animation: playing
               ? `wave${(i % 4) + 1} ${dur[i % 8]} ${i * 0.04}s ease-in-out infinite alternate`
               : 'none',
@@ -114,48 +90,40 @@ function TrackRow({ track, playing, progress, onToggle, accent }) {
       data-interactive
       style={{
         display: 'flex', alignItems: 'center', gap: 18, padding: '14px 32px',
-        background: playing
-          ? `rgba(${acc.rgb},0.04)`
-          : hov ? 'var(--track-hov)' : 'transparent',
+        background: playing ? `rgba(${acc.rgb},0.04)` : hov ? 'var(--track-hov)' : 'transparent',
         borderBottom: '1px solid var(--border-dim)', cursor: 'pointer',
         transition: 'background 0.2s', position: 'relative', overflow: 'hidden',
       }}
     >
       {playing && (
-        <div
-          style={{
-            position: 'absolute', bottom: 0, left: 0, height: 1.5,
-            width: `${progress}%`,
-            background: `linear-gradient(90deg,${acc.hex}44,${acc.hex})`,
-            transition: 'width 0.12s linear',
-          }}
-        />
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, height: 1.5,
+          width: `${progress}%`, background: `linear-gradient(90deg,${acc.hex}44,${acc.hex})`,
+          transition: 'width 0.12s linear',
+        }} />
       )}
-      <div
-        style={{
-          width: 34, height: 34, borderRadius: '50%',
-          background: 'var(--surface-solid)',
-          border: `1px solid ${playing ? acc.hex : 'var(--border)'}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0, color: playing ? acc.hex : 'var(--text-faint)',
-          fontSize: 11, transition: 'all 0.2s',
-          boxShadow: playing ? `0 0 10px rgba(${acc.rgb},0.4)` : 'none',
-        }}
-      >
+      <div style={{
+        width: 34, height: 34, borderRadius: '50%', background: 'var(--surface-solid)',
+        border: `1px solid ${playing ? acc.hex : 'var(--border)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, color: playing ? acc.hex : 'var(--text-faint)',
+        fontSize: 11, transition: 'all 0.2s',
+        boxShadow: playing ? `0 0 10px rgba(${acc.rgb},0.4)` : 'none',
+      }}>
         {playing ? '■' : '▶'}
       </div>
       <div style={{ flex: 1 }}>
-        <p
-          style={{
-            fontFamily: "'Space Grotesk',sans-serif", fontSize: 14.5,
-            fontWeight: 500, color: playing ? acc.hex : 'var(--text-dim)',
-            transition: 'color 0.2s',
-          }}
-        >
+        <p style={{
+          fontFamily: "'Space Grotesk',sans-serif", fontSize: 14.5, fontWeight: 500,
+          color: playing ? acc.hex : 'var(--text-dim)', transition: 'color 0.2s',
+        }}>
           {track.title}
         </p>
         <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>
           {track.genre}
+          {track.filename && (
+            <span style={{ marginLeft: 8, opacity: 0.5, fontSize: 10 }}>· extrait 30s</span>
+          )}
         </p>
       </div>
       <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-faint)' }}>
@@ -167,35 +135,78 @@ function TrackRow({ track, playing, progress, onToggle, accent }) {
 
 export function Music({ t, accent, tracks = [] }) {
   const [playing, setPlaying] = useState(null);
-  const [progress, setProgress] = useState({});
+  const [progress, setProgress] = useState({});   // 0-100 within clip/duration
+  const [elapsed, setElapsed] = useState({});      // seconds elapsed in current clip
   const [volume, setVolume] = useState(0.72);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState(false);
+  const audioRef = useRef(null);
   const acc = ACCENTS[accent] || ACCENTS.violet;
 
-  useEffect(() => {
-    window.__musicPlaying = playing !== null;
-  }, [playing]);
+  useEffect(() => { window.__musicPlaying = playing !== null; }, [playing]);
 
-  const toggle = (i) => {
-    setPlaying((p) => (p === i ? null : i));
-    if (playing !== i) setProgress((pr) => ({ ...pr, [i]: pr[i] || 0 }));
-  };
-  const prev = () => {
-    const idx = (((playing ?? 0) - 1) + tracks.length) % tracks.length;
-    setPlaying(idx);
-    setProgress((pr) => ({ ...pr, [idx]: 0 }));
-  };
-  const next = () => {
-    const idx = shuffle
-      ? Math.floor(Math.random() * tracks.length)
-      : ((playing ?? -1) + 1) % tracks.length;
-    setPlaying(idx);
-    setProgress((pr) => ({ ...pr, [idx]: 0 }));
-  };
+  const hasAudio = (i) => Boolean(tracks[i]?.filename);
 
+  // ── Real audio playback ──────────────────────────────────────────────────
   useEffect(() => {
-    if (playing === null) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (playing === null || !hasAudio(playing)) {
+      audio.pause();
+      audio.src = '';
+      return;
+    }
+
+    const tr = tracks[playing];
+    const clipStart = tr.clip_start ?? 0;
+
+    audio.volume = volume;
+    audio.src = `/api/audio/${tr.filename}`;
+    audio.load();
+
+    const onReady = () => {
+      audio.currentTime = clipStart;
+      audio.play().catch(() => {});
+    };
+
+    const onTimeUpdate = () => {
+      const rel = audio.currentTime - clipStart;
+      if (rel >= CLIP_SEC) {
+        audio.pause();
+        setProgress((p) => ({ ...p, [playing]: 100 }));
+        setElapsed((p) => ({ ...p, [playing]: CLIP_SEC }));
+        if (repeat) {
+          audio.currentTime = clipStart;
+          audio.play().catch(() => {});
+        } else {
+          handleNext(playing);
+        }
+        return;
+      }
+      const pct = Math.max(0, (rel / CLIP_SEC) * 100);
+      setProgress((p) => ({ ...p, [playing]: pct }));
+      setElapsed((p) => ({ ...p, [playing]: Math.max(0, rel) }));
+    };
+
+    audio.addEventListener('loadedmetadata', onReady);
+    audio.addEventListener('timeupdate', onTimeUpdate);
+
+    return () => {
+      audio.removeEventListener('loadedmetadata', onReady);
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.pause();
+    };
+  }, [playing]); // eslint-disable-line
+
+  // Volume sync
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume]);
+
+  // ── Fake progress for tracks without audio ───────────────────────────────
+  useEffect(() => {
+    if (playing === null || hasAudio(playing)) return;
     const iv = setInterval(() => {
       setProgress((pr) => {
         const cur = pr[playing] || 0;
@@ -208,13 +219,65 @@ export function Music({ t, accent, tracks = [] }) {
       });
     }, 120);
     return () => clearInterval(iv);
-  }, [playing, repeat]);
+  }, [playing, repeat, tracks]); // eslint-disable-line
 
-  const fmtTime = (pct, total) => {
-    const [m, s] = total.split(':').map(Number);
+  const handleNext = (current) => {
+    const idx = shuffle
+      ? Math.floor(Math.random() * tracks.length)
+      : ((current ?? -1) + 1) % tracks.length;
+    setPlaying(idx);
+    setProgress((p) => ({ ...p, [idx]: 0 }));
+    setElapsed((p) => ({ ...p, [idx]: 0 }));
+  };
+
+  const toggle = (i) => {
+    if (playing === i) {
+      if (hasAudio(i)) audioRef.current?.pause();
+      setPlaying(null);
+    } else {
+      setPlaying(i);
+      setProgress((p) => ({ ...p, [i]: p[i] || 0 }));
+      setElapsed((p) => ({ ...p, [i]: p[i] ? (p[i] / 100) * CLIP_SEC : 0 }));
+    }
+  };
+
+  const prev = () => {
+    const idx = (((playing ?? 0) - 1) + tracks.length) % tracks.length;
+    setPlaying(idx);
+    setProgress((p) => ({ ...p, [idx]: 0 }));
+    setElapsed((p) => ({ ...p, [idx]: 0 }));
+  };
+
+  const next = () => handleNext(playing);
+
+  const seekTo = (pct) => {
+    if (playing === null) return;
+    setProgress((p) => ({ ...p, [playing]: pct }));
+    if (hasAudio(playing) && audioRef.current) {
+      const tr = tracks[playing];
+      const clipStart = tr.clip_start ?? 0;
+      audioRef.current.currentTime = clipStart + (pct / 100) * CLIP_SEC;
+    }
+  };
+
+  // ── Time formatting ──────────────────────────────────────────────────────
+  const fmtElapsed = (i) => {
+    if (i === null || !tracks[i]) return '0:00';
+    if (hasAudio(i)) {
+      const s = Math.floor(elapsed[i] || 0);
+      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    }
+    // Simulated: use duration string + percentage
+    const [m, s] = (tracks[i].duration || '0:00').split(':').map(Number);
     const tot = m * 60 + s;
-    const cur = Math.floor((tot * pct) / 100);
+    const cur = Math.floor((tot * (progress[i] || 0)) / 100);
     return `${Math.floor(cur / 60)}:${String(cur % 60).padStart(2, '0')}`;
+  };
+
+  const fmtTotal = (tr) => {
+    if (!tr) return '—';
+    if (tr.filename) return '0:30';
+    return tr.duration || '—';
   };
 
   const cur = playing !== null ? tracks[playing] : null;
@@ -223,8 +286,7 @@ export function Music({ t, accent, tracks = [] }) {
 
   const iconBtn = (active, onClick, children) => (
     <button
-      data-interactive
-      onClick={onClick}
+      data-interactive onClick={onClick}
       style={{
         background: 'none', border: 'none', cursor: 'pointer',
         color: active ? acc.hex : 'var(--text-faint)',
@@ -240,6 +302,7 @@ export function Music({ t, accent, tracks = [] }) {
 
   return (
     <Section id="music" bg="var(--section-alt)">
+      <audio ref={audioRef} preload="none" />
       <SectionHeader title={t.music.title} subtitle={t.music.subtitle} accent={accent} />
       <div
         className="reveal"
@@ -256,26 +319,24 @@ export function Music({ t, accent, tracks = [] }) {
         <div style={{ padding: '28px 32px 24px', borderBottom: '1px solid var(--border-dim)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
             <div>
-              <p
-                style={{
-                  fontFamily: "'Inter',sans-serif", fontSize: 10.5,
-                  color: 'var(--text-faint)', letterSpacing: '1.8px',
-                  textTransform: 'uppercase', marginBottom: 8,
-                }}
-              >
+              <p style={{
+                fontFamily: "'Inter',sans-serif", fontSize: 10.5, color: 'var(--text-faint)',
+                letterSpacing: '1.8px', textTransform: 'uppercase', marginBottom: 8,
+              }}>
                 Now Playing
               </p>
-              <p
-                style={{
-                  fontFamily: "'Space Grotesk',sans-serif", fontSize: 22,
-                  fontWeight: 700, color: isPlaying ? acc.hex : 'var(--text)',
-                  marginBottom: 4, letterSpacing: '-0.3px', transition: 'color 0.4s',
-                }}
-              >
+              <p style={{
+                fontFamily: "'Space Grotesk',sans-serif", fontSize: 22, fontWeight: 700,
+                color: isPlaying ? acc.hex : 'var(--text)',
+                marginBottom: 4, letterSpacing: '-0.3px', transition: 'color 0.4s',
+              }}>
                 {cur ? cur.title : '—'}
               </p>
               <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: 'var(--text-faint)' }}>
                 {cur ? cur.genre : t.music.noFile}
+                {cur?.filename && (
+                  <span style={{ marginLeft: 8, opacity: 0.5, fontSize: 11 }}>· extrait 30s</span>
+                )}
               </p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 16 }}>
@@ -283,6 +344,8 @@ export function Music({ t, accent, tracks = [] }) {
               <VolumeSlider value={volume} onChange={setVolume} accent={accent} />
             </div>
           </div>
+
+          {/* Progress bar */}
           <div style={{ marginBottom: 16 }}>
             <div
               style={{
@@ -292,39 +355,33 @@ export function Music({ t, accent, tracks = [] }) {
               onClick={(e) => {
                 if (playing === null) return;
                 const rect = e.currentTarget.getBoundingClientRect();
-                setProgress((pr) => ({
-                  ...pr,
-                  [playing]: ((e.clientX - rect.left) / rect.width) * 100,
-                }));
+                seekTo(((e.clientX - rect.left) / rect.width) * 100);
               }}
             >
-              <div
-                style={{
-                  height: '100%', width: `${curProg}%`,
-                  background: `linear-gradient(90deg,${acc.dim},${acc.hex})`,
-                  borderRadius: 2, boxShadow: `0 0 8px rgba(${acc.rgb},0.4)`,
-                  transition: 'width 0.12s linear', position: 'relative',
-                }}
-              >
-                <div
-                  style={{
-                    position: 'absolute', right: 0, top: '50%',
-                    transform: 'translate(50%,-50%)', width: 9, height: 9,
-                    borderRadius: '50%', background: acc.hex,
-                    boxShadow: `0 0 6px rgba(${acc.rgb},0.8)`,
-                  }}
-                />
+              <div style={{
+                height: '100%', width: `${curProg}%`,
+                background: `linear-gradient(90deg,${acc.dim},${acc.hex})`,
+                borderRadius: 2, boxShadow: `0 0 8px rgba(${acc.rgb},0.4)`,
+                transition: 'width 0.12s linear', position: 'relative',
+              }}>
+                <div style={{
+                  position: 'absolute', right: 0, top: '50%',
+                  transform: 'translate(50%,-50%)', width: 9, height: 9,
+                  borderRadius: '50%', background: acc.hex, boxShadow: `0 0 6px rgba(${acc.rgb},0.8)`,
+                }} />
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-faint)' }}>
-                {cur ? fmtTime(curProg, cur.duration) : '0:00'}
+                {fmtElapsed(playing)}
               </span>
               <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-faint)' }}>
-                {cur?.duration || '—'}
+                {fmtTotal(cur)}
               </span>
             </div>
           </div>
+
+          {/* Controls */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             {iconBtn(false, prev, (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -379,6 +436,7 @@ export function Music({ t, accent, tracks = [] }) {
             ))}
           </div>
         </div>
+
         {tracks.map((tr, i) => (
           <TrackRow
             key={i}

@@ -90,10 +90,10 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_features_status_pos ON features(status, position);`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_features_due_date ON features(due_date);`);
-  // Backfill columns on pre-existing installs
+  // Backfill columns on pre-existing installs (must run before indexes that reference new columns)
   ensureColumn('features', 'due_date', 'INTEGER');
   ensureColumn('features', 'tags', `TEXT NOT NULL DEFAULT '[]'`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_features_due_date ON features(due_date);`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS meetings (

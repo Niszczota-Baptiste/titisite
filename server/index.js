@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COLLECTIONS } from './db.js';
 import { authRouter } from './routes/auth.js';
+import { tracksRouter } from './routes/tracks.js';
 import { buildsRouter } from './routes/builds.js';
 import { collectionRouter } from './routes/collection.js';
 import { commentsRouter } from './routes/comments.js';
@@ -28,6 +29,18 @@ app.use(cors({ origin: IS_PROD ? false : true, credentials: false }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: IS_PROD ? 'production' : 'development' }));
 
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(ROOT, 'uploads');
+
+app.get('/api/audio/:filename', (req, res) => {
+  const { filename } = req.params;
+  if (!/^[\w.-]+$/.test(filename)) return res.status(400).end();
+  res.sendFile(filename, { root: UPLOADS_DIR }, (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
+});
+
+app.use('/api/tracks', tracksRouter);
+
 app.use('/api/auth',      authRouter);
 app.use('/api/users',     usersRouter);
 app.use('/api/documents', documentsRouter);
@@ -36,7 +49,7 @@ app.use('/api/features',  featuresRouter);
 app.use('/api/meetings',  meetingsRouter);
 app.use('/api/comments',  commentsRouter);
 
-for (const name of COLLECTIONS) {
+for (const name of COLLECTIONS.filter((n) => n !== 'tracks')) {
   app.use(`/api/${name}`, collectionRouter(name));
 }
 
