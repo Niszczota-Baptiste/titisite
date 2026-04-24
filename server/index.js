@@ -16,6 +16,7 @@ import { documentsRouter } from './routes/documents.js';
 import { featuresRouter } from './routes/features.js';
 import { meRouter } from './routes/me.js';
 import { meetingsRouter } from './routes/meetings.js';
+import { tagsRouter } from './routes/tags.js';
 import { usersRouter } from './routes/users.js';
 import { workspacesRouter } from './routes/workspaces.js';
 import { seedIfEmpty } from './seed.js';
@@ -68,6 +69,7 @@ scoped.use('/features',  featuresRouter);
 scoped.use('/meetings',  meetingsRouter);
 scoped.use('/documents', documentsRouter);
 scoped.use('/builds',    buildsRouter);
+scoped.use('/tags',      tagsRouter);
 app.use('/api/workspaces/:slug', scoped);
 
 if (IS_PROD) {

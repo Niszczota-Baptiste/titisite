@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { FeatureModal } from './FeatureModal';
+import { FilterSidebar } from './FilterSidebar';
 import {
-  ACC, ACC_RGB, Button, ErrorBanner, Section, Tag, dueStatus, DUE_STYLES,
+  ACC, Button, ErrorBanner, Section, Tag, dueStatus, DUE_STYLES,
   Empty, card, formatDate, muted,
 } from './shared';
 
@@ -20,16 +21,22 @@ const PRIORITY_COLORS = {
   high:   '#ff8a9b',
 };
 
+const DEFAULT_FILTERS = {
+  tagMode: 'include',
+  tags: [],
+  assignees: [],
+  overdue: false,
+};
+
 export function KanbanTab() {
   const { workspace } = useWorkspace();
+  const ws = api.ws(workspace.slug);
   const [items, setItems] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
-  const [tagFilter, setTagFilter] = useState(null);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [err, setErr] = useState(null);
-
-  const ws = api.ws(workspace.slug);
 
   const load = async () => {
     try {
@@ -40,13 +47,25 @@ export function KanbanTab() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
 
-  const allTags = useMemo(() => {
-    const set = new Set();
-    for (const it of items) for (const t of (it.tags || [])) set.add(t);
-    return [...set].sort();
+  // Precompute counts for the sidebar — from the full list (not filtered)
+  const counts = useMemo(() => {
+    const tags = new Map();
+    const assignees = new Map();
+    let overdue = 0;
+    const now = Date.now() / 1000;
+    for (const f of items) {
+      for (const t of (f.tags || [])) tags.set(t, (tags.get(t) || 0) + 1);
+      const key = f.assigneeId ?? null;
+      if (key !== null || (f.assigneeId === null)) {
+        assignees.set(key, (assignees.get(key) || 0) + 1);
+      }
+      if (f.dueDate && f.dueDate < now && f.status !== 'done') overdue++;
+    }
+    return { tags, assignees, overdue };
   }, [items]);
 
-  const filtered = tagFilter ? items.filter((i) => (i.tags || []).includes(tagFilter)) : items;
+  const filtered = useMemo(() => items.filter((f) => matches(f, filters)), [items, filters]);
+
   const grouped = COLUMNS.reduce((acc, c) => {
     acc[c.key] = filtered.filter((i) => i.status === c.key);
     return acc;
@@ -64,73 +83,67 @@ export function KanbanTab() {
     >
       <ErrorBanner error={err} onDismiss={() => setErr(null)} />
 
-      {allTags.length > 0 && (
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16, alignItems: 'center',
-        }}>
-          <span style={{ ...muted, fontSize: 11, marginRight: 4 }}>Filtrer :</span>
-          <TagFilterBtn active={!tagFilter} onClick={() => setTagFilter(null)}>Tous</TagFilterBtn>
-          {allTags.map((t) => (
-            <button
-              key={t}
-              onClick={() => setTagFilter(tagFilter === t ? null : t)}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                opacity: tagFilter && tagFilter !== t ? 0.45 : 1,
-                transition: 'opacity 0.15s',
-              }}
-            >
-              <Tag name={t} />
-            </button>
-          ))}
-        </div>
-      )}
-
       {loading ? (
         <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>
-      ) : items.length === 0 ? (
-        <Empty>Aucune carte. Crée la première tâche du projet.</Empty>
       ) : (
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14,
-          minHeight: 400,
-        }}>
-          {COLUMNS.map((col) => (
-            <div key={col.key} style={{
-              background: 'rgba(4,3,14,0.35)',
-              borderRadius: 12, padding: 12,
-              border: '1px solid rgba(60,40,100,0.16)',
-              display: 'flex', flexDirection: 'column', gap: 10,
-              minWidth: 0,
-            }}>
-              <header style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '2px 4px',
-              }}>
-                <span style={{
-                  fontFamily: "'Inter',sans-serif", fontSize: 11,
-                  color: 'rgba(200,192,216,0.75)',
-                  letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700,
-                }}>{col.label}</span>
-                <span style={{ ...muted, fontSize: 11, fontFamily: 'monospace' }}>
-                  {grouped[col.key].length}
-                </span>
-              </header>
+        <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start' }}>
+          <FilterSidebar
+            filters={filters}
+            setFilters={setFilters}
+            users={users}
+            counts={counts}
+            onTagsMutated={load}
+          />
 
-              {grouped[col.key].length === 0 ? (
-                <div style={{ ...muted, fontSize: 11, textAlign: 'center', padding: '12px 4px' }}>—</div>
-              ) : (
-                grouped[col.key].map((f) => (
-                  <KanbanCard
-                    key={f.id}
-                    feature={f}
-                    onOpen={() => setEditing(f)}
-                    onMove={(to) => move(f, to)}
-                  />
-                ))
-              )}
-            </div>
-          ))}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {items.length === 0 ? (
+              <Empty>Aucune carte. Crée la première tâche du projet.</Empty>
+            ) : filtered.length === 0 ? (
+              <Empty>Aucune carte ne correspond aux filtres actifs.</Empty>
+            ) : (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14,
+                minHeight: 400,
+              }}>
+                {COLUMNS.map((col) => (
+                  <div key={col.key} style={{
+                    background: 'rgba(4,3,14,0.35)',
+                    borderRadius: 12, padding: 12,
+                    border: '1px solid rgba(60,40,100,0.16)',
+                    display: 'flex', flexDirection: 'column', gap: 10,
+                    minWidth: 0,
+                  }}>
+                    <header style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '2px 4px',
+                    }}>
+                      <span style={{
+                        fontFamily: "'Inter',sans-serif", fontSize: 11,
+                        color: 'rgba(200,192,216,0.75)',
+                        letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700,
+                      }}>{col.label}</span>
+                      <span style={{ ...muted, fontSize: 11, fontFamily: 'monospace' }}>
+                        {grouped[col.key].length}
+                      </span>
+                    </header>
+
+                    {grouped[col.key].length === 0 ? (
+                      <div style={{ ...muted, fontSize: 11, textAlign: 'center', padding: '12px 4px' }}>—</div>
+                    ) : (
+                      grouped[col.key].map((f) => (
+                        <KanbanCard
+                          key={f.id}
+                          feature={f}
+                          onOpen={() => setEditing(f)}
+                          onMove={(to) => move(f, to)}
+                        />
+                      ))
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -146,22 +159,26 @@ export function KanbanTab() {
   );
 }
 
-function TagFilterBtn({ active, onClick, children }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        background: active ? `rgba(${ACC_RGB},0.14)` : 'rgba(20,14,38,0.6)',
-        border: `1px solid ${active ? ACC : 'rgba(80,50,130,0.28)'}`,
-        color: active ? ACC : 'rgba(180,170,200,0.6)',
-        borderRadius: 4, padding: '2px 8px', cursor: 'pointer',
-        fontFamily: "'Inter',sans-serif", fontSize: 10.5,
-        fontWeight: active ? 700 : 500, letterSpacing: '0.2px',
-      }}
-    >
-      {children}
-    </button>
-  );
+function matches(f, filters) {
+  // Tags — include: at least one matches; exclude: none match
+  if (filters.tags.length > 0) {
+    const hasAny = filters.tags.some((t) => (f.tags || []).includes(t));
+    if (filters.tagMode === 'include' && !hasAny) return false;
+    if (filters.tagMode === 'exclude' && hasAny) return false;
+  }
+  // Assignees — OR within the category
+  if (filters.assignees.length > 0) {
+    const key = f.assigneeId ?? null;
+    const match = filters.assignees.some((x) => (x ?? null) === key);
+    if (!match) return false;
+  }
+  // Overdue
+  if (filters.overdue) {
+    if (!f.dueDate) return false;
+    if (f.dueDate >= Date.now() / 1000) return false;
+    if (f.status === 'done') return false;
+  }
+  return true;
 }
 
 function KanbanCard({ feature, onOpen, onMove }) {

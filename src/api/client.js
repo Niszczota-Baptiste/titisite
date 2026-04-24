@@ -154,6 +154,11 @@ export const api = {
       uploadPath: `/workspaces/${slug}/builds`,
       downloadUrl: (id) => `/api/workspaces/${slug}/builds/${id}/download`,
     },
+    tags: {
+      list:   () => request('GET',    `/workspaces/${slug}/tags`),
+      rename: (name, to) => request('PUT', `/workspaces/${slug}/tags/${encodeURIComponent(name)}`, { to }),
+      remove: (name) => request('DELETE', `/workspaces/${slug}/tags/${encodeURIComponent(name)}`),
+    },
   }),
 
   // Global
