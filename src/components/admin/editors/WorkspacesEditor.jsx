@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../../api/client';
+import { EmojiPicker } from '../EmojiPicker';
+import { TagsPopup } from '../TagsPopup';
 import { ACC, ACC_RGB, Button, CheckboxField, Field, Input, Textarea } from '../ui';
+
+function todayDateString() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 const COLOR_PALETTE = ['#c9a8e8', '#e8a87c', '#9ad4ae', '#80c8e8', '#e88cb8', '#e8d27c', '#8a60b0', '#ff8a9b'];
 
@@ -172,9 +180,11 @@ function WorkspaceForm({ workspace, users, onSaved, onCancel }) {
   const [description, setDescription] = useState(workspace?.description || '');
   const [color, setColor] = useState(workspace?.color || COLOR_PALETTE[0]);
   const [icon, setIcon] = useState(workspace?.icon || '🎮');
-  const [startDate, setStartDate] = useState(toDateInput(workspace?.startDate));
+  const [startDate, setStartDate] = useState(
+    isEdit ? toDateInput(workspace?.startDate) : todayDateString(),
+  );
   const [endDate, setEndDate] = useState(toDateInput(workspace?.endDate));
-  const [tagsStr, setTagsStr] = useState((workspace?.tags || []).join(', '));
+  const [tags, setTags] = useState(workspace?.tags || []);
   const [memberIds, setMemberIds] = useState(workspace?.memberIds || []);
   const [status, setStatus] = useState(workspace?.status || 'active');
   const [saving, setSaving] = useState(false);
@@ -189,7 +199,7 @@ function WorkspaceForm({ workspace, users, onSaved, onCancel }) {
         name, slug: slug || undefined, description, color, icon,
         startDate: startDate || null,
         endDate: endDate || null,
-        tags: tagsStr.split(',').map((s) => s.trim()).filter(Boolean),
+        tags,
         status,
         memberIds,
       };
@@ -229,12 +239,7 @@ function WorkspaceForm({ workspace, users, onSaved, onCancel }) {
           <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="game-alpha" />
         </Field>
         <Field label="Icône">
-          <Input
-            value={icon}
-            onChange={(e) => setIcon(e.target.value)}
-            placeholder="🎮"
-            style={{ textAlign: 'center', fontSize: 18 }}
-          />
+          <EmojiPicker value={icon} onChange={setIcon} />
         </Field>
       </div>
 
@@ -276,11 +281,7 @@ function WorkspaceForm({ workspace, users, onSaved, onCancel }) {
       </div>
 
       <Field label="Tags">
-        <Input
-          value={tagsStr}
-          onChange={(e) => setTagsStr(e.target.value)}
-          placeholder="2d, pixel-art, multijoueur"
-        />
+        <TagsPopup value={tags} onChange={setTags} />
       </Field>
 
       <Field label="Membres">
