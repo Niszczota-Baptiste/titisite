@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { FeatureModal } from './FeatureModal';
 import {
@@ -466,6 +467,7 @@ function matches(f, filters) {
 export function KanbanTab() {
   const { workspace } = useWorkspace();
   const ws = api.ws(workspace.slug);
+  const mobile = useIsMobile(720);
   const [items, setItems] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -476,6 +478,7 @@ export function KanbanTab() {
   const [err, setErr] = useState(null);
   const [dragCard, setDragCard] = useState(null);
   const [dragOver, setDragOver] = useState(null);
+  const [activeCol, setActiveCol] = useState('doing');
 
   const load = async () => {
     try {
@@ -545,21 +548,23 @@ export function KanbanTab() {
 
       {/* Toolbar */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
+        display: 'flex', alignItems: 'center', gap: mobile ? 8 : 10,
         flexWrap: 'wrap', marginBottom: 0, paddingBottom: 14,
         borderBottom: showFilters ? 'none' : '1px solid rgba(60,40,100,0.12)',
       }}>
-        <h2 style={{
-          fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 700,
-          color: '#ede8f8', letterSpacing: '-0.4px', marginRight: 4,
-        }}>Kanban</h2>
+        {!mobile && (
+          <h2 style={{
+            fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 700,
+            color: '#ede8f8', letterSpacing: '-0.4px', marginRight: 4,
+          }}>Kanban</h2>
+        )}
 
         <SprintStats items={items} />
 
         <div style={{ flex: 1 }} />
 
         {/* Search */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', flex: mobile ? '1 1 100%' : 'initial', order: mobile ? 1 : 0 }}>
           <svg style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)' }}
             width="12" height="12" viewBox="0 0 14 14" fill="none">
             <circle cx="6" cy="6" r="4.5" stroke="#4a3860" strokeWidth="1.3" />
@@ -570,8 +575,10 @@ export function KanbanTab() {
             placeholder="Rechercher…"
             style={{
               background: 'rgba(14,9,28,0.7)', border: '1px solid rgba(60,40,100,0.25)',
-              borderRadius: 8, padding: '6px 11px 6px 28px', color: '#c8c0d8',
-              fontSize: 13, outline: 'none', width: 170, transition: 'border-color 0.2s',
+              borderRadius: 8, padding: '7px 11px 7px 28px', color: '#c8c0d8',
+              fontSize: 13, outline: 'none',
+              width: mobile ? '100%' : 170,
+              transition: 'border-color 0.2s',
             }}
             onFocus={(e) => (e.target.style.borderColor = 'rgba(160,110,220,0.5)')}
             onBlur={(e) => (e.target.style.borderColor = 'rgba(60,40,100,0.25)')}
@@ -593,7 +600,7 @@ export function KanbanTab() {
           <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
             <path d="M2 3h10M4 7h6M6 11h2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
           </svg>
-          Filtres
+          {mobile ? '' : 'Filtres'}
           {activeFilters > 0 && (
             <span style={{
               background: ACC, color: '#08051a', borderRadius: '50%',
@@ -605,7 +612,7 @@ export function KanbanTab() {
 
         {/* New card */}
         <button
-          onClick={() => setEditing({})}
+          onClick={() => setEditing({ status: mobile ? activeCol : 'backlog' })}
           style={{
             background: ACC, color: '#08051a', border: 'none', borderRadius: 8,
             padding: '6px 15px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
@@ -615,7 +622,7 @@ export function KanbanTab() {
           onMouseEnter={(e) => (e.currentTarget.style.boxShadow = `0 0 24px rgba(${ACC_RGB},0.45)`)}
           onMouseLeave={(e) => (e.currentTarget.style.boxShadow = `0 0 16px rgba(${ACC_RGB},0.25)`)}
         >
-          <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> Nouvelle carte
+          <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> {mobile ? '' : 'Nouvelle carte'}
         </button>
       </div>
 
@@ -629,6 +636,36 @@ export function KanbanTab() {
 
       {loading ? (
         <p style={{ ...muted, fontSize: 13, paddingTop: 20 }}>Chargement…</p>
+      ) : mobile ? (
+        <>
+          <div style={{ paddingTop: 14, paddingBottom: 72 }}>
+            {(() => {
+              const col = COLUMNS.find((c) => c.key === activeCol) || COLUMNS[0];
+              return (
+                <KanbanColumn
+                  key={col.key}
+                  col={col}
+                  cards={grouped[col.key]}
+                  users={users}
+                  dragOver={false}
+                  onDragOver={() => {}}
+                  onDrop={() => {}}
+                  onDragLeave={() => {}}
+                  onDragStart={() => {}}
+                  onDragEnd={() => {}}
+                  onOpen={setEditing}
+                  onQuickAdd={onQuickAdd}
+                />
+              );
+            })()}
+          </div>
+          <MobileColumnTabs
+            columns={COLUMNS}
+            activeCol={activeCol}
+            onChange={setActiveCol}
+            counts={COLUMNS.reduce((acc, c) => ({ ...acc, [c.key]: grouped[c.key].length }), {})}
+          />
+        </>
       ) : (
         <div style={{
           display: 'flex', gap: 14, paddingTop: 18,
@@ -661,6 +698,55 @@ export function KanbanTab() {
         onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); load(); }}
       />
+    </div>
+  );
+}
+
+// ── Mobile column switcher (fixed bottom bar) ──────────────────────────────
+
+function MobileColumnTabs({ columns, activeCol, onChange, counts }) {
+  return (
+    <div style={{
+      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 40,
+      background: 'rgba(4,3,12,0.97)',
+      borderTop: '1px solid rgba(60,40,100,0.25)',
+      backdropFilter: 'blur(16px)',
+      display: 'flex', height: 60,
+      paddingBottom: 'env(safe-area-inset-bottom, 0)',
+    }}>
+      {columns.map((c) => {
+        const active = activeCol === c.key;
+        const cnt = counts[c.key] || 0;
+        return (
+          <button
+            key={c.key}
+            onClick={() => onChange(c.key)}
+            style={{
+              flex: 1, background: 'none', border: 'none', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', gap: 3, padding: 0,
+              borderTop: `2px solid ${active ? c.accent : 'transparent'}`,
+              transition: 'all 0.15s',
+            }}
+          >
+            <span style={{
+              fontFamily: "'Space Grotesk',sans-serif", fontSize: 11,
+              fontWeight: active ? 700 : 500,
+              color: active ? c.accent : '#6a6080',
+            }}>
+              {c.label}
+            </span>
+            {cnt > 0 && (
+              <span style={{
+                background: active ? c.accent : 'rgba(80,50,130,0.3)',
+                color: active ? '#08051a' : '#6a6080',
+                borderRadius: 20, fontSize: 9, fontWeight: 800,
+                padding: '1px 6px',
+              }}>{cnt}</span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

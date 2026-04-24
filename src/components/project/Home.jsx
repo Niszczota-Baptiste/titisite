@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { ACC, ACC_RGB, Button } from '../admin/ui';
 import { CalendarExportButton } from './CalendarExport';
 import { HomeShell } from './ProjectLayout';
@@ -11,6 +12,7 @@ import {
 
 export function Home() {
   const { user, logout, isAdmin } = useAuth();
+  const mobile = useIsMobile(860);
   const [workspaces, setWorkspaces] = useState(null);
   const [events, setEvents] = useState(null);
   const [err, setErr] = useState(null);
@@ -24,23 +26,28 @@ export function Home() {
 
   return (
     <HomeShell user={user} logout={logout} isAdmin={isAdmin}>
-      <main style={{ maxWidth: 1180, margin: '0 auto', padding: '36px 32px 60px' }}>
+      <main style={{
+        maxWidth: 1180, margin: '0 auto',
+        padding: `${mobile ? 24 : 36}px clamp(16px, 4vw, 32px) 60px`,
+      }}>
         <div style={{
-          marginBottom: 28, display: 'flex', alignItems: 'flex-start',
-          justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
+          marginBottom: mobile ? 22 : 28,
+          display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
         }}>
           <div>
             <h1 style={{
-              fontFamily: "'Space Grotesk',sans-serif", fontSize: 28, fontWeight: 700,
+              fontFamily: "'Space Grotesk',sans-serif",
+              fontSize: mobile ? 22 : 28, fontWeight: 700,
               color: '#ede8f8', letterSpacing: '-0.5px', marginBottom: 6,
             }}>
               Salut {user?.name?.split(' ')[0] || user?.email} 👋
             </h1>
-            <p style={{ ...muted, fontSize: 14 }}>
+            <p style={{ ...muted, fontSize: mobile ? 13 : 14 }}>
               Tes projets et les prochaines échéances.
             </p>
           </div>
-          <CalendarExportButton />
+          <CalendarExportButton compact={mobile} />
         </div>
 
         {err && (
@@ -51,7 +58,11 @@ export function Home() {
           }}>{err}</div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: mobile ? '1fr' : '2fr 1fr',
+          gap: mobile ? 20 : 24,
+        }}>
           <ProjectsGrid workspaces={workspaces} isAdmin={isAdmin} />
           <UpcomingPanel events={events} />
         </div>

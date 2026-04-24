@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { CalendarExportButton } from './CalendarExport';
 import { FeatureModal } from './FeatureModal';
@@ -14,6 +15,7 @@ const DAY_LABELS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 export function CalendarTab() {
   const { workspace } = useWorkspace();
   const ws = api.ws(workspace.slug);
+  const mobile = useIsMobile(720);
   const [cursor, setCursor] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -78,6 +80,18 @@ export function CalendarTab() {
 
       {loading ? (
         <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>
+      ) : mobile ? (
+        <MobileAgenda
+          cells={cells}
+          eventsByDay={eventsByDay}
+          onMeeting={(m) => setMeetingEditing(m)}
+          onFeature={(f) => setFeatureEditing(f)}
+          onAddMeetingHere={(d) =>
+            setMeetingEditing({
+              defaultStart: toLocalDatetimeInput(Math.floor(atNineAM(d) / 1000)),
+            })
+          }
+        />
       ) : (
         <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
           <div style={{
@@ -222,6 +236,69 @@ const chipStyle = {
   textAlign: 'left', cursor: 'pointer',
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 };
+
+function MobileAgenda({ cells, eventsByDay, onMeeting, onFeature, onAddMeetingHere }) {
+  const days = cells.filter((c) => c.inMonth);
+  return (
+    <div style={{ ...card, padding: 4, overflow: 'hidden' }}>
+      {days.map((cell) => {
+        const key = dayKey(cell.date);
+        const events = eventsByDay[key] || [];
+        const weekday = cell.date.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '');
+        const isToday = cell.isToday;
+        return (
+          <div
+            key={key}
+            style={{
+              display: 'flex', gap: 12, padding: '10px 8px',
+              borderBottom: '1px solid rgba(60,40,100,0.12)',
+              background: isToday ? `rgba(${ACC_RGB},0.05)` : 'transparent',
+              minHeight: 56,
+            }}
+          >
+            <div style={{
+              width: 44, flexShrink: 0,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'flex-start',
+              paddingTop: 2,
+            }}>
+              <span style={{
+                fontFamily: 'monospace', fontSize: 9.5,
+                color: isToday ? ACC : 'rgba(180,170,200,0.55)',
+                textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: 700,
+              }}>{weekday}</span>
+              <span style={{
+                fontFamily: "'Space Grotesk',sans-serif",
+                fontSize: 20, fontWeight: 700,
+                color: isToday ? ACC : '#ede8f8', lineHeight: 1.1,
+              }}>{cell.date.getDate()}</span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {events.length === 0 ? (
+                <button
+                  onClick={() => onAddMeetingHere(cell.date)}
+                  style={{
+                    background: 'none', border: '1px dashed rgba(80,50,130,0.25)',
+                    borderRadius: 6, padding: '7px 10px',
+                    color: 'rgba(180,170,200,0.4)',
+                    fontFamily: "'Inter',sans-serif", fontSize: 11.5,
+                    textAlign: 'left', cursor: 'pointer',
+                  }}
+                >
+                  + Ajouter une réunion
+                </button>
+              ) : (
+                events.map((ev, i) => (
+                  <EventChip key={i} ev={ev} onMeeting={onMeeting} onFeature={onFeature} />
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
 function dayKey(d) {
