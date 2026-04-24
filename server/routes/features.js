@@ -19,6 +19,17 @@ const SELECT = `
   LEFT JOIN users c ON c.id = f.created_by
 `;
 
+function parseSubtasks(raw) {
+  try {
+    const arr = JSON.parse(raw || '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((s) => s && typeof s === 'object')
+      .map((s) => ({ d: String(s.d || '').trim(), done: !!s.done }))
+      .filter((s) => s.d);
+  } catch { return []; }
+}
+
 function parseTags(raw) {
   try {
     const arr = JSON.parse(raw || '[]');
@@ -83,6 +94,7 @@ function rowToFeature(r) {
     position: r.position,
     dueDate: r.due_date,
     tags: parseTags(r.tags),
+    subtasks: parseSubtasks(r.subtasks),
     commentsCount: r.comments_count,
     documents: getDocumentsFor('feature', r.id),
     createdAt: r.created_at,
@@ -104,7 +116,7 @@ featuresRouter.get('/', (req, res) => {
 });
 
 featuresRouter.post('/', (req, res) => {
-  const { title, description, status, priority, assigneeId, dueDate, tags, documentIds } = req.body || {};
+  const { title, description, status, priority, assigneeId, dueDate, tags, documentIds, subtasks } = req.body || {};
   if (!title || !title.trim()) return res.status(400).json({ error: 'missing_title' });
   const st = STATUSES.includes(status) ? status : 'backlog';
   const pr = PRIORITIES.includes(priority) ? priority : 'medium';
@@ -113,11 +125,12 @@ featuresRouter.post('/', (req, res) => {
   ).get(req.workspace.id, st).n;
   const due = parseDue(dueDate);
   const tagList = normalizeTags(tags) || [];
+  const subtaskList = parseSubtasks(JSON.stringify(subtasks || []));
 
   const result = db.prepare(`
     INSERT INTO features
-      (workspace_id, title, description, status, priority, assignee_id, created_by, position, due_date, tags)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (workspace_id, title, description, status, priority, assignee_id, created_by, position, due_date, tags, subtasks)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     req.workspace.id,
     title.trim(), (description || '').trim(),
@@ -127,6 +140,7 @@ featuresRouter.post('/', (req, res) => {
     pos,
     due === undefined ? null : due,
     JSON.stringify(tagList),
+    JSON.stringify(subtaskList),
   );
   if (Array.isArray(documentIds)) {
     syncAttachments('feature', result.lastInsertRowid, documentIds, req.workspace.id);
@@ -141,7 +155,7 @@ featuresRouter.put('/:id', (req, res) => {
     .get(id, req.workspace.id);
   if (!existing) return res.status(404).json({ error: 'not_found' });
 
-  const { title, description, status, priority, assigneeId, position, dueDate, tags, documentIds } = req.body || {};
+  const { title, description, status, priority, assigneeId, position, dueDate, tags, documentIds, subtasks } = req.body || {};
   const newStatus = STATUSES.includes(status) ? status : existing.status;
   const movedColumn = newStatus !== existing.status;
   const newPos = movedColumn
@@ -152,6 +166,7 @@ featuresRouter.put('/:id', (req, res) => {
 
   const due = parseDue(dueDate);
   const normalized = normalizeTags(tags);
+  const normalizedSubtasks = subtasks !== undefined ? parseSubtasks(JSON.stringify(subtasks)) : null;
 
   db.prepare(`
     UPDATE features SET
@@ -163,6 +178,7 @@ featuresRouter.put('/:id', (req, res) => {
       position    = ?,
       due_date    = ?,
       tags        = COALESCE(?, tags),
+      subtasks    = COALESCE(?, subtasks),
       updated_at  = strftime('%s','now')
     WHERE id = ?
   `).run(
@@ -174,6 +190,7 @@ featuresRouter.put('/:id', (req, res) => {
     newPos,
     due === undefined ? existing.due_date : due,
     normalized ? JSON.stringify(normalized) : null,
+    normalizedSubtasks ? JSON.stringify(normalizedSubtasks) : null,
     id,
   );
   if (Array.isArray(documentIds)) syncAttachments('feature', id, documentIds, req.workspace.id);

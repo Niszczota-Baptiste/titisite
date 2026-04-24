@@ -130,6 +130,7 @@ export function migrate() {
   // Backfill columns on pre-existing installs (must run before indexes that reference new columns)
   ensureColumn('features', 'due_date', 'INTEGER');
   ensureColumn('features', 'tags', `TEXT NOT NULL DEFAULT '[]'`);
+  ensureColumn('features', 'subtasks', `TEXT NOT NULL DEFAULT '[]'`);
   ensureColumn('features', 'workspace_id', 'INTEGER REFERENCES workspaces(id) ON DELETE CASCADE');
   db.exec(`CREATE INDEX IF NOT EXISTS idx_features_due_date ON features(due_date);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_features_workspace ON features(workspace_id);`);
