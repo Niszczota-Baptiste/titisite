@@ -10,6 +10,7 @@ import { resolveWorkspace } from './middleware/scope.js';
 import { authRouter } from './routes/auth.js';
 import { tracksRouter } from './routes/tracks.js';
 import { buildsRouter } from './routes/builds.js';
+import { calendarRouter } from './routes/calendar.js';
 import { collectionRouter } from './routes/collection.js';
 import { commentsRouter } from './routes/comments.js';
 import { documentsRouter } from './routes/documents.js';
@@ -41,6 +42,9 @@ app.get('/api/audio/:filename', (req, res) => {
     if (err && !res.headersSent) res.status(404).end();
   });
 });
+
+// Public ICS calendar feed (token-based, no auth header — phones subscribe to this)
+app.use('/api/calendar', calendarRouter);
 
 // Auth + users + tracks (tracks has its own router with audio upload support,
 // so we skip the generic collection router for it below)

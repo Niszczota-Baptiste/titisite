@@ -37,9 +37,12 @@ export function migrate() {
       name          TEXT NOT NULL DEFAULT '',
       password_hash TEXT NOT NULL,
       role          TEXT NOT NULL CHECK (role IN ('admin','member')),
+      ical_token    TEXT,
       created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
   `);
+  ensureColumn('users', 'ical_token', 'TEXT');
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ical_token ON users(ical_token) WHERE ical_token IS NOT NULL;`);
 
   // ── Workspaces (team projects) ──
   db.exec(`

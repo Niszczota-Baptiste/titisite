@@ -1,8 +1,31 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../auth.js';
 import { db } from '../db.js';
+import { ensureIcalToken, rotateIcalToken } from '../users.js';
 
 export const meRouter = Router();
+
+meRouter.get('/ical-token', requireAuth, requireRole('admin', 'member'), (req, res) => {
+  const token = ensureIcalToken(req.user.id);
+  const base = (req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host');
+  res.json({
+    token,
+    httpUrl: `${base}/api/calendar/${token}.ics`,
+    webcalUrl: `webcal://${req.get('host')}/api/calendar/${token}.ics`,
+    downloadUrl: `${base}/api/calendar/${token}.ics?download=1`,
+  });
+});
+
+meRouter.post('/ical-token/rotate', requireAuth, requireRole('admin', 'member'), (req, res) => {
+  const token = rotateIcalToken(req.user.id);
+  const base = (req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host');
+  res.json({
+    token,
+    httpUrl: `${base}/api/calendar/${token}.ics`,
+    webcalUrl: `webcal://${req.get('host')}/api/calendar/${token}.ics`,
+    downloadUrl: `${base}/api/calendar/${token}.ics?download=1`,
+  });
+});
 
 /**
  * Returns meetings + upcoming/overdue feature due dates across all workspaces

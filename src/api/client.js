@@ -101,6 +101,10 @@ export const api = {
   },
   me: () => request('GET', '/auth/me'),
 
+  // iCal feed (per-user token, used to subscribe from phone/desktop calendars)
+  icalToken:       () => request('GET',  '/me/ical-token'),
+  rotateIcalToken: () => request('POST', '/me/ical-token/rotate'),
+
   // Public-site collections (admin-only writes)
   list:    (c) => request('GET', `/${c}`),
   create:  (c, body) => request('POST', `/${c}`, body),

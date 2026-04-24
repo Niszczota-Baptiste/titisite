@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
 import { useWorkspace } from '../../hooks/useWorkspace';
+import { CalendarExportButton } from './CalendarExport';
 import { FeatureModal } from './FeatureModal';
 import { MeetingModal } from './MeetingModal';
 import {
@@ -60,6 +61,7 @@ export function CalendarTab() {
       title="Calendrier"
       actions={
         <>
+          <CalendarExportButton compact />
           <Button variant="ghost" onClick={() => shift(-1)}>←</Button>
           <Button variant="ghost" onClick={goToday}>Aujourd'hui</Button>
           <Button variant="ghost" onClick={() => shift(+1)}>→</Button>

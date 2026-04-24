@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { ACC, ACC_RGB, Button } from '../admin/ui';
+import { CalendarExportButton } from './CalendarExport';
 import { HomeShell } from './ProjectLayout';
 import {
   Tag, card, formatDate, muted,
@@ -24,16 +25,22 @@ export function Home() {
   return (
     <HomeShell user={user} logout={logout} isAdmin={isAdmin}>
       <main style={{ maxWidth: 1180, margin: '0 auto', padding: '36px 32px 60px' }}>
-        <div style={{ marginBottom: 28 }}>
-          <h1 style={{
-            fontFamily: "'Space Grotesk',sans-serif", fontSize: 28, fontWeight: 700,
-            color: '#ede8f8', letterSpacing: '-0.5px', marginBottom: 6,
-          }}>
-            Salut {user?.name?.split(' ')[0] || user?.email} 👋
-          </h1>
-          <p style={{ ...muted, fontSize: 14 }}>
-            Tes projets et les prochaines échéances.
-          </p>
+        <div style={{
+          marginBottom: 28, display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
+        }}>
+          <div>
+            <h1 style={{
+              fontFamily: "'Space Grotesk',sans-serif", fontSize: 28, fontWeight: 700,
+              color: '#ede8f8', letterSpacing: '-0.5px', marginBottom: 6,
+            }}>
+              Salut {user?.name?.split(' ')[0] || user?.email} 👋
+            </h1>
+            <p style={{ ...muted, fontSize: 14 }}>
+              Tes projets et les prochaines échéances.
+            </p>
+          </div>
+          <CalendarExportButton />
         </div>
 
         {err && (
