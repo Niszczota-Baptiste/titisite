@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
+import { api } from '../api/client';
 import { TWEAK_DEFAULTS } from '../data/constants';
 import { i18n } from '../data/i18n';
 import { useContent } from '../hooks/useContent';
+
+const DEFAULT_SECTIONS = [
+  { id: 'projects',   visible: true },
+  { id: 'music',      visible: true },
+  { id: 'about',      visible: true },
+  { id: 'education',  visible: true },
+  { id: 'experience', visible: true },
+  { id: 'current',    visible: true },
+  { id: 'contact',    visible: true },
+];
 
 import { AmbientCanvas } from '../components/ambient/AmbientCanvas';
 import { CursorEffect } from '../components/ambient/CursorEffect';
@@ -41,6 +52,12 @@ export default function Public() {
   const { accent } = tweaks;
   const t = i18n[lang] || i18n.fr;
   const { data } = useContent();
+  const [sections, setSections] = useState(DEFAULT_SECTIONS);
+  useEffect(() => {
+    api.publicSections()
+      .then((r) => Array.isArray(r?.sections) && r.sections.length && setSections(r.sections))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => { localStorage.setItem('portfolio_lang', lang); }, [lang]);
 
@@ -103,13 +120,19 @@ export default function Public() {
         <Nav lang={lang} setLang={setLang} t={t} accent={accent} mode={mode}
              toggleMode={() => setMode((m) => (m === 'dark' ? 'light' : 'dark'))} />
         <Hero t={t} lang={lang} accent={accent} mode={mode} />
-        <Projects t={t} lang={lang} accent={accent} items={data.projects} />
-        <Music t={t} accent={accent} tracks={data.tracks} />
-        <About t={t} accent={accent} />
-        <Education t={t} lang={lang} accent={accent} items={data.education} />
-        <Experience t={t} lang={lang} accent={accent} items={data.experience} />
-        <CurrentlyBuilding lang={lang} accent={accent} items={data.currently} />
-        <Contact t={t} accent={accent} />
+        {sections.map((s) => {
+          if (!s.visible) return null;
+          switch (s.id) {
+            case 'projects':   return <Projects key="projects" t={t} lang={lang} accent={accent} items={data.projects} />;
+            case 'music':      return <Music key="music" t={t} accent={accent} tracks={data.tracks} />;
+            case 'about':      return <About key="about" t={t} accent={accent} />;
+            case 'education':  return <Education key="education" t={t} lang={lang} accent={accent} items={data.education} />;
+            case 'experience': return <Experience key="experience" t={t} lang={lang} accent={accent} items={data.experience} />;
+            case 'current':    return <CurrentlyBuilding key="current" lang={lang} accent={accent} items={data.currently} />;
+            case 'contact':    return <Contact key="contact" t={t} accent={accent} />;
+            default: return null;
+          }
+        })}
         <Footer t={t} accent={accent} onEaster={() => setEaster(true)} />
       </div>
 

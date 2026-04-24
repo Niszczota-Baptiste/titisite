@@ -177,6 +177,15 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_attachments_target ON attachments(target_type, target_id);`);
+
+  // ── Site-wide settings (key/value JSON, e.g. public-page section order) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS site_settings (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
 }
 
 function ensureColumn(table, column, ddl) {

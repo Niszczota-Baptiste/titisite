@@ -17,6 +17,7 @@ import { documentsRouter } from './routes/documents.js';
 import { featuresRouter } from './routes/features.js';
 import { meRouter } from './routes/me.js';
 import { meetingsRouter } from './routes/meetings.js';
+import { settingsRouter } from './routes/settings.js';
 import { tagsRouter } from './routes/tags.js';
 import { usersRouter } from './routes/users.js';
 import { workspacesRouter } from './routes/workspaces.js';
@@ -59,6 +60,9 @@ for (const name of COLLECTIONS.filter((n) => n !== 'tracks')) {
 
 // Comments (global polymorphic)
 app.use('/api/comments', commentsRouter);
+
+// Site-wide settings (public read for sections order, admin write)
+app.use('/api/settings', settingsRouter);
 
 // Current-user helpers (e.g. /api/me/events for the cross-project calendar)
 app.use('/api/me', meRouter);

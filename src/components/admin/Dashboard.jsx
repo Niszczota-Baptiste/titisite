@@ -6,11 +6,13 @@ import { CurrentlyEditor } from './editors/CurrentlyEditor';
 import { EducationEditor } from './editors/EducationEditor';
 import { ExperienceEditor } from './editors/ExperienceEditor';
 import { ProjectsEditor } from './editors/ProjectsEditor';
+import { PublicSectionsEditor } from './editors/PublicSectionsEditor';
 import { TracksEditor } from './editors/TracksEditor';
 import { UsersEditor } from './editors/UsersEditor';
 import { WorkspacesEditor } from './editors/WorkspacesEditor';
 
 const TABS = [
+  { key: 'public',     label: 'Page publique',          Editor: PublicSectionsEditor },
   { key: 'projects',   label: 'Portfolio · Projets',    Editor: ProjectsEditor },
   { key: 'tracks',     label: 'Musique',                Editor: TracksEditor },
   { key: 'experience', label: 'Expérience',             Editor: ExperienceEditor },
@@ -22,7 +24,7 @@ const TABS = [
 
 export function Dashboard() {
   const { user, logout } = useAuth();
-  const [active, setActive] = useState('projects');
+  const [active, setActive] = useState('public');
   const ActiveEditor = TABS.find((t) => t.key === active).Editor;
 
   return (

@@ -105,6 +105,10 @@ export const api = {
   icalToken:       () => request('GET',  '/me/ical-token'),
   rotateIcalToken: () => request('POST', '/me/ical-token/rotate'),
 
+  // Site settings (public-page section order/visibility)
+  publicSections:       () => request('GET', '/settings/public-sections'),
+  setPublicSections:    (sections) => request('PUT', '/settings/public-sections', { sections }),
+
   // Public-site collections (admin-only writes)
   list:    (c) => request('GET', `/${c}`),
   create:  (c, body) => request('POST', `/${c}`, body),
