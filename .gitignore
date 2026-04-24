@@ -1,20 +1,32 @@
+# dependencies / build output
 node_modules
 dist
 dist-ssr
-*.local
 .vite
+
+# editor / OS
 .DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Claude Code
+.claude
+
+# env (secrets)
 .env
 .env.*
 !.env.example
-data.sqlite
-data.sqlite-journal
-data.sqlite-wal
-data.sqlite-shm
-uploads/
-.vscode/*
-!.vscode/extensions.json
-.idea
+*.local
+
+# runtime data — ignored at the repo root only so public/uploads/ keeps working
+/data.sqlite
+/data.sqlite-journal
+/data.sqlite-wal
+/data.sqlite-shm
+/uploads/
+
+# logs
 *.log
 npm-debug.log*
 yarn-debug.log*
