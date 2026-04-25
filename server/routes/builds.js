@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import fs from 'node:fs';
 import { db } from '../db.js';
-import { safeUnlink, upload, uploadPath } from '../uploads.js';
+import { safeUnlink, uploadBuild, uploadPath } from '../uploads.js';
 
 export const buildsRouter = Router({ mergeParams: true });
 
@@ -37,7 +37,7 @@ buildsRouter.get('/', (req, res) => {
   res.json(rows.map(rowToBuild));
 });
 
-buildsRouter.post('/', upload.single('file'), (req, res) => {
+buildsRouter.post('/', uploadBuild.single('file'), (req, res) => {
   const { version, title, status, externalUrl, notes } = req.body || {};
   if (!version) return res.status(400).json({ error: 'missing_version' });
   if (!req.file && !externalUrl) {

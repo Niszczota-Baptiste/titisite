@@ -76,7 +76,17 @@ npm start            # NODE_ENV=production, sert dist/ + /api sur le même port
 | `PORT` | non | `3001` | Port Express |
 | `DB_PATH` | non | `./data.sqlite` | Chemin SQLite |
 | `UPLOADS_DIR` | non | `./uploads` | Dossier des fichiers |
-| `MAX_UPLOAD_BYTES` | non | `1073741824` | Taille max par upload (1 Go) |
+| `DOC_MAX_BYTES` | non | `52428800` | Taille max d'un document (50 Mo par défaut) |
+| `AUDIO_MAX_BYTES` | non | `104857600` | Taille max d'une piste audio (100 Mo par défaut) |
+| `BUILD_MAX_BYTES` | non | `1073741824` | Taille max d'un build de jeu (1 Go par défaut) |
+| `MAX_UPLOAD_BYTES` | non | — | Alias historique de `BUILD_MAX_BYTES` |
+
+Chaque route d'upload applique en plus une **double validation** type (extension + MIME) :
+- **Documents** : PDF, archives (zip), Office (docx/xlsx/pptx), images (jpg/png/gif/webp/svg), texte (txt/md/csv/json)
+- **Audio** : mp3, ogg, wav, flac, m4a, aac
+- **Builds** : zip, 7z, tar.gz, rar, apk, exe, dmg, iso, .bin/.pak/.app/.love
+
+Une extension ou un MIME hors allowlist renvoie `415 Unsupported Media Type`. Les fichiers script ou HTML sont rejetés systématiquement.
 
 ---
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import fs from 'node:fs';
 import { db } from '../db.js';
-import { safeUnlink, upload, uploadPath } from '../uploads.js';
+import { safeUnlink, uploadDocument, uploadPath } from '../uploads.js';
 
 export const documentsRouter = Router({ mergeParams: true });
 
@@ -33,7 +33,7 @@ documentsRouter.get('/', (req, res) => {
   res.json(rows.map(rowToDoc));
 });
 
-documentsRouter.post('/', upload.single('file'), (req, res) => {
+documentsRouter.post('/', uploadDocument.single('file'), (req, res) => {
   const f = req.file;
   if (!f) return res.status(400).json({ error: 'missing_file' });
   const title = (req.body.title || f.originalname || '').trim() || 'Sans titre';

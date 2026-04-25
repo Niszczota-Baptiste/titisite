@@ -1,7 +1,7 @@
 import express from 'express';
 import { getOne, insert, listAll, remove, reorder, update } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
-import { upload, safeUnlink } from '../uploads.js';
+import { safeUnlink, uploadAudio } from '../uploads.js';
 
 export const tracksRouter = express.Router();
 const ADMIN = [requireAuth, requireRole('admin')];
@@ -39,7 +39,7 @@ tracksRouter.post('/reorder', ...ADMIN, (req, res) => {
 });
 
 // ── Audio upload ──
-tracksRouter.post('/:id(\\d+)/audio', ...ADMIN, upload.single('file'), (req, res) => {
+tracksRouter.post('/:id(\\d+)/audio', ...ADMIN, uploadAudio.single('file'), (req, res) => {
   const id = Number(req.params.id);
   const item = getOne('tracks', id);
   if (!item) {

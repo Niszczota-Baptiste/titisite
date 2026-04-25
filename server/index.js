@@ -94,7 +94,15 @@ if (IS_PROD) {
 }
 
 app.use((err, _req, res, _next) => {
-  if (err && err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'file_too_large' });
+  if (err && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'file_too_large' });
+  }
+  if (err && (err.code === 'MIME_NOT_ALLOWED' || err.code === 'EXTENSION_NOT_ALLOWED')) {
+    return res.status(415).json({
+      error: err.code === 'MIME_NOT_ALLOWED' ? 'mime_not_allowed' : 'extension_not_allowed',
+      allowed: err.allowed,
+    });
+  }
   console.error('[server]', err);
   res.status(500).json({ error: 'internal_error' });
 });
