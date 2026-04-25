@@ -11,6 +11,19 @@ const SELECT = `
   LEFT JOIN users u ON u.id = b.uploaded_by
 `;
 
+// Returns the normalized URL string, or `null` if the input is absent/blank,
+// or `false` if it's malformed or has a non-http(s) scheme. We refuse anything
+// other than http/https because this URL is rendered as a clickable link and
+// `javascript:` / `data:` would be an XSS / phishing vector.
+function normalizeExternalUrl(raw) {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return null;
+  let parsed;
+  try { parsed = new URL(trimmed); } catch { return false; }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  return parsed.toString();
+}
+
 function rowToBuild(r) {
   if (!r) return null;
   return {
@@ -44,6 +57,8 @@ buildsRouter.post('/', uploadBuild.single('file'), (req, res) => {
     return res.status(400).json({ error: 'file_or_url_required' });
   }
   const f = req.file || null;
+  const url = f ? null : normalizeExternalUrl(externalUrl);
+  if (url === false) return res.status(400).json({ error: 'invalid_external_url' });
   const result = db.prepare(`
     INSERT INTO builds
       (workspace_id, version, title, status, filename, original_name, mime_type, size, external_url, notes, uploaded_by)
@@ -57,7 +72,7 @@ buildsRouter.post('/', uploadBuild.single('file'), (req, res) => {
     f?.originalname || null,
     f?.mimetype || null,
     f?.size || null,
-    f ? null : (externalUrl || '').trim() || null,
+    url,
     (notes || '').trim(),
     req.user.id,
   );
@@ -71,6 +86,11 @@ buildsRouter.put('/:id', (req, res) => {
     .get(id, req.workspace.id);
   if (!existing) return res.status(404).json({ error: 'not_found' });
   const { version, title, status, externalUrl, notes } = req.body || {};
+  let urlUpdate = undefined;
+  if (externalUrl !== undefined) {
+    urlUpdate = normalizeExternalUrl(externalUrl);
+    if (urlUpdate === false) return res.status(400).json({ error: 'invalid_external_url' });
+  }
   db.prepare(`
     UPDATE builds SET
       version       = COALESCE(?, version),
@@ -83,7 +103,7 @@ buildsRouter.put('/:id', (req, res) => {
     version ?? null,
     title ?? null,
     ['alpha', 'beta', 'release'].includes(status) ? status : null,
-    externalUrl ?? null,
+    urlUpdate ?? null,
     notes ?? null,
     id,
   );

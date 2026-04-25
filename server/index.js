@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,18 +34,60 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const app = express();
 // Trust the first reverse proxy so rate-limit + req.ip see the real client
 app.set('trust proxy', 1);
+
+// Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, …).
+// CSP allows: same-origin everything, Google Fonts (CSS + woff), inline styles
+// because the React tree relies on `style={}` props. HSTS only in prod (would
+// break http://localhost in dev). crossOriginEmbedderPolicy is disabled so
+// audio/image responses without CORP headers keep loading.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      mediaSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: IS_PROD ? [] : null,
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  strictTransportSecurity: IS_PROD
+    ? { maxAge: 15552000, includeSubDomains: true }
+    : false,
+}));
+
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
-// In dev (Vite proxy) requests are already same-origin so cookies "just work";
-// `credentials: true` lets us flip a real second origin in the future without
-// reworking auth. In prod the SPA is served by the same Express, so CORS
-// stays disabled to limit surface.
+// In dev the SPA runs on Vite's port and proxies /api through, so the only
+// origin we want to accept is the Vite dev server. In prod the SPA is served
+// by the same Express, so CORS stays disabled.
+const DEV_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
 app.use(cors({
-  origin: IS_PROD ? false : true,
+  origin: IS_PROD ? false : DEV_ORIGINS,
   credentials: true,
 }));
 
 const rlMessage = (error) => ({ error });
+
+// Cheap global cap on /api/* to blunt scraping / opportunistic DDoS. Endpoints
+// that need a tighter (login, audio) or looser policy layer their own limiter
+// on top — express-rate-limit composes correctly: each request increments
+// every limiter that matches.
+const apiLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: rlMessage('rate_limited'),
+});
+app.use('/api/', apiLimiter);
 
 // Brute-force shield on the login endpoint
 const loginLimiter = rateLimit({
@@ -179,5 +222,10 @@ const server = app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT} (${IS_PROD ? 'prod' : 'dev'})`);
 });
 
-server.headersTimeout = 60 * 60 * 1000;
-server.requestTimeout = 0;
+// Slowloris cap on header reads. 30 s is far more than any legitimate client
+// needs and tight enough to drop pathological connections.
+server.headersTimeout = 30 * 1000;
+// Hard ceiling on a request from headers-done to body-end. Generous because
+// uploadBuild allows up to 1 GB and slow uplinks exist; still finite so an
+// abandoned upload can't pin a socket forever.
+server.requestTimeout = 30 * 60 * 1000;
