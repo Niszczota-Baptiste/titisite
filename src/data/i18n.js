@@ -40,7 +40,7 @@ export const i18n = {
     nav: { projects: '프로젝트', music: '음악', about: '소개', education: '학력', experience: '경력', contact: '연락' },
     hero: { greeting: '안녕하세요, 저는', tagline: '창조하고, 코딩하고, 작곡하다.', role: '로우코드 개발자 · AllShare', cta1: '프로젝트 보기', cta2: '연락하기' },
     projects: { title: '프로젝트', subtitle: '애플리케이션 & 창작물', filters: ['전체', '웹', '모바일', '실험적'], demo: '데모', code: '코드', wip: '진행 중' },
-    {title: '음악',subtitle: '작곡 & 프로덕션',noFile: '나의 세계를 발견해보세요'},
+    music: { title: '음악', subtitle: '작곡 & 프로덕션', noFile: '나의 세계를 발견해보세요' },
     about: {
       title: '소개',
       bio: "저는 창의적인 개발자이자 작곡가입니다. 저는 코드와 음악을 하나의 아이디어를 구조화하고 리듬을 부여하는 서로 다른 방식으로 바라봅니다. 저는 단순한 기반에서 시작해 점점 다듬어가며 균형을 찾아가는 방식으로 도구와 음악을 만듭니다.",
