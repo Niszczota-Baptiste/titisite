@@ -1,18 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, clearSession, getStoredUser, getToken, setStoredUser } from '../api/client';
+import { api, clearSession, getStoredUser, setStoredUser } from '../api/client';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => getStoredUser());
-  const [loading, setLoading] = useState(() => !!getToken() && !getStoredUser());
+  // Optimistic: render with the cached user info immediately, then verify the
+  // session with the server. The HttpOnly cookie is the actual source of
+  // truth — the cached copy is only used so the UI doesn't flash blank.
+  const cached = getStoredUser();
+  const [user, setUser] = useState(cached);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!getToken()) { setLoading(false); return; }
     api.me().then(
-      (me) => { setUser(me); setStoredUser(me); setLoading(false); },
-      () => { clearSession(); setUser(null); setLoading(false); },
-    );
+      (me) => { setUser(me); setStoredUser(me); },
+      () => { clearSession(); setUser(null); },
+    ).finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(async (email, password) => {
@@ -21,8 +24,8 @@ export function AuthProvider({ children }) {
     return out.user;
   }, []);
 
-  const logout = useCallback(() => {
-    clearSession();
+  const logout = useCallback(async () => {
+    await api.logout();
     setUser(null);
   }, []);
 

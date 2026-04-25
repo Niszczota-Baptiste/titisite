@@ -1,36 +1,30 @@
-const TOKEN_KEY = 'portfolio_admin_token';
+// Auth state lives in an HttpOnly cookie set by the server. The client only
+// keeps a *display* copy of the user (name/email/role) in localStorage so the
+// UI can render before /auth/me responds — the cookie is the source of truth.
+
 const USER_KEY = 'portfolio_current_user';
 
-export function getToken() {
-  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
-}
-export function setToken(token) {
-  try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch { /* ignore */ }
-}
 export function getStoredUser() {
   try { return JSON.parse(localStorage.getItem(USER_KEY) || 'null'); } catch { return null; }
 }
+
 export function setStoredUser(user) {
   try {
     if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
     else localStorage.removeItem(USER_KEY);
-  } catch { /* ignore */ }
+  } catch { /* ignore quota */ }
 }
+
 export function clearSession() {
-  setToken(null);
   setStoredUser(null);
 }
 
 async function request(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`/api${path}`, {
     method,
     headers,
+    credentials: 'include',
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (res.status === 204) return null;
@@ -48,8 +42,7 @@ export function uploadFile(path, formData, { onProgress } = {}) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `/api${path}`);
-    const token = getToken();
-    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.withCredentials = true;
     if (onProgress && xhr.upload) {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) onProgress(e.loaded / e.total);
@@ -73,9 +66,7 @@ export function uploadFile(path, formData, { onProgress } = {}) {
 }
 
 export async function triggerDownload(url, suggestedName) {
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${getToken() || ''}` },
-  });
+  const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error('download_failed');
   const blob = await res.blob();
   const objUrl = URL.createObjectURL(blob);
@@ -96,8 +87,12 @@ export const api = {
 
   login: async (email, password) => {
     const out = await request('POST', '/auth/login', { email, password });
-    if (out?.token) { setToken(out.token); setStoredUser(out.user); }
+    if (out?.user) setStoredUser(out.user);
     return out;
+  },
+  logout: async () => {
+    try { await request('POST', '/auth/logout'); } catch { /* ignore */ }
+    clearSession();
   },
   me: () => request('GET', '/auth/me'),
 
@@ -106,8 +101,8 @@ export const api = {
   rotateIcalToken: () => request('POST', '/me/ical-token/rotate'),
 
   // Site settings (public-page section order/visibility)
-  publicSections:       () => request('GET', '/settings/public-sections'),
-  setPublicSections:    (sections) => request('PUT', '/settings/public-sections', { sections }),
+  publicSections:    () => request('GET', '/settings/public-sections'),
+  setPublicSections: (sections) => request('PUT', '/settings/public-sections', { sections }),
 
   // Public-site collections (admin-only writes)
   list:    (c) => request('GET', `/${c}`),

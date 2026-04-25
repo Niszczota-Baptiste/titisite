@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -33,7 +34,15 @@ const app = express();
 // Trust the first reverse proxy so rate-limit + req.ip see the real client
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
-app.use(cors({ origin: IS_PROD ? false : true, credentials: false }));
+app.use(cookieParser());
+// In dev (Vite proxy) requests are already same-origin so cookies "just work";
+// `credentials: true` lets us flip a real second origin in the future without
+// reworking auth. In prod the SPA is served by the same Express, so CORS
+// stays disabled to limit surface.
+app.use(cors({
+  origin: IS_PROD ? false : true,
+  credentials: true,
+}));
 
 const rlMessage = (error) => ({ error });
 
