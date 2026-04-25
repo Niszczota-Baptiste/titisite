@@ -72,6 +72,13 @@ body.mode-transitioning * {
   padding: 0;
 }
 
+/* Keyboard navigation — visible only when using Tab, invisible for mouse */
+:focus-visible {
+  outline: 2px solid #c9a8e8;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 html {
   scroll-behavior: smooth;
 }

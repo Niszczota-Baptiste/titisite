@@ -68,14 +68,22 @@ export function Dashboard() {
         </div>
       </header>
 
-      <div style={{
-        display: 'flex', gap: 4, padding: '20px 32px 0',
-        borderBottom: '1px solid rgba(60,40,100,0.12)',
-        overflowX: 'auto',
-      }}>
+      <div
+        role="tablist"
+        aria-label="Sections du tableau de bord"
+        style={{
+          display: 'flex', gap: 4, padding: '20px 32px 0',
+          borderBottom: '1px solid rgba(60,40,100,0.12)',
+          overflowX: 'auto',
+        }}
+      >
         {TABS.map((t) => (
           <button
             key={t.key}
+            id={`tab-${t.key}`}
+            role="tab"
+            aria-selected={active === t.key}
+            aria-controls={`panel-${t.key}`}
             onClick={() => setActive(t.key)}
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
@@ -95,7 +103,12 @@ export function Dashboard() {
         ))}
       </div>
 
-      <main style={{ maxWidth: 980, margin: '0 auto', padding: '32px' }}>
+      <main
+        role="tabpanel"
+        id={`panel-${active}`}
+        aria-labelledby={`tab-${active}`}
+        style={{ maxWidth: 980, margin: '0 auto', padding: '32px' }}
+      >
         <ActiveEditor />
       </main>
     </div>

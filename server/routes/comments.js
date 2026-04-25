@@ -1,9 +1,20 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { requireAuth, requireRole } from '../auth.js';
 import { db } from '../db.js';
 import { isMember } from '../workspaces.js';
 
 export const commentsRouter = Router();
+
+// Per-user (or IP fallback) cap to prevent comment spam
+const commentLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  keyGenerator: (req) => `comment_${req.user?.id ?? req.ip}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'rate_limited' },
+});
 
 const PROJECT = requireRole('admin', 'member');
 const TARGETS = ['document', 'feature', 'discussion'];
@@ -61,7 +72,7 @@ commentsRouter.get('/', requireAuth, PROJECT, (req, res) => {
   res.json(rows.map((r) => rowToComment(r, req.user)));
 });
 
-commentsRouter.post('/', requireAuth, PROJECT, (req, res) => {
+commentsRouter.post('/', requireAuth, PROJECT, commentLimiter, (req, res) => {
   const { targetType, targetId, body } = req.body || {};
   if (!TARGETS.includes(targetType)) return res.status(400).json({ error: 'invalid_target_type' });
   if (!body || !body.trim()) return res.status(400).json({ error: 'missing_body' });

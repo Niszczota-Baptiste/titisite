@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import { humanizeError } from '../../utils/errors';
 import {
   ACC, ACC_RGB, Button, ErrorBanner, Textarea,
   Empty, muted, relativeDate,
@@ -19,7 +20,7 @@ export function Comments({ targetType, targetId = 0, compact = false }) {
       const data = await api.comments(targetType, targetId);
       setItems(data);
     } catch (e) {
-      setErr(e.message);
+      setErr(humanizeError(e));
     } finally {
       setLoading(false);
     }
@@ -37,7 +38,7 @@ export function Comments({ targetType, targetId = 0, compact = false }) {
       setBody('');
       await load();
     } catch (e) {
-      setErr(e.message);
+      setErr(humanizeError(e));
     } finally {
       setSending(false);
     }
@@ -49,7 +50,7 @@ export function Comments({ targetType, targetId = 0, compact = false }) {
       await api.deleteComment(id);
       await load();
     } catch (e) {
-      setErr(e.message);
+      setErr(humanizeError(e));
     }
   };
 

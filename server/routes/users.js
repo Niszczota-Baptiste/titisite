@@ -33,26 +33,31 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
 
   const { name, role, password } = req.body || {};
 
-  if (role && role !== existing.role) {
-    if (!['admin', 'member'].includes(role)) return res.status(400).json({ error: 'invalid_role' });
-    if (existing.role === 'admin' && role !== 'admin') {
-      const adminCount = db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'admin'`).get().n;
-      if (adminCount <= 1) return res.status(400).json({ error: 'last_admin' });
-    }
+  if (role && !['admin', 'member'].includes(role)) {
+    return res.status(400).json({ error: 'invalid_role' });
   }
 
   const newHash = password ? bcrypt.hashSync(password, 10) : existing.password_hash;
 
-  db.prepare(`
-    UPDATE users SET
-      name          = COALESCE(?, name),
-      role          = COALESCE(?, role),
-      password_hash = ?
-    WHERE id = ?
-  `).run(name ?? null, role ?? null, newHash, id);
+  // Wrap the admin-count guard and the update in a single transaction so
+  // the invariant "at least one admin must always exist" is enforced atomically.
+  const result = db.transaction(() => {
+    if (role && role !== existing.role && existing.role === 'admin' && role !== 'admin') {
+      const adminCount = db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'admin'`).get().n;
+      if (adminCount <= 1) return 'last_admin';
+    }
+    db.prepare(`
+      UPDATE users SET
+        name          = COALESCE(?, name),
+        role          = COALESCE(?, role),
+        password_hash = ?
+      WHERE id = ?
+    `).run(name ?? null, role ?? null, newHash, id);
+    return db.prepare(`SELECT id, email, name, role, created_at FROM users WHERE id = ?`).get(id);
+  })();
 
-  const row = db.prepare(`SELECT id, email, name, role, created_at FROM users WHERE id = ?`).get(id);
-  res.json(row);
+  if (result === 'last_admin') return res.status(400).json({ error: 'last_admin' });
+  res.json(result);
 });
 
 usersRouter.delete('/:id', requireAuth, ADMIN, (req, res) => {

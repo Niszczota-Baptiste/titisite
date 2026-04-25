@@ -1,3 +1,5 @@
+import { Children, cloneElement, isValidElement, useId } from 'react';
+
 export const ACC = '#c9a8e8';
 export const ACC_RGB = '201,168,232';
 
@@ -34,10 +36,16 @@ export const inputStyle = {
 };
 
 export function Field({ label: lbl, children }) {
+  const id = useId();
+  // Inject the generated id into the first direct child so <label htmlFor>
+  // is properly associated with the input/select/textarea for screen readers.
+  const kids = Children.map(children, (child, i) =>
+    i === 0 && isValidElement(child) ? cloneElement(child, { id }) : child,
+  );
   return (
     <div style={{ marginBottom: 14 }}>
-      {lbl && <label style={label}>{lbl}</label>}
-      {children}
+      {lbl && <label htmlFor={id} style={label}>{lbl}</label>}
+      {kids}
     </div>
   );
 }

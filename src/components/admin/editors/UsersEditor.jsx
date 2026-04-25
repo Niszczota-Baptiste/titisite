@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../../api/client';
 import { useAuth } from '../../../auth/AuthContext';
+import { humanizeError } from '../../../utils/errors';
 import { ACC, ACC_RGB, Button, Field, Input } from '../ui';
 
 const ROLES = [['member', 'Membre'], ['admin', 'Admin']];
@@ -236,16 +237,4 @@ function UserForm({ user, onSaved, onCancel }) {
   );
 }
 
-const MESSAGES = {
-  email_taken:       'Cet email est déjà utilisé.',
-  last_admin:        'Impossible : il doit rester au moins un admin.',
-  cannot_delete_self:'Impossible de supprimer ton propre compte.',
-  invalid_role:      'Rôle invalide.',
-  missing_fields:    'Email et mot de passe requis.',
-  forbidden:         "Tu n'as pas les droits pour cette action.",
-  not_found:         'Utilisateur introuvable.',
-};
-function humanize(err) {
-  const key = err?.body?.error || err?.message;
-  return MESSAGES[key] || err?.message || 'Erreur inconnue.';
-}
+const humanize = humanizeError;
