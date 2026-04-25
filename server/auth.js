@@ -9,6 +9,10 @@ const TOKEN_TTL = `${TOKEN_TTL_DAYS}d`;
 const COOKIE_NAME = 'titisite_session';
 
 if (!SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[auth] JWT_SECRET is required in production — aborting.');
+    process.exit(1);
+  }
   console.warn('[auth] JWT_SECRET is not set — protected endpoints will reject all requests.');
 }
 

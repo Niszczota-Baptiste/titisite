@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { requireAuth, requireRole } from './auth.js';
 import { COLLECTIONS, db } from './db.js';
 import { resolveWorkspace } from './middleware/scope.js';
+import { attachCsrfCookie, requireCsrf } from './middleware/csrf.js';
 import { authRouter } from './routes/auth.js';
 import { tracksRouter } from './routes/tracks.js';
 import { buildsRouter } from './routes/builds.js';
@@ -88,6 +89,8 @@ const apiLimiter = rateLimit({
   message: rlMessage('rate_limited'),
 });
 app.use('/api/', apiLimiter);
+app.use('/api/', attachCsrfCookie);
+app.use('/api/', requireCsrf);
 
 // Brute-force shield on the login endpoint
 const loginLimiter = rateLimit({

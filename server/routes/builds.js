@@ -18,6 +18,7 @@ const SELECT = `
 function normalizeExternalUrl(raw) {
   const trimmed = (raw ?? '').trim();
   if (!trimmed) return null;
+  if (trimmed.length > 2048) return false;
   let parsed;
   try { parsed = new URL(trimmed); } catch { return false; }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;

@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Route, Routes } from 'react-router-dom';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const Public = lazy(() => import('./pages/Public'));
 const Admin = lazy(() => import('./pages/Admin'));
@@ -11,12 +12,14 @@ function Loading() {
 
 export default function App() {
   return (
-    <Suspense fallback={<Loading />}>
-      <Routes>
-        <Route path="/admin/*"   element={<Admin />} />
-        <Route path="/project/*" element={<Project />} />
-        <Route path="*"          element={<Public />} />
-      </Routes>
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<Loading />}>
+        <Routes>
+          <Route path="/admin/*"   element={<ErrorBoundary><Admin /></ErrorBoundary>} />
+          <Route path="/project/*" element={<ErrorBoundary><Project /></ErrorBoundary>} />
+          <Route path="*"          element={<ErrorBoundary><Public /></ErrorBoundary>} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }

@@ -43,12 +43,13 @@ function normalizeTags(input) {
   const seen = new Set();
   const out = [];
   for (const t of input) {
-    const v = String(t || '').trim();
+    const v = String(t || '').trim().slice(0, 64);
     if (!v) continue;
     const key = v.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(v);
+    if (out.length >= 20) break;
   }
   return out;
 }

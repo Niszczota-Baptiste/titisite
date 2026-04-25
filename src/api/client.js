@@ -19,8 +19,18 @@ export function clearSession() {
   setStoredUser(null);
 }
 
+function getCsrfToken() {
+  const entry = document.cookie.split('; ').find((c) => c.startsWith('csrf_token='));
+  return entry ? entry.split('=')[1] : null;
+}
+
 async function request(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
+  const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
+  if (!SAFE.has(method)) {
+    const tok = getCsrfToken();
+    if (tok) headers['X-CSRF-Token'] = tok;
+  }
   const res = await fetch(`/api${path}`, {
     method,
     headers,
@@ -43,6 +53,8 @@ export function uploadFile(path, formData, { onProgress } = {}) {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `/api${path}`);
     xhr.withCredentials = true;
+    const csrfTok = getCsrfToken();
+    if (csrfTok) xhr.setRequestHeader('X-CSRF-Token', csrfTok);
     if (onProgress && xhr.upload) {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) onProgress(e.loaded / e.total);
