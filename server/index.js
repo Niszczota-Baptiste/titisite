@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +34,35 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const app = express();
 // Trust the first reverse proxy so rate-limit + req.ip see the real client
 app.set('trust proxy', 1);
+
+// Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, …).
+// CSP allows: same-origin everything, Google Fonts (CSS + woff), inline styles
+// because the React tree relies on `style={}` props. HSTS only in prod (would
+// break http://localhost in dev). crossOriginEmbedderPolicy is disabled so
+// audio/image responses without CORP headers keep loading.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      mediaSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: IS_PROD ? [] : null,
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  strictTransportSecurity: IS_PROD
+    ? { maxAge: 15552000, includeSubDomains: true }
+    : false,
+}));
+
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 // In dev (Vite proxy) requests are already same-origin so cookies "just work";
