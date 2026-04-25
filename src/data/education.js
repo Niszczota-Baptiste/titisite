@@ -1,29 +1,20 @@
 export const education = [
   {
-    year: '2023',
+    year: '2024',
     degree: {
-      fr: "Licence Pro Développement Web & Mobile",
-      en: "Bachelor's in Web & Mobile Development",
-      ko: "웹 & 모바일 개발 학사",
+      fr: "Diplôme d'ingénieur — Informatique et technologie de l'information",
+      en: "Engineering degree — Computer Science and Information Technology",
+      ko: "공학 학위 — 컴퓨터 과학 및 정보 기술",
     },
-    school: 'Université de Lyon',
+    school: 'Sejong University - South Korea',
   },
   {
-    year: '2022',
+    year: '2019–2024',
     degree: {
-      fr: "BTS Services Informatiques aux Organisations",
-      en: "HND IT Services",
-      ko: "IT 서비스 전문학사",
+      fr: "Diplôme d'ingénieur — Informatique et technologie de l'information",
+      en: "Engineering degree — Computer Science and Information Technology",
+      ko: "공학 학위 — 컴퓨터 과학 및 정보 기술",
     },
-    school: 'Lycée Claude Fauriel',
-  },
-  {
-    year: '2021–',
-    degree: {
-      fr: "Coréen — autoformation continue",
-      en: "Korean — ongoing self-study",
-      ko: "한국어 자기학습",
-    },
-    school: 'Autoformation',
-  },
+    school: 'Junia HEI - Lille',
+},
 ];
