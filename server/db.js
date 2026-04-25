@@ -186,6 +186,20 @@ export function migrate() {
       updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
   `);
+
+  // ── Revoked JWTs (blocklist) ──
+  // Logging out, deleting a user, or otherwise wanting to invalidate a session
+  // before its 7-day TTL stores the token's `jti` here. requireAuth rejects
+  // any token whose jti is present. Rows are pruned on every check past their
+  // expiry so the table stays bounded.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS revoked_tokens (
+      jti        TEXT PRIMARY KEY,
+      user_id    INTEGER,
+      expires_at INTEGER NOT NULL
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_at);`);
 }
 
 function ensureColumn(table, column, ddl) {

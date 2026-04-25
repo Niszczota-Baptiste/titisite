@@ -1,4 +1,6 @@
+import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
+import { db } from './db.js';
 import { findById } from './users.js';
 
 const SECRET = process.env.JWT_SECRET;
@@ -10,12 +12,16 @@ if (!SECRET) {
   console.warn('[auth] JWT_SECRET is not set — protected endpoints will reject all requests.');
 }
 
+function newJti() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
 export function signToken(user) {
   if (!SECRET) throw new Error('JWT_SECRET not configured');
   return jwt.sign(
     { sub: user.id, email: user.email, role: user.role, name: user.name },
     SECRET,
-    { expiresIn: TOKEN_TTL },
+    { expiresIn: TOKEN_TTL, jwtid: newJti() },
   );
 }
 
@@ -50,15 +56,52 @@ function readToken(req) {
   return null;
 }
 
+let _isRevoked;
+let _insertRevoked;
+let _pruneRevoked;
+function prepareRevocationStmts() {
+  if (_isRevoked) return;
+  _isRevoked = db.prepare(`SELECT 1 FROM revoked_tokens WHERE jti = ?`);
+  _insertRevoked = db.prepare(
+    `INSERT OR IGNORE INTO revoked_tokens (jti, user_id, expires_at) VALUES (?, ?, ?)`,
+  );
+  _pruneRevoked = db.prepare(`DELETE FROM revoked_tokens WHERE expires_at < ?`);
+}
+
+// Add a token to the blocklist. `exp` is the JWT's expiry (seconds since
+// epoch); past expiry there's no point keeping the row.
+export function revokeToken({ jti, sub, exp }) {
+  if (!jti || !exp) return;
+  prepareRevocationStmts();
+  _insertRevoked.run(jti, sub ?? null, exp);
+  // Lazy prune so the table stays bounded without a background job.
+  _pruneRevoked.run(Math.floor(Date.now() / 1000));
+}
+
+// Convenience: revoke whatever cookie/Bearer the caller is presenting.
+export function revokeRequestToken(req) {
+  const raw = readToken(req);
+  if (!raw) return;
+  const decoded = jwt.decode(raw);
+  if (decoded && decoded.jti && decoded.exp) {
+    revokeToken({ jti: decoded.jti, sub: decoded.sub, exp: decoded.exp });
+  }
+}
+
 export function requireAuth(req, res, next) {
   if (!SECRET) return res.status(500).json({ error: 'server_misconfigured' });
   const token = readToken(req);
   if (!token) return res.status(401).json({ error: 'missing_token' });
   try {
     const decoded = jwt.verify(token, SECRET);
+    prepareRevocationStmts();
+    if (decoded.jti && _isRevoked.get(decoded.jti)) {
+      return res.status(401).json({ error: 'revoked_token' });
+    }
     const user = findById(decoded.sub);
     if (!user) return res.status(401).json({ error: 'user_not_found' });
     req.user = user;
+    req.token = decoded;
     next();
   } catch {
     res.status(401).json({ error: 'invalid_token' });

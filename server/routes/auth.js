@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { clearSessionCookie, requireAuth, setSessionCookie } from '../auth.js';
+import {
+  clearSessionCookie,
+  requireAuth,
+  revokeRequestToken,
+  setSessionCookie,
+} from '../auth.js';
 import { findByEmail, verifyPassword } from '../users.js';
 
 export const authRouter = Router();
@@ -19,7 +24,10 @@ authRouter.post('/login', (req, res) => {
   });
 });
 
-authRouter.post('/logout', (_req, res) => {
+authRouter.post('/logout', (req, res) => {
+  // Best-effort revocation: blocklist the current token so even if it leaked
+  // before the logout, it can't be replayed for the rest of its TTL.
+  revokeRequestToken(req);
   clearSessionCookie(res);
   res.status(204).end();
 });
