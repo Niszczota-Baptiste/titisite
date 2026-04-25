@@ -1,11 +1,12 @@
 import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requireAuth, requireRole } from './auth.js';
-import { COLLECTIONS } from './db.js';
+import { COLLECTIONS, db } from './db.js';
 import { resolveWorkspace } from './middleware/scope.js';
 import { authRouter } from './routes/auth.js';
 import { tracksRouter } from './routes/tracks.js';
@@ -29,26 +30,76 @@ const PORT = Number(process.env.PORT || 3001);
 const IS_PROD = process.env.NODE_ENV === 'production';
 
 const app = express();
+// Trust the first reverse proxy so rate-limit + req.ip see the real client
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
 app.use(cors({ origin: IS_PROD ? false : true, credentials: false }));
 
+const rlMessage = (error) => ({ error });
+
+// Brute-force shield on the login endpoint
+const loginLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: rlMessage('too_many_attempts'),
+});
+
+// Audio streaming: 60 req / minute / IP
+const audioLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: rlMessage('rate_limited'),
+});
+
+// Calendar feeds get polled by phones every few minutes; cap is generous
+const calendarLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: rlMessage('rate_limited'),
+});
+
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: IS_PROD ? 'production' : 'development' }));
 
-// Public audio streaming (portfolio music extracts served from the uploads dir)
+// Public audio streaming. Two layers of defense beyond the rate limiter:
+//   1. Filename regex prevents path traversal / weird chars.
+//   2. The filename MUST belong to a row in the `tracks` table — we never
+//      serve raw files from `uploads/`, only audio that's been deliberately
+//      attached to a public track. Documents and game builds (sharing the
+//      same on-disk directory) stay reachable only through their respective
+//      authenticated download endpoints.
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(ROOT, 'uploads');
-app.get('/api/audio/:filename', (req, res) => {
+// Lazy-prepared so it's created after migrate() has run on first boot.
+let _trackByFilename;
+const trackByFilename = (fn) => {
+  if (!_trackByFilename) {
+    _trackByFilename = db.prepare(
+      `SELECT 1 FROM tracks WHERE json_extract(data, '$.filename') = ?`,
+    );
+  }
+  return _trackByFilename.get(fn);
+};
+app.get('/api/audio/:filename', audioLimiter, (req, res) => {
   const { filename } = req.params;
   if (!/^[\w.-]+$/.test(filename)) return res.status(400).end();
+  if (!trackByFilename(filename)) return res.status(404).end();
   res.sendFile(filename, { root: UPLOADS_DIR }, (err) => {
     if (err && !res.headersSent) res.status(404).end();
   });
 });
 
 // Public ICS calendar feed (token-based, no auth header — phones subscribe to this)
-app.use('/api/calendar', calendarRouter);
+app.use('/api/calendar', calendarLimiter, calendarRouter);
 
 // Auth + users + tracks (tracks has its own router with audio upload support,
 // so we skip the generic collection router for it below)
+app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth',   authRouter);
 app.use('/api/users',  usersRouter);
 app.use('/api/tracks', tracksRouter);

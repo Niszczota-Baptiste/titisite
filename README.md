@@ -185,7 +185,12 @@ Caps à connaître :
 - Endpoints `/api/workspaces/:slug/**` : `resolveWorkspace` vérifie l'appartenance avant tout enfant (features/meetings/documents/builds/tags)
 - CORS off en prod (même origine)
 
-À ajouter pour exposition publique large : rate-limit sur `/auth/login` (`express-rate-limit`).
+- Rate limiting (express-rate-limit) :
+  - `POST /api/auth/login` — 10 tentatives infructueuses / minute / IP
+  - `GET /api/audio/:filename` — 60 / minute / IP, **et** le filename doit
+    correspondre à un row de la table `tracks` (impossible de lire un
+    document privé même en devinant l'UUID)
+  - `GET /api/calendar/:token.ics` — 30 / minute / IP
 
 ---
 
