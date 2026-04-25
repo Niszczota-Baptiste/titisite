@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../../api/client';
 import { useAuth } from '../../../auth/AuthContext';
+import { SkeletonList } from '../../Skeleton';
+import { useConfirm } from '../../ConfirmProvider';
 import { humanizeError } from '../../../utils/errors';
 import { ACC, ACC_RGB, Button, Field, Input } from '../ui';
 
@@ -8,6 +10,7 @@ const ROLES = [['member', 'Membre'], ['admin', 'Admin']];
 
 export function UsersEditor() {
   const { user: currentUser } = useAuth();
+  const confirm = useConfirm();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // user object or 'new'
@@ -23,7 +26,7 @@ export function UsersEditor() {
 
   const remove = async (u) => {
     if (u.id === currentUser?.id) return;
-    if (!window.confirm(`Supprimer définitivement ${u.email} ?`)) return;
+    if (!await confirm(`Supprimer définitivement ${u.email} ?`)) return;
     try { await api.deleteUser(u.id); await load(); }
     catch (e) { setErr(humanize(e)); }
   };
@@ -54,7 +57,7 @@ export function UsersEditor() {
       )}
 
       {loading ? (
-        <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif" }}>Chargement…</p>
+        <SkeletonList rows={3} rowHeight={72} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {editing === 'new' && (

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { useConfirm } from '../ConfirmProvider';
 import { AttachmentsEditor } from './Attachments';
 import { Comments } from './Comments';
 import {
@@ -24,6 +25,7 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
   const [newSub, setNewSub] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
+  const confirm = useConfirm();
 
   const isEdit = !!(feature && feature.id);
   const ws = workspaceSlug ? api.ws(workspaceSlug) : null;
@@ -74,7 +76,7 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
 
   const remove = async () => {
     if (!isEdit || !ws) return;
-    if (!window.confirm('Supprimer cette carte ?')) return;
+    if (!await confirm('Supprimer cette carte ?')) return;
     try { await ws.features.remove(feature.id); onSaved?.(); }
     catch (ex) { setErr(ex.message); }
   };

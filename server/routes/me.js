@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../auth.js';
+import { logAudit } from '../audit.js';
 import { db } from '../db.js';
 import { ensureIcalToken, rotateIcalToken } from '../users.js';
 
@@ -18,6 +19,7 @@ meRouter.get('/ical-token', requireAuth, requireRole('admin', 'member'), (req, r
 
 meRouter.post('/ical-token/rotate', requireAuth, requireRole('admin', 'member'), (req, res) => {
   const token = rotateIcalToken(req.user.id);
+  logAudit('ical.rotate', { userId: req.user.id, ip: req.ip });
   const base = (req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host');
   res.json({
     token,

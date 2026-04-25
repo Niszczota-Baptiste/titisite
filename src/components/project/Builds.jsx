@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, triggerDownload, uploadFile } from '../../api/client';
+import { useConfirm } from '../ConfirmProvider';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import {
   ACC, ACC_RGB, Button, ErrorBanner, Field, Input, Modal, Section, Textarea,
@@ -17,6 +18,7 @@ export function BuildsTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [err, setErr] = useState(null);
+  const confirm = useConfirm();
 
   const load = async () => {
     try { setItems(await ws.builds.list()); }
@@ -26,7 +28,7 @@ export function BuildsTab() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
 
   const remove = async (id) => {
-    if (!window.confirm('Supprimer ce build ?')) return;
+    if (!await confirm('Supprimer ce build ?')) return;
     try { await ws.builds.remove(id); await load(); }
     catch (e) { setErr(e.message); }
   };

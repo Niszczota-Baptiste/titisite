@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { useConfirm } from '../ConfirmProvider';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { ACC, ACC_RGB, card, muted, tagColor } from './shared';
 
@@ -23,6 +24,7 @@ export function FilterSidebar({ filters, setFilters, users, counts, onTagsMutate
   const [tagsOpen, setTagsOpen] = useState(true);
   const [assigneesOpen, setAssigneesOpen] = useState(true);
   const [manageMode, setManageMode] = useState(false);
+  const confirm = useConfirm();
 
   const tagsByName = [...(counts?.tags || new Map()).entries()]
     .map(([name, count]) => ({ name, count }))
@@ -78,7 +80,7 @@ export function FilterSidebar({ filters, setFilters, users, counts, onTagsMutate
   };
 
   const remove = async (name) => {
-    if (!window.confirm(`Supprimer le tag « ${name} » de toutes les cartes de ce projet ?`)) return;
+    if (!await confirm(`Supprimer le tag « ${name} » de toutes les cartes de ce projet ?`)) return;
     try {
       await ws.tags.remove(name);
       setFilters((f) => ({ ...f, tags: f.tags.filter((t) => t !== name) }));

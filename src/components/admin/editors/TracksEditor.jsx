@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { uploadFile, api } from '../../../api/client';
+import { useConfirm } from '../../ConfirmProvider';
 import { Field, Input } from '../ui';
 import { ItemList } from '../ItemList';
 
@@ -93,6 +94,7 @@ function ClipTimeline({ clipStart, audioDur, onChange }) {
 
 // ── Per-track form with audio ──────────────────────────────────────────────
 function TrackForm({ d, set }) {
+  const confirm = useConfirm();
   const audioRef = useRef(null);
   const [audioDur, setAudioDur] = useState(0);
   const [previewing, setPreviewing] = useState(false);
@@ -142,7 +144,7 @@ function TrackForm({ d, set }) {
   };
 
   const removeAudio = async () => {
-    if (!d.id || !window.confirm('Supprimer le fichier audio ?')) return;
+    if (!d.id || !await confirm('Supprimer le fichier audio ?')) return;
     setErr(null);
     try {
       await api.del(`/tracks/${d.id}/audio`);

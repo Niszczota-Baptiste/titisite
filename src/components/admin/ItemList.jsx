@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { SkeletonList } from '../Skeleton';
+import { useConfirm } from '../ConfirmProvider';
 import { ACC, ACC_RGB, Button, box } from './ui';
 
 export function ItemList({
@@ -15,6 +17,7 @@ export function ItemList({
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const confirm = useConfirm();
 
   const load = async () => {
     setLoading(true);
@@ -66,7 +69,7 @@ export function ItemList({
   };
 
   const remove = async (id) => {
-    if (!window.confirm('Supprimer définitivement ?')) return;
+    if (!await confirm('Supprimer définitivement ?')) return;
     try {
       await api.remove(collection, id);
       await load();
@@ -115,7 +118,7 @@ export function ItemList({
       )}
 
       {loading ? (
-        <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif" }}>Chargement…</p>
+        <SkeletonList rows={4} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {editing === 'new' && (

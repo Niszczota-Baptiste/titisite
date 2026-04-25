@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../auth.js';
+import { logAudit } from '../audit.js';
 import { db } from '../db.js';
 import { findByEmail, listUsers } from '../users.js';
 
@@ -57,6 +58,12 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
   })();
 
   if (result === 'last_admin') return res.status(400).json({ error: 'last_admin' });
+  if (role && role !== existing.role) {
+    logAudit('user.role_change', {
+      userId: req.user.id, ip: req.ip,
+      meta: { targetId: id, from: existing.role, to: role },
+    });
+  }
   res.json(result);
 });
 
@@ -64,7 +71,7 @@ usersRouter.delete('/:id', requireAuth, ADMIN, (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user.id) return res.status(400).json({ error: 'cannot_delete_self' });
 
-  const row = db.prepare(`SELECT role FROM users WHERE id = ?`).get(id);
+  const row = db.prepare(`SELECT role, email FROM users WHERE id = ?`).get(id);
   if (!row) return res.status(404).json({ error: 'not_found' });
   if (row.role === 'admin') {
     const adminCount = db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'admin'`).get().n;
@@ -72,5 +79,9 @@ usersRouter.delete('/:id', requireAuth, ADMIN, (req, res) => {
   }
 
   db.prepare(`DELETE FROM users WHERE id = ?`).run(id);
+  logAudit('user.delete', {
+    userId: req.user.id, ip: req.ip,
+    meta: { targetId: id, email: row.email },
+  });
   res.status(204).end();
 });

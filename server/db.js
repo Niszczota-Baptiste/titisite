@@ -200,6 +200,21 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_at);`);
+
+  // ── Audit log ──
+  // Append-only record of sensitive operations for incident response.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      action     TEXT    NOT NULL,
+      user_id    INTEGER,
+      ip         TEXT,
+      meta       TEXT,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id, created_at);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action, created_at);`);
 }
 
 function ensureColumn(table, column, ddl) {

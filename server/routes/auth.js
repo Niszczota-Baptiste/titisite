@@ -5,6 +5,7 @@ import {
   revokeRequestToken,
   setSessionCookie,
 } from '../auth.js';
+import { logAudit } from '../audit.js';
 import { findByEmail, verifyPassword } from '../users.js';
 
 export const authRouter = Router();
@@ -13,11 +14,11 @@ authRouter.post('/login', (req, res) => {
   const { email, password } = req.body || {};
   const user = findByEmail(email);
   if (!user || !verifyPassword(user, password)) {
+    logAudit('login.fail', { ip: req.ip, meta: { email } });
     return res.status(401).json({ error: 'invalid_credentials' });
   }
   setSessionCookie(res, user);
-  // No token in body — the cookie is the source of truth. We still return the
-  // public user info so the SPA can populate its UI without a follow-up GET.
+  logAudit('login', { userId: user.id, ip: req.ip });
   res.json({
     user: { id: user.id, email: user.email, name: user.name, role: user.role },
     expiresIn: '7d',
@@ -25,9 +26,8 @@ authRouter.post('/login', (req, res) => {
 });
 
 authRouter.post('/logout', (req, res) => {
-  // Best-effort revocation: blocklist the current token so even if it leaked
-  // before the logout, it can't be replayed for the rest of its TTL.
   revokeRequestToken(req);
+  logAudit('logout', { userId: req.user?.id, ip: req.ip });
   clearSessionCookie(res);
   res.status(204).end();
 });

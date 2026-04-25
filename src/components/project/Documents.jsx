@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, triggerDownload, uploadFile } from '../../api/client';
+import { useConfirm } from '../ConfirmProvider';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import {
   ACC_RGB, Button, ErrorBanner, Field, Input, Modal, Section, Textarea,
@@ -16,6 +17,7 @@ export function DocumentsTab() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [active, setActive] = useState(null);
   const [err, setErr] = useState(null);
+  const confirm = useConfirm();
 
   const load = async () => {
     try { setItems(await ws.documents.list()); }
@@ -25,7 +27,7 @@ export function DocumentsTab() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
 
   const remove = async (id) => {
-    if (!window.confirm('Supprimer ce document ?')) return;
+    if (!await confirm('Supprimer ce document ?')) return;
     try { await ws.documents.remove(id); await load(); }
     catch (e) { setErr(e.message); }
   };

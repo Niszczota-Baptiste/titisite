@@ -24,7 +24,23 @@ function getCsrfToken() {
   return entry ? entry.split('=')[1] : null;
 }
 
+// Retry GET requests on transient network failures with exponential backoff.
+// Non-GET methods are never retried — mutations must not be duplicated.
 async function request(method, path, body) {
+  const MAX_RETRIES = method === 'GET' ? 2 : 0;
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 2 ** (attempt - 1) * 500));
+    try { return await requestOnce(method, path, body); }
+    catch (err) {
+      lastErr = err;
+      if (err.message !== 'network_error') throw err; // HTTP errors → no retry
+    }
+  }
+  throw lastErr;
+}
+
+async function requestOnce(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
   const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
   if (!SAFE.has(method)) {

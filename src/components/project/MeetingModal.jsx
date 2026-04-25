@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { useConfirm } from '../ConfirmProvider';
 import { AttachmentsEditor } from './Attachments';
 import {
   Button, ErrorBanner, Field, Input, Modal, Textarea,
@@ -14,6 +15,7 @@ export function MeetingModal({ open, meeting, workspaceSlug, onClose, onSaved, d
   const [documentIds, setDocumentIds] = useState([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
+  const confirm = useConfirm();
 
   const isEdit = !!(meeting && meeting.id);
   const ws = workspaceSlug ? api.ws(workspaceSlug) : null;
@@ -52,7 +54,7 @@ export function MeetingModal({ open, meeting, workspaceSlug, onClose, onSaved, d
 
   const remove = async () => {
     if (!isEdit || !ws) return;
-    if (!window.confirm('Supprimer cette réunion ?')) return;
+    if (!await confirm('Supprimer cette réunion ?')) return;
     try { await ws.meetings.remove(meeting.id); onSaved?.(); }
     catch (ex) { setErr(ex.message); }
   };

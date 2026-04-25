@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../../api/client';
+import { useConfirm } from '../../ConfirmProvider';
 import { EmojiPicker } from '../EmojiPicker';
 import { TagsPopup } from '../TagsPopup';
 import { ACC, ACC_RGB, Button, CheckboxField, Field, Input, Textarea } from '../ui';
@@ -18,6 +19,7 @@ export function WorkspacesEditor() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // 'new' | workspace
   const [err, setErr] = useState(null);
+  const confirm = useConfirm();
 
   const load = async () => {
     setLoading(true);
@@ -30,7 +32,7 @@ export function WorkspacesEditor() {
   useEffect(() => { load(); }, []);
 
   const remove = async (w) => {
-    if (!window.confirm(`Supprimer « ${w.name} » et toutes ses données (cards, réunions, documents, builds) ?`)) return;
+    if (!await confirm(`Supprimer « ${w.name} » et toutes ses données (cards, réunions, documents, builds) ?`)) return;
     try { await api.workspaces.remove(w.id); await load(); }
     catch (e) { setErr(humanize(e)); }
   };
