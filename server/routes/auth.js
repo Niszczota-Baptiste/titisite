@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import {
   clearSessionCookie,
@@ -5,14 +6,22 @@ import {
   revokeRequestToken,
   setSessionCookie,
 } from '../auth.js';
-import { findByEmail, verifyPassword } from '../users.js';
+import { findByEmail } from '../users.js';
+
+// Dummy hash used when the email doesn't exist, so the bcrypt work factor is
+// always paid regardless of whether the account exists. This prevents
+// user-enumeration via response-time differences.
+const DUMMY_HASH = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
 
 export const authRouter = Router();
 
 authRouter.post('/login', (req, res) => {
   const { email, password } = req.body || {};
   const user = findByEmail(email);
-  if (!user || !verifyPassword(user, password)) {
+  const hash = user?.password_hash ?? DUMMY_HASH;
+  const valid = typeof password === 'string' && password.length > 0
+    && bcrypt.compareSync(password, hash);
+  if (!user || !valid) {
     return res.status(401).json({ error: 'invalid_credentials' });
   }
   setSessionCookie(res, user);

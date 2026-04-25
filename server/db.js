@@ -42,6 +42,7 @@ export function migrate() {
     );
   `);
   ensureColumn('users', 'ical_token', 'TEXT');
+  ensureColumn('users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ical_token ON users(ical_token) WHERE ical_token IS NOT NULL;`);
 
   // ── Workspaces (team projects) ──
@@ -200,6 +201,17 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_at);`);
+
+  // ── Persistent rate-limit counters (login brute-force protection) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limit_hits (
+      key        TEXT    NOT NULL,
+      window_end INTEGER NOT NULL,
+      hits       INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (key, window_end)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_rl_window ON rate_limit_hits(window_end);`);
 }
 
 function ensureColumn(table, column, ddl) {

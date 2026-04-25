@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../auth.js';
 import { db } from '../db.js';
-import { findByEmail, listUsers } from '../users.js';
+import { bumpTokenVersion, findByEmail, listUsers } from '../users.js';
 
 export const usersRouter = Router();
 
@@ -50,6 +50,8 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
       password_hash = ?
     WHERE id = ?
   `).run(name ?? null, role ?? null, newHash, id);
+
+  if (password) bumpTokenVersion(id);
 
   const row = db.prepare(`SELECT id, email, name, role, created_at FROM users WHERE id = ?`).get(id);
   res.json(row);

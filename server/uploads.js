@@ -27,14 +27,14 @@ export const ALLOWED_DOCUMENT = {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-powerpoint',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
     'text/plain', 'text/markdown', 'text/csv',
     'application/json',
   ]),
   ext: new Set([
     '.pdf', '.zip',
     '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp',
     '.txt', '.md', '.csv', '.json',
   ]),
 };
