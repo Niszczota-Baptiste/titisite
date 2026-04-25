@@ -16,7 +16,7 @@ export const experience = [
     },
     outcomes: [
       { fr: "Conception de documents et déploiement d’API", en: "Document design and API deployment", ko: "문서 설계 및 API 배포" },
-      { fr: "Développement de nouvelles fonctionnalités", en: "Development of new features", ko: "신규 기능 개발" },
+      { fr: "Développement de nouvelles fonctionnalités", en: "Development of new features", ko: "신규 기능 개발" }
     ],
   },
 
@@ -35,6 +35,13 @@ export const experience = [
       en: "Consulting on business process digitalization using low-code and RPA tools. Contribution to digital transformation projects and internal workflow optimization.",
       ko: "로우코드 및 RPA 도구를 활용한 비즈니스 프로세스 디지털화 컨설팅. 디지털 전환 및 내부 워크플로 개선 프로젝트 참여.",
     },
+     outcomes: [{fr: "Gestion d'une dizaine de projets",
+                en: "Management of around ten projects",
+                ko: "약 10개의 프로젝트 관리"},
+                {fr: "Conception d’interfaçages avec SAP",
+                en: "Design of SAP integrations",
+                ko: "SAP 연동 설계"}
+],
   },
 
   {
@@ -52,6 +59,23 @@ export const experience = [
       en: "Led business process digitalization projects using Ermeo. Managed cross-functional projects (DEX, DSSE, General Services), REST API automation, and supported field teams. Implemented digital periodic controls, Tableau dashboards and quality tracking tools. Built a CO2 emissions simulator for the vehicle fleet.",
       ko: "Ermeo를 활용한 비즈니스 프로세스 디지털화 프로젝트 주도. DEX, DSSE, 일반 서비스 등 부서 간 프로젝트 관리, REST API 자동화 및 현장 팀 지원. 디지털 점검 시스템, Tableau 대시보드 및 품질 추적 도구 구축. 차량 CO2 배출 시뮬레이터 개발.",
     },
+    outcomes: [
+  {
+    fr: "↓ 40% du temps opérationnel",
+    en: "↓ 40% operational time",
+    ko: "운영 시간 40% 감소",
+  },
+  {
+    fr: "Déploiement de projets à l’échelle nationale",
+    en: "Nationwide project deployment",
+    ko: "전국 단위 프로젝트 배포",
+  },
+  {
+    fr: "Retours clients très positifs",
+    en: "Very positive client feedback",
+    ko: "매우 긍정적인 고객 피드백",
+  }
+],
   },
 
   {
