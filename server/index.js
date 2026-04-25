@@ -65,16 +65,29 @@ app.use(helmet({
 
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
-// In dev (Vite proxy) requests are already same-origin so cookies "just work";
-// `credentials: true` lets us flip a real second origin in the future without
-// reworking auth. In prod the SPA is served by the same Express, so CORS
-// stays disabled to limit surface.
+// In dev the SPA runs on Vite's port and proxies /api through, so the only
+// origin we want to accept is the Vite dev server. In prod the SPA is served
+// by the same Express, so CORS stays disabled.
+const DEV_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
 app.use(cors({
-  origin: IS_PROD ? false : true,
+  origin: IS_PROD ? false : DEV_ORIGINS,
   credentials: true,
 }));
 
 const rlMessage = (error) => ({ error });
+
+// Cheap global cap on /api/* to blunt scraping / opportunistic DDoS. Endpoints
+// that need a tighter (login, audio) or looser policy layer their own limiter
+// on top — express-rate-limit composes correctly: each request increments
+// every limiter that matches.
+const apiLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: rlMessage('rate_limited'),
+});
+app.use('/api/', apiLimiter);
 
 // Brute-force shield on the login endpoint
 const loginLimiter = rateLimit({
@@ -209,5 +222,10 @@ const server = app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT} (${IS_PROD ? 'prod' : 'dev'})`);
 });
 
-server.headersTimeout = 60 * 60 * 1000;
-server.requestTimeout = 0;
+// Slowloris cap on header reads. 30 s is far more than any legitimate client
+// needs and tight enough to drop pathological connections.
+server.headersTimeout = 30 * 1000;
+// Hard ceiling on a request from headers-done to body-end. Generous because
+// uploadBuild allows up to 1 GB and slow uplinks exist; still finite so an
+// abandoned upload can't pin a socket forever.
+server.requestTimeout = 30 * 60 * 1000;
