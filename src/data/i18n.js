@@ -3,7 +3,8 @@ export const i18n = {
     nav: { projects: 'Projets', music: 'Musique', about: 'À propos', education: 'Formation', experience: 'Expérience', contact: 'Contact' },
     hero: { greeting: 'Bonjour, je suis', tagline: 'Créer, coder, composer.', role: 'Développeur Low-Code · AllShare', cta1: 'Voir mes projets', cta2: 'Me contacter' },
     projects: { title: 'Projets', subtitle: 'Applications & créations', filters: ['Tous', 'Web', 'Mobile', 'Expérimental'], demo: 'Démo', code: 'Code', wip: 'En cours' },
-    music: { title: 'Musique', subtitle: 'Compositions & productions', noFile: 'Fichier local — bientôt disponible' },
+    music: {title: 'Musique',subtitle: 'Compositions & productions',
+    noFile: 'Découvrir mon univers'},
     about: {
       title: 'À propos',
       bio: "Je suis développeur créatif et compositeur. J’aime voir le code et la musique comme deux façons différentes de structurer une idée et de lui donner du rythme. Je construis des outils comme j’écris des morceaux : en partant d’une base simple, puis en affinant jusqu’à trouver le bon équilibre.",
@@ -21,7 +22,7 @@ export const i18n = {
     nav: { projects: 'Projects', music: 'Music', about: 'About', education: 'Education', experience: 'Experience', contact: 'Contact' },
     hero: { greeting: "Hi, I'm", tagline: 'Create, code, compose.', role: 'Low-Code Developer · AllShare', cta1: 'View my projects', cta2: 'Contact me' },
     projects: { title: 'Projects', subtitle: 'Applications & creations', filters: ['All', 'Web', 'Mobile', 'Experimental'], demo: 'Demo', code: 'Code', wip: 'In progress' },
-    music: { title: 'Music', subtitle: 'Compositions & productions', noFile: 'Local file — coming soon' },
+    music: { title: 'Music',subtitle: 'Compositions & productions',noFile: 'Discover my universe'},
     about: {
       title: 'About',
       bio: "I'm a creative developer and composer. I like to see code and music as two different ways of structuring an idea and giving it rhythm. I build tools the way I write music: starting from a simple base, then refining until everything feels balanced.",
@@ -39,7 +40,7 @@ export const i18n = {
     nav: { projects: '프로젝트', music: '음악', about: '소개', education: '학력', experience: '경력', contact: '연락' },
     hero: { greeting: '안녕하세요, 저는', tagline: '창조하고, 코딩하고, 작곡하다.', role: '로우코드 개발자 · AllShare', cta1: '프로젝트 보기', cta2: '연락하기' },
     projects: { title: '프로젝트', subtitle: '애플리케이션 & 창작물', filters: ['전체', '웹', '모바일', '실험적'], demo: '데모', code: '코드', wip: '진행 중' },
-    music: { title: '음악', subtitle: '작곡 & 프로덕션', noFile: '로컬 파일 — 곧 제공됩니다' },
+    {title: '음악',subtitle: '작곡 & 프로덕션',noFile: '나의 세계를 발견해보세요'},
     about: {
       title: '소개',
       bio: "저는 창의적인 개발자이자 작곡가입니다. 저는 코드와 음악을 하나의 아이디어를 구조화하고 리듬을 부여하는 서로 다른 방식으로 바라봅니다. 저는 단순한 기반에서 시작해 점점 다듬어가며 균형을 찾아가는 방식으로 도구와 음악을 만듭니다.",
