@@ -18,6 +18,7 @@ const SOURCES = {
 
 async function loadSource(file, key) {
   const mod = await import(pathToFileURL(path.join(DATA_DIR, file)).href);
+  // eslint-disable-next-line security/detect-object-injection -- key and file come from SOURCES, a hardcoded module constant
   return mod[key] || [];
 }
 
@@ -28,11 +29,14 @@ export async function seedIfEmpty({ force = false } = {}) {
   for (const name of COLLECTIONS) {
     const existing = count(name);
     if (existing > 0 && !force) {
+      // eslint-disable-next-line security/detect-object-injection -- name comes from COLLECTIONS, a hardcoded array
       results[name] = { skipped: true, existing };
       continue;
     }
+    // eslint-disable-next-line security/detect-object-injection -- name comes from COLLECTIONS, a hardcoded array
     const items = await loadSource(SOURCES[name].file, SOURCES[name].key);
     items.forEach((item, idx) => insert(name, item, idx));
+    // eslint-disable-next-line security/detect-object-injection -- name comes from COLLECTIONS, a hardcoded array
     results[name] = { inserted: items.length };
   }
 

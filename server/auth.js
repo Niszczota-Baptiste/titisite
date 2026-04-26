@@ -19,7 +19,7 @@ function newJti() {
 export function signToken(user) {
   if (!SECRET) throw new Error('JWT_SECRET not configured');
   return jwt.sign(
-    { sub: user.id, email: user.email, role: user.role, name: user.name },
+    { sub: user.id, role: user.role, tv: user.token_version ?? 0 },
     SECRET,
     { expiresIn: TOKEN_TTL, jwtid: newJti() },
   );
@@ -48,6 +48,7 @@ export function clearSessionCookie(res) {
 
 function readToken(req) {
   // 1. HttpOnly cookie (default for browser SPA traffic)
+  // eslint-disable-next-line security/detect-object-injection -- COOKIE_NAME is a module constant, not user input
   if (req.cookies && req.cookies[COOKIE_NAME]) return req.cookies[COOKIE_NAME];
   // 2. Authorization header — kept as a fallback for non-browser clients
   //    (e.g. server-to-server), still useful while we transition.
@@ -100,6 +101,9 @@ export function requireAuth(req, res, next) {
     }
     const user = findById(decoded.sub);
     if (!user) return res.status(401).json({ error: 'user_not_found' });
+    if ((decoded.tv ?? 0) !== (user.token_version ?? 0)) {
+      return res.status(401).json({ error: 'session_invalidated' });
+    }
     req.user = user;
     req.token = decoded;
     next();

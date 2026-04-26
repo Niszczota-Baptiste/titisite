@@ -5,24 +5,33 @@ import { ensureIcalToken, rotateIcalToken } from '../users.js';
 
 export const meRouter = Router();
 
+// Canonical origin is configured via env to prevent Host-header injection in
+// generated iCal URLs. Falls back to the request's own protocol+host in dev.
+function canonicalBase(req) {
+  return process.env.CANONICAL_ORIGIN
+    || ((req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host'));
+}
+
 meRouter.get('/ical-token', requireAuth, requireRole('admin', 'member'), (req, res) => {
   const token = ensureIcalToken(req.user.id);
-  const base = (req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host');
+  const base = canonicalBase(req);
+  const host = new URL(base).host;
   res.json({
     token,
     httpUrl: `${base}/api/calendar/${token}.ics`,
-    webcalUrl: `webcal://${req.get('host')}/api/calendar/${token}.ics`,
+    webcalUrl: `webcal://${host}/api/calendar/${token}.ics`,
     downloadUrl: `${base}/api/calendar/${token}.ics?download=1`,
   });
 });
 
 meRouter.post('/ical-token/rotate', requireAuth, requireRole('admin', 'member'), (req, res) => {
   const token = rotateIcalToken(req.user.id);
-  const base = (req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host');
+  const base = canonicalBase(req);
+  const host = new URL(base).host;
   res.json({
     token,
     httpUrl: `${base}/api/calendar/${token}.ics`,
-    webcalUrl: `webcal://${req.get('host')}/api/calendar/${token}.ics`,
+    webcalUrl: `webcal://${host}/api/calendar/${token}.ics`,
     downloadUrl: `${base}/api/calendar/${token}.ics?download=1`,
   });
 });

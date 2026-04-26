@@ -4,6 +4,7 @@ import path from 'node:path';
 import multer from 'multer';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- UPLOADS_DIR comes from env/default, not user input
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // ── Per-route caps ──────────────────────────────────────────────────────────
@@ -27,14 +28,14 @@ export const ALLOWED_DOCUMENT = {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-powerpoint',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
     'text/plain', 'text/markdown', 'text/csv',
     'application/json',
   ]),
   ext: new Set([
     '.pdf', '.zip',
     '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp',
     '.txt', '.md', '.csv', '.json',
   ]),
 };
@@ -126,5 +127,6 @@ export function uploadPath(filename) {
 
 export function safeUnlink(filename) {
   if (!filename) return;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- filename is a UUID from DB, not user-controlled path
   fs.unlink(uploadPath(filename), () => {});
 }

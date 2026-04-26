@@ -176,7 +176,8 @@ calendarRouter.get('/:token.ics', (req, res) => {
     workspace_icon: wsById.get(f.workspace_id).icon,
   }));
 
-  const baseUrl = (req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host');
+  const baseUrl = process.env.CANONICAL_ORIGIN
+    || ((req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host'));
   const body = buildCalendar({ user, meetings, features, baseUrl });
 
   res.type('text/calendar; charset=utf-8');

@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requireAuth, requireRole } from './auth.js';
+import { SqliteStore } from './rateLimitStore.js';
 import { COLLECTIONS, db } from './db.js';
 import { resolveWorkspace } from './middleware/scope.js';
 import { authRouter } from './routes/auth.js';
@@ -89,7 +90,8 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
-// Brute-force shield on the login endpoint
+// Brute-force shield on the login endpoint. Uses a SQLite-backed store so the
+// counter survives server restarts and can't be reset by bouncing the process.
 const loginLimiter = rateLimit({
   windowMs: 60_000,
   max: 10,
@@ -97,6 +99,7 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   message: rlMessage('too_many_attempts'),
+  store: new SqliteStore(60_000),
 });
 
 // Audio streaming: 60 req / minute / IP
@@ -117,7 +120,7 @@ const calendarLimiter = rateLimit({
   message: rlMessage('rate_limited'),
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, env: IS_PROD ? 'production' : 'development' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // Public audio streaming. Two layers of defense beyond the rate limiter:
 //   1. Filename regex prevents path traversal / weird chars.

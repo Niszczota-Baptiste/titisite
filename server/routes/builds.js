@@ -117,6 +117,7 @@ buildsRouter.get('/:id/download', (req, res) => {
   if (!row) return res.status(404).json({ error: 'not_found' });
   if (!row.filename) return res.status(404).json({ error: 'no_file' });
   const p = uploadPath(row.filename);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- row.filename is a UUID stored in DB, not from URL params
   if (!fs.existsSync(p)) return res.status(404).json({ error: 'file_missing' });
   res.download(p, row.original_name);
 });

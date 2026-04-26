@@ -42,7 +42,11 @@ export function findByEmail(email) {
 }
 
 export function findById(id) {
-  return db.prepare(`SELECT id, email, name, role, created_at FROM users WHERE id = ?`).get(id);
+  return db.prepare(`SELECT id, email, name, role, token_version, created_at FROM users WHERE id = ?`).get(id);
+}
+
+export function bumpTokenVersion(userId) {
+  db.prepare(`UPDATE users SET token_version = token_version + 1 WHERE id = ?`).run(userId);
 }
 
 export function listUsers() {
