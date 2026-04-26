@@ -100,6 +100,10 @@ export const api = {
   icalToken:       () => request('GET',  '/me/ical-token'),
   rotateIcalToken: () => request('POST', '/me/ical-token/rotate'),
 
+  // Email digest opt-in (off / daily / weekly).
+  digestPrefs:    () => request('GET', '/me/digest-prefs'),
+  setDigestPrefs: (frequency) => request('PUT', '/me/digest-prefs', { frequency }),
+
   // Site settings (public-page section order/visibility)
   publicSections:    () => request('GET', '/settings/public-sections'),
   setPublicSections: (sections) => request('PUT', '/settings/public-sections', { sections }),
@@ -162,6 +166,7 @@ export const api = {
       rename: (name, to) => request('PUT', `/workspaces/${slug}/tags/${encodeURIComponent(name)}`, { to }),
       remove: (name) => request('DELETE', `/workspaces/${slug}/tags/${encodeURIComponent(name)}`),
     },
+    summary: () => request('GET', `/workspaces/${slug}/summary`),
   }),
 
   // Global

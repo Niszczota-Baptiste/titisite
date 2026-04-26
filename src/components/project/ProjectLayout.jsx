@@ -5,6 +5,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { WorkspaceContext } from '../../hooks/useWorkspace';
 import { ACC, ACC_RGB, Button } from '../admin/ui';
+import { NotificationsButton } from './NotificationsButton';
 
 const TABS = [
   { to: 'overview',  label: 'Vue d\'ensemble' },
@@ -127,6 +128,7 @@ function Shell({ user, logout, isAdmin, breadcrumb, children }) {
   const headerLinks = (
     <>
       <Link to="/project/discussion" style={navLinkStyle} onClick={() => setMenuOpen(false)}>💬 Discussion</Link>
+      <NotificationsButton compact style={{ flexShrink: 0 }} />
       {isAdmin && <Link to="/admin" style={navLinkStyle} onClick={() => setMenuOpen(false)}>Admin</Link>}
       <Link to="/" style={navLinkStyle} onClick={() => setMenuOpen(false)}>↗ Site</Link>
       <Button variant="ghost" onClick={logout}>Déconnexion</Button>

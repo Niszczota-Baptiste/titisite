@@ -44,6 +44,10 @@ export function migrate() {
   `);
   ensureColumn('users', 'ical_token', 'TEXT');
   ensureColumn('users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
+  // Email digest opt-in. Defaults to 'off' so existing installs send nothing
+  // until the user explicitly enables it.
+  ensureColumn('users', 'digest_frequency', `TEXT NOT NULL DEFAULT 'off' CHECK (digest_frequency IN ('off','daily','weekly'))`);
+  ensureColumn('users', 'digest_last_sent_at', 'INTEGER');
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ical_token ON users(ical_token) WHERE ical_token IS NOT NULL;`);
 
   // ── Workspaces (team projects) ──

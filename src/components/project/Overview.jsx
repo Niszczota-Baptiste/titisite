@@ -9,38 +9,20 @@ import {
 export function OverviewTab() {
   const { workspace } = useWorkspace();
   const ws = api.ws(workspace.slug);
-  const [state, setState] = useState({ loading: true, features: [], meetings: [], builds: [], documents: [] });
+  const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
 
   useEffect(() => {
-    Promise.all([
-      ws.features.list().catch(() => []),
-      ws.meetings.list().catch(() => []),
-      ws.builds.list().catch(() => []),
-      ws.documents.list().catch(() => []),
-    ])
-      .then(([features, meetings, builds, documents]) => {
-        setState({ loading: false, features, meetings, builds, documents });
-      })
+    setData(null);
+    ws.summary()
+      .then(setData)
       .catch((e) => setErr(e.message));
     /* eslint-disable-next-line */
   }, [workspace.slug]);
 
-  if (state.loading) return <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>;
+  if (!data) return <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>;
 
-  const now = Math.floor(Date.now() / 1000);
-  const counts = {
-    backlog: state.features.filter((f) => f.status === 'backlog').length,
-    todo:    state.features.filter((f) => f.status === 'todo').length,
-    doing:   state.features.filter((f) => f.status === 'doing').length,
-    done:    state.features.filter((f) => f.status === 'done').length,
-  };
-  const overdue = state.features.filter((f) => f.dueDate && f.dueDate < now && f.status !== 'done').length;
-  const upcoming = state.meetings.filter((m) => m.startsAt >= now).sort((a, b) => a.startsAt - b.startsAt).slice(0, 3);
-  const recentBuilds = state.builds.slice(0, 3);
-  const recentDocs = state.documents.slice(0, 3);
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  const donePct = total ? Math.round((counts.done / total) * 100) : 0;
+  const { counts, total, donePct, overdue, upcoming, recentBuilds, recentDocs } = data;
 
   return (
     <>

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { requireAuth, requireRole } from './auth.js';
 import { SqliteStore } from './rateLimitStore.js';
 import { COLLECTIONS, db } from './db.js';
+import { startDigestScheduler } from './digest.js';
 import { resolveWorkspace } from './middleware/scope.js';
 import { authRouter } from './routes/auth.js';
 import { tracksRouter } from './routes/tracks.js';
@@ -22,6 +23,7 @@ import { featuresRouter } from './routes/features.js';
 import { meRouter } from './routes/me.js';
 import { meetingsRouter } from './routes/meetings.js';
 import { settingsRouter } from './routes/settings.js';
+import { summaryRouter } from './routes/summary.js';
 import { tagsRouter } from './routes/tags.js';
 import { usersRouter } from './routes/users.js';
 import { workspacesRouter } from './routes/workspaces.js';
@@ -184,6 +186,7 @@ scoped.use('/meetings',  meetingsRouter);
 scoped.use('/documents', documentsRouter);
 scoped.use('/builds',    buildsRouter);
 scoped.use('/tags',      tagsRouter);
+scoped.use('/summary',   summaryRouter);
 app.use('/api/workspaces/:slug', scoped);
 
 if (IS_PROD) {
@@ -224,6 +227,9 @@ if (boot.workspaces) {
 const server = app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT} (${IS_PROD ? 'prod' : 'dev'})`);
 });
+
+// Email digest scheduler — no-op if SMTP is not configured.
+startDigestScheduler();
 
 // Slowloris cap on header reads. 30 s is far more than any legitimate client
 // needs and tight enough to drop pathological connections.

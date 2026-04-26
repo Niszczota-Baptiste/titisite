@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../auth.js';
 import { db } from '../db.js';
+import { isMailerConfigured } from '../mailer.js';
 import { ensureIcalToken, rotateIcalToken } from '../users.js';
 
 export const meRouter = Router();
+
+const DIGEST_FREQUENCIES = ['off', 'daily', 'weekly'];
 
 // Canonical origin is configured via env to prevent Host-header injection in
 // generated iCal URLs. Falls back to the request's own protocol+host in dev.
@@ -22,6 +25,26 @@ meRouter.get('/ical-token', requireAuth, requireRole('admin', 'member'), (req, r
     webcalUrl: `webcal://${host}/api/calendar/${token}.ics`,
     downloadUrl: `${base}/api/calendar/${token}.ics?download=1`,
   });
+});
+
+meRouter.get('/digest-prefs', requireAuth, requireRole('admin', 'member'), (req, res) => {
+  const row = db.prepare(
+    `SELECT digest_frequency AS frequency, digest_last_sent_at AS lastSentAt FROM users WHERE id = ?`,
+  ).get(req.user.id);
+  res.json({
+    frequency: row?.frequency || 'off',
+    lastSentAt: row?.lastSentAt || null,
+    mailerConfigured: isMailerConfigured(),
+  });
+});
+
+meRouter.put('/digest-prefs', requireAuth, requireRole('admin', 'member'), (req, res) => {
+  const { frequency } = req.body || {};
+  if (!DIGEST_FREQUENCIES.includes(frequency)) {
+    return res.status(400).json({ error: 'invalid_frequency' });
+  }
+  db.prepare(`UPDATE users SET digest_frequency = ? WHERE id = ?`).run(frequency, req.user.id);
+  res.json({ frequency, mailerConfigured: isMailerConfigured() });
 });
 
 meRouter.post('/ical-token/rotate', requireAuth, requireRole('admin', 'member'), (req, res) => {
