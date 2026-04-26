@@ -4,6 +4,45 @@ import { db } from './db.js';
 
 const SALT_ROUNDS = 10;
 
+export const MIN_PASSWORD_LENGTH = 12;
+
+// Cheap denylist of patterns we never want to see in the wild — the seed
+// default, the most common leaked passwords, and trivial keyboard runs. This
+// is intentionally tiny: real defense is the length requirement; this just
+// catches the most embarrassing footguns (like leaving change-me-please in
+// .env).
+const PASSWORD_DENYLIST = new Set([
+  'change-me-please',
+  'change-me-too',
+  'password',
+  'password1',
+  'passw0rd',
+  '123456789012',
+  'azertyuiopqs',
+  'qwertyuiopas',
+  'motdepasse12',
+]);
+
+export class PasswordPolicyError extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = 'PasswordPolicyError';
+  }
+}
+
+// Throws PasswordPolicyError on failure so callers can surface a stable
+// machine-readable code (`password_too_short`, `password_too_weak`) to the
+// client. Centralised so create/update/seed all share the same rules.
+export function validatePassword(pwd) {
+  if (typeof pwd !== 'string' || pwd.length < MIN_PASSWORD_LENGTH) {
+    throw new PasswordPolicyError('password_too_short');
+  }
+  if (PASSWORD_DENYLIST.has(pwd.toLowerCase())) {
+    throw new PasswordPolicyError('password_too_weak');
+  }
+}
+
 function newIcalToken() {
   return crypto.randomBytes(24).toString('hex');
 }
@@ -54,6 +93,7 @@ export function listUsers() {
 }
 
 export function createUser({ email, name, password, role }) {
+  validatePassword(password);
   const hash = bcrypt.hashSync(password, SALT_ROUNDS);
   const result = db
     .prepare(`INSERT INTO users (email, name, password_hash, role) VALUES (?, ?, ?, ?)`)
@@ -87,6 +127,18 @@ export function ensureSeedUsers() {
     if (!s.email || !s.password) continue;
     const existing = findByEmail(s.email);
     if (existing) continue;
+    try {
+      validatePassword(s.password);
+    } catch (err) {
+      // The seed shipped with .env.example uses placeholder values that fail
+      // the policy on purpose — refuse to boot rather than silently creating
+      // an account with a known weak password.
+      throw new Error(
+        `seed user ${s.email} has an unacceptable password (${err.code}); `
+        + `set ${s.role === 'admin' ? 'ADMIN_PASSWORD' : 'MEMBER_PASSWORD'} `
+        + `to a value of at least ${MIN_PASSWORD_LENGTH} characters.`,
+      );
+    }
     createUser(s);
     created.push({ email: s.email, role: s.role });
   }

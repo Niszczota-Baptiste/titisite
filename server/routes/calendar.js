@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { canonicalBase } from '../canonicalUrl.js';
 import { db } from '../db.js';
 import { findByIcalToken } from '../users.js';
 
@@ -176,8 +177,7 @@ calendarRouter.get('/:token.ics', (req, res) => {
     workspace_icon: wsById.get(f.workspace_id).icon,
   }));
 
-  const baseUrl = process.env.CANONICAL_ORIGIN
-    || ((req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host'));
+  const baseUrl = canonicalBase(req);
   const body = buildCalendar({ user, meetings, features, baseUrl });
 
   res.type('text/calendar; charset=utf-8');

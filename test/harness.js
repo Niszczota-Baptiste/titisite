@@ -24,9 +24,9 @@ export async function bootServer({ port } = {}) {
     UPLOADS_DIR: uploadsDir,
     JWT_SECRET: 'test-secret-do-not-use-in-prod',
     ADMIN_EMAIL: 'admin@test.local',
-    ADMIN_PASSWORD: 'adminpw1',
+    ADMIN_PASSWORD: 'adminpw1-strong',
     MEMBER_EMAIL: 'member@test.local',
-    MEMBER_PASSWORD: 'memberpw1',
+    MEMBER_PASSWORD: 'memberpw1-strong',
     NODE_ENV: 'development',
   };
 
