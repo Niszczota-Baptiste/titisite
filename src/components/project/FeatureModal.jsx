@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { useConfirm } from '../../ui/ConfirmProvider';
+import { useToast } from '../../ui/ToastProvider';
 import { AttachmentsEditor } from './Attachments';
 import { Comments } from './Comments';
 import {
@@ -12,6 +14,8 @@ const STATUSES   = [['backlog', 'Backlog'], ['todo', 'À faire'], ['doing', 'En 
 const PRIORITIES = [['low', 'Basse'], ['medium', 'Moyenne'], ['high', 'Haute']];
 
 export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose, onSaved }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('backlog');
@@ -67,16 +71,32 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
       };
       if (isEdit) await ws.features.update(feature.id, payload);
       else await ws.features.create(payload);
+      toast.success(isEdit ? 'Carte mise à jour' : 'Carte créée');
       onSaved?.();
-    } catch (ex) { setErr(ex.message); }
+    } catch (ex) {
+      setErr(ex.message);
+      toast.error(`Échec : ${ex.message}`);
+    }
     finally { setSaving(false); }
   };
 
   const remove = async () => {
     if (!isEdit || !ws) return;
-    if (!window.confirm('Supprimer cette carte ?')) return;
-    try { await ws.features.remove(feature.id); onSaved?.(); }
-    catch (ex) { setErr(ex.message); }
+    const ok = await confirm({
+      title: `Supprimer « ${feature.title || 'cette carte'} »`,
+      message: 'La carte, ses sous-tâches et ses commentaires seront supprimés définitivement.',
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await ws.features.remove(feature.id);
+      toast.success('Carte supprimée');
+      onSaved?.();
+    } catch (ex) {
+      setErr(ex.message);
+      toast.error(`Échec : ${ex.message}`);
+    }
   };
 
   return (
@@ -200,20 +220,11 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
           </div>
         </Field>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 14 }}>
-          <div>
-            {isEdit && (
-              <Button type="button" variant="danger" onClick={remove} disabled={saving}>
-                Supprimer
-              </Button>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Annuler</Button>
-            <Button type="submit" disabled={saving} aria-busy={saving || undefined}>
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
-            </Button>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Annuler</Button>
+          <Button type="submit" disabled={saving} aria-busy={saving || undefined}>
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </Button>
         </div>
       </form>
 
@@ -228,6 +239,28 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
             {feature.createdByName && ` par ${feature.createdByName}`}
           </div>
           <Comments targetType="feature" targetId={feature.id} />
+        </div>
+      )}
+
+      {isEdit && (
+        <div style={{
+          marginTop: 28, paddingTop: 18,
+          borderTop: '1px dashed rgba(255,138,155,0.22)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 14, flexWrap: 'wrap',
+        }}>
+          <div style={{
+            fontSize: 12, color: 'rgba(255,138,155,0.7)',
+            fontFamily: "'Inter',sans-serif", lineHeight: 1.5,
+          }}>
+            <strong style={{ display: 'block', fontSize: 11, letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 2 }}>
+              Zone dangereuse
+            </strong>
+            La suppression est définitive. Une confirmation sera demandée.
+          </div>
+          <Button type="button" variant="danger" onClick={remove} disabled={saving}>
+            Supprimer la carte
+          </Button>
         </div>
       )}
     </Modal>

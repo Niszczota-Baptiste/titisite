@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { useConfirm } from '../../ui/ConfirmProvider';
+import { useToast } from '../../ui/ToastProvider';
 import { ACC, ACC_RGB, Button, box } from './ui';
 
 export function ItemList({
@@ -9,6 +11,8 @@ export function ItemList({
   emptyDraft,
   title,
 }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
@@ -51,27 +55,38 @@ export function ItemList({
     setSaving(true);
     setError(null);
     try {
-      if (editing === 'new') {
+      const isNew = editing === 'new';
+      if (isNew) {
         await api.create(collection, draft);
       } else {
         await api.update(collection, editing, draft);
       }
+      toast.success(isNew ? 'Élément créé' : 'Modifications enregistrées');
       await load();
       cancel();
     } catch (e) {
       setError(e.message);
+      toast.error(`Échec : ${e.message}`);
     } finally {
       setSaving(false);
     }
   };
 
   const remove = async (id) => {
-    if (!window.confirm('Supprimer définitivement ?')) return;
+    const ok = await confirm({
+      title: 'Supprimer cet élément',
+      message: 'Cette action est définitive.',
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api.remove(collection, id);
+      toast.success('Élément supprimé');
       await load();
     } catch (e) {
       setError(e.message);
+      toast.error(`Échec : ${e.message}`);
     }
   };
 

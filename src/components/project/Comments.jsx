@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import { useConfirm } from '../../ui/ConfirmProvider';
+import { useToast } from '../../ui/ToastProvider';
 import {
   ACC, ACC_RGB, Button, ErrorBanner, Textarea,
   Empty, muted, relativeDate,
@@ -8,6 +10,8 @@ import {
 
 export function Comments({ targetType, targetId = 0, compact = false }) {
   const { user, isAdmin } = useAuth();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [items, setItems] = useState([]);
   const [body, setBody] = useState('');
   const [loading, setLoading] = useState(true);
@@ -35,21 +39,30 @@ export function Comments({ targetType, targetId = 0, compact = false }) {
     try {
       await api.addComment(targetType, targetId, body);
       setBody('');
+      toast.success('Commentaire publié');
       await load();
     } catch (e) {
       setErr(e.message);
+      toast.error(`Échec : ${e.message}`);
     } finally {
       setSending(false);
     }
   };
 
   const del = async (id) => {
-    if (!window.confirm('Supprimer ce commentaire ?')) return;
+    const ok = await confirm({
+      title: 'Supprimer ce commentaire',
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api.deleteComment(id);
+      toast.success('Commentaire supprimé');
       await load();
     } catch (e) {
       setErr(e.message);
+      toast.error(`Échec : ${e.message}`);
     }
   };
 

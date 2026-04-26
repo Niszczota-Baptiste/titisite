@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { useConfirm } from '../../ui/ConfirmProvider';
+import { useToast } from '../../ui/ToastProvider';
 import { AttachmentsEditor } from './Attachments';
 import {
   Button, ErrorBanner, Field, Input, Modal, Textarea,
@@ -7,6 +9,8 @@ import {
 } from './shared';
 
 export function MeetingModal({ open, meeting, workspaceSlug, onClose, onSaved, defaultStart }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [title, setTitle] = useState('');
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
@@ -45,16 +49,32 @@ export function MeetingModal({ open, meeting, workspaceSlug, onClose, onSaved, d
       const payload = { title, description, startsAt, endsAt: endsAt || null, documentIds };
       if (isEdit) await ws.meetings.update(meeting.id, payload);
       else await ws.meetings.create(payload);
+      toast.success(isEdit ? 'Réunion mise à jour' : 'Réunion créée');
       onSaved?.();
-    } catch (ex) { setErr(ex.message); }
+    } catch (ex) {
+      setErr(ex.message);
+      toast.error(`Échec : ${ex.message}`);
+    }
     finally { setSaving(false); }
   };
 
   const remove = async () => {
     if (!isEdit || !ws) return;
-    if (!window.confirm('Supprimer cette réunion ?')) return;
-    try { await ws.meetings.remove(meeting.id); onSaved?.(); }
-    catch (ex) { setErr(ex.message); }
+    const ok = await confirm({
+      title: 'Supprimer cette réunion',
+      message: 'La réunion et ses pièces jointes seront supprimées définitivement.',
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await ws.meetings.remove(meeting.id);
+      toast.success('Réunion supprimée');
+      onSaved?.();
+    } catch (ex) {
+      setErr(ex.message);
+      toast.error(`Échec : ${ex.message}`);
+    }
   };
 
   return (

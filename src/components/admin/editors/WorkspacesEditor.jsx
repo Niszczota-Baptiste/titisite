@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../../api/client';
+import { useConfirm } from '../../../ui/ConfirmProvider';
 import { EmojiPicker } from '../EmojiPicker';
 import { TagsPopup } from '../TagsPopup';
 import { ACC, ACC_RGB, Button, CheckboxField, Field, Input, Textarea } from '../ui';
@@ -13,6 +14,7 @@ function todayDateString() {
 const COLOR_PALETTE = ['#c9a8e8', '#e8a87c', '#9ad4ae', '#80c8e8', '#e88cb8', '#e8d27c', '#8a60b0', '#ff8a9b'];
 
 export function WorkspacesEditor() {
+  const confirm = useConfirm();
   const [items, setItems] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +32,13 @@ export function WorkspacesEditor() {
   useEffect(() => { load(); }, []);
 
   const remove = async (w) => {
-    if (!window.confirm(`Supprimer « ${w.name} » et toutes ses données (cards, réunions, documents, builds) ?`)) return;
+    const ok = await confirm({
+      title: `Supprimer « ${w.name} »`,
+      message: 'Toutes ses données (cards, réunions, documents, builds) seront définitivement perdues.',
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
     try { await api.workspaces.remove(w.id); await load(); }
     catch (e) { setErr(humanize(e)); }
   };

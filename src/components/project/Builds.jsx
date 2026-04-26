@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, triggerDownload, uploadFile } from '../../api/client';
 import { useWorkspace } from '../../hooks/useWorkspace';
+import { useConfirm } from '../../ui/ConfirmProvider';
+import { useToast } from '../../ui/ToastProvider';
 import {
   ACC, ACC_RGB, Button, ErrorBanner, Field, Input, Modal, Section, Textarea,
   Empty, card, formatBytes, formatDate, muted,
@@ -12,6 +14,8 @@ const STATUSES = ['alpha', 'beta', 'release'];
 export function BuildsTab() {
   const { workspace } = useWorkspace();
   const ws = api.ws(workspace.slug);
+  const confirm = useConfirm();
+  const toast = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -26,9 +30,21 @@ export function BuildsTab() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
 
   const remove = async (id) => {
-    if (!window.confirm('Supprimer ce build ?')) return;
-    try { await ws.builds.remove(id); await load(); }
-    catch (e) { setErr(e.message); }
+    const ok = await confirm({
+      title: 'Supprimer ce build',
+      message: 'Le fichier et son entrée seront supprimés définitivement.',
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await ws.builds.remove(id);
+      toast.success('Build supprimé');
+      await load();
+    } catch (e) {
+      setErr(e.message);
+      toast.error(`Échec : ${e.message}`);
+    }
   };
 
   return (

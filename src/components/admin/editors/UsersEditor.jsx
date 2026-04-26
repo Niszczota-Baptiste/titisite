@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../../api/client';
 import { useAuth } from '../../../auth/AuthContext';
+import { useConfirm } from '../../../ui/ConfirmProvider';
 import { ACC, ACC_RGB, Button, Field, Input } from '../ui';
 
 const ROLES = [['member', 'Membre'], ['admin', 'Admin']];
 
 export function UsersEditor() {
   const { user: currentUser } = useAuth();
+  const confirm = useConfirm();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // user object or 'new'
@@ -22,7 +24,13 @@ export function UsersEditor() {
 
   const remove = async (u) => {
     if (u.id === currentUser?.id) return;
-    if (!window.confirm(`Supprimer définitivement ${u.email} ?`)) return;
+    const ok = await confirm({
+      title: 'Supprimer ce compte',
+      message: `${u.email} sera supprimé définitivement et ne pourra plus se connecter.`,
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
     try { await api.deleteUser(u.id); await load(); }
     catch (e) { setErr(humanize(e)); }
   };

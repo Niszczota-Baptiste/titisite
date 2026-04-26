@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, triggerDownload, uploadFile } from '../../api/client';
 import { useWorkspace } from '../../hooks/useWorkspace';
+import { useConfirm } from '../../ui/ConfirmProvider';
+import { useToast } from '../../ui/ToastProvider';
 import {
   ACC_RGB, Button, ErrorBanner, Field, Input, Modal, Section, Textarea,
   Empty, card, formatBytes, formatDate, muted,
@@ -11,6 +13,8 @@ import { FileDrop, ProgressBar } from './FileDrop';
 export function DocumentsTab() {
   const { workspace } = useWorkspace();
   const ws = api.ws(workspace.slug);
+  const confirm = useConfirm();
+  const toast = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -25,9 +29,21 @@ export function DocumentsTab() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
 
   const remove = async (id) => {
-    if (!window.confirm('Supprimer ce document ?')) return;
-    try { await ws.documents.remove(id); await load(); }
-    catch (e) { setErr(e.message); }
+    const ok = await confirm({
+      title: 'Supprimer ce document',
+      message: 'Le fichier sera supprimé définitivement.',
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await ws.documents.remove(id);
+      toast.success('Document supprimé');
+      await load();
+    } catch (e) {
+      setErr(e.message);
+      toast.error(`Échec : ${e.message}`);
+    }
   };
 
   return (
@@ -119,6 +135,7 @@ export function DocumentsTab() {
 }
 
 function UploadModal({ workspace, open, onClose, onUploaded }) {
+  const toast = useToast();
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -140,11 +157,14 @@ function UploadModal({ workspace, open, onClose, onUploaded }) {
       fd.append('title', title || file.name);
       if (notes) fd.append('notes', notes);
       await uploadFile(api.ws(workspace.slug).documents.uploadPath, fd, { onProgress: setProgress });
+      toast.success(`« ${title || file.name} » téléversé`);
       onUploaded();
     } catch (ex) {
-      if (ex.status === 413 || ex.body?.error === 'file_too_large') {
-        setErr('Fichier trop volumineux (> 1 Go). Utilise un lien externe via un build.');
-      } else setErr(ex.message);
+      const msg = (ex.status === 413 || ex.body?.error === 'file_too_large')
+        ? 'Fichier trop volumineux (> 1 Go). Utilise un lien externe via un build.'
+        : ex.message;
+      setErr(msg);
+      toast.error(`Échec du téléversement : ${msg}`);
     } finally { setUploading(false); }
   };
 

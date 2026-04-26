@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import { useConfirm } from '../../ui/ConfirmProvider';
 import {
   ACC, ACC_RGB, Button, ErrorBanner, Field, Input, Modal, muted,
 } from './shared';
@@ -36,6 +37,7 @@ export function CalendarExportButton({ style, compact = false }) {
 
 export function CalendarExportModal({ open, onClose }) {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
@@ -62,9 +64,13 @@ export function CalendarExportModal({ open, onClose }) {
   };
 
   const rotate = async () => {
-    if (!window.confirm(
-      "Générer une nouvelle URL ? L'ancien abonnement cessera de fonctionner et tu devras reconfigurer ton calendrier.",
-    )) return;
+    const ok = await confirm({
+      title: 'Générer une nouvelle URL',
+      message: "L'ancien abonnement cessera de fonctionner et tu devras reconfigurer ton calendrier.",
+      confirmLabel: 'Régénérer',
+      danger: true,
+    });
+    if (!ok) return;
     setRotating(true); setErr(null);
     try {
       const next = await api.rotateIcalToken();

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useWorkspace } from '../../hooks/useWorkspace';
+import { useConfirm } from '../../ui/ConfirmProvider';
 import { ACC, ACC_RGB, card, muted, tagColor } from './shared';
 
 /**
@@ -17,6 +18,7 @@ import { ACC, ACC_RGB, card, muted, tagColor } from './shared';
 export function FilterSidebar({ filters, setFilters, users, counts, onTagsMutated }) {
   const { workspace } = useWorkspace();
   const ws = api.ws(workspace.slug);
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(null); // tag name being renamed
   const [renameDraft, setRenameDraft] = useState('');
   const [err, setErr] = useState(null);
@@ -78,7 +80,13 @@ export function FilterSidebar({ filters, setFilters, users, counts, onTagsMutate
   };
 
   const remove = async (name) => {
-    if (!window.confirm(`Supprimer le tag « ${name} » de toutes les cartes de ce projet ?`)) return;
+    const ok = await confirm({
+      title: `Supprimer le tag « ${name} »`,
+      message: 'Le tag sera retiré de toutes les cartes de ce projet.',
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await ws.tags.remove(name);
       setFilters((f) => ({ ...f, tags: f.tags.filter((t) => t !== name) }));
