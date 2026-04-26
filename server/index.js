@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requireAuth, requireRole } from './auth.js';
+import { assertCanonicalOriginConfigured } from './canonicalUrl.js';
 import { SqliteStore } from './rateLimitStore.js';
 import { COLLECTIONS, db } from './db.js';
 import { startDigestScheduler } from './digest.js';
@@ -33,6 +34,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const PORT = Number(process.env.PORT || 3001);
 const IS_PROD = process.env.NODE_ENV === 'production';
+
+// Fail fast if CANONICAL_ORIGIN is missing in prod — without it, generated
+// iCal URLs would be derived from the (attacker-controlled) Host header.
+assertCanonicalOriginConfigured();
 
 const app = express();
 // Trust the first reverse proxy so rate-limit + req.ip see the real client

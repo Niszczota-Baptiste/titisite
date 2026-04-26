@@ -2,7 +2,13 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../auth.js';
 import { db } from '../db.js';
-import { bumpTokenVersion, findByEmail, listUsers } from '../users.js';
+import {
+  bumpTokenVersion,
+  findByEmail,
+  listUsers,
+  PasswordPolicyError,
+  validatePassword,
+} from '../users.js';
 
 export const usersRouter = Router();
 
@@ -17,6 +23,12 @@ usersRouter.post('/', requireAuth, ADMIN, (req, res) => {
   const { email, name, password, role } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
   if (!['admin', 'member'].includes(role)) return res.status(400).json({ error: 'invalid_role' });
+  try {
+    validatePassword(password);
+  } catch (err) {
+    if (err instanceof PasswordPolicyError) return res.status(400).json({ error: err.code });
+    throw err;
+  }
   if (findByEmail(email)) return res.status(409).json({ error: 'email_taken' });
   const hash = bcrypt.hashSync(password, 10);
   const result = db
@@ -38,6 +50,15 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
     if (existing.role === 'admin' && role !== 'admin') {
       const adminCount = db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'admin'`).get().n;
       if (adminCount <= 1) return res.status(400).json({ error: 'last_admin' });
+    }
+  }
+
+  if (password !== undefined && password !== null && password !== '') {
+    try {
+      validatePassword(password);
+    } catch (err) {
+      if (err instanceof PasswordPolicyError) return res.status(400).json({ error: err.code });
+      throw err;
     }
   }
 

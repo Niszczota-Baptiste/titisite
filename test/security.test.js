@@ -3,8 +3,8 @@ import { after, before, describe, it } from 'node:test';
 import { bootServer, fetcher } from './harness.js';
 
 let server;
-const ADMIN = { email: 'admin@test.local', password: 'adminpw1' };
-const MEMBER = { email: 'member@test.local', password: 'memberpw1' };
+const ADMIN = { email: 'admin@test.local', password: 'adminpw1-strong' };
+const MEMBER = { email: 'member@test.local', password: 'memberpw1-strong' };
 
 before(async () => { server = await bootServer(); });
 after(async () => { await server.stop(); });
@@ -94,17 +94,48 @@ describe('auth', () => {
 describe('RBAC', () => {
   it('blocks members from creating users (admin-only)', async () => {
     const f = await loggedIn(MEMBER);
-    const r = await f.post('/api/users', { body: { email: 'x@y.z', password: 'p', role: 'member' } });
+    const r = await f.post('/api/users', { body: { email: 'x@y.z', password: 'longenoughpw', role: 'member' } });
     assert.equal(r.status, 403);
   });
 
   it('lets admins create users', async () => {
     const f = await loggedIn(ADMIN);
     const r = await f.post('/api/users', {
-      body: { email: 'fresh@test.local', name: 'Fresh', password: 'freshpw', role: 'member' },
+      body: { email: 'fresh@test.local', name: 'Fresh', password: 'freshpw-strong', role: 'member' },
     });
     assert.equal(r.status, 201);
     assert.equal(r.json.role, 'member');
+  });
+});
+
+describe('password policy', () => {
+  it('rejects a too-short password on create', async () => {
+    const f = await loggedIn(ADMIN);
+    const r = await f.post('/api/users', {
+      body: { email: 'short@test.local', password: 'short', role: 'member' },
+    });
+    assert.equal(r.status, 400);
+    assert.equal(r.json.error, 'password_too_short');
+  });
+
+  it('rejects a denylisted password on create', async () => {
+    const f = await loggedIn(ADMIN);
+    const r = await f.post('/api/users', {
+      body: { email: 'weak@test.local', password: 'change-me-please', role: 'member' },
+    });
+    assert.equal(r.status, 400);
+    assert.equal(r.json.error, 'password_too_weak');
+  });
+
+  it('rejects a too-short password on update', async () => {
+    const f = await loggedIn(ADMIN);
+    const create = await f.post('/api/users', {
+      body: { email: 'updateme@test.local', password: 'initialpw-strong', role: 'member' },
+    });
+    assert.equal(create.status, 201);
+    const r = await f.put(`/api/users/${create.json.id}`, { body: { password: 'short' } });
+    assert.equal(r.status, 400);
+    assert.equal(r.json.error, 'password_too_short');
   });
 });
 

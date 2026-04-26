@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../auth.js';
+import { canonicalBase } from '../canonicalUrl.js';
 import { db } from '../db.js';
 import { isMailerConfigured } from '../mailer.js';
 import { ensureIcalToken, rotateIcalToken } from '../users.js';
@@ -7,13 +8,6 @@ import { ensureIcalToken, rotateIcalToken } from '../users.js';
 export const meRouter = Router();
 
 const DIGEST_FREQUENCIES = ['off', 'daily', 'weekly'];
-
-// Canonical origin is configured via env to prevent Host-header injection in
-// generated iCal URLs. Falls back to the request's own protocol+host in dev.
-function canonicalBase(req) {
-  return process.env.CANONICAL_ORIGIN
-    || ((req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host'));
-}
 
 meRouter.get('/ical-token', requireAuth, requireRole('admin', 'member'), (req, res) => {
   const token = ensureIcalToken(req.user.id);
