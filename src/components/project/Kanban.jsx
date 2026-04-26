@@ -376,11 +376,35 @@ function KanbanColumn({ col, cards, users, dragOver, onDragOver, onDrop, onDragL
 
 // ── Filter Panel ─────────────────────────────────────────────────────────────
 
-function FilterPanel({ filters, setFilters, allTags, users }) {
+function FilterPanel({ filters, setFilters, allTags, users, items }) {
   const toggle = (key, val) => setFilters((f) => ({
     ...f,
     [key]: f[key].includes(val) ? f[key].filter((x) => x !== val) : [...f[key], val],
   }));
+
+  const sameId = (a, b) => (a == null && b == null) ? true : a === b;
+  const toggleAssignee = (id) => setFilters((f) => ({
+    ...f,
+    assignees: f.assignees.some((x) => sameId(x, id))
+      ? f.assignees.filter((x) => !sameId(x, id))
+      : [...f.assignees, id],
+  }));
+
+  const assigneeCounts = useMemo(() => {
+    const m = new Map();
+    for (const it of items) {
+      const id = it.assigneeId ?? null;
+      m.set(id, (m.get(id) || 0) + 1);
+    }
+    return m;
+  }, [items]);
+
+  const assigneeRows = [
+    ...users
+      .filter((u) => (assigneeCounts.get(u.id) || 0) > 0)
+      .map((u) => ({ id: u.id, label: u.name || u.email, count: assigneeCounts.get(u.id) })),
+    ...(assigneeCounts.has(null) ? [{ id: null, label: 'Non assigné', count: assigneeCounts.get(null) }] : []),
+  ];
 
   return (
     <div style={{
@@ -425,6 +449,38 @@ function FilterPanel({ filters, setFilters, allTags, users }) {
           }}>{v.label}</button>
         ))}
       </div>
+
+      {/* Assignees */}
+      {assigneeRows.length > 0 && (
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10.5, color: '#4a3860', fontWeight: 600, letterSpacing: '0.8px', textTransform: 'uppercase', marginRight: 2 }}>Assignés</span>
+          {assigneeRows.map(({ id, label, count }) => {
+            const selected = filters.assignees.some((x) => sameId(x, id));
+            const isNone = id == null;
+            return (
+              <button
+                key={id ?? 'none'}
+                onClick={() => toggleAssignee(id)}
+                style={{
+                  background: selected ? `rgba(${ACC_RGB},0.18)` : 'none',
+                  border: `1px solid ${selected ? `rgba(${ACC_RGB},0.5)` : 'rgba(60,40,100,0.25)'}`,
+                  color: selected ? ACC : '#6a6080',
+                  borderRadius: 20, padding: '2px 9px', fontSize: 11,
+                  fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                  fontStyle: isNone ? 'italic' : 'normal',
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                }}
+              >
+                {label}
+                <span style={{
+                  fontFamily: 'monospace', fontSize: 10, fontWeight: 700,
+                  color: selected ? ACC : 'rgba(180,170,200,0.45)',
+                }}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Overdue */}
       <button onClick={() => setFilters((f) => ({ ...f, overdue: !f.overdue }))} style={{
@@ -630,7 +686,7 @@ export function KanbanTab() {
       {showFilters && (
         <FilterPanel
           filters={filters} setFilters={setFilters}
-          allTags={allTags} users={users}
+          allTags={allTags} users={users} items={items}
         />
       )}
 

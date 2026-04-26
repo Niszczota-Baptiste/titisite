@@ -38,7 +38,7 @@ export function Hero({ t, lang, accent, mode }) {
         }}
       />
 
-      <div style={{ position: 'relative', padding: '0 88px', maxWidth: 980 }}>
+      <div style={{ position: 'relative', padding: '0 clamp(20px, 8vw, 88px)', maxWidth: 980, width: '100%' }}>
         <p
           style={{
             fontFamily: "'Inter',sans-serif", fontSize: 13, color: acc.hex,

@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { ACCENTS } from '../../data/constants';
 import { useMagnetic } from '../../hooks/useMagnetic';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
+
+const CONTACT_EMAIL = 'baptiste@example.com';
 
 export function Contact({ t, accent }) {
   const [form, setForm] = useState({ name: '', email: '', message: '' });
   const [sent, setSent] = useState(false);
   const acc = ACCENTS[accent] || ACCENTS.violet;
   const submitBtn = useMagnetic(0.22);
+  const mobile = useIsMobile(720);
 
   const fs = {
     width: '100%',
@@ -36,13 +40,26 @@ export function Contact({ t, accent }) {
   const socials = [
     { label: 'LinkedIn', href: '#', icon: 'in' },
     { label: 'GitHub', href: '#', icon: 'gh' },
-    { label: 'Email', href: 'mailto:baptiste@example.com', icon: '@' },
+    { label: 'Email', href: `mailto:${CONTACT_EMAIL}`, icon: '@' },
   ];
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const subject = `[Portfolio] Message de ${form.name || 'visiteur'}`;
+    const body = `${form.message}\n\n— ${form.name}${form.email ? ` <${form.email}>` : ''}`;
+    const url = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = url;
+    setSent(true);
+  };
 
   return (
     <Section id="contact" bg="var(--section-alt)">
       <SectionHeader title={t.contact.title} subtitle={t.contact.subtitle} accent={accent} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: mobile ? '1fr' : '1fr 1fr',
+        gap: mobile ? 48 : 80,
+      }}>
         <div className="reveal">
           {sent ? (
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
@@ -57,16 +74,30 @@ export function Contact({ t, accent }) {
               >
                 ✓
               </div>
-              <p style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, color: acc.hex }}>
-                Message envoyé !
+              <p style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, color: acc.hex, marginBottom: 10 }}>
+                Votre client mail s'est ouvert
               </p>
+              <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: 'var(--text-muted)', marginBottom: 18 }}>
+                Si rien ne s'est passé, écrivez-moi directement à{' '}
+                <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: acc.hex, textDecoration: 'none' }}>
+                  {CONTACT_EMAIL}
+                </a>
+              </p>
+              <button
+                type="button"
+                onClick={() => setSent(false)}
+                style={{
+                  background: 'none', border: '1px solid var(--border)',
+                  color: 'var(--text-muted)', borderRadius: 10, padding: '10px 22px',
+                  fontFamily: "'Inter',sans-serif", fontSize: 13, cursor: 'pointer',
+                }}
+              >
+                Réécrire
+              </button>
             </div>
           ) : (
             <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setSent(true);
-              }}
+              onSubmit={handleSubmit}
               style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
             >
               <input placeholder={t.contact.name} required {...fld('name')} />
