@@ -1,0 +1,9 @@
+#!/bin/sh
+# Pre-commit security checks — runs on every `git commit`.
+# To skip in an emergency (never for security fixes!): HUSKY=0 git commit
+set -e
+
+echo "🔍  ESLint + secretlint on staged files…"
+npx lint-staged --quiet
+
+echo "✅  Pre-commit checks passed."

@@ -4,6 +4,7 @@ import path from 'node:path';
 import multer from 'multer';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- UPLOADS_DIR comes from env/default, not user input
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // ── Per-route caps ──────────────────────────────────────────────────────────
@@ -126,5 +127,6 @@ export function uploadPath(filename) {
 
 export function safeUnlink(filename) {
   if (!filename) return;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- filename is a UUID from DB, not user-controlled path
   fs.unlink(uploadPath(filename), () => {});
 }

@@ -48,6 +48,7 @@ export function clearSessionCookie(res) {
 
 function readToken(req) {
   // 1. HttpOnly cookie (default for browser SPA traffic)
+  // eslint-disable-next-line security/detect-object-injection -- COOKIE_NAME is a module constant, not user input
   if (req.cookies && req.cookies[COOKIE_NAME]) return req.cookies[COOKIE_NAME];
   // 2. Authorization header — kept as a fallback for non-browser clients
   //    (e.g. server-to-server), still useful while we transition.
