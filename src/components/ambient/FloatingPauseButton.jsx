@@ -16,6 +16,8 @@ export function FloatingPauseButton({ accent }) {
       data-interactive
       onClick={toggle}
       title={paused ? 'Reprendre' : 'Suspendre animations'}
+      aria-label={paused ? 'Reprendre les animations' : 'Suspendre les animations'}
+      aria-pressed={paused}
       style={{
         position: 'fixed', bottom: 28, left: 28, zIndex: 1000, width: 40, height: 40,
         borderRadius: '50%',

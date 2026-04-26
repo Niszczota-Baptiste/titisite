@@ -87,7 +87,7 @@ export function ProjectLayout() {
 function TabsBar() {
   const mobile = useIsMobile(720);
   return (
-    <nav style={{
+    <nav className="tabs-scroll-fade" style={{
       display: 'flex', gap: 4,
       padding: mobile ? '12px 16px 0' : '16px 32px 0',
       borderBottom: '1px solid rgba(60,40,100,0.12)',

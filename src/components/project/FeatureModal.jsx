@@ -138,39 +138,34 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
         <Field label={`Sous-tâches${subtasks.length ? ` — ${subtasks.filter((s) => s.done).length}/${subtasks.length}` : ''}`}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: subtasks.length ? 8 : 0 }}>
             {subtasks.map((s, i) => (
-              <div key={i} style={{
+              <label key={i} style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '7px 11px',
                 background: 'rgba(14,9,28,0.5)',
                 border: '1px solid rgba(60,40,100,0.2)',
                 borderRadius: 8,
+                cursor: 'pointer',
               }}>
-                <div
-                  onClick={() => setSubtasks((prev) => prev.map((t, j) => j === i ? { ...t, done: !t.done } : t))}
+                <input
+                  type="checkbox"
+                  checked={!!s.done}
+                  onChange={() => setSubtasks((prev) => prev.map((t, j) => j === i ? { ...t, done: !t.done } : t))}
                   style={{
-                    width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-                    border: `1.5px solid ${s.done ? '#9ad4ae' : 'rgba(100,70,160,0.4)'}`,
-                    background: s.done ? 'rgba(154,212,174,0.15)' : 'none',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'all 0.2s',
+                    width: 16, height: 16, flexShrink: 0,
+                    accentColor: '#9ad4ae', cursor: 'pointer', margin: 0,
                   }}
-                >
-                  {s.done && (
-                    <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                      <path d="M1 3.5L3.5 6L8 1" stroke="#9ad4ae" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </div>
+                />
                 <span style={{
                   flex: 1, fontSize: 13, color: s.done ? '#6a6080' : '#c8c0d8',
                   textDecoration: s.done ? 'line-through' : 'none',
                 }}>{s.d}</span>
                 <button
                   type="button"
-                  onClick={() => setSubtasks((prev) => prev.filter((_, j) => j !== i))}
+                  onClick={(e) => { e.preventDefault(); setSubtasks((prev) => prev.filter((_, j) => j !== i)); }}
+                  aria-label={`Supprimer la sous-tâche : ${s.d}`}
                   style={{ background: 'none', border: 'none', color: '#4a3860', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 2px' }}
                 >×</button>
-              </div>
+              </label>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -215,7 +210,9 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Annuler</Button>
-            <Button type="submit" disabled={saving}>{saving ? '…' : 'Enregistrer'}</Button>
+            <Button type="submit" disabled={saving} aria-busy={saving || undefined}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
           </div>
         </div>
       </form>

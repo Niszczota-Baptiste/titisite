@@ -7,15 +7,15 @@
   --border: rgba(80, 50, 130, 0.24);
   --border-dim: rgba(60, 40, 100, 0.12);
   --text: #ede8f8;
-  --text-muted: #7a6888;
-  --text-faint: #4a3860;
+  --text-muted: #9a88b8;
+  --text-faint: #7a6a98;
   --text-dim: #c8c0d8;
-  --nav-link: #6a6080;
+  --nav-link: #8a7aa8;
   --nav-bg: rgba(5, 5, 17, 0.84);
   --nav-border: rgba(120, 80, 200, 0.14);
   --tag-bg: rgba(60, 30, 100, 0.3);
   --tag-border: rgba(100, 60, 160, 0.22);
-  --tag-color: #8060a8;
+  --tag-color: #a080d0;
   --code-muted: rgba(100, 70, 160, 0.55);
   --input-bg: rgba(14, 8, 32, 0.72);
   --track-hov: rgba(20, 12, 40, 0.55);
@@ -25,6 +25,7 @@
   --lang-bg: rgba(20, 15, 40, 0.82);
   --exp-current: rgba(22, 10, 48, 0.76);
   --exp-default: rgba(12, 8, 28, 0.62);
+  --focus-ring: #c9a8e8;
 }
 
 body.mode-light {
@@ -35,10 +36,11 @@ body.mode-light {
   --border: rgba(140, 90, 200, 0.2);
   --border-dim: rgba(130, 80, 190, 0.1);
   --text: #180e2a;
-  --text-muted: #4a3870;
-  --text-faint: #7060a0;
+  --text-muted: #3a2860;
+  --text-faint: #5a4080;
   --text-dim: #2c1e50;
-  --nav-link: #7050a0;
+  --nav-link: #5a3890;
+  --focus-ring: #6040a0;
   --nav-bg: rgba(240, 234, 252, 0.92);
   --nav-border: rgba(140, 90, 200, 0.16);
   --tag-bg: rgba(180, 140, 220, 0.16);
@@ -96,6 +98,43 @@ body {
 ::selection {
   background: rgba(170, 130, 230, 0.22);
   color: var(--text);
+}
+
+/* ── Scroll-fade indicator for horizontal tab strips ── */
+.tabs-scroll-fade {
+  position: relative;
+}
+.tabs-scroll-fade::before,
+.tabs-scroll-fade::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 1px; /* sit above the bottom border */
+  width: 28px;
+  pointer-events: none;
+  z-index: 1;
+}
+.tabs-scroll-fade::before {
+  left: 0;
+  background: linear-gradient(to right, var(--bg) 0%, transparent 100%);
+}
+.tabs-scroll-fade::after {
+  right: 0;
+  background: linear-gradient(to left, var(--bg) 0%, transparent 100%);
+}
+
+/* ── Keyboard focus ring (WCAG 2.4.7) ── */
+:focus { outline: none; }
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 input,

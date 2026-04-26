@@ -57,6 +57,7 @@ export function Nav({ lang, setLang, t, accent, mode, toggleMode }) {
         <button
           data-interactive
           onClick={toggleMode}
+          aria-label={mode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
           style={{
             background: 'none', border: 'none', cursor: 'pointer', padding: '4px',
             color: 'var(--text-faint)', transition: 'color 0.2s,transform 0.3s',

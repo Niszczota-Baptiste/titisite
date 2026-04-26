@@ -77,9 +77,31 @@ export default function Public() {
   }, [tweaks.fontStyle]);
 
   useEffect(() => {
-    const fn = () => { scrollRef.current = window.scrollY; };
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
+    const saved = sessionStorage.getItem('portfolio_scrollY');
+    const y = saved == null ? 0 : Number(saved);
+    if (Number.isFinite(y) && y > 0) {
+      requestAnimationFrame(() => window.scrollTo(0, y));
+    }
+  }, []);
+
+  useEffect(() => {
+    let raf = 0;
+    const fn = () => {
+      scrollRef.current = window.scrollY;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        sessionStorage.setItem('portfolio_scrollY', String(window.scrollY));
+      });
+    };
     window.addEventListener('scroll', fn, { passive: true });
-    return () => window.removeEventListener('scroll', fn);
+    return () => {
+      window.removeEventListener('scroll', fn);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   useEffect(() => {
