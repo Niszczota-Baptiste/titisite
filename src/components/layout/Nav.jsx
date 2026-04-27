@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { ACCENTS } from '../../data/constants';
 
-export function Nav({ lang, setLang, t, accent, mode, toggleMode }) {
+const NAV_IDS = new Set(['projects', 'music', 'about', 'education', 'experience', 'contact']);
+
+export function Nav({ lang, setLang, t, accent, mode, toggleMode, sections }) {
   const [scrolled, setScrolled] = useState(false);
   const acc = ACCENTS[accent] || ACCENTS.violet;
 
@@ -11,7 +13,9 @@ export function Nav({ lang, setLang, t, accent, mode, toggleMode }) {
     return () => window.removeEventListener('scroll', fn);
   }, []);
 
-  const links = ['projects', 'music', 'about', 'education', 'experience', 'contact'];
+  const links = sections
+    ? sections.filter((s) => s.visible && NAV_IDS.has(s.id)).map((s) => s.id)
+    : [...NAV_IDS];
   const scroll = (id) =>
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
