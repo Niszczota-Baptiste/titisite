@@ -14,6 +14,7 @@ import { COLLECTIONS, db } from './db.js';
 import { startDigestScheduler } from './digest.js';
 import { resolveWorkspace } from './middleware/scope.js';
 import { authRouter } from './routes/auth.js';
+import { imagesRouter } from './routes/images.js';
 import { tracksRouter } from './routes/tracks.js';
 import { buildsRouter } from './routes/builds.js';
 import { calendarRouter } from './routes/calendar.js';
@@ -156,6 +157,24 @@ app.get('/api/audio/:filename', audioLimiter, (req, res) => {
   });
 });
 
+// Public image serving — cross-checked against project_images table
+// (same security pattern as audio: filename must be a known DB entry)
+let _imageByFilename;
+const imageByFilename = (fn) => {
+  if (!_imageByFilename) {
+    _imageByFilename = db.prepare(`SELECT 1 FROM project_images WHERE filename = ?`);
+  }
+  return _imageByFilename.get(fn);
+};
+app.get('/api/images/:filename', (req, res) => {
+  const { filename } = req.params;
+  if (!/^[\w.-]+$/.test(filename)) return res.status(400).end();
+  if (!imageByFilename(filename)) return res.status(404).end();
+  res.sendFile(filename, { root: UPLOADS_DIR }, (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
+});
+
 // Public ICS calendar feed (token-based, no auth header — phones subscribe to this)
 app.use('/api/calendar', calendarLimiter, calendarRouter);
 
@@ -163,6 +182,7 @@ app.use('/api/calendar', calendarLimiter, calendarRouter);
 // so we skip the generic collection router for it below)
 app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth',   authRouter);
+app.use('/api/images', imagesRouter);
 app.use('/api/users',  usersRouter);
 app.use('/api/tracks', tracksRouter);
 

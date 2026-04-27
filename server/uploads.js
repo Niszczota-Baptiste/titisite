@@ -121,6 +121,13 @@ export const uploadDocument = makeUploader(ALLOWED_DOCUMENT, DOC_MAX_BYTES);
 export const uploadAudio    = makeUploader(ALLOWED_AUDIO,    AUDIO_MAX_BYTES);
 export const uploadBuild    = makeUploader(ALLOWED_BUILD,    BUILD_MAX_BYTES);
 
+export const ALLOWED_IMAGE = {
+  mime: new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']),
+  ext:  new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']),
+};
+export const IMAGE_MAX_BYTES = Number(process.env.IMAGE_MAX_BYTES || 10 * 1024 * 1024); // 10 MB
+export const uploadImage = makeUploader(ALLOWED_IMAGE, IMAGE_MAX_BYTES);
+
 export function uploadPath(filename) {
   return path.join(UPLOADS_DIR, filename);
 }

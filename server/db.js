@@ -217,6 +217,18 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_rl_window ON rate_limit_hits(window_end);`);
+
+  // ── Project images (portfolio pages hero + screenshots) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_images (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      filename      TEXT    NOT NULL UNIQUE,
+      original_name TEXT,
+      mime_type     TEXT,
+      size          INTEGER,
+      created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
 }
 
 function ensureColumn(table, column, ddl) {
