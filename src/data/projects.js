@@ -6,6 +6,8 @@ export const projects = [
     tags: ['Low-Code', 'REST API', 'React'],
     color: '#0a0d1e',
     wip: false,
+    demoUrl: '',
+    codeUrl: '',
     desc: {
       fr: "Tableau de bord interne pour la gestion des données clients sur plateforme low-code.",
       en: "Internal dashboard for client data management on a low-code platform.",
@@ -34,6 +36,8 @@ export const projects = [
     tags: ['Web Audio API', 'Canvas', 'JS'],
     color: '#0d1a14',
     wip: false,
+    demoUrl: '',
+    codeUrl: '',
     desc: {
       fr: "Visualiseur audio interactif qui transforme la musique en formes géométriques animées.",
       en: "Interactive audio visualizer turning music into animated geometric shapes.",
@@ -62,6 +66,8 @@ export const projects = [
     tags: ['React Native', 'Firebase'],
     color: '#1a0d12',
     wip: false,
+    demoUrl: '',
+    codeUrl: '',
     desc: {
       fr: "Application mobile d'apprentissage du coréen et du japonais par cartes mémoire adaptatives.",
       en: "Mobile app for learning Korean and Japanese with adaptive flashcards.",
@@ -90,6 +96,8 @@ export const projects = [
     tags: ['WebSockets', 'Node.js', 'Canvas'],
     color: '#0a0e1e',
     wip: false,
+    demoUrl: '',
+    codeUrl: '',
     desc: {
       fr: "Tableau blanc collaboratif en temps réel pour développeurs.",
       en: "Real-time collaborative whiteboard for developers.",
@@ -118,6 +126,8 @@ export const projects = [
     tags: ['Python', 'ML', 'Web Audio'],
     color: '#12081e',
     wip: true,
+    demoUrl: '',
+    codeUrl: '',
     desc: {
       fr: "Générateur de musique ambiante assisté par IA, contrôlable en temps réel.",
       en: "AI-assisted ambient music generator, controllable in real time.",

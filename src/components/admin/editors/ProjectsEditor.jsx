@@ -1,4 +1,4 @@
-import { ACC_RGB, CheckboxField, Field, Input, LocalizedField, TagsField } from '../ui';
+import { ACC_RGB, CheckboxField, Field, Input, LocalizedField, TagsField, Textarea } from '../ui';
 import { ItemList } from '../ItemList';
 
 const EMPTY = () => ({
@@ -7,6 +7,8 @@ const EMPTY = () => ({
   tags: [],
   color: '#0a0d1e',
   wip: false,
+  demoUrl: '',
+  codeUrl: '',
   desc: { fr: '', en: '', ko: '' },
   problem: { fr: '', en: '', ko: '' },
   solution: { fr: '', en: '', ko: '' },
@@ -80,6 +82,22 @@ export function ProjectsEditor() {
           </div>
           <TagsField label="Tags" value={d.tags} onChange={(v) => set({ ...d, tags: v })} />
           <CheckboxField label="Work in progress" value={d.wip} onChange={(v) => set({ ...d, wip: v })} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="URL Démo (lien externe, laissez vide pour page interne)">
+              <Input
+                value={d.demoUrl || ''}
+                onChange={(e) => set({ ...d, demoUrl: e.target.value })}
+                placeholder="https://monprojet.com"
+              />
+            </Field>
+            <Field label="URL Code (lien Git)">
+              <Input
+                value={d.codeUrl || ''}
+                onChange={(e) => set({ ...d, codeUrl: e.target.value })}
+                placeholder="https://github.com/…"
+              />
+            </Field>
+          </div>
           <LocalizedField label="Description" value={d.desc} onChange={(v) => set({ ...d, desc: v })} multiline />
           <LocalizedField label="Problème" value={d.problem} onChange={(v) => set({ ...d, problem: v })} multiline />
           <LocalizedField label="Solution" value={d.solution} onChange={(v) => set({ ...d, solution: v })} multiline />

@@ -140,7 +140,8 @@ export default function Public() {
 
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Nav lang={lang} setLang={setLang} t={t} accent={accent} mode={mode}
-             toggleMode={() => setMode((m) => (m === 'dark' ? 'light' : 'dark'))} />
+             toggleMode={() => setMode((m) => (m === 'dark' ? 'light' : 'dark'))}
+             sections={sections} />
         <Hero t={t} lang={lang} accent={accent} mode={mode} />
         {sections.map((s) => {
           if (!s.visible) return null;
