@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
+import { searchBlocks } from '../../data/minecraftBlocks';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { useConfirm } from '../../ui/ConfirmProvider';
 import { useToast } from '../../ui/ToastProvider';
@@ -209,13 +210,11 @@ function ResourceModal({ open, onClose, editing, ws, onSaved, onError, toast }) 
       width={520}
     >
       <form onSubmit={submit}>
-        <Field label="Nom de la ressource">
-          <Input
+        <Field label="Nom de la ressource (catalogue Minecraft 1.18.2)">
+          <BlockPicker
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Diamant, Pierre, Bois de chêne…"
+            onChange={setName}
             autoFocus
-            required
           />
         </Field>
         <Field label="Quantité">
@@ -245,5 +244,117 @@ function ResourceModal({ open, onClose, editing, ws, onSaved, onError, toast }) 
         </div>
       </form>
     </Modal>
+  );
+}
+
+/**
+ * Combobox: champ texte libre + liste de suggestions filtrée à la frappe
+ * depuis le catalogue de blocs Minecraft 1.18.2. L'utilisateur peut soit
+ * choisir une suggestion (clic / Entrée), soit taper son propre nom.
+ */
+function BlockPicker({ value, onChange, autoFocus }) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const wrapperRef = useRef(null);
+
+  const suggestions = useMemo(() => searchBlocks(value, 60), [value]);
+
+  useEffect(() => { setHighlight(0); }, [value]);
+
+  // Click outside closes the menu
+  useEffect(() => {
+    if (!open) return;
+    const fn = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [open]);
+
+  const pick = (s) => {
+    onChange(s.name);
+    setOpen(false);
+  };
+
+  const onKeyDown = (e) => {
+    if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      setOpen(true);
+      return;
+    }
+    if (!open) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlight((h) => Math.min(h + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight((h) => Math.max(h - 1, 0));
+    } else if (e.key === 'Enter' && suggestions[highlight]) {
+      e.preventDefault();
+      pick(suggestions[highlight]);
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div ref={wrapperRef} style={{ position: 'relative' }}>
+      <Input
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={onKeyDown}
+        placeholder="Diamant, planches en chêne, redstone…"
+        autoFocus={autoFocus}
+        autoComplete="off"
+        spellCheck={false}
+        required
+      />
+      {open && suggestions.length > 0 && (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute', top: '100%', left: 0, right: 0,
+            marginTop: 4, zIndex: 1000,
+            background: '#0b0620',
+            border: '1px solid rgba(80,50,130,0.35)',
+            borderRadius: 10,
+            boxShadow: '0 18px 36px rgba(0,0,0,0.55)',
+            maxHeight: 280, overflowY: 'auto',
+            padding: 4,
+          }}
+        >
+          {suggestions.map((s, i) => {
+            const active = i === highlight;
+            return (
+              <button
+                type="button"
+                key={`${s.category}-${s.name}-${i}`}
+                role="option"
+                aria-selected={active}
+                onMouseDown={(e) => e.preventDefault() /* keep input focus */}
+                onClick={() => pick(s)}
+                onMouseEnter={() => setHighlight(i)}
+                style={{
+                  width: '100%', textAlign: 'left',
+                  display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', gap: 12,
+                  padding: '7px 10px', borderRadius: 6,
+                  background: active ? `rgba(${ACC_RGB},0.14)` : 'transparent',
+                  border: 'none', cursor: 'pointer',
+                  color: active ? ACC : '#ede8f8',
+                  fontFamily: "'Inter',sans-serif", fontSize: 13,
+                }}
+              >
+                <span>{s.name}</span>
+                <span style={{
+                  ...muted, fontSize: 11, flexShrink: 0,
+                  letterSpacing: '0.3px', textTransform: 'uppercase',
+                }}>{s.category}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
