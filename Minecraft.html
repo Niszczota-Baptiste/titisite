@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ressources Minecraft — Baptiste</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { min-height: 100%; background: #06040f; color: #ddd8f0; font-family: 'Inter', sans-serif; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: rgba(120,80,200,0.3); border-radius: 2px; }
+    input, textarea, select { font-family: inherit; color-scheme: dark; }
+    input::placeholder, textarea::placeholder { color: #4a3860; }
+    @keyframes fadeIn  { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+    @keyframes popIn   { from{opacity:0;transform:scale(0.92)}      to{opacity:1;transform:scale(1)} }
+    @keyframes slideUp { from{opacity:0;transform:translateY(40px)} to{opacity:1;transform:none} }
+    @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+// ── Catégories ─────────────────────────────────────────────────────────────
+const CATEGORIES = {
+  all:       { label:'Tout',       emoji:'📦', color:'#c9a8e8' },
+  minerai:   { label:'Minerais',   emoji:'⛏️', color:'#7eb8f7' },
+  bois:      { label:'Bois',       emoji:'🌲', color:'#9ad4ae' },
+  pierre:    { label:'Pierre',     emoji:'🪨', color:'#a8a8b8' },
+  nourriture:{ label:'Nourriture', emoji:'🍖', color:'#e8a87c' },
+  combat:    { label:'Combat',     emoji:'⚔️', color:'#ff7070' },
+  redstone:  { label:'Redstone',   emoji:'🔴', color:'#ff5757' },
+  magie:     { label:'Magie',      emoji:'✨', color:'#c9a8e8' },
+  divers:    { label:'Divers',     emoji:'🎒', color:'#aaaaaa' },
+};
+
+// ── Icônes pixel-art SVG inline ────────────────────────────────────────────
+const ITEM_ICONS = {
+  diamant:         '💎',
+  obsidienne:      '🟫',
+  emeraude:        '💚',
+  or:              '🟡',
+  fer:             '⬜',
+  charbon:         '⬛',
+  netherite:       '🟤',
+  lapis:           '🔵',
+  redstone:        '🔴',
+  quartz:          '🤍',
+  bois:            '🟫',
+  bois_de_chene:   '🟫',
+  pierre:          '🪨',
+  cobblestone:     '🪨',
+  sable:           '🟨',
+  gravier:         '🩶',
+  boeuf:           '🥩',
+  pain:            '🍞',
+  pomme:           '🍎',
+  arc:             '🏹',
+  epee:            '⚔️',
+  armure:          '🛡️',
+  torche:          '🔦',
+  echelle:         '🪜',
+  coffre:          '📦',
+  default:         '📦',
+};
+
+const getIcon = name => {
+  const key = name.toLowerCase()
+    .replace(/[éèê]/g,'e').replace(/[àâ]/g,'a').replace(/[îï]/g,'i')
+    .replace(/[ôö]/g,'o').replace(/[ùûü]/g,'u')
+    .replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+  return ITEM_ICONS[key] || ITEM_ICONS.default;
+};
+
+// ── Rareté ─────────────────────────────────────────────────────────────────
+const RARETES = {
+  commun:    { label:'Commun',    color:'#aaaaaa', glow:'rgba(170,170,170,0.2)' },
+  peu_commun:{ label:'Peu commun',color:'#9ad4ae', glow:'rgba(154,212,174,0.2)' },
+  rare:      { label:'Rare',      color:'#7eb8f7', glow:'rgba(126,184,247,0.25)' },
+  epique:    { label:'Épique',    color:'#c9a8e8', glow:'rgba(201,168,232,0.3)' },
+  legendaire:{ label:'Légendaire',color:'#e8a87c', glow:'rgba(232,168,124,0.3)' },
+};
+
+// ── Data initiale ──────────────────────────────────────────────────────────
+const INIT = [
+  { id:1, nom:'Obsidienne en pleurs', qte:100, cat:'minerai', rarete:'rare',    note:'Farm nether', favori:false },
+  { id:2, nom:'Diamant',              qte:190, cat:'minerai', rarete:'rare',    note:'Y=-58',        favori:true  },
+];
+
+// ── localStorage ──────────────────────────────────────────────────────────
+const STORE_KEY = 'mc_ressources_v2';
+function load()  { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || INIT; } catch { return INIT; } }
+function save(d) { try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch {} }
+
+// ── Modal d'ajout / édition ───────────────────────────────────────────────
+function ItemModal({ item, onSave, onClose }) {
+  const [nom,    setNom]    = useState(item?.nom    || '');
+  const [qte,    setQte]    = useState(item?.qte    ?? 0);
+  const [cat,    setCat]    = useState(item?.cat    || 'divers');
+  const [rarete, setRarete] = useState(item?.rarete || 'commun');
+  const [note,   setNote]   = useState(item?.note   || '');
+  const firstRef = useRef();
+  const isEdit = !!item;
+  const accent = '#c9a8e8';
+
+  useEffect(() => {
+    firstRef.current?.focus();
+    const fn = e => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', fn);
+    return () => window.removeEventListener('keydown', fn);
+  }, []);
+
+  const submit = e => {
+    e.preventDefault();
+    if (!nom.trim()) return;
+    onSave({ nom: nom.trim(), qte: Math.max(0, Number(qte)), cat, rarete, note: note.trim() });
+  };
+
+  const inputStyle = {
+    width:'100%', background:'rgba(14,9,28,0.8)', border:'1px solid rgba(80,50,130,0.35)',
+    borderRadius:8, padding:'10px 13px', color:'#ede8f8', fontSize:14, outline:'none',
+    transition:'border-color 0.2s'
+  };
+  const focus = e => e.target.style.borderColor = accent;
+  const blur  = e => e.target.style.borderColor = 'rgba(80,50,130,0.35)';
+
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:'fixed',inset:0,zIndex:200,background:'rgba(3,2,12,0.88)',backdropFilter:'blur(16px)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div style={{background:'#0c0820',border:'1px solid rgba(120,80,200,0.3)',borderRadius:18,padding:28,width:'100%',maxWidth:440,animation:'popIn 0.25s ease both',boxShadow:'0 40px 100px rgba(0,0,0,0.6)'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24}}>
+          <h2 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:18,fontWeight:700,color:'#ede8f8'}}>
+            {isEdit ? '✏️ Modifier' : '+ Nouvelle ressource'}
+          </h2>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'#6a6080',cursor:'pointer',fontSize:22,lineHeight:1}}>×</button>
+        </div>
+
+        <form onSubmit={submit} style={{display:'flex',flexDirection:'column',gap:14}}>
+          {/* Nom */}
+          <div>
+            <label style={{fontSize:11,color:'#4a3860',letterSpacing:'1px',textTransform:'uppercase',fontWeight:600,display:'block',marginBottom:6}}>Nom de l'item</label>
+            <input ref={firstRef} value={nom} onChange={e=>setNom(e.target.value)} placeholder="ex: Diamant" required style={inputStyle} onFocus={focus} onBlur={blur}/>
+          </div>
+
+          {/* Quantité */}
+          <div>
+            <label style={{fontSize:11,color:'#4a3860',letterSpacing:'1px',textTransform:'uppercase',fontWeight:600,display:'block',marginBottom:6}}>Quantité</label>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              <input type="number" value={qte} onChange={e=>setQte(e.target.value)} min={0} style={{...inputStyle,width:'auto',flex:1}} onFocus={focus} onBlur={blur}/>
+              {/* Quick add */}
+              {[1,8,16,32,64].map(n=>(
+                <button key={n} type="button" onClick={()=>setQte(q=>Math.max(0,Number(q)+n))} style={{background:'rgba(80,50,130,0.18)',border:'1px solid rgba(80,50,130,0.25)',color:'#c9a8e8',borderRadius:6,padding:'6px 9px',fontSize:11,fontWeight:700,cursor:'pointer',transition:'all 0.15s'}}
+                onMouseEnter={e=>e.target.style.background='rgba(120,80,200,0.28)'}
+                onMouseLeave={e=>e.target.style.background='rgba(80,50,130,0.18)'}>+{n}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Catégorie */}
+          <div>
+            <label style={{fontSize:11,color:'#4a3860',letterSpacing:'1px',textTransform:'uppercase',fontWeight:600,display:'block',marginBottom:8}}>Catégorie</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+              {Object.entries(CATEGORIES).filter(([k])=>k!=='all').map(([k,v])=>(
+                <button key={k} type="button" onClick={()=>setCat(k)} style={{
+                  background:cat===k?`rgba(${hexParts(v.color)},0.18)`:'rgba(14,9,28,0.6)',
+                  border:`1px solid ${cat===k?v.color+'66':'rgba(60,40,100,0.25)'}`,
+                  color:cat===k?v.color:'#6a6080', borderRadius:20, padding:'5px 12px',
+                  fontSize:12, cursor:'pointer', transition:'all 0.15s'
+                }}>{v.emoji} {v.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Rareté */}
+          <div>
+            <label style={{fontSize:11,color:'#4a3860',letterSpacing:'1px',textTransform:'uppercase',fontWeight:600,display:'block',marginBottom:8}}>Rareté</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+              {Object.entries(RARETES).map(([k,v])=>(
+                <button key={k} type="button" onClick={()=>setRarete(k)} style={{
+                  background:rarete===k?v.glow:'rgba(14,9,28,0.6)',
+                  border:`1px solid ${rarete===k?v.color+'88':'rgba(60,40,100,0.25)'}`,
+                  color:rarete===k?v.color:'#6a6080', borderRadius:20, padding:'5px 12px',
+                  fontSize:12, cursor:'pointer', transition:'all 0.15s'
+                }}>{v.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Note */}
+          <div>
+            <label style={{fontSize:11,color:'#4a3860',letterSpacing:'1px',textTransform:'uppercase',fontWeight:600,display:'block',marginBottom:6}}>Note (optionnel)</label>
+            <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Emplacement, farm, craft…" rows={2} style={{...inputStyle,resize:'none'}} onFocus={focus} onBlur={blur}/>
+          </div>
+
+          <div style={{display:'flex',gap:10,marginTop:4}}>
+            <button type="submit" style={{flex:1,background:'#c9a8e8',color:'#08051a',border:'none',borderRadius:9,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer',transition:'box-shadow 0.2s'}}
+            onMouseEnter={e=>e.target.style.boxShadow='0 0 20px rgba(201,168,232,0.4)'}
+            onMouseLeave={e=>e.target.style.boxShadow='none'}>
+              {isEdit ? 'Enregistrer' : 'Ajouter'}
+            </button>
+            <button type="button" onClick={onClose} style={{background:'none',border:'1px solid rgba(60,40,100,0.3)',color:'#6a6080',borderRadius:9,padding:'12px 18px',fontSize:14,cursor:'pointer'}}>
+              Annuler
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Carte item ─────────────────────────────────────────────────────────────
+function ItemCard({ item, onEdit, onDelete, onToggleFav, onQteChange }) {
+  const [hov, setHov] = useState(false);
+  const [adjusting, setAdj] = useState(false);
+  const r = RARETES[item.rarete] || RARETES.commun;
+  const c = CATEGORIES[item.cat]  || CATEGORIES.divers;
+  const icon = getIcon(item.nom);
+
+  const adj = (n) => onQteChange(item.id, n);
+
+  const stacks64 = Math.floor(item.qte / 64);
+  const rest64   = item.qte % 64;
+  const stacks16 = Math.floor(item.qte / 16);
+
+  return (
+    <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{
+      background: hov ? 'rgba(22,14,42,0.95)' : 'rgba(12,8,26,0.82)',
+      border:`1px solid ${hov ? r.color+'55' : 'rgba(80,50,130,0.22)'}`,
+      borderRadius:14, padding:'18px 18px 14px',
+      transition:'all 0.28s cubic-bezier(.22,1,.36,1)',
+      transform: hov ? 'translateY(-3px)' : 'none',
+      boxShadow: hov ? `0 12px 36px rgba(0,0,0,0.4), 0 0 0 1px ${r.color}22` : 'none',
+      backdropFilter:'blur(10px)', animation:'fadeIn 0.3s ease both',
+      position:'relative', overflow:'hidden'
+    }}>
+      {/* Glow top border */}
+      <div style={{position:'absolute',top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${r.color},transparent)`,opacity:hov?1:0.4,transition:'opacity 0.3s'}}/>
+
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'flex-start',gap:12,marginBottom:14}}>
+        {/* Icon */}
+        <div style={{
+          width:48,height:48,borderRadius:10,
+          background:r.glow,border:`1px solid ${r.color}33`,
+          display:'flex',alignItems:'center',justifyContent:'center',
+          fontSize:24,flexShrink:0,
+          boxShadow:hov?`0 0 16px ${r.glow}`:'none',
+          transition:'box-shadow 0.3s'
+        }}>{icon}</div>
+
+        <div style={{flex:1,minWidth:0}}>
+          <h3 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:15,fontWeight:700,color:'#ede8f8',lineHeight:1.3,marginBottom:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+            {item.nom}
+          </h3>
+          <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+            <span style={{background:`rgba(${hexParts(c.color)},0.12)`,border:`1px solid ${c.color}33`,color:c.color,fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:20}}>{c.emoji} {c.label}</span>
+            <span style={{background:r.glow,border:`1px solid ${r.color}44`,color:r.color,fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:20}}>{r.label}</span>
+          </div>
+        </div>
+
+        {/* Favori */}
+        <button onClick={()=>onToggleFav(item.id)} style={{background:'none',border:'none',cursor:'pointer',fontSize:16,padding:2,lineHeight:1,opacity:item.favori?1:0.3,transition:'all 0.2s',transform:item.favori&&hov?'scale(1.2)':'none'}} title={item.favori?'Retirer des favoris':'Ajouter aux favoris'}>
+          ⭐
+        </button>
+      </div>
+
+      {/* Quantité — bloc principal */}
+      <div style={{background:'rgba(6,4,14,0.6)',borderRadius:10,padding:'12px 14px',marginBottom:12,border:'1px solid rgba(60,40,100,0.2)'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+          <span style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:28,fontWeight:700,color:r.color,letterSpacing:'-0.5px'}}>{item.qte.toLocaleString('fr-FR')}</span>
+          <span style={{fontSize:11,color:'#4a3860',fontWeight:500}}>unités</span>
+        </div>
+        {/* Stacks info */}
+        <div style={{display:'flex',gap:12}}>
+          <span style={{fontSize:11,color:'#6a5880'}}>
+            <span style={{color:'#a898c8',fontWeight:600}}>{stacks64}</span> stacks·64 + <span style={{color:'#a898c8',fontWeight:600}}>{rest64}</span>
+          </span>
+          <span style={{fontSize:11,color:'#5a4868'}}>/ {stacks16} stacks·16</span>
+        </div>
+      </div>
+
+      {/* Contrôles rapides */}
+      <div style={{display:'flex',gap:5,marginBottom:item.note?10:0}}>
+        {[[-64,'−64'],[- 16,'−16'],[-1,'−1']].map(([n,l])=>(
+          <button key={n} onClick={()=>adj(n)} style={{flex:1,background:'rgba(255,80,80,0.08)',border:'1px solid rgba(255,80,80,0.2)',color:'#ff8080',borderRadius:7,padding:'6px 0',fontSize:11,fontWeight:700,cursor:'pointer',transition:'all 0.15s'}}
+          onMouseEnter={e=>{e.target.style.background='rgba(255,80,80,0.18)';e.target.style.borderColor='rgba(255,80,80,0.4)';}}
+          onMouseLeave={e=>{e.target.style.background='rgba(255,80,80,0.08)';e.target.style.borderColor='rgba(255,80,80,0.2)';}}>
+            {l}
+          </button>
+        ))}
+        {[[1,'+1'],[16,'+16'],[64,'+64']].map(([n,l])=>(
+          <button key={n} onClick={()=>adj(n)} style={{flex:1,background:'rgba(154,212,174,0.08)',border:'1px solid rgba(154,212,174,0.2)',color:'#9ad4ae',borderRadius:7,padding:'6px 0',fontSize:11,fontWeight:700,cursor:'pointer',transition:'all 0.15s'}}
+          onMouseEnter={e=>{e.target.style.background='rgba(154,212,174,0.18)';e.target.style.borderColor='rgba(154,212,174,0.4)';}}
+          onMouseLeave={e=>{e.target.style.background='rgba(154,212,174,0.08)';e.target.style.borderColor='rgba(154,212,174,0.2)';}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* Note */}
+      {item.note && (
+        <p style={{fontSize:12,color:'#5a4870',lineHeight:1.5,marginTop:10,fontStyle:'italic',paddingTop:8,borderTop:'1px solid rgba(60,40,100,0.15)'}}>
+          💬 {item.note}
+        </p>
+      )}
+
+      {/* Actions */}
+      <div style={{display:'flex',gap:6,marginTop:10,paddingTop:10,borderTop:'1px solid rgba(60,40,100,0.12)'}}>
+        <button onClick={()=>onEdit(item)} style={{flex:1,background:'none',border:'1px solid rgba(80,50,130,0.25)',color:'#7a6888',borderRadius:7,padding:'6px',fontSize:12,cursor:'pointer',transition:'all 0.2s'}}
+        onMouseEnter={e=>{e.target.style.borderColor='#c9a8e8';e.target.style.color='#c9a8e8';}}
+        onMouseLeave={e=>{e.target.style.borderColor='rgba(80,50,130,0.25)';e.target.style.color='#7a6888';}}>
+          ✏️ Modifier
+        </button>
+        <button onClick={()=>{ if(confirm(`Supprimer "${item.nom}" ?`)) onDelete(item.id); }} style={{flex:1,background:'none',border:'1px solid rgba(255,80,80,0.2)',color:'#ff8080',borderRadius:7,padding:'6px',fontSize:12,cursor:'pointer',transition:'all 0.2s'}}
+        onMouseEnter={e=>{e.target.style.background='rgba(255,80,80,0.1)';}}
+        onMouseLeave={e=>{e.target.style.background='none';}}>
+          🗑️ Supprimer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Barre de statistiques ──────────────────────────────────────────────────
+function StatsBar({ items }) {
+  const total    = items.reduce((s,i)=>s+i.qte, 0);
+  const stacks   = Math.floor(total/64);
+  const favCount = items.filter(i=>i.favori).length;
+  const cats     = [...new Set(items.map(i=>i.cat))].length;
+
+  return (
+    <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:20}}>
+      {[
+        { label:'Items',      value:items.length,          color:'#c9a8e8' },
+        { label:'Total',      value:total.toLocaleString('fr-FR'), color:'#ede8f8', sub:'unités' },
+        { label:'Stacks×64', value:stacks.toLocaleString('fr-FR'), color:'#9ad4ae' },
+        { label:'Favoris',   value:favCount,               color:'#e8a87c' },
+        { label:'Catégories',value:cats,                   color:'#7eb8f7' },
+      ].map(s=>(
+        <div key={s.label} style={{background:'rgba(14,9,28,0.7)',border:'1px solid rgba(60,40,100,0.22)',borderRadius:10,padding:'8px 16px',backdropFilter:'blur(8px)'}}>
+          <p style={{fontSize:10,color:'#4a3860',letterSpacing:'0.8px',textTransform:'uppercase',fontWeight:600,marginBottom:2}}>{s.label}</p>
+          <p style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:18,fontWeight:700,color:s.color}}>
+            {s.value} {s.sub&&<span style={{fontSize:11,fontWeight:400,color:'#6a6080'}}>{s.sub}</span>}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Helper hexParts ────────────────────────────────────────────────────────
+function hexParts(hex) {
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
+
+// ── App ────────────────────────────────────────────────────────────────────
+function App() {
+  const [items,   setItems]  = useState(load);
+  const [modal,   setModal]  = useState(null); // null | {item|undefined}
+  const [catF,    setCatF]   = useState('all');
+  const [search,  setSearch] = useState('');
+  const [sortBy,  setSort]   = useState('nom'); // nom | qte | rarete | cat
+  const [favOnly, setFavOnly]= useState(false);
+  const [view,    setView]   = useState('grid'); // grid | list
+
+  // Persist
+  useEffect(() => { save(items); }, [items]);
+
+  const nextId = () => Math.max(0, ...items.map(i=>i.id)) + 1;
+
+  const addItem = data => {
+    if (modal?.item) {
+      setItems(is=>is.map(i=>i.id===modal.item.id?{...i,...data}:i));
+    } else {
+      setItems(is=>[...is,{id:nextId(),...data,favori:false}]);
+    }
+    setModal(null);
+  };
+
+  const deleteItem   = id  => setItems(is=>is.filter(i=>i.id!==id));
+  const toggleFav    = id  => setItems(is=>is.map(i=>i.id===id?{...i,favori:!i.favori}:i));
+  const changeQte    = (id,n) => setItems(is=>is.map(i=>i.id===id?{...i,qte:Math.max(0,i.qte+n)}:i));
+
+  const SORT_ORDERS = { rarete:['legendaire','epique','rare','peu_commun','commun'] };
+
+  const filtered = useMemo(()=>{
+    let r = items;
+    if (favOnly) r = r.filter(i=>i.favori);
+    if (catF !== 'all') r = r.filter(i=>i.cat===catF);
+    if (search) r = r.filter(i=>i.nom.toLowerCase().includes(search.toLowerCase()));
+    r = [...r].sort((a,b)=>{
+      if (sortBy==='nom')    return a.nom.localeCompare(b.nom);
+      if (sortBy==='qte')    return b.qte - a.qte;
+      if (sortBy==='rarete') return (SORT_ORDERS.rarete.indexOf(a.rarete)||99)-(SORT_ORDERS.rarete.indexOf(b.rarete)||99);
+      if (sortBy==='cat')    return a.cat.localeCompare(b.cat);
+      return 0;
+    });
+    return r;
+  },[items,favOnly,catF,search,sortBy]);
+
+  const accent = '#c9a8e8';
+
+  return (
+    <div style={{minHeight:'100vh',background:'#06040f'}}>
+      {/* Nav */}
+      <nav style={{height:52,background:'rgba(6,4,15,0.97)',borderBottom:'1px solid rgba(60,40,100,0.28)',display:'flex',alignItems:'center',padding:'0 20px',gap:8,position:'sticky',top:0,zIndex:50,backdropFilter:'blur(16px)'}}>
+        <a href="index.html" style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#ede8f8',textDecoration:'none'}}>Baptiste.</a>
+        <span style={{color:'#4a3860',fontSize:13}}>/</span>
+        <span style={{fontSize:13,color:'#c8c0d8',fontWeight:500}}>⛏️ Minecraft</span>
+        <div style={{flex:1}}/>
+        <a href="Kanban.html" style={{fontSize:12,color:'#6a6080',textDecoration:'none',border:'1px solid rgba(60,40,100,0.25)',borderRadius:6,padding:'4px 12px',transition:'all 0.2s'}}
+        onMouseEnter={e=>{e.currentTarget.style.color='#c9a8e8';e.currentTarget.style.borderColor='rgba(120,80,200,0.4)';}}
+        onMouseLeave={e=>{e.currentTarget.style.color='#6a6080';e.currentTarget.style.borderColor='rgba(60,40,100,0.25)';}}>
+          Kanban
+        </a>
+      </nav>
+
+      <div style={{maxWidth:1200,margin:'0 auto',padding:'28px 20px 80px'}}>
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12,marginBottom:24}}>
+          <div>
+            <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:26,fontWeight:700,color:'#ede8f8',letterSpacing:'-0.5px',marginBottom:4}}>
+              ⛏️ Ressources Minecraft
+            </h1>
+            <p style={{fontSize:13,color:'#5a4870'}}>Inventaire personnel · {items.length} items · {items.reduce((s,i)=>s+i.qte,0).toLocaleString('fr-FR')} unités</p>
+          </div>
+          <button onClick={()=>setModal({item:null})} style={{background:accent,color:'#08051a',border:'none',borderRadius:10,padding:'11px 22px',fontFamily:"'Space Grotesk',sans-serif",fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8,boxShadow:'0 0 20px rgba(201,168,232,0.25)',transition:'all 0.2s',whiteSpace:'nowrap'}}
+          onMouseEnter={e=>e.currentTarget.style.boxShadow='0 0 28px rgba(201,168,232,0.45)'}
+          onMouseLeave={e=>e.currentTarget.style.boxShadow='0 0 20px rgba(201,168,232,0.25)'}>
+            + Ajouter un item
+          </button>
+        </div>
+
+        {/* Stats */}
+        <StatsBar items={items}/>
+
+        {/* Filtres + recherche */}
+        <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+          {/* Search */}
+          <div style={{position:'relative',flex:'1 1 180px',minWidth:160}}>
+            <svg style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)'}} width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.5" stroke="#4a3860" strokeWidth="1.3"/><line x1="9.5" y1="9.5" x2="12" y2="12" stroke="#4a3860" strokeWidth="1.3" strokeLinecap="round"/></svg>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher un item…" style={{width:'100%',background:'rgba(14,9,28,0.7)',border:'1px solid rgba(60,40,100,0.25)',borderRadius:9,padding:'9px 12px 9px 30px',color:'#c8c0d8',fontSize:13,outline:'none',transition:'border-color 0.2s'}}
+            onFocus={e=>e.target.style.borderColor='rgba(160,110,220,0.5)'}
+            onBlur={e=>e.target.style.borderColor='rgba(60,40,100,0.25)'}/>
+          </div>
+
+          {/* Sort */}
+          <select value={sortBy} onChange={e=>setSort(e.target.value)} style={{background:'rgba(14,9,28,0.7)',border:'1px solid rgba(60,40,100,0.25)',borderRadius:9,padding:'9px 12px',color:'#c8c0d8',fontSize:13,outline:'none',cursor:'pointer'}}>
+            <option value="nom">Trier par nom</option>
+            <option value="qte">Trier par quantité</option>
+            <option value="rarete">Trier par rareté</option>
+            <option value="cat">Trier par catégorie</option>
+          </select>
+
+          {/* Favori filter */}
+          <button onClick={()=>setFavOnly(f=>!f)} style={{background:favOnly?'rgba(232,168,124,0.15)':'rgba(14,9,28,0.7)',border:`1px solid ${favOnly?'rgba(232,168,124,0.4)':'rgba(60,40,100,0.25)'}`,color:favOnly?'#e8a87c':'#6a6080',borderRadius:9,padding:'9px 14px',fontSize:13,cursor:'pointer',transition:'all 0.2s',whiteSpace:'nowrap'}}>
+            ⭐ Favoris {favOnly&&`(${items.filter(i=>i.favori).length})`}
+          </button>
+
+          {/* View toggle */}
+          <div style={{display:'flex',background:'rgba(14,9,28,0.7)',border:'1px solid rgba(60,40,100,0.25)',borderRadius:9,overflow:'hidden'}}>
+            {[['grid','⊞'],['list','☰']].map(([v,ic])=>(
+              <button key={v} onClick={()=>setView(v)} style={{background:view===v?'rgba(120,80,200,0.22)':'none',border:'none',color:view===v?accent:'#6a6080',padding:'9px 14px',cursor:'pointer',fontSize:14,transition:'all 0.2s'}}>{ic}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Catégorie tabs */}
+        <div style={{display:'flex',gap:6,marginBottom:20,flexWrap:'wrap'}}>
+          {Object.entries(CATEGORIES).map(([k,v])=>{
+            const cnt = k==='all' ? items.length : items.filter(i=>i.cat===k).length;
+            if (k!=='all' && cnt===0) return null;
+            return (
+              <button key={k} onClick={()=>setCatF(k)} style={{
+                background:catF===k?`rgba(${hexParts(v.color)},0.16)`:'rgba(14,9,28,0.6)',
+                border:`1px solid ${catF===k?v.color+'55':'rgba(60,40,100,0.2)'}`,
+                color:catF===k?v.color:'#6a6080',
+                borderRadius:20,padding:'6px 14px',cursor:'pointer',
+                fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:catF===k?700:400,
+                transition:'all 0.2s',display:'flex',alignItems:'center',gap:5
+              }}>
+                {v.emoji} {v.label}
+                <span style={{background:catF===k?`rgba(${hexParts(v.color)},0.2)`:'rgba(60,40,100,0.3)',color:catF===k?v.color:'#4a3860',fontSize:10,fontWeight:800,padding:'0 5px',borderRadius:10,minWidth:18,textAlign:'center'}}>{cnt}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Items vides */}
+        {filtered.length===0&&(
+          <div style={{textAlign:'center',padding:'80px 0',opacity:0.4}}>
+            <div style={{fontSize:48,marginBottom:16}}>📦</div>
+            <p style={{fontSize:16,color:'#6a6080',fontFamily:"'Space Grotesk',sans-serif",fontWeight:600}}>Aucun item trouvé</p>
+            <p style={{fontSize:13,color:'#4a3860',marginTop:6}}>Ajoute ta première ressource ou change les filtres</p>
+          </div>
+        )}
+
+        {/* Grille ou liste */}
+        {view==='grid' ? (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14}}>
+            {filtered.map(item=>(
+              <ItemCard key={item.id} item={item} onEdit={i=>setModal({item:i})} onDelete={deleteItem} onToggleFav={toggleFav} onQteChange={changeQte}/>
+            ))}
+          </div>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {filtered.map(item=><ListRow key={item.id} item={item} onEdit={i=>setModal({item:i})} onDelete={deleteItem} onToggleFav={toggleFav} onQteChange={changeQte}/>)}
+          </div>
+        )}
+      </div>
+
+      {/* Modal */}
+      {modal && <ItemModal item={modal.item} onSave={addItem} onClose={()=>setModal(null)}/>}
+    </div>
+  );
+}
+
+// ── Vue liste ──────────────────────────────────────────────────────────────
+function ListRow({ item, onEdit, onDelete, onToggleFav, onQteChange }) {
+  const [hov, setHov] = useState(false);
+  const r = RARETES[item.rarete] || RARETES.commun;
+  const c = CATEGORIES[item.cat]  || CATEGORIES.divers;
+  const icon = getIcon(item.nom);
+
+  return (
+    <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{
+      background:hov?'rgba(18,11,34,0.95)':'rgba(10,7,22,0.75)',
+      border:`1px solid ${hov?r.color+'44':'rgba(60,40,100,0.2)'}`,
+      borderLeft:`3px solid ${r.color}`,
+      borderRadius:10,padding:'12px 16px',
+      display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',
+      transition:'all 0.22s',backdropFilter:'blur(8px)',
+      animation:'fadeIn 0.25s ease both'
+    }}>
+      <span style={{fontSize:22,width:32,textAlign:'center',flexShrink:0}}>{icon}</span>
+      <div style={{flex:'1 1 140px',minWidth:0}}>
+        <p style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:14,fontWeight:700,color:'#ede8f8',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.nom}</p>
+        <div style={{display:'flex',gap:5,marginTop:3,flexWrap:'wrap'}}>
+          <span style={{fontSize:10,color:c.color,background:`rgba(${hexParts(c.color)},0.1)`,padding:'1px 7px',borderRadius:20}}>{c.emoji} {c.label}</span>
+          <span style={{fontSize:10,color:r.color,background:r.glow,padding:'1px 7px',borderRadius:20}}>{r.label}</span>
+        </div>
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0}}>
+        {[[-64,'−64'],[-1,'−1']].map(([n,l])=>(
+          <button key={n} onClick={()=>onQteChange(item.id,n)} style={{background:'rgba(255,80,80,0.08)',border:'1px solid rgba(255,80,80,0.2)',color:'#ff8080',borderRadius:6,padding:'4px 8px',fontSize:11,fontWeight:700,cursor:'pointer'}}>{l}</button>
+        ))}
+        <span style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:18,fontWeight:700,color:r.color,minWidth:60,textAlign:'center'}}>{item.qte.toLocaleString('fr-FR')}</span>
+        {[[1,'+1'],[64,'+64']].map(([n,l])=>(
+          <button key={n} onClick={()=>onQteChange(item.id,n)} style={{background:'rgba(154,212,174,0.08)',border:'1px solid rgba(154,212,174,0.2)',color:'#9ad4ae',borderRadius:6,padding:'4px 8px',fontSize:11,fontWeight:700,cursor:'pointer'}}>{l}</button>
+        ))}
+      </div>
+      <div style={{display:'flex',gap:6,flexShrink:0}}>
+        <button onClick={()=>onToggleFav(item.id)} style={{background:'none',border:'none',cursor:'pointer',fontSize:15,opacity:item.favori?1:0.3}}>⭐</button>
+        <button onClick={()=>onEdit(item)} style={{background:'none',border:'1px solid rgba(80,50,130,0.25)',color:'#7a6888',borderRadius:6,padding:'5px 10px',fontSize:12,cursor:'pointer'}}>✏️</button>
+        <button onClick={()=>{ if(confirm(`Supprimer "${item.nom}" ?`)) onDelete(item.id); }} style={{background:'none',border:'1px solid rgba(255,80,80,0.2)',color:'#ff8080',borderRadius:6,padding:'5px 10px',fontSize:12,cursor:'pointer'}}>🗑️</button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
