@@ -9,6 +9,7 @@ import { DocumentsTab } from '../components/project/Documents';
 import { Home } from '../components/project/Home';
 import { KanbanTab } from '../components/project/Kanban';
 import { MeetingsTab } from '../components/project/Meetings';
+import { MinecraftTab } from '../components/project/Minecraft';
 import { OverviewTab } from '../components/project/Overview';
 import { ProjectLayout } from '../components/project/ProjectLayout';
 
@@ -58,6 +59,7 @@ export default function Project() {
         <Route path="documents"   element={<DocumentsTab />} />
         <Route path="builds"      element={<BuildsTab />} />
         <Route path="meetings"    element={<MeetingsTab />} />
+        <Route path="minecraft"   element={<MinecraftTab />} />
         <Route path="*"           element={<Navigate to="overview" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/project" replace />} />

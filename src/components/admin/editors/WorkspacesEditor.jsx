@@ -195,6 +195,7 @@ function WorkspaceForm({ workspace, users, onSaved, onCancel }) {
   const [tags, setTags] = useState(workspace?.tags || []);
   const [memberIds, setMemberIds] = useState(workspace?.memberIds || []);
   const [status, setStatus] = useState(workspace?.status || 'active');
+  const [isMinecraft, setIsMinecraft] = useState(!!workspace?.isMinecraft);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -209,6 +210,7 @@ function WorkspaceForm({ workspace, users, onSaved, onCancel }) {
         endDate: endDate || null,
         tags,
         status,
+        isMinecraft,
         memberIds,
       };
       if (isEdit) await api.workspaces.update(workspace.id, payload);
@@ -330,6 +332,12 @@ function WorkspaceForm({ workspace, users, onSaved, onCancel }) {
           )}
         </div>
       </Field>
+
+      <CheckboxField
+        label="⛏️ Mode Minecraft (page de gestion des ressources)"
+        value={isMinecraft}
+        onChange={setIsMinecraft}
+      />
 
       {isEdit && (
         <CheckboxField

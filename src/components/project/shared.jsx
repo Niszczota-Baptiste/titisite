@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ACC, ACC_RGB, Button, CheckboxField, Field, Input, Textarea, inputStyle,
 } from '../admin/ui';
@@ -79,7 +80,10 @@ export function Modal({ open, onClose, title, children, width = 640 }) {
 
   if (!open) return null;
 
-  return (
+  // Rendered via portal so it escapes any ancestor that creates a containing
+  // block (e.g. headers with `backdrop-filter`/`transform`) and would otherwise
+  // clip a position:fixed modal inside that ancestor.
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -114,7 +118,8 @@ export function Modal({ open, onClose, title, children, width = 640 }) {
         </header>
         <div style={{ padding: 22 }}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

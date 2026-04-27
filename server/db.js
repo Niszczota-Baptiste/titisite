@@ -69,6 +69,7 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_workspaces_status ON workspaces(status);`);
+  ensureColumn('workspaces', 'is_minecraft', 'INTEGER NOT NULL DEFAULT 0');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS workspace_members (
@@ -159,6 +160,21 @@ export function migrate() {
   ensureColumn('meetings', 'workspace_id', 'INTEGER REFERENCES workspaces(id) ON DELETE CASCADE');
   db.exec(`CREATE INDEX IF NOT EXISTS idx_meetings_starts ON meetings(starts_at);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_meetings_workspace ON meetings(workspace_id);`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_resources (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      quantity     INTEGER NOT NULL DEFAULT 0,
+      notes        TEXT NOT NULL DEFAULT '',
+      position     INTEGER NOT NULL DEFAULT 0,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_resources_workspace ON minecraft_resources(workspace_id, position);`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS comments (

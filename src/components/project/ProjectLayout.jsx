@@ -7,7 +7,7 @@ import { WorkspaceContext } from '../../hooks/useWorkspace';
 import { ACC, ACC_RGB, Button } from '../admin/ui';
 import { NotificationsButton } from './NotificationsButton';
 
-const TABS = [
+const BASE_TABS = [
   { to: 'overview',  label: 'Vue d\'ensemble' },
   { to: 'kanban',    label: 'Kanban' },
   { to: 'calendar',  label: 'Calendrier' },
@@ -15,6 +15,12 @@ const TABS = [
   { to: 'builds',    label: 'Builds' },
   { to: 'meetings',  label: 'Réunions' },
 ];
+
+function tabsFor(workspace) {
+  const tabs = [...BASE_TABS];
+  if (workspace?.isMinecraft) tabs.push({ to: 'minecraft', label: '⛏️ Minecraft' });
+  return tabs;
+}
 
 /**
  * Wraps a workspace-scoped page: loads the workspace by :slug, provides it via
@@ -74,7 +80,7 @@ export function ProjectLayout() {
         </>
       }
     >
-      <TabsBar />
+      <TabsBar workspace={workspace} />
 
       <main style={{ maxWidth: 1180, margin: '0 auto', padding: '20px clamp(16px, 4vw, 32px) 60px' }}>
         <WorkspaceContext.Provider value={{ workspace }}>
@@ -85,8 +91,9 @@ export function ProjectLayout() {
   );
 }
 
-function TabsBar() {
+function TabsBar({ workspace }) {
   const mobile = useIsMobile(720);
+  const tabs = tabsFor(workspace);
   return (
     <nav className="tabs-scroll-fade" style={{
       display: 'flex', gap: 4,
@@ -96,7 +103,7 @@ function TabsBar() {
       // Hide scrollbar on mobile, keep it usable
       WebkitOverflowScrolling: 'touch',
     }}>
-      {TABS.map((t) => (
+      {tabs.map((t) => (
         <NavLink
           key={t.to}
           to={t.to}

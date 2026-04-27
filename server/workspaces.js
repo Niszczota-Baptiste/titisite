@@ -26,6 +26,7 @@ export function rowToWorkspace(r) {
     endDate: r.end_date,
     tags: parseTags(r.tags),
     status: r.status,
+    isMinecraft: !!r.is_minecraft,
     createdBy: r.created_by,
     createdByName: r.created_by_name,
     createdAt: r.created_at,
@@ -131,6 +132,7 @@ export function createWorkspace(input, createdBy) {
     endDate = null,
     tags = [],
     status = 'active',
+    isMinecraft = false,
     memberIds = [],
   } = input || {};
 
@@ -141,14 +143,15 @@ export function createWorkspace(input, createdBy) {
 
   const result = db.prepare(`
     INSERT INTO workspaces
-      (slug, name, description, color, icon, start_date, end_date, tags, status, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (slug, name, description, color, icon, start_date, end_date, tags, status, is_minecraft, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     slug, name.trim(), (description || '').trim(),
     color, icon,
     parseUnix(startDate), parseUnix(endDate),
     JSON.stringify(Array.isArray(tags) ? tags : []),
     status === 'archived' ? 'archived' : 'active',
+    isMinecraft ? 1 : 0,
     createdBy,
   );
 
@@ -161,7 +164,8 @@ export function updateWorkspace(id, input) {
   if (!existing) return null;
 
   const {
-    name, slug, description, color, icon, startDate, endDate, tags, status, memberIds,
+    name, slug, description, color, icon, startDate, endDate, tags, status,
+    isMinecraft, memberIds,
   } = input || {};
 
   let newSlug = existing.slug;
@@ -171,16 +175,17 @@ export function updateWorkspace(id, input) {
 
   db.prepare(`
     UPDATE workspaces SET
-      slug        = ?,
-      name        = COALESCE(?, name),
-      description = COALESCE(?, description),
-      color       = COALESCE(?, color),
-      icon        = COALESCE(?, icon),
-      start_date  = ?,
-      end_date    = ?,
-      tags        = COALESCE(?, tags),
-      status      = COALESCE(?, status),
-      updated_at  = strftime('%s','now')
+      slug         = ?,
+      name         = COALESCE(?, name),
+      description  = COALESCE(?, description),
+      color        = COALESCE(?, color),
+      icon         = COALESCE(?, icon),
+      start_date   = ?,
+      end_date     = ?,
+      tags         = COALESCE(?, tags),
+      status       = COALESCE(?, status),
+      is_minecraft = COALESCE(?, is_minecraft),
+      updated_at   = strftime('%s','now')
     WHERE id = ?
   `).run(
     newSlug,
@@ -192,6 +197,7 @@ export function updateWorkspace(id, input) {
     endDate !== undefined ? parseUnix(endDate) : existing.endDate,
     Array.isArray(tags) ? JSON.stringify(tags) : null,
     status && ['active', 'archived'].includes(status) ? status : null,
+    isMinecraft === undefined ? null : (isMinecraft ? 1 : 0),
     id,
   );
   if (Array.isArray(memberIds)) setMembers(id, memberIds);
