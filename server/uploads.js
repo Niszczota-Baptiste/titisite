@@ -1,9 +1,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import multer from 'multer';
 
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- UPLOADS_DIR comes from env/default, not user input
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
