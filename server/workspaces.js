@@ -83,6 +83,18 @@ export function isMember(workspaceId, userId) {
     .get(workspaceId, userId);
 }
 
+// True if the user can act inside the given workspace — admins can act in any
+// workspace; members must be in the workspace_members list. Used to guard
+// fields that pin a user to a workspace (e.g. feature.assignee_id) so a
+// member can't pollute the board by assigning a card to someone with no
+// access to it.
+export function canAccessWorkspace(workspaceId, userId) {
+  const u = db.prepare(`SELECT role FROM users WHERE id = ?`).get(userId);
+  if (!u) return false;
+  if (u.role === 'admin') return true;
+  return isMember(workspaceId, userId);
+}
+
 export function listMemberIds(workspaceId) {
   return db
     .prepare(`SELECT user_id FROM workspace_members WHERE workspace_id = ?`)
@@ -90,6 +102,11 @@ export function listMemberIds(workspaceId) {
     .map((r) => r.user_id);
 }
 
+// Replaces the membership list of a workspace. Admin-only at the route layer.
+// Note: an empty `userIds` is allowed and leaves the workspace with no
+// members — admins still retain full access (resolveWorkspace bypasses the
+// member check for them), so an empty list never produces an unreachable
+// workspace.
 export function setMembers(workspaceId, userIds) {
   const ids = [...new Set((userIds || []).map(Number).filter(Number.isFinite))];
   const tx = db.transaction(() => {

@@ -139,6 +139,142 @@ describe('password policy', () => {
   });
 });
 
+describe('feature assignee guard', () => {
+  it('rejects assigning a feature to a user without access to the workspace', async () => {
+    const admin = await loggedIn(ADMIN);
+    const member = await loggedIn(MEMBER);
+    // Member-only workspace: admin always has access (role-based bypass), but
+    // a brand-new outsider does not.
+    const ws = await admin.post('/api/workspaces', {
+      body: { name: 'Assignee Guard Project' },
+    });
+    assert.equal(ws.status, 201);
+    const slug = ws.json.slug;
+    await admin.put(`/api/workspaces/${ws.json.id}/members`, {
+      body: { memberIds: [(await admin.get('/api/users')).json.find((u) => u.email === MEMBER.email).id] },
+    });
+    // Find a third user that's not in this workspace.
+    const outsider = await admin.post('/api/users', {
+      body: { email: 'outsider@test.local', password: 'outsider-strong', role: 'member' },
+    });
+    assert.equal(outsider.status, 201);
+
+    // Member tries to create a feature assigned to the outsider → rejected.
+    const bad = await member.post(`/api/workspaces/${slug}/features`, {
+      body: { title: 'pollute', assigneeId: outsider.json.id },
+    });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.json.error, 'invalid_assignee');
+
+    // Member assigning to themselves works.
+    const self = (await member.get('/api/auth/me')).json;
+    const ok = await member.post(`/api/workspaces/${slug}/features`, {
+      body: { title: 'mine', assigneeId: self.id },
+    });
+    assert.equal(ok.status, 201);
+
+    // PUT to outsider also rejected.
+    const moved = await member.put(`/api/workspaces/${slug}/features/${ok.json.id}`, {
+      body: { assigneeId: outsider.json.id },
+    });
+    assert.equal(moved.status, 400);
+    assert.equal(moved.json.error, 'invalid_assignee');
+
+    // Admin remains a valid assignee even though they're not an explicit member row.
+    const adminSelf = (await admin.get('/api/auth/me')).json;
+    const adminAssign = await member.put(`/api/workspaces/${slug}/features/${ok.json.id}`, {
+      body: { assigneeId: adminSelf.id },
+    });
+    assert.equal(adminAssign.status, 200);
+    assert.equal(adminAssign.json.assigneeId, adminSelf.id);
+  });
+});
+
+describe('password change re-auth (SEC-09)', () => {
+  it('refuses admin-on-self password change via PUT /users/:id', async () => {
+    const admin = await loggedIn(ADMIN);
+    const me = (await admin.get('/api/auth/me')).json;
+    const r = await admin.put(`/api/users/${me.id}`, { body: { password: 'something-strong-12' } });
+    assert.equal(r.status, 403);
+    assert.equal(r.json.error, 'use_self_service_password');
+  });
+
+  it('refuses admin-on-other-admin password change', async () => {
+    const admin = await loggedIn(ADMIN);
+    const second = await admin.post('/api/users', {
+      body: { email: 'admin2@test.local', name: 'Second Admin', password: 'second-strong-12', role: 'admin' },
+    });
+    assert.equal(second.status, 201);
+    const r = await admin.put(`/api/users/${second.json.id}`, { body: { password: 'pivot-strong-12' } });
+    assert.equal(r.status, 403);
+    assert.equal(r.json.error, 'cannot_change_other_admin_password');
+  });
+
+  it('still lets an admin reset a member password', async () => {
+    const admin = await loggedIn(ADMIN);
+    const m = await admin.post('/api/users', {
+      body: { email: 'resetme@test.local', password: 'oldpass-strong-12', role: 'member' },
+    });
+    assert.equal(m.status, 201);
+    const r = await admin.put(`/api/users/${m.json.id}`, { body: { password: 'newpass-strong-12' } });
+    assert.equal(r.status, 200);
+    // The reset should have invalidated old credentials.
+    const fresh = fetcher(server.base);
+    const oldLogin = await fresh.post('/api/auth/login', { body: { email: 'resetme@test.local', password: 'oldpass-strong-12' } });
+    assert.equal(oldLogin.status, 401);
+    const newLogin = await fresh.post('/api/auth/login', { body: { email: 'resetme@test.local', password: 'newpass-strong-12' } });
+    assert.equal(newLogin.status, 200);
+  });
+
+  it('PUT /me/password requires current password and rotates the session', async () => {
+    const admin = await loggedIn(ADMIN);
+    // Wrong current password is rejected.
+    const wrong = await admin.put('/api/me/password', {
+      body: { currentPassword: 'not-it', newPassword: 'brand-new-strong-12' },
+    });
+    assert.equal(wrong.status, 401);
+    assert.equal(wrong.json.error, 'invalid_current_password');
+
+    // Same-as-current is rejected.
+    const same = await admin.put('/api/me/password', {
+      body: { currentPassword: ADMIN.password, newPassword: ADMIN.password },
+    });
+    assert.equal(same.status, 400);
+    assert.equal(same.json.error, 'password_unchanged');
+
+    // Snapshot the current cookie so we can prove it's invalidated.
+    const oldCookie = admin.jar.cookies.get('titisite_session');
+
+    const ok = await admin.put('/api/me/password', {
+      body: { currentPassword: ADMIN.password, newPassword: 'brand-new-strong-12' },
+    });
+    assert.equal(ok.status, 204);
+
+    // The old cookie should now be rejected (token version was bumped).
+    const replay = await fetch(`${server.base}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${oldCookie}` },
+    });
+    assert.equal(replay.status, 401);
+
+    // The fresh cookie just set on the response keeps the tab logged in.
+    const me = await admin.get('/api/auth/me');
+    assert.equal(me.status, 200);
+
+    // And the new password actually works at the login endpoint.
+    const fresh = fetcher(server.base);
+    const newLogin = await fresh.post('/api/auth/login', {
+      body: { email: ADMIN.email, password: 'brand-new-strong-12' },
+    });
+    assert.equal(newLogin.status, 200);
+
+    // Restore so later tests using the ADMIN constant still work.
+    const restore = await admin.put('/api/me/password', {
+      body: { currentPassword: 'brand-new-strong-12', newPassword: ADMIN.password },
+    });
+    assert.equal(restore.status, 204);
+  });
+});
+
 describe('comments', () => {
   it('hides authorEmail from members but shows it to admins', async () => {
     const admin = await loggedIn(ADMIN);

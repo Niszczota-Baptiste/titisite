@@ -60,6 +60,8 @@ export function UsersEditor() {
         </div>
       )}
 
+      <SelfPasswordPanel />
+
       {loading ? (
         <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif" }}>Chargement…</p>
       ) : (
@@ -77,6 +79,7 @@ export function UsersEditor() {
                 {editing?.id === u.id ? (
                   <UserForm
                     user={u}
+                    currentUser={currentUser}
                     onSaved={() => { setEditing(null); load(); }}
                     onCancel={() => setEditing(null)}
                   />
@@ -146,8 +149,13 @@ export function UsersEditor() {
   );
 }
 
-function UserForm({ user, onSaved, onCancel }) {
+function UserForm({ user, currentUser, onSaved, onCancel }) {
   const isEdit = !!user;
+  const isSelf = isEdit && user.id === currentUser?.id;
+  // The admin route refuses to change another admin's password, and self
+  // password changes go through /me/password — so the password field is only
+  // useful when an admin resets a *member*'s credentials.
+  const canResetPassword = isEdit ? (!isSelf && user.role !== 'admin') : true;
   const [email, setEmail] = useState(user?.email || '');
   const [name, setName] = useState(user?.name || '');
   const [role, setRole] = useState(user?.role || 'member');
@@ -161,7 +169,7 @@ function UserForm({ user, onSaved, onCancel }) {
     try {
       if (isEdit) {
         const payload = { name, role };
-        if (password) payload.password = password;
+        if (password && canResetPassword) payload.password = password;
         await api.updateUser(user.id, payload);
       } else {
         if (!email || !password) { setErr('Email et mot de passe requis'); setSaving(false); return; }
@@ -224,16 +232,29 @@ function UserForm({ user, onSaved, onCancel }) {
             {ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </Field>
-        <Field label={isEdit ? 'Nouveau mot de passe (optionnel)' : 'Mot de passe'}>
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-            placeholder={isEdit ? 'Laisser vide pour ne pas changer' : undefined}
-            required={!isEdit}
-          />
-        </Field>
+        {canResetPassword ? (
+          <Field label={isEdit ? 'Nouveau mot de passe (optionnel)' : 'Mot de passe'}>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              placeholder={isEdit ? 'Laisser vide pour ne pas changer' : undefined}
+              required={!isEdit}
+            />
+          </Field>
+        ) : (
+          <Field label="Mot de passe">
+            <div style={{
+              fontFamily: "'Inter',sans-serif", fontSize: 12,
+              color: 'rgba(180,170,200,0.7)', padding: '10px 0',
+            }}>
+              {isSelf
+                ? 'Utilise le panneau « Mon mot de passe » plus haut.'
+                : 'La réinitialisation d’un autre admin n’est pas autorisée.'}
+            </div>
+          </Field>
+        )}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
@@ -244,16 +265,129 @@ function UserForm({ user, onSaved, onCancel }) {
   );
 }
 
+function SelfPasswordPanel() {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
+  const [ok, setOk] = useState(false);
+
+  const reset = () => {
+    setCurrent(''); setNext(''); setConfirmPwd(''); setErr(null); setOk(false);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr(null); setOk(false);
+    if (next !== confirmPwd) { setErr('La confirmation ne correspond pas.'); return; }
+    setSaving(true);
+    try {
+      await api.changeMyPassword(current, next);
+      setOk(true);
+      setCurrent(''); setNext(''); setConfirmPwd('');
+    } catch (ex) {
+      setErr(humanize(ex));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{
+      background: 'rgba(14,9,28,0.55)',
+      border: `1px solid rgba(${ACC_RGB},0.25)`,
+      borderRadius: 12, padding: 14, marginBottom: 14,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{
+            fontFamily: "'Space Grotesk',sans-serif", fontSize: 14, fontWeight: 600,
+            color: '#ede8f8',
+          }}>
+            Mon mot de passe
+          </div>
+          <div style={{
+            fontFamily: "'Inter',sans-serif", fontSize: 12,
+            color: 'rgba(180,170,200,0.6)', marginTop: 2,
+          }}>
+            Le seul moyen de modifier ton propre mot de passe — confirmation requise.
+          </div>
+        </div>
+        <Button variant="ghost" onClick={() => { setOpen((v) => !v); reset(); }}>
+          {open ? 'Fermer' : 'Modifier'}
+        </Button>
+      </div>
+
+      {open && (
+        <form onSubmit={submit} style={{ marginTop: 12 }}>
+          {err && (
+            <div style={{
+              background: 'rgba(255,100,120,0.08)', border: '1px solid rgba(255,100,120,0.3)',
+              borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: '#ff8a9b',
+              fontSize: 12, fontFamily: "'Inter',sans-serif",
+            }}>{err}</div>
+          )}
+          {ok && (
+            <div style={{
+              background: 'rgba(120,220,160,0.08)', border: '1px solid rgba(120,220,160,0.3)',
+              borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: '#9be9b6',
+              fontSize: 12, fontFamily: "'Inter',sans-serif",
+            }}>Mot de passe mis à jour. Tes autres sessions ont été déconnectées.</div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <Field label="Mot de passe actuel">
+              <Input
+                type="password"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </Field>
+            <Field label="Nouveau mot de passe">
+              <Input
+                type="password"
+                value={next}
+                onChange={(e) => setNext(e.target.value)}
+                autoComplete="new-password"
+                required
+              />
+            </Field>
+            <Field label="Confirmation">
+              <Input
+                type="password"
+                value={confirmPwd}
+                onChange={(e) => setConfirmPwd(e.target.value)}
+                autoComplete="new-password"
+                required
+              />
+            </Field>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <Button type="submit" disabled={saving}>{saving ? '…' : 'Mettre à jour'}</Button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 const MESSAGES = {
-  email_taken:        'Cet email est déjà utilisé.',
-  last_admin:         'Impossible : il doit rester au moins un admin.',
-  cannot_delete_self: 'Impossible de supprimer ton propre compte.',
-  invalid_role:       'Rôle invalide.',
-  missing_fields:     'Email et mot de passe requis.',
-  password_too_short: 'Mot de passe trop court (12 caractères minimum).',
-  password_too_weak:  'Mot de passe trop courant — choisis-en un autre.',
-  forbidden:          "Tu n'as pas les droits pour cette action.",
-  not_found:          'Utilisateur introuvable.',
+  email_taken:                       'Cet email est déjà utilisé.',
+  last_admin:                        'Impossible : il doit rester au moins un admin.',
+  cannot_delete_self:                'Impossible de supprimer ton propre compte.',
+  invalid_role:                      'Rôle invalide.',
+  missing_fields:                    'Email et mot de passe requis.',
+  password_too_short:                'Mot de passe trop court (12 caractères minimum).',
+  password_too_weak:                 'Mot de passe trop courant — choisis-en un autre.',
+  password_unchanged:                'Le nouveau mot de passe doit être différent.',
+  invalid_current_password:          'Mot de passe actuel incorrect.',
+  use_self_service_password:         'Modifie ton propre mot de passe via le panneau « Mon mot de passe ».',
+  cannot_change_other_admin_password:'Impossible de réinitialiser le mot de passe d’un autre admin.',
+  forbidden:                         "Tu n'as pas les droits pour cette action.",
+  not_found:                         'Utilisateur introuvable.',
 };
 function humanize(err) {
   const key = err?.body?.error || err?.message;
