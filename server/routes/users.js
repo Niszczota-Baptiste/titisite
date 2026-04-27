@@ -44,6 +44,7 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
   if (!existing) return res.status(404).json({ error: 'not_found' });
 
   const { name, role, password } = req.body || {};
+  const wantsPasswordChange = password !== undefined && password !== null && password !== '';
 
   if (role && role !== existing.role) {
     if (!['admin', 'member'].includes(role)) return res.status(400).json({ error: 'invalid_role' });
@@ -53,7 +54,17 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
     }
   }
 
-  if (password !== undefined && password !== null && password !== '') {
+  if (wantsPasswordChange) {
+    // Refuse silent admin-on-admin password resets (CWE-620). Admins must
+    // change their own password through PUT /api/me/password, which requires
+    // the current password — so a single hijacked admin session can't pivot
+    // to take over the other admin accounts.
+    if (id === req.user.id) {
+      return res.status(403).json({ error: 'use_self_service_password' });
+    }
+    if (existing.role === 'admin') {
+      return res.status(403).json({ error: 'cannot_change_other_admin_password' });
+    }
     try {
       validatePassword(password);
     } catch (err) {
@@ -62,7 +73,7 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
     }
   }
 
-  const newHash = password ? bcrypt.hashSync(password, 10) : existing.password_hash;
+  const newHash = wantsPasswordChange ? bcrypt.hashSync(password, 10) : existing.password_hash;
 
   db.prepare(`
     UPDATE users SET
@@ -72,7 +83,15 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
     WHERE id = ?
   `).run(name ?? null, role ?? null, newHash, id);
 
-  if (password) bumpTokenVersion(id);
+  if (wantsPasswordChange) {
+    bumpTokenVersion(id);
+    // Audit trail: log the actor + target so an unexpected reset shows up in
+    // the server logs even if no client-side notification is read.
+    console.log(
+      `[audit] password reset by admin id=${req.user.id} (${req.user.email}) `
+      + `for user id=${id} (${existing.email})`,
+    );
+  }
 
   const row = db.prepare(`SELECT id, email, name, role, created_at FROM users WHERE id = ?`).get(id);
   res.json(row);

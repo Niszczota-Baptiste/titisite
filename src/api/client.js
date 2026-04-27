@@ -100,6 +100,11 @@ export const api = {
   icalToken:       () => request('GET',  '/me/ical-token'),
   rotateIcalToken: () => request('POST', '/me/ical-token/rotate'),
 
+  // Self-service password change. The admin route refuses to touch admin
+  // accounts so this is the only way to rotate one's own password.
+  changeMyPassword: (currentPassword, newPassword) =>
+    request('PUT', '/me/password', { currentPassword, newPassword }),
+
   // Email digest opt-in (off / daily / weekly).
   digestPrefs:    () => request('GET', '/me/digest-prefs'),
   setDigestPrefs: (frequency) => request('PUT', '/me/digest-prefs', { frequency }),

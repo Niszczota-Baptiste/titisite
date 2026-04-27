@@ -1,9 +1,22 @@
+import bcrypt from 'bcryptjs';
 import { Router } from 'express';
-import { requireAuth, requireRole } from '../auth.js';
+import {
+  requireAuth,
+  requireRole,
+  revokeRequestToken,
+  setSessionCookie,
+} from '../auth.js';
 import { canonicalBase } from '../canonicalUrl.js';
 import { db } from '../db.js';
 import { isMailerConfigured } from '../mailer.js';
-import { ensureIcalToken, rotateIcalToken } from '../users.js';
+import {
+  bumpTokenVersion,
+  ensureIcalToken,
+  findById,
+  PasswordPolicyError,
+  rotateIcalToken,
+  validatePassword,
+} from '../users.js';
 
 export const meRouter = Router();
 
@@ -39,6 +52,44 @@ meRouter.put('/digest-prefs', requireAuth, requireRole('admin', 'member'), (req,
   }
   db.prepare(`UPDATE users SET digest_frequency = ? WHERE id = ?`).run(frequency, req.user.id);
   res.json({ frequency, mailerConfigured: isMailerConfigured() });
+});
+
+// Self-service password change. Requires the current password (CWE-620), so a
+// hijacked admin session can't pivot by silently rotating *another* admin's
+// credentials through PUT /api/users/:id (that route refuses any password
+// change targeting an admin or the actor themselves and points clients
+// here). Rotates the JWT version to invalidate any other live session and
+// re-issues the cookie so the calling tab stays logged in.
+meRouter.put('/password', requireAuth, requireRole('admin', 'member'), (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+    return res.status(400).json({ error: 'missing_fields' });
+  }
+  const row = db.prepare(`SELECT password_hash FROM users WHERE id = ?`).get(req.user.id);
+  if (!row || !bcrypt.compareSync(currentPassword, row.password_hash)) {
+    return res.status(401).json({ error: 'invalid_current_password' });
+  }
+  if (newPassword === currentPassword) {
+    return res.status(400).json({ error: 'password_unchanged' });
+  }
+  try {
+    validatePassword(newPassword);
+  } catch (err) {
+    if (err instanceof PasswordPolicyError) return res.status(400).json({ error: err.code });
+    throw err;
+  }
+  const hash = bcrypt.hashSync(newPassword, 10);
+  db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(hash, req.user.id);
+  // Bump first so the *current* JWT becomes invalid, then revoke the cookie's
+  // jti as belt-and-braces, then mint a fresh cookie tied to the new tv.
+  bumpTokenVersion(req.user.id);
+  revokeRequestToken(req);
+  const fresh = findById(req.user.id);
+  setSessionCookie(res, fresh);
+  console.log(
+    `[audit] self-service password change for user id=${req.user.id} (${req.user.email})`,
+  );
+  res.status(204).end();
 });
 
 meRouter.post('/ical-token/rotate', requireAuth, requireRole('admin', 'member'), (req, res) => {

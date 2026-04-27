@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../db.js';
+import { canAccessWorkspace } from '../workspaces.js';
 
 // This router is mounted under /api/workspaces/:slug/features with
 // mergeParams so it sees :slug, and a resolveWorkspace middleware has already
@@ -102,6 +103,17 @@ function rowToFeature(r) {
   };
 }
 
+// Reject assignments that would point at a user without access to this
+// workspace — otherwise a member can pollute the board by assigning cards
+// to any user id they happen to know (e.g. the admin's id from /api/users).
+function validateAssignee(workspaceId, raw) {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  const id = Number(raw);
+  if (!Number.isFinite(id) || id <= 0) return { ok: false };
+  if (!canAccessWorkspace(workspaceId, id)) return { ok: false };
+  return { ok: true, value: id };
+}
+
 function parseDue(v) {
   if (v === undefined) return undefined;
   if (v === null || v === '') return null;
@@ -120,6 +132,8 @@ featuresRouter.post('/', (req, res) => {
   if (!title || !title.trim()) return res.status(400).json({ error: 'missing_title' });
   const st = STATUSES.includes(status) ? status : 'backlog';
   const pr = PRIORITIES.includes(priority) ? priority : 'medium';
+  const assignee = validateAssignee(req.workspace.id, assigneeId);
+  if (!assignee.ok) return res.status(400).json({ error: 'invalid_assignee' });
   const pos = db.prepare(
     `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM features WHERE workspace_id = ? AND status = ?`,
   ).get(req.workspace.id, st).n;
@@ -135,7 +149,7 @@ featuresRouter.post('/', (req, res) => {
     req.workspace.id,
     title.trim(), (description || '').trim(),
     st, pr,
-    assigneeId || null,
+    assignee.value,
     req.user.id,
     pos,
     due === undefined ? null : due,
@@ -156,6 +170,16 @@ featuresRouter.put('/:id', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'not_found' });
 
   const { title, description, status, priority, assigneeId, position, dueDate, tags, documentIds, subtasks } = req.body || {};
+
+  // Only validate the assignee if the caller is actually changing it. `null`
+  // is a valid value (unassign); `undefined` means "leave as-is".
+  let newAssigneeId = existing.assignee_id;
+  if (assigneeId !== undefined) {
+    const assignee = validateAssignee(req.workspace.id, assigneeId);
+    if (!assignee.ok) return res.status(400).json({ error: 'invalid_assignee' });
+    newAssigneeId = assignee.value;
+  }
+
   const newStatus = STATUSES.includes(status) ? status : existing.status;
   const movedColumn = newStatus !== existing.status;
   const newPos = movedColumn
@@ -186,7 +210,7 @@ featuresRouter.put('/:id', (req, res) => {
     description ?? null,
     newStatus,
     PRIORITIES.includes(priority) ? priority : existing.priority,
-    assigneeId === null ? null : (assigneeId ?? existing.assignee_id),
+    newAssigneeId,
     newPos,
     due === undefined ? existing.due_date : due,
     normalized ? JSON.stringify(normalized) : null,
