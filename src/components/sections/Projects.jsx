@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ACCENTS } from '../../data/constants';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
@@ -185,6 +186,7 @@ function ProjectCard({ p, t, lang, accent }) {
   const [expanded, setExp] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const acc = ACCENTS[accent] || ACCENTS.violet;
+  const navigate = useNavigate();
 
   return (
     <div
@@ -350,11 +352,12 @@ function ProjectCard({ p, t, lang, accent }) {
           padding: '14px 28px', display: 'flex', gap: 10,
         }}
       >
-        {/* Demo button — opens detail modal, or external URL if demoUrl is set */}
+        {/* Demo button — internal page / external URL / modal fallback */}
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (p.demoUrl) { window.open(p.demoUrl, '_blank', 'noopener,noreferrer'); }
+            if (p.demoMode === 'internal') { navigate(`/projects/${p.id}`); }
+            else if (p.demoMode === 'external' && p.demoUrl) { window.open(p.demoUrl, '_blank', 'noopener,noreferrer'); }
             else { setDetailOpen(true); }
           }}
           style={{
