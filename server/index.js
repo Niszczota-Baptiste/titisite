@@ -229,8 +229,12 @@ if (boot.workspaces) {
   console.log('[seed] workspace migration:', JSON.stringify(boot.workspaces));
 }
 
-const server = app.listen(PORT, () => {
-  console.log(`[server] listening on http://localhost:${PORT} (${IS_PROD ? 'prod' : 'dev'})`);
+// In production, bind only to loopback — Nginx is the public-facing entry
+// point. Listening on 0.0.0.0 would expose port 3001 directly even before any
+// firewall rule is applied, which is a defence-in-depth failure.
+const BIND_HOST = IS_PROD ? '127.0.0.1' : '0.0.0.0';
+const server = app.listen(PORT, BIND_HOST, () => {
+  console.log(`[server] listening on http://${BIND_HOST}:${PORT} (${IS_PROD ? 'prod' : 'dev'})`);
 });
 
 // Email digest scheduler — no-op if SMTP is not configured.
