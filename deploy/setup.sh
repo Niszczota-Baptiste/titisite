@@ -4,8 +4,24 @@
 #  Domaine : baptiste-niszczota.com
 #  OS cible : Ubuntu 22.04 / Debian 12
 #
-#  Lancer EN ROOT une seule fois :
-#    chmod +x setup.sh && sudo bash setup.sh
+#  ── Repo PUBLIC ─────────────────────────────────────────────
+#  curl -fsSL https://raw.githubusercontent.com/Niszczota-Baptiste/titisite/main/deploy/setup.sh -o setup.sh
+#  chmod +x setup.sh && sudo bash setup.sh
+#
+#  ── Repo PRIVÉ (cas actuel) ─────────────────────────────────
+#  Génère un Personal Access Token (https://github.com/settings/tokens)
+#  avec le scope "repo", puis :
+#    GITHUB_TOKEN=ghp_xxx
+#    curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+#      https://raw.githubusercontent.com/Niszczota-Baptiste/titisite/main/deploy/setup.sh \
+#      -o setup.sh
+#    chmod +x setup.sh
+#    sudo GITHUB_TOKEN="$GITHUB_TOKEN" bash setup.sh
+#
+#  Variables surchargeables (export avant de lancer) :
+#    REPO_URL      — URL git du dépôt (défaut HTTPS public ; passe en SSH si privé)
+#    BRANCH        — branche à déployer (défaut: main)
+#    GITHUB_TOKEN  — token PAT pour clone HTTPS d'un repo privé
 # ============================================================
 set -euo pipefail
 
@@ -15,6 +31,12 @@ DATA_DIR="/var/data/titisite"
 LOG_DIR="/var/log/titisite"
 APP_USER="titisite"
 NODE_VERSION="22"
+BRANCH="${BRANCH:-main}"
+REPO_URL_DEFAULT="https://github.com/Niszczota-Baptiste/titisite.git"
+if [ -n "${GITHUB_TOKEN:-}" ] && [ -z "${REPO_URL:-}" ]; then
+  REPO_URL="https://${GITHUB_TOKEN}@github.com/Niszczota-Baptiste/titisite.git"
+fi
+REPO_URL="${REPO_URL:-$REPO_URL_DEFAULT}"
 
 echo "========================================="
 echo "  Installation titisite — $DOMAIN"
@@ -48,12 +70,21 @@ mkdir -p "$APP_DIR" "$DATA_DIR/uploads" "$LOG_DIR"
 chown -R "$APP_USER":"$APP_USER" "$APP_DIR" "$DATA_DIR" "$LOG_DIR"
 
 # ── 6. Clone du dépôt ─────────────────────────────────────
-echo "[6/9] Clone du dépôt Git..."
-# Modifie l'URL si ton dépôt est privé (SSH) :
-#   git@github.com:Niszczota-Baptiste/titisite.git
-sudo -u "$APP_USER" git clone \
-  https://github.com/Niszczota-Baptiste/titisite.git "$APP_DIR" \
-  || (cd "$APP_DIR" && sudo -u "$APP_USER" git pull)
+echo "[6/9] Clone du dépôt Git (branche $BRANCH)..."
+if [ ! -d "$APP_DIR/.git" ]; then
+  sudo -u "$APP_USER" git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+else
+  cd "$APP_DIR"
+  sudo -u "$APP_USER" git fetch origin "$BRANCH"
+  sudo -u "$APP_USER" git checkout "$BRANCH"
+  sudo -u "$APP_USER" git pull --ff-only origin "$BRANCH"
+fi
+
+# Si on a cloné via token, on retire le token de l'origin pour ne pas le
+# laisser traîner dans .git/config sur le VPS.
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  sudo -u "$APP_USER" git -C "$APP_DIR" remote set-url origin "$REPO_URL_DEFAULT"
+fi
 
 # ── 7. Dépendances Node + build ────────────────────────────
 echo "[7/9] npm install + build..."
