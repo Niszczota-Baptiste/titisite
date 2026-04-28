@@ -87,10 +87,13 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
 fi
 
 # ── 7. Dépendances Node + build ────────────────────────────
+# vite (et toute la toolchain de build) est en devDependencies ; on installe
+# tout, on build, puis on prune les devDeps pour ne garder que le runtime.
 echo "[7/9] npm install + build..."
 cd "$APP_DIR"
-sudo -u "$APP_USER" npm ci --omit=dev
+sudo -u "$APP_USER" npm ci
 sudo -u "$APP_USER" npm run build
+sudo -u "$APP_USER" npm prune --omit=dev
 
 # Fichier .env — À REMPLIR avant de continuer !
 if [ ! -f "$APP_DIR/.env" ]; then
