@@ -1,121 +1,126 @@
-# ✅ Checklist — Avant la mise en ligne
-
-Complète ces points avant de déployer en production.
-Coche chaque case (`[x]`) au fur et à mesure.
+# ✅ Checklist — Mise en ligne baptiste-niszczota.com
 
 ---
 
-## 🔑 Variables d'environnement obligatoires
+## Étape 1 — Pointer le DNS vers le VPS
 
-- [ ] **`JWT_SECRET`** — génère une clé forte :
-  ```bash
-  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-  ```
+Dans l'interface IONOS, crée ces deux enregistrements DNS :
 
-- [ ] **`ADMIN_EMAIL`** / **`ADMIN_PASSWORD`** — mot de passe ≥ 12 caractères
+| Type | Nom | Valeur |
+|------|-----|--------|
+| `A` | `@` (ou `baptiste-niszczota.com`) | `<IP du VPS>` |
+| `A` | `www` | `<IP du VPS>` |
 
-- [ ] **`MEMBER_EMAIL`** / **`MEMBER_PASSWORD`** — idem
-
-- [ ] **`CANONICAL_ORIGIN`** — URL publique **exacte** du site, exemple :
-  ```
-  CANONICAL_ORIGIN=https://baptiste.dev
-  ```
-  > ⚠️ Sans cette variable le serveur **refuse de démarrer** en `NODE_ENV=production`.
-  > Elle sert à générer les URLs iCal sans fuite via l'en-tête `Host`.
+> L'IP de ton VPS se trouve dans la console IONOS → "Mes serveurs".
+> La propagation DNS peut prendre jusqu'à 1 h.
 
 ---
 
-## 🌐 Domaine à renseigner dans deux fichiers
-
-Une fois ton domaine connu, mets-le à jour ici :
-
-- [ ] **`public/robots.txt`** ligne `Sitemap:` :
-  ```
-  Sitemap: https://TON-DOMAINE.com/sitemap.xml
-  ```
-
-- [ ] **`public/sitemap.xml`** balise `<loc>` :
-  ```xml
-  <loc>https://TON-DOMAINE.com/</loc>
-  ```
-
----
-
-## 🖼️ Open Graph — image de partage social
-
-- [ ] Crée une image **1200 × 630 px** (capture d'écran du site, bannière, etc.)
-  et place-la dans `public/og-image.jpg` (ou `.png`).
-
-- [ ] Ajoute les deux balises manquantes dans **`index.html`** :
-  ```html
-  <meta property="og:url"   content="https://TON-DOMAINE.com/" />
-  <meta property="og:image" content="https://TON-DOMAINE.com/og-image.jpg" />
-  ```
-
----
-
-## 🗄️ Volumes persistants (hébergeur)
-
-La base SQLite et les fichiers uploadés **doivent survivre aux redéploiements**.
-Configure un disque/volume persistant sur ta plateforme et pointe les variables :
-
-```env
-DB_PATH=/data/data.sqlite
-UPLOADS_DIR=/data/uploads
-```
-
-| Plateforme | Comment faire |
-|---|---|
-| **Railway** | Dashboard → ton service → *Volumes* → `Mount Path: /data` |
-| **Render** | Dashboard → ton service → *Disks* → `Mount Path: /data` |
-| **Fly.io** | `fly volumes create data --size 1` puis dans `fly.toml` : `[mounts] source = "data" destination = "/data"` |
-| **VPS** | Dossier sur le disque, variable `DB_PATH` + `UPLOADS_DIR` dans le `.env` |
-
-> ⚠️ Un redéploiement **sans volume** efface la base et les uploads. Vérifie
-> que le volume est bien attaché **avant** le premier boot en prod.
-
----
-
-## 🎨 Favicon
-
-- [ ] Le fichier `public/favicon.svg` a été créé (monogramme « B » violet).
-  Teste-le dans le navigateur — si tu veux un `.ico` multi-résolution :
-  ```bash
-  # avec ImageMagick
-  convert favicon.svg -resize 48x48 public/favicon.ico
-  ```
-
----
-
-## 📧 Email digest (optionnel)
-
-- [ ] Si tu veux activer les digests email, configure dans `.env` :
-  ```env
-  SMTP_HOST=smtp.example.com
-  SMTP_PORT=587
-  SMTP_USER=ton-user
-  SMTP_PASS=ton-mot-de-passe
-  SMTP_SECURE=false
-  SMTP_FROM=Baptiste <no-reply@TON-DOMAINE.com>
-  ```
-
----
-
-## 🔒 Reverse proxy (si Nginx devant Express)
-
-- [ ] Ajoute dans la config Nginx :
-  ```nginx
-  client_max_body_size 1200M;   # builds jusqu'à 1 Go
-  gzip on;
-  gzip_types text/plain application/json application/javascript text/css;
-  brotli on;                    # si module ngx_brotli installé
-  ```
-
----
-
-## 🚀 Commande de démarrage finale
+## Étape 2 — Se connecter au VPS
 
 ```bash
-npm run build     # génère dist/
-npm start         # NODE_ENV=production, port 3001 (ou $PORT)
+ssh root@<IP-du-VPS>
+```
+
+---
+
+## Étape 3 — Télécharger et lancer le script d'installation
+
+```bash
+# Sur le VPS, en root :
+curl -fsSL https://raw.githubusercontent.com/Niszczota-Baptiste/titisite/main/deploy/setup.sh -o setup.sh
+chmod +x setup.sh
+bash setup.sh
+```
+
+> Le script s'arrête automatiquement si `.env` n'existe pas encore (étape 4).
+
+---
+
+## Étape 4 — Remplir le fichier .env
+
+Le script crée `/var/www/titisite/.env` depuis `.env.example`.
+Tu dois renseigner les valeurs sensibles :
+
+```bash
+nano /var/www/titisite/.env
+```
+
+```env
+# Génère JWT_SECRET avec :
+# node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+JWT_SECRET=<clé-64-chars-aléatoire>
+
+ADMIN_EMAIL=<ton-email>
+ADMIN_NAME=Baptiste
+ADMIN_PASSWORD=<mot-de-passe-fort-12-chars-min>
+
+MEMBER_EMAIL=<email-collaborateur>
+MEMBER_NAME=<prénom>
+MEMBER_PASSWORD=<mot-de-passe-fort>
+
+PORT=3001
+DB_PATH=/var/data/titisite/data.sqlite
+UPLOADS_DIR=/var/data/titisite/uploads
+CANONICAL_ORIGIN=https://baptiste-niszczota.com
+```
+
+Puis relance le script pour terminer l'installation :
+
+```bash
+bash setup.sh
+```
+
+---
+
+## Étape 5 — Vérifier que tout fonctionne
+
+```bash
+# Statut du processus Node
+sudo -u titisite pm2 status
+
+# Logs en direct
+sudo -u titisite pm2 logs titisite
+
+# Test HTTPS
+curl -I https://baptiste-niszczota.com
+```
+
+Tu dois voir `HTTP/2 200` et l'en-tête `strict-transport-security`.
+
+---
+
+## Étape 6 — (Optionnel) Ajouter une image Open Graph
+
+Crée une image `1200 × 630 px` représentant ton portfolio,
+place-la dans `public/og-image.jpg`, puis ajoute dans `index.html` :
+
+```html
+<meta property="og:image" content="https://baptiste-niszczota.com/og-image.jpg" />
+```
+
+---
+
+## Mises à jour futures
+
+Pour chaque nouveau commit poussé sur `main` :
+
+```bash
+# Sur le VPS :
+sudo bash /var/www/titisite/deploy/deploy.sh
+```
+
+---
+
+## En cas de problème
+
+```bash
+# Nginx
+sudo nginx -t && sudo systemctl status nginx
+
+# Logs Node
+sudo -u titisite pm2 logs titisite --lines 50
+
+# Relancer manuellement
+sudo -u titisite pm2 restart titisite
 ```

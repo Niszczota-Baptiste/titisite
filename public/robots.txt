@@ -8,5 +8,4 @@ Disallow: /project
 Disallow: /project/
 Disallow: /api/
 
-# Sitemap location — update CANONICAL_ORIGIN before going live
-Sitemap: https://yourdomain.com/sitemap.xml
+Sitemap: https://baptiste-niszczota.com/sitemap.xml
