@@ -1,0 +1,146 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read          # checkout
+  security-events: write  # upload SARIF reports (Semgrep)
+
+# Cancel in-progress runs for the same branch/PR to save CI minutes.
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── 1. Dependency audit ────────────────────────────────────────────────────
+  # npm audit fails the job when any HIGH or CRITICAL CVE is found in the
+  # dependency tree. MODERATE vulnerabilities are reported but do not block.
+  dependency-audit:
+    name: Dependency audit (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Fail on high/critical CVEs
+        run: npm audit --audit-level=high
+
+  # ── 2. ESLint security lint ────────────────────────────────────────────────
+  # Runs the same eslint.config.js used locally. Any rule marked 'error'
+  # fails the job; 'warn' rules are visible in the output but do not block.
+  lint-security:
+    name: ESLint (security rules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run ESLint security scan
+        run: npm run lint:security
+
+  # ── 3. Secret detection ────────────────────────────────────────────────────
+  # Two complementary scanners:
+  #   a) secretlint  — pattern-based, npm-native, same rules as the pre-commit hook
+  #   b) gitleaks    — git-history-aware; catches secrets committed in any past
+  #                    commit on the PR, not just the latest diff
+  secret-scan:
+    name: Secret detection (secretlint + gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so gitleaks can scan every commit in the PR
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: secretlint
+        run: npm run lint:secrets
+
+      - name: gitleaks — scan full git history
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE is not required for public repos.
+          # For private repos, set it in repo Settings → Secrets.
+          # Without it, only the pushed commits are scanned (not full history).
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # ── 4. Semgrep SAST ────────────────────────────────────────────────────────
+  # Runs the open-source Node.js + OWASP rule sets offline (no token needed).
+  # Add SEMGREP_APP_TOKEN to repo secrets to get dashboard results on semgrep.dev.
+  semgrep:
+    name: Semgrep (SAST — nodejs + owasp)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    # Don't block the PR on Semgrep findings while the baseline is being set.
+    # Change to 'fail' once the team has reviewed the initial report.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep \
+            --config p/nodejs \
+            --config p/javascript \
+            --config p/owasp-top-ten \
+            --exclude 'node_modules' \
+            --exclude 'dist' \
+            --error \
+            --sarif-output semgrep.sarif \
+          || true  # collect SARIF even when findings exist
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+        continue-on-error: true   # SARIF upload requires Advanced Security (free for public repos)
+
+  # ── 5. Security tests ──────────────────────────────────────────────────────
+  # Runs the existing node:test security suite (headers, CORS, auth, RBAC, …)
+  # as a regression gate. A failing test = a broken security control.
+  security-tests:
+    name: Security regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run security test suite
+        run: npm test
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET || 'ci-test-secret-not-for-prod' }}
+          ADMIN_EMAIL: admin@ci.test
+          ADMIN_PASSWORD: CIadminPwd99!
+          MEMBER_EMAIL: member@ci.test
+          MEMBER_PASSWORD: CImemberPwd99!

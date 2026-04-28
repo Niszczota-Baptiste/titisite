@@ -1,0 +1,434 @@
+/* ── CSS Design Tokens ── */
+:root {
+  --bg: #050511;
+  --surface: rgba(14, 9, 28, 0.72);
+  --surface-hov: rgba(22, 14, 42, 0.92);
+  --surface-solid: rgba(10, 7, 22, 0.82);
+  --border: rgba(80, 50, 130, 0.24);
+  --border-dim: rgba(60, 40, 100, 0.12);
+  --text: #ede8f8;
+  --text-muted: #9a88b8;
+  --text-faint: #7a6a98;
+  --text-dim: #c8c0d8;
+  --nav-link: #8a7aa8;
+  --nav-bg: rgba(5, 5, 17, 0.84);
+  --nav-border: rgba(120, 80, 200, 0.14);
+  --tag-bg: rgba(60, 30, 100, 0.3);
+  --tag-border: rgba(100, 60, 160, 0.22);
+  --tag-color: #a080d0;
+  --code-muted: rgba(100, 70, 160, 0.55);
+  --input-bg: rgba(14, 8, 32, 0.72);
+  --track-hov: rgba(20, 12, 40, 0.55);
+  --section-alt: rgba(4, 3, 14, 0.45);
+  --filter-bg: rgba(20, 14, 38, 0.72);
+  --player-bg: rgba(10, 7, 24, 0.78);
+  --lang-bg: rgba(20, 15, 40, 0.82);
+  --exp-current: rgba(22, 10, 48, 0.76);
+  --exp-default: rgba(12, 8, 28, 0.62);
+  --focus-ring: #c9a8e8;
+}
+
+body.mode-light {
+  --bg: #ece5f7;
+  --surface: rgba(248, 242, 255, 0.82);
+  --surface-hov: rgba(238, 230, 252, 0.96);
+  --surface-solid: rgba(238, 232, 250, 0.88);
+  --border: rgba(140, 90, 200, 0.2);
+  --border-dim: rgba(130, 80, 190, 0.1);
+  --text: #180e2a;
+  --text-muted: #3a2860;
+  --text-faint: #5a4080;
+  --text-dim: #2c1e50;
+  --nav-link: #5a3890;
+  --focus-ring: #6040a0;
+  --nav-bg: rgba(240, 234, 252, 0.92);
+  --nav-border: rgba(140, 90, 200, 0.16);
+  --tag-bg: rgba(180, 140, 220, 0.16);
+  --tag-border: rgba(140, 90, 200, 0.22);
+  --tag-color: #6040a0;
+  --code-muted: rgba(100, 60, 160, 0.45);
+  --input-bg: rgba(238, 232, 252, 0.78);
+  --track-hov: rgba(228, 218, 248, 0.68);
+  --section-alt: rgba(228, 220, 248, 0.42);
+  --filter-bg: rgba(228, 218, 248, 0.72);
+  --player-bg: rgba(240, 234, 254, 0.78);
+  --lang-bg: rgba(228, 218, 248, 0.82);
+  --exp-current: rgba(238, 228, 255, 0.82);
+  --exp-default: rgba(246, 240, 255, 0.68);
+}
+
+body.mode-transitioning * {
+  transition:
+    background-color 0.45s ease,
+    color 0.45s ease,
+    border-color 0.45s ease,
+    box-shadow 0.45s ease,
+    opacity 0.35s ease !important;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 60, 180, 0.35);
+  border-radius: 2px;
+}
+
+::selection {
+  background: rgba(170, 130, 230, 0.22);
+  color: var(--text);
+}
+
+/* ── Scroll-fade indicator for horizontal tab strips ── */
+.tabs-scroll-fade {
+  position: relative;
+}
+.tabs-scroll-fade::before,
+.tabs-scroll-fade::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 1px; /* sit above the bottom border */
+  width: 28px;
+  pointer-events: none;
+  z-index: 1;
+}
+.tabs-scroll-fade::before {
+  left: 0;
+  background: linear-gradient(to right, var(--bg) 0%, transparent 100%);
+}
+.tabs-scroll-fade::after {
+  right: 0;
+  background: linear-gradient(to left, var(--bg) 0%, transparent 100%);
+}
+
+/* ── Keyboard focus ring (WCAG 2.4.7) ── */
+:focus { outline: none; }
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+input,
+textarea {
+  color-scheme: dark;
+}
+body.mode-light input,
+body.mode-light textarea {
+  color-scheme: light;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition:
+    opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: none;
+}
+
+.reveal-left {
+  opacity: 0;
+  transform: translateX(-28px);
+  transition:
+    opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-left.visible {
+  opacity: 1;
+  transform: none;
+}
+
+.reveal-right {
+  opacity: 0;
+  transform: translateX(28px);
+  transition:
+    opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-right.visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── Core keyframes ── */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-7px);
+  }
+}
+@keyframes easterSlide {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes spinCw {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes spinCcw {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+/* ── Waveform ── */
+@keyframes wave1 {
+  from {
+    height: 3px;
+  }
+  to {
+    height: 22px;
+  }
+}
+@keyframes wave2 {
+  from {
+    height: 10px;
+  }
+  to {
+    height: 5px;
+  }
+}
+@keyframes wave3 {
+  from {
+    height: 6px;
+  }
+  to {
+    height: 20px;
+  }
+}
+@keyframes wave4 {
+  from {
+    height: 14px;
+  }
+  to {
+    height: 4px;
+  }
+}
+
+/* ── Glitch ── */
+@keyframes glitch1 {
+  0%,
+  87%,
+  100% {
+    clip-path: inset(0 0 100% 0);
+    transform: none;
+    opacity: 0;
+  }
+  89% {
+    clip-path: inset(12% 0 58% 0);
+    transform: skewX(-10deg) translateX(-7px);
+    opacity: 0.78;
+  }
+  91% {
+    clip-path: inset(52% 0 10% 0);
+    transform: skewX(7deg) translateX(6px);
+    opacity: 0.55;
+  }
+  93% {
+    clip-path: inset(28% 0 42% 0);
+    transform: skewX(-4deg) translateX(-2px);
+    opacity: 0.88;
+  }
+  95% {
+    clip-path: inset(0 0 100% 0);
+    transform: none;
+    opacity: 0;
+  }
+}
+@keyframes glitch2 {
+  0%,
+  87%,
+  100% {
+    clip-path: inset(100% 0 0 0);
+    transform: none;
+    opacity: 0;
+  }
+  89% {
+    clip-path: inset(68% 0 0 0);
+    transform: skewX(6deg) translateX(9px);
+    opacity: 0.65;
+  }
+  92% {
+    clip-path: inset(38% 0 22% 0);
+    transform: skewX(-7deg) translateX(-6px);
+    opacity: 0.5;
+  }
+  94% {
+    clip-path: inset(100% 0 0 0);
+    transform: none;
+    opacity: 0;
+  }
+}
+
+/* ── Live pulse ── */
+@keyframes livePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 12px rgba(var(--pulse-rgb, 201, 168, 232), 0.7);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(var(--pulse-rgb, 201, 168, 232), 0.2);
+  }
+}
+
+/* ── Responsive layout classes ── */
+.r-section {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 80px;
+}
+.r-hero {
+  padding: 0 88px;
+  max-width: 980px;
+}
+.r-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 80px;
+  align-items: start;
+}
+.r-grid-proj {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+}
+.r-contact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+}
+.r-footer {
+  padding: 36px 80px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border-dim);
+}
+.r-currently {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 32px;
+  align-items: center;
+}
+.nav-desktop {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+.nav-mobile {
+  display: none;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .nav-desktop {
+    display: none !important;
+  }
+  .nav-mobile {
+    display: flex !important;
+  }
+  .r-section {
+    padding: 0 28px;
+  }
+  .r-hero {
+    padding: 0 28px;
+  }
+  .r-grid-2col {
+    grid-template-columns: 1fr !important;
+    gap: 44px !important;
+  }
+  .r-grid-proj {
+    grid-template-columns: 1fr !important;
+  }
+  .r-contact {
+    grid-template-columns: 1fr !important;
+    gap: 44px !important;
+  }
+  .r-footer {
+    flex-direction: column;
+    gap: 14px;
+    text-align: center;
+    padding: 28px 28px;
+  }
+  .r-currently {
+    grid-template-columns: 1fr !important;
+  }
+  .player-hd {
+    flex-direction: column !important;
+    gap: 20px !important;
+    align-items: flex-start !important;
+  }
+  .exp-hd {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .r-section {
+    padding: 0 18px;
+  }
+  .r-hero {
+    padding: 0 18px;
+  }
+  .r-footer {
+    padding: 24px 18px;
+  }
+}
