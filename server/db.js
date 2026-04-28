@@ -175,6 +175,9 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_resources_workspace ON minecraft_resources(workspace_id, position);`);
+  ensureColumn('minecraft_resources', 'category', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('minecraft_resources', 'rarity',   "TEXT NOT NULL DEFAULT 'Commun'");
+  ensureColumn('minecraft_resources', 'favorite',  'INTEGER NOT NULL DEFAULT 0');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS comments (

@@ -167,11 +167,12 @@ export const api = {
       downloadUrl: (id) => `/api/workspaces/${slug}/builds/${id}/download`,
     },
     minecraft: {
-      list:   () => request('GET',    `/workspaces/${slug}/minecraft`),
-      create: (b) => request('POST',  `/workspaces/${slug}/minecraft`, b),
-      update: (id, b) => request('PUT', `/workspaces/${slug}/minecraft/${id}`, b),
-      adjust: (id, delta) => request('POST', `/workspaces/${slug}/minecraft/${id}/adjust`, { delta }),
-      remove: (id) => request('DELETE', `/workspaces/${slug}/minecraft/${id}`),
+      list:         () => request('GET',    `/workspaces/${slug}/minecraft`),
+      create:       (b) => request('POST',  `/workspaces/${slug}/minecraft`, b),
+      update:       (id, b) => request('PUT', `/workspaces/${slug}/minecraft/${id}`, b),
+      adjust:       (id, delta) => request('POST', `/workspaces/${slug}/minecraft/${id}/adjust`, { delta }),
+      toggleFav:    (id) => request('PATCH', `/workspaces/${slug}/minecraft/${id}/favorite`),
+      remove:       (id) => request('DELETE', `/workspaces/${slug}/minecraft/${id}`),
     },
     tags: {
       list:   () => request('GET',    `/workspaces/${slug}/tags`),
