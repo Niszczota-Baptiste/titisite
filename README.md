@@ -80,6 +80,13 @@ npm start            # NODE_ENV=production, sert dist/ + /api sur le même port
 | `AUDIO_MAX_BYTES` | non | `104857600` | Taille max d'une piste audio (100 Mo par défaut) |
 | `BUILD_MAX_BYTES` | non | `1073741824` | Taille max d'un build de jeu (1 Go par défaut) |
 | `MAX_UPLOAD_BYTES` | non | — | Alias historique de `BUILD_MAX_BYTES` |
+| `CANONICAL_ORIGIN` | **oui (prod)** | — | URL publique du site (`https://…`). Requis au boot en prod pour éviter l'injection d'en-tête Host dans les URLs iCal générées |
+| `SMTP_HOST` | non | — | Serveur SMTP pour les digests email |
+| `SMTP_PORT` | non | `587` | Port SMTP |
+| `SMTP_USER` | non | — | Utilisateur SMTP |
+| `SMTP_PASS` | non | — | Mot de passe SMTP |
+| `SMTP_SECURE` | non | `false` | `true` pour le port 465 (TLS direct), `false` pour STARTTLS |
+| `SMTP_FROM` | non | — | Adresse expéditeur (`Nom <email@…>`) |
 
 Chaque route d'upload applique en plus une **double validation** type (extension + MIME) :
 - **Documents** : PDF, archives (zip), Office (docx/xlsx/pptx), images (jpg/png/gif/webp/svg), texte (txt/md/csv/json)
@@ -179,7 +186,7 @@ Caps à connaître :
 ## Sécurité
 
 - bcrypt (10 rounds) pour les mots de passe
-- JWT HS256, 7 jours, stocké en localStorage
+- JWT HS256, 7 jours, stocké dans un **cookie HttpOnly** (`SameSite=Strict`, `Secure` en prod) — jamais en localStorage
 - Token iCal séparé du JWT (rotatable), scope = lecture seule des events accessibles à l'utilisateur
 - Endpoints écriture sur le contenu public : admin only
 - Endpoints `/api/workspaces/:slug/**` : `resolveWorkspace` vérifie l'appartenance avant tout enfant (features/meetings/documents/builds/tags)

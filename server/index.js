@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -45,6 +46,10 @@ const app = express();
 // Trust the first reverse proxy so rate-limit + req.ip see the real client
 app.set('trust proxy', 1);
 
+// Gzip compression for all responses (API + static). Brotli is better handled
+// at the reverse-proxy / CDN layer where pre-compressed files are available.
+app.use(compression());
+
 // Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, …).
 // CSP allows: same-origin everything, Google Fonts (CSS + woff), inline styles
 // because the React tree relies on `style={}` props. HSTS only in prod (would
@@ -72,6 +77,16 @@ app.use(helmet({
     ? { maxAge: 15552000, includeSubDomains: true }
     : false,
 }));
+
+// Permissions-Policy: disable browser features this site doesn't need.
+// Helmet v8 doesn't set this header by default, so we add it manually.
+app.use((_req, res, next) => {
+  res.setHeader(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+  );
+  next();
+});
 
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
@@ -219,7 +234,17 @@ app.use('/api/workspaces/:slug', scoped);
 if (IS_PROD) {
   const distDir = path.join(ROOT, 'dist');
   if (fs.existsSync(distDir)) {
-    app.use(express.static(distDir));
+    // Vite hashes asset filenames → safe to cache forever.
+    // index.html is the SPA entry point and must always be fresh.
+    app.use(express.static(distDir, {
+      setHeaders(res, filePath) {
+        if (path.basename(filePath) === 'index.html') {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
+    }));
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api/')) return next();
       res.sendFile(path.join(distDir, 'index.html'));

@@ -276,6 +276,8 @@ export default function ProjectDetailPage() {
               <img
                 src={project.pageImageUrl}
                 alt={`${project.title} preview`}
+                loading="lazy"
+                decoding="async"
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             ) : (
@@ -400,6 +402,8 @@ export default function ProjectDetailPage() {
                   <img
                     src={url}
                     alt={`${project.title} / screen ${String(i + 1).padStart(2, '0')}`}
+                    loading="lazy"
+                    decoding="async"
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   />
                 </div>

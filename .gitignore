@@ -6,6 +6,10 @@ dist-ssr
 
 # editor / OS
 .DS_Store
+Thumbs.db
+*.tmp
+*.bak
+*.swp
 .idea
 .vscode/*
 !.vscode/extensions.json

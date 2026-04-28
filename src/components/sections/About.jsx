@@ -19,6 +19,8 @@ export function About({ t, accent }) {
             <img
               src="/uploads/photo-1776888150170.jpg"
               alt="Baptiste Niszczota"
+              loading="lazy"
+              decoding="async"
               style={{ width: '100%', display: 'block', filter: 'saturate(0.82) contrast(1.04)' }}
             />
             <div

@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# Block admin and project areas from indexing
+Disallow: /admin
+Disallow: /admin/
+Disallow: /project
+Disallow: /project/
+Disallow: /api/
+
+# Sitemap location — update CANONICAL_ORIGIN before going live
+Sitemap: https://yourdomain.com/sitemap.xml

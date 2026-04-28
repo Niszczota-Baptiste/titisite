@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Update the <loc> URLs below to match your CANONICAL_ORIGIN before going live.
+  For dynamic project pages (/projects/:id), generate this file at build time
+  or serve it dynamically from the Express server reading the DB.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://yourdomain.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
