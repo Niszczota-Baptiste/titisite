@@ -17,7 +17,7 @@ export function About({ t, accent }) {
             }}
           >
             <img
-              src="/uploads/photo-1776888150170.jpg"
+              src="/img/baptiste.jpg"
               alt="Baptiste Niszczota"
               loading="lazy"
               decoding="async"
