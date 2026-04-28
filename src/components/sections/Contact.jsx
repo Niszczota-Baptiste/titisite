@@ -5,7 +5,8 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
 
-const CONTACT_EMAIL = 'baptiste@example.com';
+const CONTACT_EMAIL = 'contact@baptiste-niszczota.com';
+const LINKEDIN_URL = 'https://www.linkedin.com/in/baptiste-niszczota-01090820a/';
 
 export function Contact({ t, accent }) {
   const [form, setForm] = useState({ name: '', email: '', message: '' });
@@ -38,7 +39,7 @@ export function Contact({ t, accent }) {
   });
 
   const socials = [
-    { label: 'LinkedIn', href: '#', icon: 'in' },
+    { label: 'LinkedIn', href: LINKEDIN_URL, icon: 'in' },
     { label: 'GitHub', href: '#', icon: 'gh' },
     { label: 'Email', href: `mailto:${CONTACT_EMAIL}`, icon: '@' },
   ];
