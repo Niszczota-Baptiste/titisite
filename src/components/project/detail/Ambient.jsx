@@ -8,7 +8,7 @@ const KEYFRAMES = `
 @keyframes pdpWave2 { from{height:10px} to{height:5px} }
 @keyframes pdpWave3 { from{height:6px} to{height:20px} }
 @keyframes pdpWave4 { from{height:4px} to{height:18px} }
-.pdp-reveal { opacity:0; transform:translateY(24px); transition:opacity .75s cubic-bezier(.22,1,.36,1), transform .75s cubic-bezier(.22,1,.36,1); }
+.pdp-reveal { opacity:1; transform:none; transition:opacity .75s cubic-bezier(.22,1,.36,1), transform .75s cubic-bezier(.22,1,.36,1); animation: pdpFadeUp .6s ease both; }
 .pdp-reveal.visible { opacity:1; transform:none; }
 `;
 

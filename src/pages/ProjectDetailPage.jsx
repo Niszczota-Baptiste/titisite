@@ -48,11 +48,12 @@ export default function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { lang } = readPrefs();
-  useReveal([id]);
 
   const [project, setProject] = useState(null);
   const [allProjects, setAllProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useReveal([id, loading]);
 
   useEffect(() => {
     let cancelled = false;
