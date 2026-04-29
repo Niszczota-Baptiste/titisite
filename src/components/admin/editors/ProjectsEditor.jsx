@@ -173,6 +173,8 @@ const EMPTY = () => ({
   highlights: [],
   screenshots: [],
   links: [],
+  metrics: [],
+  tech: [],
   demoMode: '',
   demoUrl: '',
   pageImageUrl: '',
@@ -182,6 +184,9 @@ const EMPTY = () => ({
   solution: { fr: '', en: '', ko: '' },
   impact: { fr: '', en: '', ko: '' },
 });
+
+const METRIC_DEFAULT_COLORS = ['#9ad4ae', '#c9a8e8', '#7eb8f7', '#e8a87c'];
+const TECH_DEFAULT_COLORS = ['#c9a8e8', '#7eb8f7', '#9ad4ae', '#e8a87c', '#ff9a70', '#61dafb'];
 
 export function ProjectsEditor() {
   return (
@@ -415,6 +420,132 @@ export function ProjectsEditor() {
               placeholder="https://github.com/…"
             />
           </Field>
+
+          {/* Métriques (cartes chiffres clés sur la page projet) */}
+          <div style={blockStyle}>
+            <span style={blockLabel}>Métriques (cartes chiffres clés)</span>
+            {(d.metrics || []).map((m, i) => (
+              <div key={i} style={{
+                display: 'grid',
+                gridTemplateColumns: '90px 1fr 1fr 56px 32px',
+                gap: 8, marginBottom: 8, alignItems: 'center',
+              }}>
+                <Input
+                  value={m.value || ''}
+                  onChange={(e) => {
+                    const next = [...(d.metrics || [])];
+                    next[i] = { ...next[i], value: e.target.value };
+                    set({ ...d, metrics: next });
+                  }}
+                  placeholder="40%"
+                  style={{ marginBottom: 0 }}
+                />
+                <Input
+                  value={m.label || ''}
+                  onChange={(e) => {
+                    const next = [...(d.metrics || [])];
+                    next[i] = { ...next[i], label: e.target.value };
+                    set({ ...d, metrics: next });
+                  }}
+                  placeholder="Temps opérationnel"
+                  style={{ marginBottom: 0 }}
+                />
+                <Input
+                  value={m.sub || ''}
+                  onChange={(e) => {
+                    const next = [...(d.metrics || [])];
+                    next[i] = { ...next[i], sub: e.target.value };
+                    set({ ...d, metrics: next });
+                  }}
+                  placeholder="réduit"
+                  style={{ marginBottom: 0 }}
+                />
+                <Input
+                  type="color"
+                  value={m.color || METRIC_DEFAULT_COLORS[i % METRIC_DEFAULT_COLORS.length]}
+                  onChange={(e) => {
+                    const next = [...(d.metrics || [])];
+                    next[i] = { ...next[i], color: e.target.value };
+                    set({ ...d, metrics: next });
+                  }}
+                  style={{ marginBottom: 0, padding: 4, height: 36 }}
+                />
+                <button
+                  type="button"
+                  style={removeBtn}
+                  onClick={() => set({ ...d, metrics: (d.metrics || []).filter((_, j) => j !== i) })}
+                >×</button>
+              </div>
+            ))}
+            <button
+              type="button"
+              style={addBtn}
+              onClick={() => {
+                const next = [...(d.metrics || [])];
+                next.push({
+                  value: '', label: '', sub: '',
+                  color: METRIC_DEFAULT_COLORS[next.length % METRIC_DEFAULT_COLORS.length],
+                });
+                set({ ...d, metrics: next });
+              }}
+            >+ Ajouter une métrique</button>
+          </div>
+
+          {/* Stack technique colorée (badges sur la page projet) */}
+          <div style={blockStyle}>
+            <span style={blockLabel}>Stack technique (badges colorés)</span>
+            {(d.tech || []).map((t, i) => (
+              <div key={i} style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 56px 32px',
+                gap: 8, marginBottom: 8, alignItems: 'center',
+              }}>
+                <Input
+                  value={t.name || ''}
+                  onChange={(e) => {
+                    const next = [...(d.tech || [])];
+                    next[i] = { ...next[i], name: e.target.value };
+                    set({ ...d, tech: next });
+                  }}
+                  placeholder="React"
+                  style={{ marginBottom: 0 }}
+                />
+                <Input
+                  type="color"
+                  value={t.color || TECH_DEFAULT_COLORS[i % TECH_DEFAULT_COLORS.length]}
+                  onChange={(e) => {
+                    const next = [...(d.tech || [])];
+                    next[i] = { ...next[i], color: e.target.value };
+                    set({ ...d, tech: next });
+                  }}
+                  style={{ marginBottom: 0, padding: 4, height: 36 }}
+                />
+                <button
+                  type="button"
+                  style={removeBtn}
+                  onClick={() => set({ ...d, tech: (d.tech || []).filter((_, j) => j !== i) })}
+                >×</button>
+              </div>
+            ))}
+            <button
+              type="button"
+              style={addBtn}
+              onClick={() => {
+                const next = [...(d.tech || [])];
+                next.push({
+                  name: '',
+                  color: TECH_DEFAULT_COLORS[next.length % TECH_DEFAULT_COLORS.length],
+                });
+                set({ ...d, tech: next });
+              }}
+            >+ Ajouter une techno</button>
+            <p style={{
+              fontFamily: "'Inter',sans-serif", fontSize: 11,
+              color: 'rgba(180,170,200,0.45)', marginTop: 8, lineHeight: 1.5,
+            }}>
+              Si vide, les Tags ci-dessus sont utilisés comme stack par défaut (avec couleurs auto).
+            </p>
+          </div>
 
           {/* Content */}
           <LocalizedField label="Description" value={d.desc} onChange={(v) => set({ ...d, desc: v })} multiline />
