@@ -371,26 +371,32 @@ export default function ProjectDetailPage() {
         )}
 
         {/* ── Action links ── */}
-        {(project.codeUrl || (project.demoMode === 'external' && project.demoUrl) || (project.links || []).some((l) => l.url)) && (
-          <section style={{ padding: '0 clamp(16px,6vw,88px) 80px', maxWidth: 1280, margin: '0 auto' }}>
-            <div style={{
-              borderTop: '1px solid rgba(60,40,100,0.15)', paddingTop: 32,
-              display: 'flex', gap: 12, flexWrap: 'wrap',
-            }}>
-              {project.demoMode === 'external' && project.demoUrl && (
-                <a href={project.demoUrl} target="_blank" rel="noopener noreferrer" style={actionLink(true)}>↗ Voir la démo</a>
-              )}
-              {project.codeUrl && (
-                <a href={project.codeUrl} target="_blank" rel="noopener noreferrer" style={actionLink(false)}>Code source →</a>
-              )}
-              {(project.links || []).filter((l) => l.url).map((l) => (
-                <a key={l.label} href={l.url} target="_blank" rel="noopener noreferrer" style={actionLink(false)}>
-                  {l.label} →
-                </a>
-              ))}
-            </div>
-          </section>
-        )}
+        {(() => {
+          const validLinks = (project.links || []).filter((l) => l && l.url && l.label && l.label.trim());
+          const hasDemo = project.demoMode === 'external' && project.demoUrl;
+          const hasCode = !!project.codeUrl;
+          if (!hasDemo && !hasCode && validLinks.length === 0) return null;
+          return (
+            <section style={{ padding: '0 clamp(16px,6vw,88px) 80px', maxWidth: 1280, margin: '0 auto' }}>
+              <div style={{
+                borderTop: '1px solid rgba(60,40,100,0.15)', paddingTop: 32,
+                display: 'flex', gap: 12, flexWrap: 'wrap',
+              }}>
+                {hasDemo && (
+                  <a href={project.demoUrl} target="_blank" rel="noopener noreferrer" style={actionLink(true)}>↗ Voir la démo</a>
+                )}
+                {hasCode && (
+                  <a href={project.codeUrl} target="_blank" rel="noopener noreferrer" style={actionLink(false)}>Code source →</a>
+                )}
+                {validLinks.map((l) => (
+                  <a key={l.label} href={l.url} target="_blank" rel="noopener noreferrer" style={actionLink(false)}>
+                    {l.label} →
+                  </a>
+                ))}
+              </div>
+            </section>
+          );
+        })()}
 
         {/* ── Other projects ── */}
         {others.length > 0 && (
