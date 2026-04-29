@@ -16,6 +16,20 @@ export const projects = [
     highlights: [],
     screenshots: [],
     links: [],
+    metrics: [
+      { value: '40%', label: 'Temps opérationnel', sub: 'réduit', color: '#9ad4ae' },
+      { value: '8', label: 'Modules déployés', sub: 'en prod', color: '#c9a8e8' },
+      { value: '3', label: 'API intégrées', sub: 'temps réel', color: '#7eb8f7' },
+      { value: '0', label: 'Formation', sub: 'requise', color: '#e8a87c' },
+    ],
+    tech: [
+      { name: 'Low-Code', color: '#c9a8e8' },
+      { name: 'REST API', color: '#7eb8f7' },
+      { name: 'React', color: '#61dafb' },
+      { name: 'Node.js', color: '#9ad4ae' },
+      { name: 'PostgreSQL', color: '#e8a87c' },
+      { name: 'Webhooks', color: '#ff9a70' },
+    ],
     desc: {
       fr: "Tableau de bord interne pour la gestion des données clients sur plateforme low-code.",
       en: "Internal dashboard for client data management on a low-code platform.",
@@ -54,6 +68,8 @@ export const projects = [
     highlights: [],
     screenshots: [],
     links: [],
+    metrics: [],
+    tech: [],
     desc: {
       fr: "Visualiseur audio interactif qui transforme la musique en formes géométriques animées.",
       en: "Interactive audio visualizer turning music into animated geometric shapes.",
@@ -92,6 +108,8 @@ export const projects = [
     highlights: [],
     screenshots: [],
     links: [],
+    metrics: [],
+    tech: [],
     desc: {
       fr: "Application mobile d'apprentissage du coréen et du japonais par cartes mémoire adaptatives.",
       en: "Mobile app for learning Korean and Japanese with adaptive flashcards.",
@@ -130,6 +148,8 @@ export const projects = [
     highlights: [],
     screenshots: [],
     links: [],
+    metrics: [],
+    tech: [],
     desc: {
       fr: "Tableau blanc collaboratif en temps réel pour développeurs.",
       en: "Real-time collaborative whiteboard for developers.",
@@ -168,6 +188,8 @@ export const projects = [
     highlights: [],
     screenshots: [],
     links: [],
+    metrics: [],
+    tech: [],
     desc: {
       fr: "Générateur de musique ambiante assisté par IA, contrôlable en temps réel.",
       en: "AI-assisted ambient music generator, controllable in real time.",
