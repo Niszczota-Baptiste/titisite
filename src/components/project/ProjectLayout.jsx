@@ -135,6 +135,9 @@ function Shell({ user, logout, isAdmin, breadcrumb, children }) {
   const headerLinks = (
     <>
       <Link to="/project/discussion" style={navLinkStyle} onClick={() => setMenuOpen(false)}>💬 Discussion</Link>
+      {user?.canViewStairs && (
+        <Link to="/stairs" style={navLinkStyle} onClick={() => setMenuOpen(false)}>🪜 Escaliers</Link>
+      )}
       <NotificationsButton compact style={{ flexShrink: 0 }} />
       {isAdmin && <Link to="/admin" style={navLinkStyle} onClick={() => setMenuOpen(false)}>Admin</Link>}
       <Link to="/" style={navLinkStyle} onClick={() => setMenuOpen(false)}>↗ Site</Link>

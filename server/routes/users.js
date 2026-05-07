@@ -31,10 +31,11 @@ usersRouter.post('/', requireAuth, ADMIN, (req, res) => {
   }
   if (findByEmail(email)) return res.status(409).json({ error: 'email_taken' });
   const hash = bcrypt.hashSync(password, 10);
+  const canViewStairs = req.body?.canViewStairs ? 1 : 0;
   const result = db
-    .prepare(`INSERT INTO users (email, name, password_hash, role) VALUES (?, ?, ?, ?)`)
-    .run(email.toLowerCase().trim(), (name || '').trim(), hash, role);
-  const row = db.prepare(`SELECT id, email, name, role, created_at FROM users WHERE id = ?`).get(result.lastInsertRowid);
+    .prepare(`INSERT INTO users (email, name, password_hash, role, can_view_stairs) VALUES (?, ?, ?, ?, ?)`)
+    .run(email.toLowerCase().trim(), (name || '').trim(), hash, role, canViewStairs);
+  const row = db.prepare(`SELECT id, email, name, role, can_view_stairs, created_at FROM users WHERE id = ?`).get(result.lastInsertRowid);
   res.status(201).json(row);
 });
 
@@ -74,14 +75,18 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
   }
 
   const newHash = wantsPasswordChange ? bcrypt.hashSync(password, 10) : existing.password_hash;
+  const canViewStairs = req.body?.canViewStairs === undefined
+    ? null
+    : (req.body.canViewStairs ? 1 : 0);
 
   db.prepare(`
     UPDATE users SET
-      name          = COALESCE(?, name),
-      role          = COALESCE(?, role),
-      password_hash = ?
+      name            = COALESCE(?, name),
+      role            = COALESCE(?, role),
+      password_hash   = ?,
+      can_view_stairs = COALESCE(?, can_view_stairs)
     WHERE id = ?
-  `).run(name ?? null, role ?? null, newHash, id);
+  `).run(name ?? null, role ?? null, newHash, canViewStairs, id);
 
   if (wantsPasswordChange) {
     bumpTokenVersion(id);
@@ -93,7 +98,7 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
     );
   }
 
-  const row = db.prepare(`SELECT id, email, name, role, created_at FROM users WHERE id = ?`).get(id);
+  const row = db.prepare(`SELECT id, email, name, role, can_view_stairs, created_at FROM users WHERE id = ?`).get(id);
   res.json(row);
 });
 

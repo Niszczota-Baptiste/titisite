@@ -130,6 +130,18 @@ export function UsersEditor() {
                         }}>
                           {u.role}
                         </span>
+                        {u.role !== 'admin' && u.can_view_stairs === 1 && (
+                          <span
+                            title="Accès à la section Escaliers"
+                            style={{
+                              fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 3,
+                              background: 'rgba(123,227,168,0.12)', color: '#7be3a8',
+                              letterSpacing: '0.5px', fontWeight: 600,
+                            }}
+                          >
+                            🪜 ESCALIERS
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -160,20 +172,25 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
   const [name, setName] = useState(user?.name || '');
   const [role, setRole] = useState(user?.role || 'member');
   const [password, setPassword] = useState('');
+  const [canViewStairs, setCanViewStairs] = useState(user?.can_view_stairs === 1);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
+
+  // Admins always have access to /stairs regardless of the column, so the
+  // checkbox is hidden for admin accounts to avoid implying it does anything.
+  const showStairsToggle = role !== 'admin';
 
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true); setErr(null);
     try {
       if (isEdit) {
-        const payload = { name, role };
+        const payload = { name, role, canViewStairs };
         if (password && canResetPassword) payload.password = password;
         await api.updateUser(user.id, payload);
       } else {
         if (!email || !password) { setErr('Email et mot de passe requis'); setSaving(false); return; }
-        await api.createUser({ email, name, role, password });
+        await api.createUser({ email, name, role, password, canViewStairs });
       }
       onSaved();
     } catch (ex) {
@@ -256,6 +273,27 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
           </Field>
         )}
       </div>
+
+      {showStairsToggle && (
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, marginBottom: 14,
+          cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13,
+          color: '#ede8f8',
+        }}>
+          <input
+            type="checkbox"
+            checked={canViewStairs}
+            onChange={(e) => setCanViewStairs(e.target.checked)}
+            style={{ accentColor: ACC, width: 16, height: 16 }}
+          />
+          <span>
+            Accès à la section <strong>🪜 Escaliers</strong>
+            <span style={{ color: 'rgba(180,170,200,0.55)', fontSize: 11, marginLeft: 6 }}>
+              (lecture + ajout/édition/suppression)
+            </span>
+          </span>
+        </label>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
         <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Annuler</Button>

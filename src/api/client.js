@@ -126,6 +126,15 @@ export const api = {
   updateUser: (id, body) => request('PUT', `/users/${id}`, body),
   deleteUser: (id) => request('DELETE', `/users/${id}`),
 
+  // Stairs (private shared catalogue, gated by users.can_view_stairs)
+  stairs: {
+    list:      () => request('GET',    '/stairs'),
+    create:    (body) => request('POST',   '/stairs', body),
+    update:    (id, body) => request('PUT',    `/stairs/${id}`, body),
+    remove:    (id) => request('DELETE', `/stairs/${id}`),
+    regeocode: (id) => request('POST',   `/stairs/${id}/regeocode`),
+  },
+
   // Workspaces (team projects)
   workspaces: {
     list:       () => request('GET', '/workspaces'),

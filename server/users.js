@@ -81,7 +81,7 @@ export function findByEmail(email) {
 }
 
 export function findById(id) {
-  return db.prepare(`SELECT id, email, name, role, token_version, created_at FROM users WHERE id = ?`).get(id);
+  return db.prepare(`SELECT id, email, name, role, token_version, can_view_stairs, created_at FROM users WHERE id = ?`).get(id);
 }
 
 export function bumpTokenVersion(userId) {
@@ -89,7 +89,7 @@ export function bumpTokenVersion(userId) {
 }
 
 export function listUsers() {
-  return db.prepare(`SELECT id, email, name, role, created_at FROM users ORDER BY id`).all();
+  return db.prepare(`SELECT id, email, name, role, can_view_stairs, created_at FROM users ORDER BY id`).all();
 }
 
 export function createUser({ email, name, password, role }) {

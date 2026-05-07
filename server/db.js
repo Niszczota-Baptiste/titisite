@@ -48,6 +48,9 @@ export function migrate() {
   // until the user explicitly enables it.
   ensureColumn('users', 'digest_frequency', `TEXT NOT NULL DEFAULT 'off' CHECK (digest_frequency IN ('off','daily','weekly'))`);
   ensureColumn('users', 'digest_last_sent_at', 'INTEGER');
+  // Per-member access flag for the /stairs section. Admins always have access
+  // regardless of this column; for members it must be explicitly enabled.
+  ensureColumn('users', 'can_view_stairs', 'INTEGER NOT NULL DEFAULT 0');
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ical_token ON users(ical_token) WHERE ical_token IS NOT NULL;`);
 
   // ── Workspaces (team projects) ──
@@ -236,6 +239,32 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_rl_window ON rate_limit_hits(window_end);`);
+
+  // ── Stairs (private shared catalogue, gated by users.can_view_stairs) ──
+  // GPS coordinates are required so every entry can land on the map; country/
+  // region/city are filled by Nominatim reverse geocoding (server/routes/stairs)
+  // and may be edited manually if the lookup fails.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stairs (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      name            TEXT NOT NULL,
+      notes           TEXT NOT NULL DEFAULT '',
+      step_count      INTEGER NOT NULL,
+      step_height_cm  REAL,
+      large_steps     INTEGER NOT NULL DEFAULT 0,
+      lat             REAL NOT NULL,
+      lng             REAL NOT NULL,
+      country         TEXT NOT NULL DEFAULT '',
+      region          TEXT NOT NULL DEFAULT '',
+      city            TEXT NOT NULL DEFAULT '',
+      encountered_at  INTEGER NOT NULL,
+      created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at      INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_stairs_country ON stairs(country, region);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_stairs_encountered_at ON stairs(encountered_at);`);
 
   // ── Project images (portfolio pages hero + screenshots) ──
   db.exec(`

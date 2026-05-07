@@ -27,6 +27,7 @@ import { meRouter } from './routes/me.js';
 import { meetingsRouter } from './routes/meetings.js';
 import { minecraftRouter } from './routes/minecraft.js';
 import { settingsRouter } from './routes/settings.js';
+import { stairsRouter } from './routes/stairs.js';
 import { summaryRouter } from './routes/summary.js';
 import { tagsRouter } from './routes/tags.js';
 import { usersRouter } from './routes/users.js';
@@ -62,7 +63,9 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      imgSrc: ["'self'", 'data:', 'blob:'],
+      // OSM raster tiles are served from {a,b,c}.tile.openstreetmap.org for the
+      // /stairs map. Loaded as <img> by Leaflet, so they need imgSrc not connectSrc.
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org', 'https://tile.openstreetmap.org'],
       mediaSrc: ["'self'"],
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
@@ -81,9 +84,11 @@ app.use(helmet({
 // Permissions-Policy: disable browser features this site doesn't need.
 // Helmet v8 doesn't set this header by default, so we add it manually.
 app.use((_req, res, next) => {
+  // geolocation=(self) — needed by the /stairs page's "Ma position" button to
+  // capture coordinates via navigator.geolocation. All other features stay off.
   res.setHeader(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+    'camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()',
   );
   next();
 });
@@ -212,6 +217,9 @@ app.use('/api/comments', commentsRouter);
 
 // Site-wide settings (public read for sections order, admin write)
 app.use('/api/settings', settingsRouter);
+
+// Stairs catalogue — gated by users.can_view_stairs (admins always allowed).
+app.use('/api/stairs', stairsRouter);
 
 // Current-user helpers (e.g. /api/me/events for the cross-project calendar)
 app.use('/api/me', meRouter);
