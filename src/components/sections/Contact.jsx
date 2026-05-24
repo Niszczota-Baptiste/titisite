@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { trackEvent } from '../../api/client';
 import { ACCENTS } from '../../data/constants';
 import { useMagnetic } from '../../hooks/useMagnetic';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -47,6 +48,7 @@ export function Contact({ t, accent }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    trackEvent('contact_submit', 'form');
     const subject = `[Portfolio] Message de ${form.name || 'visiteur'}`;
     const body = `${form.message}\n\n— ${form.name}${form.email ? ` <${form.email}>` : ''}`;
     const url = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -139,6 +141,7 @@ export function Contact({ t, accent }) {
             <a
               key={s.label}
               href={s.href}
+              onClick={() => trackEvent(s.label === 'Email' ? 'contact_submit' : 'link_click', s.label.toLowerCase())}
               data-interactive
               style={{
                 display: 'flex', alignItems: 'center', gap: 16,

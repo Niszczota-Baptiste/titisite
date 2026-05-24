@@ -37,6 +37,21 @@ describe('analytics beacon', () => {
   });
 });
 
+describe('analytics events', () => {
+  it('records an allowed interaction event without auth', async () => {
+    const f = fetcher(server.base);
+    assert.equal((await f.post('/api/analytics/event', { body: { name: 'track_play', label: 'Song A' } })).status, 204);
+    assert.equal((await f.post('/api/analytics/event', { body: { name: 'link_click', label: 'github' } })).status, 204);
+    assert.equal((await f.post('/api/analytics/event', { body: { name: 'contact_submit' } })).status, 204);
+  });
+
+  it('rejects an unknown event name', async () => {
+    const f = fetcher(server.base);
+    assert.equal((await f.post('/api/analytics/event', { body: { name: 'drop_table', label: 'x' } })).status, 400);
+    assert.equal((await f.post('/api/analytics/event', { body: { label: 'x' } })).status, 400);
+  });
+});
+
 describe('analytics summary', () => {
   it('requires authentication', async () => {
     const f = fetcher(server.base);
@@ -63,5 +78,18 @@ describe('analytics summary', () => {
     assert.ok(paths.includes('/'), 'lists the home path');
     assert.ok(!paths.some((p) => p.startsWith('/admin')), 'never stores admin paths');
     assert.ok(Array.isArray(r.json.series), 'returns a daily series');
+  });
+
+  it('aggregates interaction events by name and label', async () => {
+    const pub = fetcher(server.base);
+    await pub.post('/api/analytics/event', { body: { name: 'track_play', label: 'Hit Song' } });
+    await pub.post('/api/analytics/event', { body: { name: 'track_play', label: 'Hit Song' } });
+
+    const f = await loggedIn(ADMIN);
+    const r = await f.get('/api/analytics/summary?days=30');
+    assert.equal(r.status, 200);
+    const play = r.json.events.find((e) => e.name === 'track_play');
+    assert.ok(play && play.total >= 2, 'counts track plays');
+    assert.ok(play.labels.some((l) => l.label === 'Hit Song'), 'surfaces the played title');
   });
 });

@@ -10,6 +10,13 @@ const RANGES = [
 
 const DEVICE_LABELS = { desktop: 'Ordinateur', mobile: 'Mobile', tablet: 'Tablette', bot: 'Robots' };
 
+const EVENT_LABELS = {
+  link_click:     { name: 'Clics sur les liens', empty: 'Aucun clic' },
+  track_play:     { name: 'Écoutes de musique', empty: 'Aucune écoute' },
+  project_view:   { name: 'Projets consultés', empty: 'Aucune consultation' },
+  contact_submit: { name: 'Contacts (mail / formulaire)', empty: 'Aucun envoi' },
+};
+
 export function AnalyticsEditor() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState(null);
@@ -91,6 +98,42 @@ export function AnalyticsEditor() {
             <RankCard title="Sources de trafic" rows={data.topReferrers.map((r) => ({ label: r.referrer, value: r.views }))} empty="Aucun référent externe" />
             <RankCard title="Appareils" rows={data.devices.map((r) => ({ label: DEVICE_LABELS[r.device] || r.device, value: r.views }))} empty="Aucune donnée" />
           </div>
+
+          {data.events?.length > 0 && (
+            <>
+              <h3 style={{
+                fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 700,
+                color: '#ede8f8', margin: '28px 0 4px',
+              }}>
+                Interactions
+              </h3>
+              <div style={{ display: 'flex', gap: 12, margin: '12px 0 16px', flexWrap: 'wrap' }}>
+                {data.events.map((ev) => (
+                  <Kpi
+                    key={ev.name}
+                    label={(EVENT_LABELS[ev.name] || { name: ev.name }).name}
+                    value={ev.total}
+                  />
+                ))}
+              </div>
+              <div style={{
+                display: 'grid', gap: 16,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              }}>
+                {data.events.filter((ev) => ev.labels.length > 0).map((ev) => {
+                  const meta = EVENT_LABELS[ev.name] || { name: ev.name, empty: '—' };
+                  return (
+                    <RankCard
+                      key={ev.name}
+                      title={meta.name}
+                      rows={ev.labels.map((l) => ({ label: l.label, value: l.count }))}
+                      empty={meta.empty}
+                    />
+                  );
+                })}
+              </div>
+            </>
+          )}
         </>
       )}
     </div>

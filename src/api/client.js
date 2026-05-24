@@ -19,6 +19,12 @@ export function clearSession() {
   setStoredUser(null);
 }
 
+// Fire-and-forget analytics event. Never throws — a blocked beacon (ad-blocker,
+// offline) must not break the click it's attached to.
+export function trackEvent(name, label) {
+  try { api.analytics.event(name, label).catch(() => {}); } catch { /* ignore */ }
+}
+
 async function request(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
   const res = await fetch(`/api${path}`, {
@@ -117,6 +123,7 @@ export const api = {
   // errors), `summary` is the admin dashboard aggregate.
   analytics: {
     hit:     (path, referrer) => request('POST', '/analytics/hit', { path, referrer }),
+    event:   (name, label) => request('POST', '/analytics/event', { name, label }),
     summary: (days) => request('GET', `/analytics/summary${days ? `?days=${days}` : ''}`),
   },
 

@@ -41,6 +41,11 @@ function referrerHost(raw, reqHost) {
   }
 }
 
+// Interaction events we accept from the public site. Anything else is dropped
+// so a tampered client can't fill the table with arbitrary names.
+const EVENT_NAMES = new Set(['link_click', 'track_play', 'project_view', 'contact_submit']);
+const MAX_LABEL = 120;
+
 let _insertHit;
 analyticsRouter.post('/hit', (req, res) => {
   const path = req.body?.path;
@@ -64,6 +69,22 @@ analyticsRouter.post('/hit', (req, res) => {
     /^[A-Z]{2}$/.test(country) && country !== 'XX' ? country : '',
     visitorHash(req),
   );
+  res.status(204).end();
+});
+
+let _insertEvent;
+analyticsRouter.post('/event', (req, res) => {
+  const name = req.body?.name;
+  if (typeof name !== 'string' || !EVENT_NAMES.has(name)) {
+    return res.status(400).json({ error: 'invalid_event' });
+  }
+  const label = typeof req.body?.label === 'string' ? req.body.label.slice(0, MAX_LABEL) : '';
+  if (!_insertEvent) {
+    _insertEvent = db.prepare(
+      `INSERT INTO events (name, label, visitor_hash) VALUES (?, ?, ?)`,
+    );
+  }
+  _insertEvent.run(name, label, visitorHash(req));
   res.status(204).end();
 });
 
@@ -100,5 +121,21 @@ analyticsRouter.get('/summary', requireAuth, requireRole('admin'), (req, res) =>
      WHERE created_at >= ? GROUP BY device ORDER BY views DESC`,
   ).all(since);
 
-  res.json({ days, totals, series, topPaths, topReferrers, devices });
+  // Interaction events: per-name total + the top labels behind each name.
+  const eventTotals = db.prepare(
+    `SELECT name, COUNT(*) AS count FROM events
+     WHERE created_at >= ? GROUP BY name`,
+  ).all(since);
+  const topLabelsStmt = db.prepare(
+    `SELECT label, COUNT(*) AS count FROM events
+     WHERE name = ? AND created_at >= ? AND label <> ''
+     GROUP BY label ORDER BY count DESC LIMIT 8`,
+  );
+  const events = [...EVENT_NAMES].map((name) => ({
+    name,
+    total: eventTotals.find((e) => e.name === name)?.count || 0,
+    labels: topLabelsStmt.all(name, since),
+  }));
+
+  res.json({ days, totals, series, topPaths, topReferrers, devices, events });
 });

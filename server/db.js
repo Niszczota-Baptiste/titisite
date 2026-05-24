@@ -285,6 +285,21 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_pageviews_created ON pageviews(created_at);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_pageviews_path ON pageviews(path);`);
 
+  // ── Interaction events (link clicks, track plays, project views, contact) ──
+  // Same privacy model as pageviews: daily-rotating visitor_hash, no PII.
+  // `name` is one of a fixed allowlist (server/routes/analytics.js), `label`
+  // is the specific target (social network, track title, project name…).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS events (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      name         TEXT NOT NULL,
+      label        TEXT NOT NULL DEFAULT '',
+      visitor_hash TEXT NOT NULL DEFAULT '',
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_name ON events(name, created_at);`);
+
   // ── Project images (portfolio pages hero + screenshots) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS project_images (

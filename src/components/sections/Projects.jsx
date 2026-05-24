@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { trackEvent } from '../../api/client';
 import { ACCENTS } from '../../data/constants';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
@@ -162,6 +163,7 @@ function ProjectDetailModal({ p, t, lang, accent, onClose }) {
                 href={p.demoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => trackEvent('link_click', `demo:${p.title}`)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8,
                   background: `rgba(${acc.rgb},0.12)`, color: acc.hex,
@@ -356,6 +358,7 @@ function ProjectCard({ p, t, lang, accent }) {
         <button
           onClick={(e) => {
             e.stopPropagation();
+            trackEvent('project_view', p.title);
             if (p.demoMode === 'internal') { navigate(`/projects/${p.id}`); }
             else if (p.demoMode === 'external' && p.demoUrl) { window.open(p.demoUrl, '_blank', 'noopener,noreferrer'); }
             else { setDetailOpen(true); }
@@ -376,7 +379,10 @@ function ProjectCard({ p, t, lang, accent }) {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (p.codeUrl) window.open(p.codeUrl, '_blank', 'noopener,noreferrer');
+            if (p.codeUrl) {
+              trackEvent('link_click', `code:${p.title}`);
+              window.open(p.codeUrl, '_blank', 'noopener,noreferrer');
+            }
           }}
           disabled={!p.codeUrl}
           style={{

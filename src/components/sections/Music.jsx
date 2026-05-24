@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { trackEvent } from '../../api/client';
 import { ACCENTS } from '../../data/constants';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { Section } from '../layout/Section';
@@ -241,6 +242,7 @@ export function Music({ t, accent, tracks = [] }) {
       setPlaying(i);
       setProgress((p) => ({ ...p, [i]: p[i] || 0 }));
       setElapsed((p) => ({ ...p, [i]: p[i] ? (p[i] / 100) * CLIP_SEC : 0 }));
+      trackEvent('track_play', tracks[i]?.title || `track-${i}`);
     }
   };
 
