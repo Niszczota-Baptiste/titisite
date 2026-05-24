@@ -113,6 +113,13 @@ export const api = {
   publicSections:    () => request('GET', '/settings/public-sections'),
   setPublicSections: (sections) => request('PUT', '/settings/public-sections', { sections }),
 
+  // Analytics — `hit` is a fire-and-forget public beacon (callers swallow
+  // errors), `summary` is the admin dashboard aggregate.
+  analytics: {
+    hit:     (path, referrer) => request('POST', '/analytics/hit', { path, referrer }),
+    summary: (days) => request('GET', `/analytics/summary${days ? `?days=${days}` : ''}`),
+  },
+
   // Public-site collections (admin-only writes)
   list:    (c) => request('GET', `/${c}`),
   create:  (c, body) => request('POST', `/${c}`, body),

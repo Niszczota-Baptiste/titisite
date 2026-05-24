@@ -14,6 +14,7 @@ import { SqliteStore } from './rateLimitStore.js';
 import { COLLECTIONS, db } from './db.js';
 import { startDigestScheduler } from './digest.js';
 import { resolveWorkspace } from './middleware/scope.js';
+import { analyticsRouter } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
 import { imagesRouter } from './routes/images.js';
 import { tracksRouter } from './routes/tracks.js';
@@ -149,6 +150,16 @@ const calendarLimiter = rateLimit({
   message: rlMessage('rate_limited'),
 });
 
+// Analytics beacon: one POST per public page view. Capped tighter than the
+// global limiter so a single client can't flood the pageviews table.
+const analyticsLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: rlMessage('rate_limited'),
+});
+
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // Public audio streaming. Two layers of defense beyond the rate limiter:
@@ -198,6 +209,9 @@ app.get('/api/images/:filename', (req, res) => {
 
 // Public ICS calendar feed (token-based, no auth header — phones subscribe to this)
 app.use('/api/calendar', calendarLimiter, calendarRouter);
+
+// Site analytics: public beacon (POST /hit) + admin-only summary (GET /summary)
+app.use('/api/analytics', analyticsLimiter, analyticsRouter);
 
 // Auth + users + tracks (tracks has its own router with audio upload support,
 // so we skip the generic collection router for it below)

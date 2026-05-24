@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { ACC, ACC_RGB, Button } from './ui';
+import { AnalyticsEditor } from './editors/AnalyticsEditor';
 import { CurrentlyEditor } from './editors/CurrentlyEditor';
 import { EducationEditor } from './editors/EducationEditor';
 import { ExperienceEditor } from './editors/ExperienceEditor';
@@ -13,6 +14,7 @@ import { UsersEditor } from './editors/UsersEditor';
 import { WorkspacesEditor } from './editors/WorkspacesEditor';
 
 const TABS = [
+  { key: 'analytics',  label: 'Fréquentation',          Editor: AnalyticsEditor },
   { key: 'public',     label: 'Page publique',          Editor: PublicSectionsEditor },
   { key: 'projects',   label: 'Portfolio · Projets',    Editor: ProjectsEditor },
   { key: 'tracks',     label: 'Musique',                Editor: TracksEditor },

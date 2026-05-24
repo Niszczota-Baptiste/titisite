@@ -266,6 +266,25 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_stairs_country ON stairs(country, region);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_stairs_encountered_at ON stairs(encountered_at);`);
 
+  // ── Page views (privacy-friendly site analytics) ──
+  // No cookie, no raw IP. `visitor_hash` is a daily-rotating salted digest of
+  // ip+ua so we can count unique visitors per day without storing PII — it's
+  // irreversible and changes every midnight, so it can't track someone across
+  // days. See server/routes/analytics.js.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pageviews (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      path         TEXT NOT NULL,
+      referrer     TEXT NOT NULL DEFAULT '',
+      device       TEXT NOT NULL DEFAULT 'desktop',
+      country      TEXT NOT NULL DEFAULT '',
+      visitor_hash TEXT NOT NULL DEFAULT '',
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_pageviews_created ON pageviews(created_at);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_pageviews_path ON pageviews(path);`);
+
   // ── Project images (portfolio pages hero + screenshots) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS project_images (
