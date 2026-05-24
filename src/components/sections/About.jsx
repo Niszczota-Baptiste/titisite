@@ -1,14 +1,23 @@
 import { ACCENTS } from '../../data/constants';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
 
 export function About({ t, accent }) {
   const acc = ACCENTS[accent] || ACCENTS.violet;
+  const mobile = useIsMobile(860);
   return (
     <Section id="about">
       <SectionHeader title={t.about.title} accent={accent} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: 80, alignItems: 'start' }}>
-        <div className="reveal">
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: mobile ? '1fr' : '1fr 1.5fr',
+          gap: mobile ? 40 : 80,
+          alignItems: 'start',
+        }}
+      >
+        <div className="reveal" style={{ maxWidth: mobile ? 260 : 'none', margin: mobile ? '0 auto' : 0, width: '100%' }}>
           <div
             style={{
               borderRadius: 22, overflow: 'hidden', position: 'relative',

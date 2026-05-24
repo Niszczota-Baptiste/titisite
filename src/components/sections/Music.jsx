@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ACCENTS } from '../../data/constants';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
 
@@ -79,7 +80,7 @@ function Waveform({ playing, accent }) {
   );
 }
 
-function TrackRow({ track, playing, progress, onToggle, accent }) {
+function TrackRow({ track, playing, progress, onToggle, accent, mobile }) {
   const [hov, setHov] = useState(false);
   const acc = ACCENTS[accent] || ACCENTS.violet;
   return (
@@ -89,7 +90,8 @@ function TrackRow({ track, playing, progress, onToggle, accent }) {
       onClick={onToggle}
       data-interactive
       style={{
-        display: 'flex', alignItems: 'center', gap: 18, padding: '14px 32px',
+        display: 'flex', alignItems: 'center', gap: mobile ? 14 : 18,
+        padding: mobile ? '14px 20px' : '14px 32px',
         background: playing ? `rgba(${acc.rgb},0.04)` : hov ? 'var(--track-hov)' : 'transparent',
         borderBottom: '1px solid var(--border-dim)', cursor: 'pointer',
         transition: 'background 0.2s', position: 'relative', overflow: 'hidden',
@@ -142,6 +144,7 @@ export function Music({ t, accent, tracks = [] }) {
   const [repeat, setRepeat] = useState(false);
   const audioRef = useRef(null);
   const acc = ACCENTS[accent] || ACCENTS.violet;
+  const mobile = useIsMobile(860);
 
   useEffect(() => { window.__musicPlaying = playing !== null; }, [playing]);
 
@@ -316,8 +319,17 @@ export function Music({ t, accent, tracks = [] }) {
           transition: 'border-color 0.6s ease,box-shadow 0.6s ease',
         }}
       >
-        <div style={{ padding: '28px 32px 24px', borderBottom: '1px solid var(--border-dim)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div style={{ padding: mobile ? '24px 20px 22px' : '28px 32px 24px', borderBottom: '1px solid var(--border-dim)' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: mobile ? 'stretch' : 'flex-start',
+              flexDirection: mobile ? 'column' : 'row',
+              gap: mobile ? 18 : 0,
+              marginBottom: 20,
+            }}
+          >
             <div>
               <p style={{
                 fontFamily: "'Inter',sans-serif", fontSize: 10.5, color: 'var(--text-faint)',
@@ -339,7 +351,15 @@ export function Music({ t, accent, tracks = [] }) {
                 )}
               </p>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 16 }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: mobile ? 'row' : 'column',
+                alignItems: 'center',
+                justifyContent: mobile ? 'space-between' : 'flex-end',
+                gap: 16,
+              }}
+            >
               <Waveform playing={isPlaying} accent={accent} />
               <VolumeSlider value={volume} onChange={setVolume} accent={accent} />
             </div>
@@ -445,6 +465,7 @@ export function Music({ t, accent, tracks = [] }) {
             progress={progress[i] || 0}
             onToggle={() => toggle(i)}
             accent={accent}
+            mobile={mobile}
           />
         ))}
       </div>
