@@ -16,11 +16,16 @@ cd "$APP_DIR"
 # Pull les derniers commits
 sudo -u "$APP_USER" git pull origin main
 
-# Installe les nouvelles dépendances si package.json a changé
-sudo -u "$APP_USER" npm ci --omit=dev
+# Installe toutes les dépendances (dev incluses) — vite & co sont
+# nécessaires pour builder le front.
+sudo -u "$APP_USER" npm ci
 
 # Rebuild le front
 sudo -u "$APP_USER" npm run build
+
+# Retire les devDependencies du node_modules : le runtime n'en a pas besoin
+# et ça évite de laisser des CVE de build (ex. fast-uri) sur le disque en prod.
+sudo -u "$APP_USER" npm prune --omit=dev
 
 # Redémarre le processus Node (zero-downtime avec PM2)
 sudo -u "$APP_USER" \
