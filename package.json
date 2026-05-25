@@ -15,7 +15,7 @@
     "test": "node --test 'test/*.test.js'",
     "lint:security": "eslint server/ src/ test/",
     "lint:secrets": "secretlint --maskSecrets \"**/*.{js,jsx,json,yml,yaml,toml,env}\"",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
