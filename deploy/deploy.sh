@@ -18,7 +18,10 @@ sudo -u "$APP_USER" git pull origin main
 
 # Installe toutes les dépendances (dev incluses) — vite & co sont
 # nécessaires pour builder le front.
-sudo -u "$APP_USER" npm ci
+# --include=dev est indispensable : si NODE_ENV=production est présent dans
+# l'environnement (PM2 / shell de l'utilisateur), npm omet sinon les
+# devDependencies et le build échoue avec « vite: not found ».
+sudo -u "$APP_USER" npm ci --include=dev
 
 # Rebuild le front
 sudo -u "$APP_USER" npm run build
