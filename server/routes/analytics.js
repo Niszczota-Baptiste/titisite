@@ -98,6 +98,19 @@ analyticsRouter.get('/summary', requireAuth, requireRole('admin'), (req, res) =>
      FROM pageviews WHERE created_at >= ?`,
   ).get(since);
 
+  // Same-length window immediately before the current one, for trend deltas.
+  const prevSince = since - days * 86400;
+  const prev = db.prepare(
+    `SELECT COUNT(*) AS views, COUNT(DISTINCT visitor_hash) AS visitors
+     FROM pageviews WHERE created_at >= ? AND created_at < ?`,
+  ).get(prevSince, since);
+
+  const countries = db.prepare(
+    `SELECT country, COUNT(*) AS views, COUNT(DISTINCT visitor_hash) AS visitors
+     FROM pageviews WHERE created_at >= ? AND country <> ''
+     GROUP BY country ORDER BY visitors DESC, views DESC LIMIT 12`,
+  ).all(since);
+
   const series = db.prepare(
     `SELECT strftime('%Y-%m-%d', created_at, 'unixepoch') AS day,
             COUNT(*) AS views,
@@ -137,5 +150,5 @@ analyticsRouter.get('/summary', requireAuth, requireRole('admin'), (req, res) =>
     labels: topLabelsStmt.all(name, since),
   }));
 
-  res.json({ days, totals, series, topPaths, topReferrers, devices, events });
+  res.json({ days, totals, prev, series, topPaths, topReferrers, devices, countries, events });
 });
