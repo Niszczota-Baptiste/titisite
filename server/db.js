@@ -284,6 +284,7 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_pageviews_created ON pageviews(created_at);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_pageviews_path ON pageviews(path);`);
+  ensureColumn('pageviews', 'browser', "TEXT NOT NULL DEFAULT ''");
 
   // ── Interaction events (link clicks, track plays, project views, contact) ──
   // Same privacy model as pageviews: daily-rotating visitor_hash, no PII.

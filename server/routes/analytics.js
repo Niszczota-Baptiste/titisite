@@ -18,6 +18,21 @@ function deviceFromUA(ua = '') {
   return 'desktop';
 }
 
+// Coarse browser family from the User-Agent. Order matters: many UAs lie
+// (Edge/Opera/Samsung embed "Chrome", iOS browsers embed "Safari"), so the
+// more specific tokens are checked first.
+function browserFromUA(ua = '') {
+  if (/bot|crawl|spider|slurp|bingpreview|facebookexternalhit|embedly/i.test(ua)) return 'bot';
+  if (/Edg(?:e|A|iOS)?\//i.test(ua)) return 'Edge';
+  if (/OPR\/|Opera/i.test(ua)) return 'Opera';
+  if (/SamsungBrowser/i.test(ua)) return 'Samsung';
+  if (/Firefox\/|FxiOS\//i.test(ua)) return 'Firefox';
+  if (/CriOS\//i.test(ua)) return 'Chrome';
+  if (/Chrome\/|Chromium\//i.test(ua)) return 'Chrome';
+  if (/Safari\//i.test(ua) && /Version\//i.test(ua)) return 'Safari';
+  return 'Autre';
+}
+
 // Daily-rotating, irreversible visitor fingerprint. The date component means
 // the same person gets a different hash tomorrow, so this can't follow anyone
 // across days — it only powers "unique visitors per day".
@@ -57,8 +72,8 @@ analyticsRouter.post('/hit', (req, res) => {
 
   if (!_insertHit) {
     _insertHit = db.prepare(
-      `INSERT INTO pageviews (path, referrer, device, country, visitor_hash)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO pageviews (path, referrer, device, browser, country, visitor_hash)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     );
   }
   const country = String(req.headers['cf-ipcountry'] || '').slice(0, 2).toUpperCase();
@@ -66,6 +81,7 @@ analyticsRouter.post('/hit', (req, res) => {
     path,
     referrerHost(req.body?.referrer, req.hostname),
     deviceFromUA(req.headers['user-agent']),
+    browserFromUA(req.headers['user-agent']),
     /^[A-Z]{2}$/.test(country) && country !== 'XX' ? country : '',
     visitorHash(req),
   );
@@ -134,6 +150,11 @@ analyticsRouter.get('/summary', requireAuth, requireRole('admin'), (req, res) =>
      WHERE created_at >= ? GROUP BY device ORDER BY views DESC`,
   ).all(since);
 
+  const browsers = db.prepare(
+    `SELECT browser, COUNT(*) AS views FROM pageviews
+     WHERE created_at >= ? AND browser <> '' GROUP BY browser ORDER BY views DESC`,
+  ).all(since);
+
   // Interaction events: per-name total + the top labels behind each name.
   const eventTotals = db.prepare(
     `SELECT name, COUNT(*) AS count FROM events
@@ -150,5 +171,5 @@ analyticsRouter.get('/summary', requireAuth, requireRole('admin'), (req, res) =>
     labels: topLabelsStmt.all(name, since),
   }));
 
-  res.json({ days, totals, prev, series, topPaths, topReferrers, devices, countries, events });
+  res.json({ days, totals, prev, series, topPaths, topReferrers, devices, browsers, countries, events });
 });

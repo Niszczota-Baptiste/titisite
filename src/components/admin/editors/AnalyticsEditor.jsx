@@ -41,6 +41,33 @@ function countryName(cc) {
   }
 }
 
+// Approximate country centroids [lat, lon] for the connection map. Countries
+// outside this list still appear in the "Pays" list, just without a map dot.
+const COUNTRY_CENTROIDS = {
+  FR: [46.2, 2.2], BE: [50.5, 4.5], KR: [36.5, 127.8], CA: [56.1, -106.3],
+  US: [39.8, -98.6], GB: [54.4, -3.4], DE: [51.2, 10.5], ES: [40.5, -3.7],
+  IT: [41.9, 12.6], NL: [52.1, 5.3], CH: [46.8, 8.2], PT: [39.4, -8.2],
+  IE: [53.4, -8.2], LU: [49.8, 6.1], AT: [47.5, 14.6], PL: [51.9, 19.1],
+  SE: [60.1, 18.6], NO: [60.5, 8.5], DK: [56.3, 9.5], FI: [61.9, 25.7],
+  CZ: [49.8, 15.5], SK: [48.7, 19.7], SI: [46.1, 15.0], HR: [45.1, 15.2],
+  RS: [44.0, 21.0], BG: [42.7, 25.5], RO: [45.9, 25.0], HU: [47.2, 19.5],
+  GR: [39.1, 21.8], TR: [39.0, 35.2], UA: [48.4, 31.2], RU: [61.5, 105.3],
+  LT: [55.2, 23.9], LV: [56.9, 24.6], EE: [58.6, 25.0], IS: [65.0, -19.0],
+  CN: [35.9, 104.2], JP: [36.2, 138.3], IN: [20.6, 79.0], ID: [-0.8, 113.9],
+  SG: [1.35, 103.8], MY: [4.2, 102.0], TH: [15.9, 101.0], VN: [14.1, 108.3],
+  PH: [12.9, 121.8], HK: [22.4, 114.1], TW: [23.7, 121.0], PK: [30.4, 69.3],
+  BD: [23.7, 90.4], IL: [31.0, 34.9], AE: [23.4, 53.8], SA: [23.9, 45.1],
+  QA: [25.4, 51.2], LB: [33.9, 35.9], AU: [-25.3, 133.8], NZ: [-40.9, 174.9],
+  BR: [-14.2, -51.9], AR: [-38.4, -63.6], MX: [23.6, -102.6], CL: [-35.7, -71.5],
+  CO: [4.6, -74.3], PE: [-9.2, -75.0], ZA: [-30.6, 22.9], EG: [26.8, 30.8],
+  MA: [31.8, -7.1], DZ: [28.0, 1.7], TN: [33.9, 9.5], NG: [9.1, 8.7],
+  KE: [0.0, 37.9],
+};
+
+// Hand-simplified continent outlines for the map backdrop (equirectangular,
+// viewBox 0 0 800 360). Decorative only.
+const CONTINENTS = "M158,98 L182,92 L210,95 L230,108 L250,115 L268,128 L255,138 L240,142 L218,148 L200,152 L185,155 L168,150 L155,142 L150,128 L155,112 Z M280,108 L320,102 L360,108 L395,118 L420,128 L440,140 L455,158 L460,178 L450,195 L430,205 L408,210 L388,208 L370,200 L355,188 L342,175 L330,165 L315,152 L298,140 L285,125 Z M120,165 L138,155 L155,158 L168,168 L172,182 L165,195 L150,200 L132,198 L118,188 L112,175 Z M450,260 L478,255 L500,262 L515,275 L520,290 L510,302 L490,308 L470,305 L452,295 L445,280 Z M195,205 L215,200 L232,208 L240,222 L235,238 L218,245 L200,242 L188,232 L185,218 Z M540,150 L575,148 L605,155 L630,168 L645,182 L640,198 L620,205 L595,208 L575,205 L555,195 L545,182 L538,170 Z";
+
 const KEYFRAMES = `
 @keyframes an-fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
 @keyframes an-grow   { from { transform:scaleY(0); } to { transform:scaleY(1); } }
@@ -51,15 +78,17 @@ export function AnalyticsEditor() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
+  const [tick, setTick] = useState(0);
+  const [loadedAt, setLoadedAt] = useState(null);
 
   useEffect(() => {
     let alive = true;
     setData(null); setErr(null);
     api.analytics.summary(days)
-      .then((r) => { if (alive) setData(r); })
+      .then((r) => { if (alive) { setData(r); setLoadedAt(new Date()); } })
       .catch((e) => { if (alive) setErr(e.message); });
     return () => { alive = false; };
-  }, [days]);
+  }, [days, tick]);
 
   const totals = data?.totals;
   const prevViews = data?.prev?.views || 0;
@@ -158,31 +187,36 @@ export function AnalyticsEditor() {
             <DailyChart series={data.series} />
           </Card>
 
-          {/* ── Countries ── */}
+          {/* ── Map + Countries ── */}
           {data.countries.length > 0 && (
-            <Card title="🌍 Pays" style={{ marginBottom: 18 }}>
-              <div style={{
-                display: 'grid', gap: '12px 22px',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              }}>
-                {data.countries.map((c, i) => (
-                  <BarRow
-                    key={c.country}
-                    label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 16 }}>{flagEmoji(c.country)}</span>
-                      {countryName(c.country)}
-                      <span style={{
-                        fontFamily: 'monospace', fontSize: 9, color: 'rgba(180,170,200,0.6)',
-                        background: `rgba(${ACC_RGB},0.12)`, padding: '1px 5px', borderRadius: 3,
-                      }}>{c.country}</span>
-                    </span>}
-                    value={c.visitors}
-                    max={Math.max(...data.countries.map((x) => x.visitors), 1)}
-                    delay={i * 0.04}
-                  />
-                ))}
-              </div>
-            </Card>
+            <div style={{
+              display: 'grid', gap: 16, marginBottom: 18,
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            }}>
+              <Card title="🌍 Carte des connexions" style={{ gridColumn: 'span 2', minWidth: 0 }}>
+                <WorldMap countries={data.countries} />
+              </Card>
+              <Card title="Pays">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {data.countries.map((c, i) => (
+                    <BarRow
+                      key={c.country}
+                      label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 16 }}>{flagEmoji(c.country)}</span>
+                        {countryName(c.country)}
+                        <span style={{
+                          fontFamily: 'monospace', fontSize: 9, color: 'rgba(180,170,200,0.6)',
+                          background: `rgba(${ACC_RGB},0.12)`, padding: '1px 5px', borderRadius: 3,
+                        }}>{c.country}</span>
+                      </span>}
+                      value={c.visitors}
+                      max={Math.max(...data.countries.map((x) => x.visitors), 1)}
+                      delay={i * 0.04}
+                    />
+                  ))}
+                </div>
+              </Card>
+            </div>
           )}
 
           {/* ── Pages / Sources / Devices ── */}
@@ -216,14 +250,43 @@ export function AnalyticsEditor() {
                 };
               })}
             />
-            <RankCard
-              title="Appareils"
-              empty="Aucune donnée"
-              rows={data.devices.map((r) => ({
-                value: r.views,
-                label: `${DEVICE_ICONS[r.device] || '•'} ${DEVICE_LABELS[r.device] || r.device}`,
-              }))}
-            />
+            <Card title="Appareils & navigateurs">
+              {data.devices.length === 0 ? (
+                <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif", fontSize: 12.5 }}>Aucune donnée</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {data.devices.map((r, i) => (
+                    <BarRow
+                      key={r.device}
+                      label={`${DEVICE_ICONS[r.device] || '•'} ${DEVICE_LABELS[r.device] || r.device}`}
+                      value={r.views}
+                      max={Math.max(...data.devices.map((x) => x.views), 1)}
+                      delay={i * 0.04}
+                    />
+                  ))}
+                </div>
+              )}
+              {data.browsers?.length > 0 && (
+                <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(60,40,100,0.25)' }}>
+                  <div style={{
+                    fontFamily: 'monospace', fontSize: 10, color: 'rgba(180,170,200,0.55)',
+                    letterSpacing: '1.2px', textTransform: 'uppercase', fontWeight: 600, marginBottom: 12,
+                  }}>Navigateurs</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {data.browsers.map((b, i) => (
+                      <BarRow
+                        key={b.browser}
+                        label={b.browser}
+                        value={b.views}
+                        max={Math.max(...data.browsers.map((x) => x.views), 1)}
+                        color="#7eb8f7"
+                        delay={i * 0.04}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
           </div>
 
           {/* ── Interactions ── */}
@@ -273,6 +336,28 @@ export function AnalyticsEditor() {
               </div>
             </>
           )}
+
+          {/* ── Footer ── */}
+          <div style={{
+            marginTop: 36, paddingTop: 20, borderTop: '1px solid rgba(60,40,100,0.18)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            gap: 12, flexWrap: 'wrap',
+          }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 10, color: 'rgba(180,170,200,0.4)' }}>
+              {loadedAt && `dernière mise à jour · ${loadedAt.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
+            </span>
+            <button
+              onClick={() => setTick((t) => t + 1)}
+              style={{
+                background: `rgba(${ACC_RGB},0.14)`, border: `1px solid rgba(${ACC_RGB},0.35)`,
+                color: ACC, borderRadius: 8, padding: '7px 14px', cursor: 'pointer',
+                fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 600,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              ⟳ Actualiser
+            </button>
+          </div>
         </>
       )}
     </div>
@@ -436,6 +521,65 @@ function RankCard({ title, rows, empty, color = ACC }) {
         </div>
       )}
     </Card>
+  );
+}
+
+function WorldMap({ countries }) {
+  const proj = (lat, lon) => ({ x: (lon + 180) * (800 / 360), y: (90 - lat) * (360 / 180) });
+  const plotted = countries.filter((c) => COUNTRY_CENTROIDS[c.country]);
+  const maxV = Math.max(...countries.map((c) => c.visitors), 1);
+  const totalVisitors = countries.reduce((s, c) => s + c.visitors, 0);
+
+  return (
+    <div style={{
+      position: 'relative', background: 'rgba(6,3,16,0.6)', borderRadius: 10,
+      padding: 16, overflow: 'hidden', border: '1px solid rgba(60,40,100,0.2)',
+    }}>
+      <svg viewBox="0 0 800 360" style={{ width: '100%', height: 'auto', display: 'block' }}>
+        <defs>
+          <radialGradient id="an-cityGlow">
+            <stop offset="0%" stopColor={`rgba(${ACC_RGB},0.7)`} />
+            <stop offset="100%" stopColor={`rgba(${ACC_RGB},0)`} />
+          </radialGradient>
+          <pattern id="an-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M40 0 L0 0 0 40" fill="none" stroke="rgba(80,50,130,0.08)" strokeWidth="0.5" />
+          </pattern>
+        </defs>
+        <rect width="800" height="360" fill="url(#an-grid)" />
+        <path d={CONTINENTS} fill="rgba(80,50,130,0.18)" stroke="rgba(120,80,200,0.25)" strokeWidth="0.6" />
+        {plotted.map((c, i) => {
+          const [lat, lon] = COUNTRY_CENTROIDS[c.country];
+          const { x, y } = proj(lat, lon);
+          const r = 4 + (c.visitors / maxV) * 8;
+          return (
+            <g key={c.country}>
+              <circle cx={x} cy={y} r={r * 3} fill="url(#an-cityGlow)" />
+              <circle cx={x} cy={y} r={r} fill="none" stroke={ACC} strokeWidth="1.5" opacity="0.6">
+                <animate attributeName="r" from={r} to={r * 3} dur="2.5s" begin={`${i * 0.3}s`} repeatCount="indefinite" />
+                <animate attributeName="opacity" from="0.6" to="0" dur="2.5s" begin={`${i * 0.3}s`} repeatCount="indefinite" />
+              </circle>
+              <circle cx={x} cy={y} r={r} fill={ACC} stroke="#050511" strokeWidth="1" />
+              <text x={x + r + 5} y={y + 3} fontSize="9" fill={`rgba(${ACC_RGB},0.65)`} fontFamily="monospace">
+                {countryName(c.country)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      <div style={{
+        position: 'absolute', bottom: 14, left: 14, display: 'flex', alignItems: 'center', gap: 7,
+        background: 'rgba(10,6,22,0.85)', border: '1px solid rgba(80,50,130,0.3)',
+        borderRadius: 20, padding: '4px 11px',
+      }}>
+        <span style={{
+          width: 6, height: 6, borderRadius: '50%', background: ACC,
+          boxShadow: `0 0 8px rgba(${ACC_RGB},0.8)`, animation: 'an-blink 1.5s ease-in-out infinite',
+        }} />
+        <span style={{ fontFamily: 'monospace', fontSize: 10, color: `rgba(${ACC_RGB},0.75)` }}>
+          {totalVisitors} visiteur{totalVisitors > 1 ? 's' : ''} · {plotted.length} pays
+        </span>
+      </div>
+    </div>
   );
 }
 
