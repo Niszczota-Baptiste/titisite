@@ -432,3 +432,9 @@ textarea::placeholder {
     padding: 24px 18px;
   }
 }
+
+/* Writing-space ambient effect: gentle bloom-in when the reading page opens. */
+@keyframes writingEffectIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

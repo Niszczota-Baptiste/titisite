@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { AmbientEffect } from './AmbientEffect';
 import { Lightbox } from './Lightbox';
 import { renderMarkdown } from './markdown';
 import { ReaderAudio } from './ReaderAudio';
@@ -103,6 +104,8 @@ export function Reader() {
 
   return (
     <ReaderShell>
+      <AmbientEffect effect={work.ambientEffect} accent={acc} />
+
       {/* Reading progress bar */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 3, zIndex: 60, background: 'transparent' }}>
         <div style={{ height: '100%', width: `${progress}%`, background: `linear-gradient(90deg, rgba(${rgb},0.4), rgb(${rgb}))`, transition: 'width 0.1s linear' }} />

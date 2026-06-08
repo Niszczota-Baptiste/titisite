@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../../../api/client';
 import { useConfirm } from '../../../../ui/ConfirmProvider';
 import { useToast } from '../../../../ui/ToastProvider';
+import { EFFECTS } from '../../../writing/AmbientEffect';
 import { renderMarkdown } from '../../../writing/markdown';
 import { ACC, Button, CheckboxField, Field, Input, Textarea } from '../../ui';
 import { ImageUploadField } from '../../ImageUploadField';
@@ -18,7 +19,8 @@ const STATUS = [
 
 const emptyMeta = () => ({
   title: '', titleKr: '', subtitle: '', description: '',
-  status: 'brouillon', accentColor: '#c9a8e8', coverImage: '', tags: [], isPublished: false,
+  status: 'brouillon', accentColor: '#c9a8e8', coverImage: '', tags: [],
+  ambientEffect: 'none', isPublished: false,
 });
 
 export function WorkEditor({ workId, characters, glossary, tracks, onClose, onSaved }) {
@@ -40,7 +42,7 @@ export function WorkEditor({ workId, characters, glossary, tracks, onClose, onSa
     const m = {
       title: w.title, titleKr: w.titleKr, subtitle: w.subtitle, description: w.description,
       status: w.status, accentColor: w.accentColor, coverImage: w.coverImage,
-      tags: w.tags || [], isPublished: w.isPublished,
+      tags: w.tags || [], ambientEffect: w.ambientEffect || 'none', isPublished: w.isPublished,
     };
     setMeta(m); setSavedMeta(m);
     setChapters(w.chapters || []);
@@ -115,10 +117,11 @@ export function WorkEditor({ workId, characters, glossary, tracks, onClose, onSa
         <Field label="Sous-titre"><Input value={meta.subtitle} onChange={(e) => setMeta({ ...meta, subtitle: e.target.value })} /></Field>
         <Field label="Description"><Textarea value={meta.description} onChange={(e) => setMeta({ ...meta, description: e.target.value })} /></Field>
         <GenreTags value={meta.tags} onChange={(tags) => setMeta({ ...meta, tags })} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <SelectField label="Statut" value={meta.status} onChange={(v) => setMeta({ ...meta, status: v })} options={STATUS} />
-          <div style={{ marginBottom: 14 }}><ImageUploadField label="Couverture" value={meta.coverImage} onChange={(url) => setMeta({ ...meta, coverImage: url })} aspect="3/2" /></div>
+          <SelectField label="Effet d’ambiance (mode lecture)" value={meta.ambientEffect} onChange={(v) => setMeta({ ...meta, ambientEffect: v })} options={EFFECTS} />
         </div>
+        <div style={{ marginBottom: 14, maxWidth: 320 }}><ImageUploadField label="Couverture" value={meta.coverImage} onChange={(url) => setMeta({ ...meta, coverImage: url })} aspect="3/2" /></div>
         <CheckboxField label="Publié (visible sur le site public)" value={meta.isPublished} onChange={(v) => setMeta({ ...meta, isPublished: v })} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <Button onClick={saveMeta} disabled={savingMeta || !metaDirty}>{savingMeta ? '…' : (id ? 'Enregistrer l\'œuvre' : 'Créer l\'œuvre')}</Button>

@@ -16,6 +16,7 @@ export function mapWorkCard(r) {
     accentColor: r.accent_color,
     coverImage: r.cover_image,
     tags,
+    ambientEffect: r.ambient_effect || 'none',
     isPublished: r.is_published === 1,
     sortOrder: r.sort_order,
   };

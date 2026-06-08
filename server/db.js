@@ -333,6 +333,7 @@ export function migrate() {
       accent_color TEXT NOT NULL DEFAULT '#c9a8e8',
       cover_image  TEXT NOT NULL DEFAULT '',
       tags         TEXT NOT NULL DEFAULT '[]',
+      ambient_effect TEXT NOT NULL DEFAULT 'none',
       is_published INTEGER NOT NULL DEFAULT 0,
       sort_order   INTEGER NOT NULL DEFAULT 0,
       created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
@@ -342,6 +343,8 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_writing_works_sort ON writing_works(sort_order);`);
   // Literary genres / tags (added after the initial release).
   ensureColumn('writing_works', 'tags', "TEXT NOT NULL DEFAULT '[]'");
+  // Ambient reading-mode effect (petals, leaves, embers…).
+  ensureColumn('writing_works', 'ambient_effect', "TEXT NOT NULL DEFAULT 'none'");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS writing_chapters (

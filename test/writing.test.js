@@ -141,6 +141,16 @@ describe('writing — admin CRUD', () => {
     assert.deepEqual(upd.tags, ['Conte']);
   });
 
+  it('validates the ambient effect (enum, defaults to none)', async () => {
+    const f = await loggedIn(ADMIN);
+    const a = (await f.post('/api/writing/works', { body: { title: 'Effet', ambientEffect: 'petals' } })).json;
+    assert.equal(a.ambientEffect, 'petals');
+    const b = (await f.post('/api/writing/works', { body: { title: 'Effet2', ambientEffect: 'lasers' } })).json;
+    assert.equal(b.ambientEffect, 'none', 'unknown effect should fall back to none');
+    const c = (await f.post('/api/writing/works', { body: { title: 'Effet3' } })).json;
+    assert.equal(c.ambientEffect, 'none');
+  });
+
   it('rejects an empty title and bad media owner', async () => {
     const f = await loggedIn(ADMIN);
     assert.equal((await f.post('/api/writing/works', { body: { title: '   ' } })).status, 400);

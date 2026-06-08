@@ -13,6 +13,8 @@ writingAdminRouter.use(requireAuth, requireRole('admin'));
 
 const WORK_STATUS = new Set(['brouillon', 'wip', 'termine']);
 const MEDIA_TYPE = new Set(['screenshot', 'schema', 'carte']);
+const AMBIENT = new Set(['none', 'petals', 'leaves', 'snow', 'embers', 'fireflies']);
+const ambientOf = (v, fallback = 'none') => (AMBIENT.has(v) ? v : fallback);
 
 const str = (v, fallback = '') => (typeof v === 'string' ? v : fallback);
 const cleanTags = (v) => (Array.isArray(v)
@@ -57,12 +59,12 @@ writingAdminRouter.post('/works', (req, res) => {
   const slug = uniqueSlug('writing_works', b.slug || b.title);
   const r = db.prepare(`
     INSERT INTO writing_works
-      (slug, title, title_kr, subtitle, description, status, accent_color, cover_image, tags, is_published, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (slug, title, title_kr, subtitle, description, status, accent_color, cover_image, tags, ambient_effect, is_published, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     slug, b.title.trim(), str(b.titleKr), str(b.subtitle), str(b.description),
     status, str(b.accentColor, '#c9a8e8'), str(b.coverImage), JSON.stringify(cleanTags(b.tags)),
-    b.isPublished ? 1 : 0, nextSort('writing_works'),
+    ambientOf(b.ambientEffect), b.isPublished ? 1 : 0, nextSort('writing_works'),
   );
   const work = db.prepare('SELECT * FROM writing_works WHERE id = ?').get(r.lastInsertRowid);
   res.status(201).json(mapWorkCard(work));
@@ -82,7 +84,7 @@ writingAdminRouter.put('/works/:id(\\d+)', (req, res) => {
   db.prepare(`
     UPDATE writing_works SET
       slug = ?, title = ?, title_kr = ?, subtitle = ?, description = ?,
-      status = ?, accent_color = ?, cover_image = ?, tags = ?, is_published = ?,
+      status = ?, accent_color = ?, cover_image = ?, tags = ?, ambient_effect = ?, is_published = ?,
       updated_at = strftime('%s','now')
     WHERE id = ?
   `).run(
@@ -94,6 +96,7 @@ writingAdminRouter.put('/works/:id(\\d+)', (req, res) => {
     b.accentColor === undefined ? ex.accent_color : str(b.accentColor, ex.accent_color),
     b.coverImage === undefined ? ex.cover_image : str(b.coverImage),
     b.tags === undefined ? ex.tags : JSON.stringify(cleanTags(b.tags)),
+    b.ambientEffect === undefined ? ex.ambient_effect : ambientOf(b.ambientEffect, ex.ambient_effect),
     b.isPublished === undefined ? ex.is_published : (b.isPublished ? 1 : 0),
     id,
   );
