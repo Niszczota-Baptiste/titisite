@@ -126,6 +126,21 @@ describe('writing — admin CRUD', () => {
     assert.deepEqual(out.json.map((c) => c.title), ['deux', 'un']);
   });
 
+  it('round-trips genre tags and exposes them publicly', async () => {
+    const f = await loggedIn(ADMIN);
+    const w = (await f.post('/api/writing/works', {
+      body: { title: 'Genré', isPublished: true, tags: ['Poème', 'Poème', '  Essai philosophique  ', 42, ''] },
+    })).json;
+    // de-duped, trimmed, non-strings dropped.
+    assert.deepEqual(w.tags, ['Poème', 'Essai philosophique']);
+    const pub = await fetcher(server.base).get('/api/ecriture');
+    const card = pub.json.find((x) => x.slug === w.slug);
+    assert.deepEqual(card.tags, ['Poème', 'Essai philosophique']);
+
+    const upd = (await f.put(`/api/writing/works/${w.id}`, { body: { tags: ['Conte'] } })).json;
+    assert.deepEqual(upd.tags, ['Conte']);
+  });
+
   it('rejects an empty title and bad media owner', async () => {
     const f = await loggedIn(ADMIN);
     assert.equal((await f.post('/api/writing/works', { body: { title: '   ' } })).status, 400);

@@ -53,7 +53,7 @@ export function Projects({ t, lang, accent, items = [] }) {
         ? <CodeProjects items={items} t={t} lang={lang} accent={accent} acc={acc} />
         : (
           <div className="reveal">
-            <WritingLibrary works={works} loading={worksLoading} emptyHint="Les textes arrivent bientôt." />
+            <WritingLibrary works={works} loading={worksLoading} emptyHint="Les textes arrivent bientôt." accentHex={acc.hex} />
             <div style={{ marginTop: 28, textAlign: 'center' }}>
               <Link to="/projets/ecriture" style={{
                 fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5,

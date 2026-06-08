@@ -58,8 +58,8 @@ export function seedWritingIfEmpty() {
   const tx = db.transaction(() => {
     const work = db.prepare(`
       INSERT INTO writing_works
-        (slug, title, title_kr, subtitle, description, status, accent_color, is_published, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (slug, title, title_kr, subtitle, description, status, accent_color, tags, is_published, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       'nostra',
       'Nostra',
@@ -68,6 +68,7 @@ export function seedWritingIfEmpty() {
       'Un récit de jeu de rôle en cours d’écriture — univers fantasy original.',
       'wip',
       '#c9a8e8',
+      JSON.stringify(['Nouvelle fantastique', 'Récit']),
       1,
       0,
     );

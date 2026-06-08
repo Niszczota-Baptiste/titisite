@@ -150,6 +150,66 @@ function Dropdown({ items, empty }) {
   );
 }
 
+// Suggested classic literary genres for the tag editor. The writer can still
+// type any free-form tag; these are one-click shortcuts.
+export const GENRE_SUGGESTIONS = [
+  'Nouvelle', 'Nouvelle fantastique', 'Roman', 'Conte', 'Poème', 'Récit',
+  'Essai', 'Essai philosophique', 'Fantasy', 'Science-fiction', 'Fantastique',
+  'Théâtre', 'Mythe', 'Légende', 'Chronique', 'Épopée',
+];
+
+// Genre/tag editor: current tags as removable chips, a free-text input
+// (Enter / comma to add) and click-to-add genre suggestions.
+export function GenreTags({ value = [], onChange }) {
+  const [text, setText] = useState('');
+  const tags = Array.isArray(value) ? value : [];
+
+  const add = (raw) => {
+    const t = String(raw || '').trim();
+    if (!t || tags.some((x) => x.toLowerCase() === t.toLowerCase())) { setText(''); return; }
+    onChange([...tags, t]);
+    setText('');
+  };
+  const remove = (t) => onChange(tags.filter((x) => x !== t));
+
+  const available = GENRE_SUGGESTIONS.filter((g) => !tags.some((t) => t.toLowerCase() === g.toLowerCase()));
+
+  return (
+    <div style={blockStyle}>
+      <span style={blockLabel}>Genres / tags</span>
+      {tags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+          {tags.map((t) => (
+            <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(201,168,232,0.14)', border: `1px solid ${ACC}`, color: ACC, borderRadius: 20, padding: '4px 10px', fontFamily: "'Inter',sans-serif", fontSize: 12 }}>
+              {t}
+              <button type="button" onClick={() => remove(t)} style={{ background: 'none', border: 'none', color: ACC, cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(text); }
+          else if (e.key === 'Backspace' && !text && tags.length) remove(tags[tags.length - 1]);
+        }}
+        placeholder="Ajouter un genre puis Entrée…"
+        style={{ width: '100%', background: 'rgba(14,8,32,0.72)', border: '1px solid rgba(80,50,130,0.24)', borderRadius: 8, padding: '9px 12px', color: '#ede8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, outline: 'none' }}
+        onFocus={(e) => (e.target.style.borderColor = ACC)}
+        onBlur={(e) => (e.target.style.borderColor = 'rgba(80,50,130,0.24)')}
+      />
+      {available.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+          {available.map((g) => (
+            <button key={g} type="button" onClick={() => add(g)} style={{ background: 'transparent', border: '1px dashed rgba(80,50,130,0.4)', color: 'rgba(180,170,200,0.7)', borderRadius: 20, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 11.5 }}>+ {g}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // "Unsaved changes" pill.
 export function DirtyBadge({ dirty }) {
   if (!dirty) return null;

@@ -7,7 +7,7 @@ import { ACC, Button, CheckboxField, Field, Input, Textarea } from '../../ui';
 import { ImageUploadField } from '../../ImageUploadField';
 import { MediaManager } from './MediaManager';
 import {
-  DirtyBadge, MarkdownField, SelectField, addBtn, blockLabel, blockStyle, removeBtn, selectStyle,
+  DirtyBadge, GenreTags, MarkdownField, SelectField, addBtn, blockLabel, blockStyle, removeBtn, selectStyle,
 } from './widgets';
 
 const STATUS = [
@@ -18,7 +18,7 @@ const STATUS = [
 
 const emptyMeta = () => ({
   title: '', titleKr: '', subtitle: '', description: '',
-  status: 'brouillon', accentColor: '#c9a8e8', coverImage: '', isPublished: false,
+  status: 'brouillon', accentColor: '#c9a8e8', coverImage: '', tags: [], isPublished: false,
 });
 
 export function WorkEditor({ workId, characters, glossary, tracks, onClose, onSaved }) {
@@ -39,7 +39,8 @@ export function WorkEditor({ workId, characters, glossary, tracks, onClose, onSa
     const w = await api.writing.works.get(theId);
     const m = {
       title: w.title, titleKr: w.titleKr, subtitle: w.subtitle, description: w.description,
-      status: w.status, accentColor: w.accentColor, coverImage: w.coverImage, isPublished: w.isPublished,
+      status: w.status, accentColor: w.accentColor, coverImage: w.coverImage,
+      tags: w.tags || [], isPublished: w.isPublished,
     };
     setMeta(m); setSavedMeta(m);
     setChapters(w.chapters || []);
@@ -113,6 +114,7 @@ export function WorkEditor({ workId, characters, glossary, tracks, onClose, onSa
         </div>
         <Field label="Sous-titre"><Input value={meta.subtitle} onChange={(e) => setMeta({ ...meta, subtitle: e.target.value })} /></Field>
         <Field label="Description"><Textarea value={meta.description} onChange={(e) => setMeta({ ...meta, description: e.target.value })} /></Field>
+        <GenreTags value={meta.tags} onChange={(tags) => setMeta({ ...meta, tags })} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
           <SelectField label="Statut" value={meta.status} onChange={(v) => setMeta({ ...meta, status: v })} options={STATUS} />
           <div style={{ marginBottom: 14 }}><ImageUploadField label="Couverture" value={meta.coverImage} onChange={(url) => setMeta({ ...meta, coverImage: url })} aspect="3/2" /></div>

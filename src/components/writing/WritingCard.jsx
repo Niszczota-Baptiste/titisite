@@ -71,6 +71,17 @@ export function WritingCard({ work }) {
             color: 'var(--text-muted)', lineHeight: 1.6,
           }}>{work.subtitle}</p>
         )}
+        {!!(work.tags || []).length && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+            {work.tags.map((tag) => (
+              <span key={tag} style={{
+                fontFamily: "'Inter',sans-serif", fontSize: 10.5, fontWeight: 500,
+                color: `rgb(${rgb})`, background: `rgba(${rgb},0.1)`,
+                border: `1px solid rgba(${rgb},0.28)`, borderRadius: 20, padding: '2px 9px',
+              }}>{tag}</span>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16 }}>
           <Waveform rgb={rgb} hov={hov} />
           <span style={{

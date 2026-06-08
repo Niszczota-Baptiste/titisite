@@ -3,6 +3,8 @@ import { db, getOne } from '../db.js';
 
 // ── Row → API mappers (shared with the admin router) ─────────────────────────
 export function mapWorkCard(r) {
+  let tags = [];
+  try { tags = JSON.parse(r.tags || '[]'); } catch { tags = []; }
   return {
     id: r.id,
     slug: r.slug,
@@ -13,6 +15,7 @@ export function mapWorkCard(r) {
     status: r.status,
     accentColor: r.accent_color,
     coverImage: r.cover_image,
+    tags,
     isPublished: r.is_published === 1,
     sortOrder: r.sort_order,
   };
