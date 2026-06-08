@@ -3,6 +3,7 @@ import { uploadFile, api } from '../../../api/client';
 import { useConfirm } from '../../../ui/ConfirmProvider';
 import { CheckboxField, Field, Input } from '../ui';
 import { ItemList } from '../ItemList';
+import { EFFECTS } from '../../writing/AmbientEffect';
 
 const CLIP_SEC = 30;
 const ACC = '#c9a8e8';
@@ -226,6 +227,19 @@ function TrackForm({ d, set, works = [] }) {
         onChange={(v) => set((p) => ({ ...p, ost: v }))}
       />
 
+      {/* Visual effect played over the page while this track is playing. */}
+      <Field label="Effet visuel au lancement (joué pendant l’écoute)">
+        <select
+          value={d.effect || 'none'}
+          onChange={(e) => set((p) => ({ ...p, effect: e.target.value }))}
+          style={selectStyle}
+        >
+          {EFFECTS.map((fx) => (
+            <option key={fx.value} value={fx.value}>{fx.label}</option>
+          ))}
+        </select>
+      </Field>
+
       {/* Optional link to a written work — for tracks that carry a lore. */}
       <Field label="Texte associé (lore) — lien affiché sous le morceau">
         <select
@@ -377,7 +391,7 @@ function TrackForm({ d, set, works = [] }) {
   );
 }
 
-const EMPTY = { title: '', genre: '', duration: '0:00', clip_start: 0, ost: false, loreSlug: '' };
+const EMPTY = { title: '', genre: '', duration: '0:00', clip_start: 0, ost: false, loreSlug: '', effect: 'none' };
 
 export function TracksEditor() {
   // Written works, to let a track point at its associated lore.
@@ -407,6 +421,9 @@ export function TracksEditor() {
           )}
           {tr.loreSlug && (
             <span style={{ fontSize: 9.5, color: '#9ad4ae', border: '1px solid rgba(154,212,174,0.35)', padding: '1px 6px', borderRadius: 4, letterSpacing: '0.5px' }}>lore</span>
+          )}
+          {tr.effect && tr.effect !== 'none' && (
+            <span style={{ fontSize: 9.5, color: '#e8a87c', border: '1px solid rgba(232,168,124,0.35)', padding: '1px 6px', borderRadius: 4, letterSpacing: '0.5px' }}>✦ effet</span>
           )}
           <span style={{
             marginLeft: 'auto', fontFamily: 'monospace', fontSize: 12, color: 'rgba(180,170,200,0.6)',

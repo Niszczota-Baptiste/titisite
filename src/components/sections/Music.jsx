@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { trackEvent } from '../../api/client';
 import { ACCENTS } from '../../data/constants';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { AmbientEffect } from '../writing/AmbientEffect';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
 
@@ -332,6 +333,8 @@ export function Music({ t, accent, tracks = [] }) {
   return (
     <Section id="music" bg="var(--section-alt)">
       <audio ref={audioRef} preload="none" />
+      {/* Ambient effect over the whole page while a track is playing. */}
+      {isPlaying && <AmbientEffect effect={cur?.effect || 'none'} accent={acc.hex} />}
       <SectionHeader title={t.music.title} subtitle={t.music.subtitle} accent={accent} />
       <div
         className="reveal"
