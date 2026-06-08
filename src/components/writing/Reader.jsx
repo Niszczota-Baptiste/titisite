@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { renderMarkdown } from './markdown';
+import { ReaderAudio } from './ReaderAudio';
 import { hexToRgb } from './tokens';
 import { ReaderNav, ReaderShell, NotFound } from './shell';
 
@@ -86,6 +87,12 @@ export function Reader() {
 
   const ctx = { characters: work.characters || [], glossary, accent: acc };
 
+  // Track to play for the chapter currently in view. Chapters without a track
+  // keep the previous one playing (no cut), so we only surface a real track.
+  const activeChapter = work.chapters.find((c) => c.id === activeId);
+  const activeTrack = activeChapter?.track?.filename ? activeChapter.track : null;
+  const hasAnyTrack = work.chapters.some((c) => c.track?.filename);
+
   return (
     <ReaderShell>
       {/* Reading progress bar */}
@@ -152,6 +159,8 @@ export function Reader() {
           )}
         </article>
       </div>
+
+      {hasAnyTrack && <ReaderAudio activeTrack={activeTrack} accent={acc} />}
     </ReaderShell>
   );
 }
