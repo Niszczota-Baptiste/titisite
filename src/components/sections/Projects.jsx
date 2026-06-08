@@ -1,19 +1,78 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { trackEvent } from '../../api/client';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { api, trackEvent } from '../../api/client';
 import { ACCENTS } from '../../data/constants';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
+import { WritingLibrary } from '../writing/WritingLibrary';
 
 export function Projects({ t, lang, accent, items = [] }) {
-  const [filter, setFilter] = useState('all');
   const acc = ACCENTS[accent] || ACCENTS.violet;
-  const keys = ['all', 'web', 'mobile', 'experimental'];
-  const vis = filter === 'all' ? items : items.filter((p) => p.type === filter);
+  const [params, setParams] = useSearchParams();
+  // Top-level view: code projects (default) vs writing works. Synced to ?vue=
+  // so the chosen table is shareable and survives reload.
+  const view = params.get('vue') === 'ecriture' ? 'ecriture' : 'code';
+  const setView = (v) => {
+    const next = new URLSearchParams(params);
+    if (v === 'ecriture') next.set('vue', 'ecriture'); else next.delete('vue');
+    setParams(next, { replace: true });
+  };
+
+  const [works, setWorks] = useState([]);
+  const [worksLoading, setWorksLoading] = useState(false);
+  const [worksLoaded, setWorksLoaded] = useState(false);
+  useEffect(() => {
+    if (view !== 'ecriture' || worksLoaded) return;
+    setWorksLoading(true);
+    api.ecriture.list()
+      .then((rows) => setWorks(Array.isArray(rows) ? rows : []))
+      .catch(() => setWorks([]))
+      .finally(() => { setWorksLoading(false); setWorksLoaded(true); });
+  }, [view, worksLoaded]);
+
+  const segBtn = (active) => ({
+    background: active ? acc.hex : 'var(--filter-bg)',
+    color: active ? '#08051a' : 'var(--text-faint)',
+    border: `1px solid ${active ? acc.hex : 'var(--border)'}`,
+    borderRadius: 20, padding: '7px 20px', cursor: 'pointer',
+    fontFamily: "'Inter',sans-serif", fontSize: 13.5,
+    fontWeight: active ? 700 : 500, transition: 'all 0.2s', backdropFilter: 'blur(8px)',
+  });
 
   return (
     <Section id="projects">
       <SectionHeader title={t.projects.title} subtitle={t.projects.subtitle} accent={accent} />
+
+      {/* Top selector: code projects | writing works */}
+      <div className="reveal" style={{ display: 'flex', gap: 8, marginBottom: view === 'ecriture' ? 30 : 24, flexWrap: 'wrap' }}>
+        <button onClick={() => setView('code')} style={segBtn(view === 'code')}>Projets code</button>
+        <button onClick={() => setView('ecriture')} style={segBtn(view === 'ecriture')}>Projets écriture</button>
+      </div>
+
+      {view === 'code'
+        ? <CodeProjects items={items} t={t} lang={lang} accent={accent} acc={acc} />
+        : (
+          <div className="reveal">
+            <WritingLibrary works={works} loading={worksLoading} emptyHint="Les textes arrivent bientôt." />
+            <div style={{ marginTop: 28, textAlign: 'center' }}>
+              <Link to="/projets/ecriture" style={{
+                fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5,
+                color: acc.hex, textDecoration: 'none',
+                borderBottom: `1px solid ${acc.hex}40`, paddingBottom: 2,
+              }}>Atelier &amp; personnages →</Link>
+            </div>
+          </div>
+        )}
+    </Section>
+  );
+}
+
+function CodeProjects({ items, t, lang, accent, acc }) {
+  const [filter, setFilter] = useState('all');
+  const keys = ['all', 'web', 'mobile', 'experimental'];
+  const vis = filter === 'all' ? items : items.filter((p) => p.type === filter);
+  return (
+    <>
       <div className="reveal" style={{ display: 'flex', gap: 8, marginBottom: 44, flexWrap: 'wrap' }}>
         {keys.map((k, i) => (
           <button
@@ -46,7 +105,7 @@ export function Projects({ t, lang, accent, items = [] }) {
           </div>
         ))}
       </div>
-    </Section>
+    </>
   );
 }
 

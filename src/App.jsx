@@ -6,6 +6,7 @@ const Public = lazy(() => import('./pages/Public'));
 const Admin = lazy(() => import('./pages/Admin'));
 const Project = lazy(() => import('./pages/Project'));
 const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
+const Ecriture = lazy(() => import('./pages/Ecriture'));
 const Stairs = lazy(() => import('./pages/Stairs'));
 
 function Loading() {
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/admin/*"        element={<Admin />} />
         <Route path="/project/*"      element={<Project />} />
         <Route path="/projects/:id"   element={<ProjectDetailPage />} />
+        <Route path="/projets/ecriture/*" element={<Ecriture />} />
         <Route path="/stairs"         element={<Stairs />} />
         <Route path="*"               element={<Public />} />
       </Routes>

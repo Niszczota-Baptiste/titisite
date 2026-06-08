@@ -208,10 +208,11 @@ export const api = {
   // ── Writing space (RP / worldbuilding « Nostra ») ──
   // Public reading endpoints (no auth) + admin CRUD (admin cookie required).
   ecriture: {
-    list:        () => request('GET', '/ecriture'),
-    get:         (slug) => request('GET', `/ecriture/${slug}`),
-    personnage:  (slug) => request('GET', `/personnages/${slug}`),
-    lexique:     () => request('GET', '/lexique'),
+    list:         () => request('GET', '/ecriture'),
+    get:          (slug) => request('GET', `/ecriture/${slug}`),
+    personnages:  () => request('GET', '/personnages'),
+    personnage:   (slug) => request('GET', `/personnages/${slug}`),
+    lexique:      () => request('GET', '/lexique'),
   },
   writing: {
     works: {

@@ -123,6 +123,12 @@ ecritureRouter.get('/:slug', (req, res) => {
 // ── Public character sheets (no auth) ────────────────────────────────────────
 export const personnagesRouter = Router();
 
+// GET /api/personnages — index of every character (worldbuilding is public)
+personnagesRouter.get('/', (_req, res) => {
+  const rows = db.prepare('SELECT * FROM characters ORDER BY sort_order, name').all();
+  res.json(rows.map(mapCharacter));
+});
+
 // GET /api/personnages/:slug — character + the published works they appear in
 personnagesRouter.get('/:slug', (req, res) => {
   const c = db.prepare('SELECT * FROM characters WHERE slug = ?').get(req.params.slug);
