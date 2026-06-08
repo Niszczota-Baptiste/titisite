@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { uploadFile, api } from '../../../api/client';
 import { useConfirm } from '../../../ui/ConfirmProvider';
-import { Field, Input } from '../ui';
+import { CheckboxField, Field, Input } from '../ui';
 import { ItemList } from '../ItemList';
 
 const CLIP_SEC = 30;
@@ -212,6 +212,13 @@ function TrackForm({ d, set }) {
         </Field>
       </div>
 
+      {/* OST flag — surfaces this track in the writing-space chapter picker. */}
+      <CheckboxField
+        label="Bande-son écriture (OST) — disponible pour les chapitres de l’espace écriture"
+        value={d.ost}
+        onChange={(v) => set((p) => ({ ...p, ost: v }))}
+      />
+
       {/* Audio section — only for existing tracks */}
       {d.id && (
         <div style={{
@@ -349,7 +356,7 @@ function TrackForm({ d, set }) {
   );
 }
 
-const EMPTY = { title: '', genre: '', duration: '0:00', clip_start: 0 };
+const EMPTY = { title: '', genre: '', duration: '0:00', clip_start: 0, ost: false };
 
 export function TracksEditor() {
   return (
@@ -370,6 +377,9 @@ export function TracksEditor() {
           <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(180,170,200,0.6)' }}>
             {tr.genre}
           </span>
+          {tr.ost && (
+            <span style={{ fontSize: 9.5, color: ACC, border: `1px solid ${ACC_DIM}`, padding: '1px 6px', borderRadius: 4, letterSpacing: '0.5px' }}>OST</span>
+          )}
           <span style={{
             marginLeft: 'auto', fontFamily: 'monospace', fontSize: 12, color: 'rgba(180,170,200,0.6)',
           }}>

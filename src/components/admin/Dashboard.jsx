@@ -10,6 +10,7 @@ import { ExperienceEditor } from './editors/ExperienceEditor';
 import { ProjectsEditor } from './editors/ProjectsEditor';
 import { PublicSectionsEditor } from './editors/PublicSectionsEditor';
 import { TracksEditor } from './editors/TracksEditor';
+import { WritingEditor } from './editors/writing/WritingEditor';
 import { UsersEditor } from './editors/UsersEditor';
 import { WorkspacesEditor } from './editors/WorkspacesEditor';
 
@@ -17,6 +18,7 @@ const TABS = [
   { key: 'analytics',  label: 'Fréquentation',          Editor: AnalyticsEditor },
   { key: 'public',     label: 'Page publique',          Editor: PublicSectionsEditor },
   { key: 'projects',   label: 'Portfolio · Projets',    Editor: ProjectsEditor },
+  { key: 'writing',    label: 'Écriture · Nostra',      Editor: WritingEditor },
   { key: 'tracks',     label: 'Musique',                Editor: TracksEditor },
   { key: 'experience', label: 'Expérience',             Editor: ExperienceEditor },
   { key: 'education',  label: 'Formation',              Editor: EducationEditor },
