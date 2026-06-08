@@ -5,7 +5,7 @@ import { hexToRgb } from './tokens';
 // Presentational grid of writing works, with a genre/tag filter (same idea as
 // the code-projects Tous/Web/Mobile filter). Data is fetched by the parent so
 // this drops both inside the home #projects section and on /projets/ecriture.
-export function WritingLibrary({ works = [], loading = false, emptyHint, accentHex = '#c9a8e8' }) {
+export function WritingLibrary({ works = [], loading = false, emptyHint, accentHex = '#c9a8e8', cardTo }) {
   const [genre, setGenre] = useState('all');
   const rgb = hexToRgb(accentHex) || '201,168,232';
 
@@ -62,7 +62,7 @@ export function WritingLibrary({ works = [], loading = false, emptyHint, accentH
       }}>
         {visible.map((w, i) => (
           <div key={w.id} className="reveal" style={{ transitionDelay: `${i * 0.08}s` }}>
-            <WritingCard work={w} />
+            <WritingCard work={w} to={cardTo ? cardTo(w) : undefined} />
           </div>
         ))}
       </div>

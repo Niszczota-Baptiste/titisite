@@ -207,22 +207,28 @@ export const api = {
 
   // ── Writing space (RP / worldbuilding « Nostra ») ──
   // Public reading endpoints (no auth) + admin CRUD (admin cookie required).
+  // Public reading API — projects → books, project-scoped characters/glossary.
   ecriture: {
-    list:         () => request('GET', '/ecriture'),
-    get:          (slug) => request('GET', `/ecriture/${slug}`),
-    personnages:  () => request('GET', '/personnages'),
-    personnage:   (slug) => request('GET', `/personnages/${slug}`),
-    lexique:      () => request('GET', '/lexique'),
+    list:       () => request('GET', '/ecriture'),
+    project:    (slug) => request('GET', `/ecriture/${slug}`),
+    work:       (project, work) => request('GET', `/ecriture/${project}/${work}`),
+    personnage: (project, slug) => request('GET', `/ecriture/${project}/personnages/${slug}`),
   },
   writing: {
+    projects: {
+      list:    () => request('GET', '/writing/projects'),
+      get:     (id) => request('GET', `/writing/projects/${id}`),
+      create:  (b) => request('POST', '/writing/projects', b),
+      update:  (id, b) => request('PUT', `/writing/projects/${id}`, b),
+      remove:  (id) => request('DELETE', `/writing/projects/${id}`),
+      reorder: (order) => request('POST', '/writing/projects/reorder', { order }),
+    },
     works: {
-      list:    () => request('GET', '/writing/works'),
-      get:     (id) => request('GET', `/writing/works/${id}`),
-      create:  (b) => request('POST', '/writing/works', b),
-      update:  (id, b) => request('PUT', `/writing/works/${id}`, b),
-      remove:  (id) => request('DELETE', `/writing/works/${id}`),
-      reorder: (order) => request('POST', '/writing/works/reorder', { order }),
-      setCharacters: (id, characterIds) => request('PUT', `/writing/works/${id}/characters`, { characterIds }),
+      get:       (id) => request('GET', `/writing/works/${id}`),
+      createIn:  (projectId, b) => request('POST', `/writing/projects/${projectId}/works`, b),
+      update:    (id, b) => request('PUT', `/writing/works/${id}`, b),
+      remove:    (id) => request('DELETE', `/writing/works/${id}`),
+      reorderIn: (projectId, order) => request('POST', `/writing/projects/${projectId}/works/reorder`, { order }),
     },
     chapters: {
       create:  (workId, b) => request('POST', `/writing/works/${workId}/chapters`, b),
@@ -236,20 +242,21 @@ export const api = {
       remove:  (id) => request('DELETE', `/writing/media/${id}`),
       reorder: (order) => request('POST', '/writing/media/reorder', { order }),
     },
-    characters: {
-      list:    () => request('GET', '/writing/characters'),
-      create:  (b) => request('POST', '/writing/characters', b),
+    // Project-scoped CRUD shaped for RelationalList ({ list, create, update, remove, reorder }).
+    charactersFor: (projectId) => ({
+      list:    () => request('GET', `/writing/projects/${projectId}/characters`),
+      create:  (b) => request('POST', `/writing/projects/${projectId}/characters`, b),
       update:  (id, b) => request('PUT', `/writing/characters/${id}`, b),
       remove:  (id) => request('DELETE', `/writing/characters/${id}`),
-      reorder: (order) => request('POST', '/writing/characters/reorder', { order }),
-    },
-    glossary: {
-      list:    () => request('GET', '/writing/glossary'),
-      create:  (b) => request('POST', '/writing/glossary', b),
+      reorder: (order) => request('POST', `/writing/projects/${projectId}/characters/reorder`, { order }),
+    }),
+    glossaryFor: (projectId) => ({
+      list:    () => request('GET', `/writing/projects/${projectId}/glossary`),
+      create:  (b) => request('POST', `/writing/projects/${projectId}/glossary`, b),
       update:  (id, b) => request('PUT', `/writing/glossary/${id}`, b),
       remove:  (id) => request('DELETE', `/writing/glossary/${id}`),
-      reorder: (order) => request('POST', '/writing/glossary/reorder', { order }),
-    },
+      reorder: (order) => request('POST', `/writing/projects/${projectId}/glossary/reorder`, { order }),
+    }),
   },
 
   // Global

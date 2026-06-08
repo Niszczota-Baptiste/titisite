@@ -21,17 +21,20 @@ Single-process Node app:
   by workspace_id**. Mounted under `/api/workspaces/:slug/{...}` behind
   `resolveWorkspace` middleware (`server/middleware/scope.js`) so the route
   handler always has `req.workspace` and never serves cross-workspace rows.
-- The **writing space** (RP / worldbuilding « Nostra ») is **relational**
-  (not JSON-blob): `writing_works` → `writing_chapters`
-  (`audio_track_id` is an FK to the existing `tracks` collection — the OST
-  flag lives in the track JSON blob), `characters` + `work_characters` (n-n),
-  `writing_media` (reuses the `/api/images` pipeline — stores the UUID
-  filename, never a path), `glossary_terms`. Public read at
-  `/api/ecriture`, `/api/ecriture/:slug`, `/api/personnages[/:slug]`,
-  `/api/lexique`; admin CRUD under `/api/writing/*`
-  (`server/routes/writing.js` + `writing-admin.js`). Reading mode at
-  `/projets/ecriture/*` streams the **full** audio file (the 30s cap is
-  client-only in `Music.jsx`). Chapter Markdown supports
+- The **writing space** (RP / worldbuilding) is **relational** (not JSON-blob)
+  and has three content levels: `writing_projects` (a universe, e.g. « Nostra »,
+  shown on the home page) → `writing_works` (its books / « livres ») →
+  `writing_chapters` (`audio_track_id` FKs the `tracks` collection — the OST flag
+  lives in the track JSON blob). `characters` and `glossary_terms` are
+  **scoped by `project_id`** (unique to a project); `writing_media` reuses the
+  `/api/images` pipeline (stores the UUID filename, never a path). Public read:
+  `/api/ecriture` (projects), `/api/ecriture/:project` (books + characters +
+  glossary), `/api/ecriture/:project/:work` (reader), `/api/ecriture/:project/
+  personnages/:slug`. Admin CRUD under `/api/writing/*` (`server/routes/
+  writing.js` + `writing-admin.js`). Reading mode at
+  `/projets/ecriture/:project/:work` streams the **full** audio file (the 30s cap
+  is client-only in `Music.jsx`). Per-work/project ambient effects live in
+  `src/components/writing/AmbientEffect.jsx`. Chapter Markdown supports
   `[[perso:slug|Label]]` and `{{kr:terme}}` tokens, rendered by the in-house,
   XSS-safe renderer in `src/components/writing/markdown.jsx` (no
   `dangerouslySetInnerHTML`, no markdown dependency).

@@ -18,7 +18,7 @@ const TABS = [
   { key: 'analytics',  label: 'Fréquentation',          Editor: AnalyticsEditor },
   { key: 'public',     label: 'Page publique',          Editor: PublicSectionsEditor },
   { key: 'projects',   label: 'Portfolio · Projets',    Editor: ProjectsEditor },
-  { key: 'writing',    label: 'Écriture · Nostra',      Editor: WritingEditor },
+  { key: 'writing',    label: 'Écriture',               Editor: WritingEditor },
   { key: 'tracks',     label: 'Musique',                Editor: TracksEditor },
   { key: 'experience', label: 'Expérience',             Editor: ExperienceEditor },
   { key: 'education',  label: 'Formation',              Editor: EducationEditor },

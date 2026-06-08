@@ -4,12 +4,12 @@ import { RelationalList } from './RelationalList';
 
 const EMPTY = () => ({ termKr: '', romanization: '', meaning: '' });
 
-export function GlossaryEditor() {
+export function GlossaryEditor({ projectId }) {
   return (
     <RelationalList
       title="Lexique coréen"
       addLabel="+ Ajouter un terme"
-      api={api.writing.glossary}
+      api={api.writing.glossaryFor(projectId)}
       emptyDraft={EMPTY}
       renderPreview={(g) => (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>

@@ -59,7 +59,7 @@ export function Projects({ t, lang, accent, items = [] }) {
                 fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5,
                 color: acc.hex, textDecoration: 'none',
                 borderBottom: `1px solid ${acc.hex}40`, paddingBottom: 2,
-              }}>Atelier &amp; personnages →</Link>
+              }}>Tous les univers →</Link>
             </div>
           </div>
         )}

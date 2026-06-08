@@ -8,10 +8,10 @@ const STATUS_BADGE = {
   brouillon: { label: 'Brouillon', color: 'rgba(180,170,200,0.8)', rgb: '180,170,200' },
 };
 
-// A library card for one written work. Same visual grammar as ProjectCard
+// A library card for a project or a book. Same visual grammar as ProjectCard
 // (surface, hover lift, accent border) but with a cover image / waveform motif
-// header instead of the code snippet.
-export function WritingCard({ work }) {
+// header instead of the code snippet. `to` overrides the navigation target.
+export function WritingCard({ work, to }) {
   const [hov, setHov] = useState(false);
   const navigate = useNavigate();
   const rgb = hexToRgb(work.accentColor) || '201,168,232';
@@ -23,7 +23,7 @@ export function WritingCard({ work }) {
       data-interactive
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
-      onClick={() => navigate(`/projets/ecriture/${work.slug}`)}
+      onClick={() => navigate(to || `/projets/ecriture/${work.slug}`)}
       style={{
         background: hov ? 'var(--surface-hov)' : 'var(--surface)',
         border: `1px solid ${hov ? `rgba(${rgb},0.5)` : 'var(--border)'}`,

@@ -12,12 +12,11 @@ import { ReaderNav, ReaderShell, NotFound } from './shell';
 const chapterAnchor = (id) => `chapitre-${id}`;
 
 export function Reader() {
-  const { slug } = useParams();
+  const { project, work: workSlug } = useParams();
   const navigate = useNavigate();
   const mobile = useIsMobile(860);
 
   const [work, setWork] = useState(null);
-  const [glossary, setGlossary] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState(null);
   const [progress, setProgress] = useState(0);
@@ -28,18 +27,14 @@ export function Reader() {
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.all([
-      api.ecriture.get(slug).catch(() => null),
-      api.ecriture.lexique().catch(() => []),
-    ]).then(([w, lex]) => {
-      if (!alive) return;
-      setWork(w);
-      setGlossary(Array.isArray(lex) ? lex : []);
-      setLoading(false);
-      setActiveId(w?.chapters?.[0]?.id ?? null);
-    });
+    api.ecriture.work(project, workSlug).then(
+      (w) => { if (!alive) return; setWork(w); setLoading(false); setActiveId(w?.chapters?.[0]?.id ?? null); },
+      () => { if (!alive) return; setWork(null); setLoading(false); },
+    );
     return () => { alive = false; };
-  }, [slug]);
+  }, [project, workSlug]);
+
+  const glossary = work?.glossary || [];
 
   const acc = work?.accentColor || '#c9a8e8';
   const rgb = hexToRgb(acc) || '201,168,232';
@@ -83,7 +78,7 @@ export function Reader() {
   if (!work) {
     return (
       <ReaderShell>
-        <NotFound label="Texte introuvable" onBack={() => navigate('/projets/ecriture')} backLabel="← Bibliothèque" />
+        <NotFound label="Texte introuvable" onBack={() => navigate(`/projets/ecriture/${project}`)} backLabel="← Le projet" />
       </ReaderShell>
     );
   }
@@ -112,9 +107,9 @@ export function Reader() {
       </div>
 
       <ReaderNav
-        crumb={work.title}
+        crumb={`${work.project?.title || project} / ${work.title}`}
         accent={acc}
-        onBack={() => navigate('/projets/ecriture')}
+        onBack={() => navigate(`/projets/ecriture/${project}`)}
         right={mobile ? (
           <button onClick={() => setTocOpen((o) => !o)} style={tocToggleStyle(rgb)}>Sommaire</button>
         ) : null}

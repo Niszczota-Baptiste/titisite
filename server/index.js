@@ -32,7 +32,7 @@ import { stairsRouter } from './routes/stairs.js';
 import { summaryRouter } from './routes/summary.js';
 import { tagsRouter } from './routes/tags.js';
 import { usersRouter } from './routes/users.js';
-import { ecritureRouter, lexiqueRouter, personnagesRouter } from './routes/writing.js';
+import { ecritureRouter } from './routes/writing.js';
 import { writingAdminRouter } from './routes/writing-admin.js';
 import { workspacesRouter } from './routes/workspaces.js';
 import { seedIfEmpty } from './seed.js';
@@ -231,8 +231,6 @@ for (const name of COLLECTIONS.filter((n) => n !== 'tracks')) {
 // Writing space — public reading API (no auth) + admin CRUD (JWT, admin-only).
 // Images reuse /api/images; audio reuses /api/audio. No new upload surface.
 app.use('/api/ecriture', ecritureRouter);
-app.use('/api/personnages', personnagesRouter);
-app.use('/api/lexique', lexiqueRouter);
 app.use('/api/writing', writingAdminRouter);
 
 // Comments (global polymorphic)

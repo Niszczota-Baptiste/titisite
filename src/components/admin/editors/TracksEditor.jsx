@@ -240,8 +240,8 @@ function TrackForm({ d, set, works = [] }) {
         </select>
       </Field>
 
-      {/* Optional link to a written work — for tracks that carry a lore. */}
-      <Field label="Texte associé (lore) — lien affiché sous le morceau">
+      {/* Optional link to a writing project — for tracks that carry a lore. */}
+      <Field label="Univers associé (lore) — lien affiché sous le morceau">
         <select
           value={d.loreSlug || ''}
           onChange={(e) => set((p) => ({ ...p, loreSlug: e.target.value }))}
@@ -394,9 +394,9 @@ function TrackForm({ d, set, works = [] }) {
 const EMPTY = { title: '', genre: '', duration: '0:00', clip_start: 0, ost: false, loreSlug: '', effect: 'none' };
 
 export function TracksEditor() {
-  // Written works, to let a track point at its associated lore.
+  // Writing projects, to let a track point at its associated lore (universe).
   const [works, setWorks] = useState([]);
-  useEffect(() => { api.writing.works.list().then(setWorks).catch(() => {}); }, []);
+  useEffect(() => { api.writing.projects.list().then(setWorks).catch(() => {}); }, []);
 
   return (
     <ItemList

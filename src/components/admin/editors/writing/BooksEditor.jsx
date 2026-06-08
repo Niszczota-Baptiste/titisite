@@ -2,51 +2,45 @@ import { useEffect, useState } from 'react';
 import { api } from '../../../../api/client';
 import { useToast } from '../../../../ui/ToastProvider';
 import { ACC, ACC_RGB, Button, box } from '../../ui';
-import { WorkEditor } from './WorkEditor';
+import { BookEditor } from './BookEditor';
 
 const STATUS_LABEL = { brouillon: 'Brouillon', wip: 'WIP', termine: 'Terminé' };
 
-export function WorksEditor() {
+// Books (works) of one project. Self-contained: fetches the project detail
+// (books + characters + glossary, the latter two feeding the chapter token
+// toolbar) plus the tracks list for the OST picker.
+export function BooksEditor({ projectId }) {
   const toast = useToast();
-  const [works, setWorks] = useState([]);
+  const [books, setBooks] = useState([]);
   const [characters, setCharacters] = useState([]);
   const [glossary, setGlossary] = useState([]);
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(null); // workId | 'new' | null
+  const [editing, setEditing] = useState(null);
 
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [w, c, g, t] = await Promise.all([
-        api.writing.works.list(),
-        api.writing.characters.list(),
-        api.writing.glossary.list(),
-        api.list('tracks'),
-      ]);
-      setWorks(w); setCharacters(c); setGlossary(g); setTracks(t);
+      const [p, t] = await Promise.all([api.writing.projects.get(projectId), api.list('tracks')]);
+      setBooks(p.books); setCharacters(p.characters); setGlossary(p.glossary); setTracks(t);
     } catch (e) { toast.error(e.message); } finally { setLoading(false); }
   };
-  useEffect(() => { loadAll(); }, []); // eslint-disable-line
+  useEffect(() => { loadAll(); }, [projectId]); // eslint-disable-line
 
   const move = async (id, dir) => {
-    const idx = works.findIndex((w) => w.id === id);
+    const idx = books.findIndex((w) => w.id === id);
     const j = idx + dir;
-    if (idx < 0 || j < 0 || j >= works.length) return;
-    const order = works.map((w) => w.id);
+    if (idx < 0 || j < 0 || j >= books.length) return;
+    const order = books.map((w) => w.id);
     [order[idx], order[j]] = [order[j], order[idx]];
-    try { setWorks(await api.writing.works.reorder(order)); } catch (e) { toast.error(e.message); }
+    try { setBooks(await api.writing.works.reorderIn(projectId, order)); } catch (e) { toast.error(e.message); }
   };
 
   if (editing !== null) {
     return (
-      <WorkEditor
-        workId={editing}
-        characters={characters}
-        glossary={glossary}
-        tracks={tracks}
-        onClose={() => setEditing(null)}
-        onSaved={loadAll}
+      <BookEditor
+        workId={editing} projectId={projectId} characters={characters} glossary={glossary} tracks={tracks}
+        onClose={() => setEditing(null)} onSaved={loadAll}
       />
     );
   }
@@ -54,19 +48,17 @@ export function WorksEditor() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-        <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 22, fontWeight: 700, color: '#ede8f8' }}>Œuvres</h2>
-        <Button onClick={() => setEditing('new')}>+ Ajouter une œuvre</Button>
+        <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 18, fontWeight: 700, color: '#ede8f8' }}>Livres</h3>
+        <Button onClick={() => setEditing('new')}>+ Ajouter un livre</Button>
       </div>
 
       {loading ? (
         <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif" }}>Chargement…</p>
-      ) : works.length === 0 ? (
-        <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif", fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
-          Aucune œuvre. Clique sur « Ajouter » pour commencer.
-        </p>
+      ) : books.length === 0 ? (
+        <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif", fontSize: 13, padding: '20px 0', textAlign: 'center' }}>Aucun livre. Clique sur « Ajouter ».</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {works.map((w, i) => (
+          {books.map((w, i) => (
             <div key={w.id} style={{ ...box, display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 3 }}>

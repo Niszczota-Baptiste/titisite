@@ -7,16 +7,16 @@ import { MarkdownField, addBtn, blockLabel, blockStyle, removeBtn } from './widg
 
 const EMPTY = () => ({ name: '', nameKr: '', role: '', bio: '', avatarImage: '', relations: [] });
 
-export function CharactersEditor() {
-  // Glossary loaded once so the bio editor's {{kr:…}} toolbar is populated.
+export function CharactersEditor({ projectId }) {
+  // Project glossary loaded once so the bio editor's {{kr:…}} toolbar is populated.
   const [glossary, setGlossary] = useState([]);
-  useEffect(() => { api.writing.glossary.list().then(setGlossary).catch(() => {}); }, []);
+  useEffect(() => { api.writing.glossaryFor(projectId).list().then(setGlossary).catch(() => {}); }, [projectId]);
 
   return (
     <RelationalList
       title="Personnages"
       addLabel="+ Ajouter un personnage"
-      api={api.writing.characters}
+      api={api.writing.charactersFor(projectId)}
       emptyDraft={EMPTY}
       renderPreview={(c) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

@@ -10,40 +10,34 @@ const ACC = '#c9a8e8';
 // Full character sheet at /projets/ecriture/personnages/:slug — the target of
 // the [[perso:…]] hover-card "Voir la fiche" links.
 export function CharacterPage() {
-  const { slug } = useParams();
+  const { project, slug } = useParams();
   const navigate = useNavigate();
   const [character, setCharacter] = useState(null);
-  const [glossary, setGlossary] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.all([
-      api.ecriture.personnage(slug).catch(() => null),
-      api.ecriture.lexique().catch(() => []),
-    ]).then(([c, g]) => {
-      if (!alive) return;
-      setCharacter(c);
-      setGlossary(Array.isArray(g) ? g : []);
-      setLoading(false);
-    });
+    api.ecriture.personnage(project, slug).then(
+      (c) => { if (alive) { setCharacter(c); setLoading(false); } },
+      () => { if (alive) { setCharacter(null); setLoading(false); } },
+    );
     return () => { alive = false; };
-  }, [slug]);
+  }, [project, slug]);
 
   if (loading) {
     return <ReaderShell><div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono',monospace", color: '#4a3860' }}>loading…</div></ReaderShell>;
   }
   if (!character) {
-    return <ReaderShell><NotFound label="Personnage introuvable" onBack={() => navigate('/projets/ecriture')} backLabel="← Atelier" /></ReaderShell>;
+    return <ReaderShell><NotFound label="Personnage introuvable" onBack={() => navigate(`/projets/ecriture/${project}`)} backLabel="← Le projet" /></ReaderShell>;
   }
 
   const rgb = '201,168,232';
-  const ctx = { characters: [], glossary, accent: ACC };
+  const ctx = { characters: [], glossary: [], accent: ACC };
 
   return (
     <ReaderShell>
-      <ReaderNav crumb={character.name} accent={ACC} onBack={() => navigate('/projets/ecriture')} />
+      <ReaderNav crumb={`${character.project?.title || project} / ${character.name}`} accent={ACC} onBack={() => navigate(`/projets/ecriture/${project}`)} />
       <div style={{ maxWidth: 760, margin: '0 auto', padding: 'clamp(40px,7vh,84px) clamp(16px,5vw,40px) 120px' }}>
         <header style={{ display: 'flex', gap: 22, alignItems: 'center', marginBottom: 36, flexWrap: 'wrap' }}>
           <Avatar character={character} rgb={rgb} size={96} />
@@ -74,20 +68,12 @@ export function CharacterPage() {
           </Block>
         )}
 
-        {Array.isArray(character.works) && character.works.length > 0 && (
-          <Block title="Apparaît dans" rgb={rgb}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {character.works.map((w) => (
-                <button
-                  key={w.slug}
-                  onClick={() => navigate(`/projets/ecriture/${w.slug}`)}
-                  style={{
-                    background: `rgba(${rgb},0.1)`, border: `1px solid rgba(${rgb},0.3)`, color: `rgb(${rgb})`,
-                    borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13.5, fontWeight: 600,
-                  }}
-                >{w.title} →</button>
-              ))}
-            </div>
+        {character.project && (
+          <Block title="Univers" rgb={rgb}>
+            <button
+              onClick={() => navigate(`/projets/ecriture/${character.project.slug}`)}
+              style={{ background: `rgba(${rgb},0.1)`, border: `1px solid rgba(${rgb},0.3)`, color: `rgb(${rgb})`, borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13.5, fontWeight: 600 }}
+            >{character.project.title} →</button>
           </Block>
         )}
       </div>

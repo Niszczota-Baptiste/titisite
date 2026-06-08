@@ -3,7 +3,6 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { hexToRgb } from './tokens';
 
 const FADE_MS = 1200;     // crossfade duration between chapter tracks
-const TARGET_VOL = 0.9;
 
 function fmt(s) {
   if (!Number.isFinite(s)) return '0:00';
@@ -25,8 +24,10 @@ export function ReaderAudio({ activeTrack, accent = '#c9a8e8' }) {
   const activeIdx = useRef(0);          // which element is currently audible
   const rafs = useRef({});
   const startedRef = useRef(false);     // has the user ever pressed play?
+  const volRef = useRef(0.85);          // live volume, read inside fade callbacks
 
   const [playing, setPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.85);
   const [follow, setFollow] = useState(true);
   const [curTrack, setCurTrack] = useState(null);
   const [time, setTime] = useState({ cur: 0, dur: 0 });
@@ -69,7 +70,7 @@ export function ReaderAudio({ activeTrack, accent = '#c9a8e8' }) {
     toEl.volume = 0;
     toEl.load();
     if (autoplay) toEl.play().catch(() => {});
-    ramp(toEl, 0, autoplay ? TARGET_VOL : 0);
+    ramp(toEl, 0, autoplay ? volRef.current : 0);
     if (fromEl) ramp(fromEl, fromEl.volume, 0, () => fromEl.pause());
     activeIdx.current = 1 - activeIdx.current;
     setCurTrack(track);
@@ -109,10 +110,18 @@ export function ReaderAudio({ activeTrack, accent = '#c9a8e8' }) {
       setPlaying(false);
     } else {
       startedRef.current = true;
-      el.volume = TARGET_VOL;
+      el.volume = volRef.current;
       el.play().catch(() => {});
       setPlaying(true);
     }
+  };
+
+  const changeVolume = (v) => {
+    const vol = Math.max(0, Math.min(1, v));
+    volRef.current = vol;
+    setVolume(vol);
+    const el = audible();
+    if (el) el.volume = vol;
   };
 
   const seek = (pct) => {
@@ -168,6 +177,27 @@ export function ReaderAudio({ activeTrack, accent = '#c9a8e8' }) {
           <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10.5, color: 'rgba(180,170,200,0.55)', marginTop: 1 }}>
             {fmt(time.cur)} / {fmt(time.dur)}{curTrack?.genre ? ` · ${curTrack.genre}` : ''}
           </p>
+        </div>
+
+        {/* Volume */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+          <button
+            onClick={() => changeVolume(volume > 0 ? 0 : 0.85)}
+            aria-label={volume > 0 ? 'Couper le son' : 'Rétablir le son'}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(180,170,200,0.7)', padding: 0, display: 'flex' }}
+          >
+            <svg width="16" height="14" viewBox="0 0 16 14" fill="none">
+              <path d="M1 5h3l3-3v10l-3-3H1V5z" fill="currentColor" />
+              {volume > 0.02 && <path d="M9.5 3a4.5 4.5 0 0 1 0 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />}
+              {volume > 0.5 && <path d="M11.5 1a7 7 0 0 1 0 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.5" />}
+            </svg>
+          </button>
+          <input
+            type="range" min="0" max="1" step="0.01" value={volume}
+            onChange={(e) => changeVolume(Number(e.target.value))}
+            aria-label="Volume"
+            style={{ width: mobile ? 56 : 84, accentColor: `rgb(${rgb})`, cursor: 'pointer' }}
+          />
         </div>
 
         <button
