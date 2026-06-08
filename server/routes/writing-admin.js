@@ -89,10 +89,7 @@ writingAdminRouter.get('/projects/:id(\\d+)', (req, res) => {
   const id = Number(req.params.id);
   const p = db.prepare('SELECT * FROM writing_projects WHERE id = ?').get(id);
   if (!p) return res.status(404).json({ error: 'not_found' });
-  const books = db.prepare('SELECT * FROM writing_works WHERE project_id = ? ORDER BY sort_order, id').all(id).map((w) => ({
-    ...mapWorkCard(w),
-    chapterCount: db.prepare('SELECT COUNT(*) AS n FROM writing_chapters WHERE work_id = ?').get(w.id).n,
-  }));
+  const books = db.prepare('SELECT * FROM writing_works WHERE project_id = ? ORDER BY sort_order, id').all(id).map(entryWithCounts);
   const characters = db.prepare('SELECT * FROM characters WHERE project_id = ? ORDER BY sort_order, name').all(id).map(mapCharacter);
   const glossary = db.prepare('SELECT * FROM glossary_terms WHERE project_id = ? ORDER BY sort_order, id').all(id).map(mapTerm);
   res.json({ ...mapProjectCard(p), books, characters, glossary });
@@ -130,7 +127,49 @@ writingAdminRouter.post('/projects/reorder', (req, res) => {
   res.json(db.prepare('SELECT * FROM writing_projects ORDER BY sort_order, id').all().map(mapProjectCard));
 });
 
-// ── Works (books) ────────────────────────────────────────────────────────────
+// ── Works = typed entries in a project tree ──────────────────────────────────
+// Would moving `id` under `newParent` create a cycle? (newParent is id itself
+// or one of its descendants.)
+function wouldCycle(id, newParentId) {
+  let cur = newParentId;
+  const guard = new Set();
+  while (cur && !guard.has(cur)) {
+    if (cur === id) return true;
+    guard.add(cur);
+    cur = db.prepare('SELECT parent_id FROM writing_works WHERE id = ?').get(cur)?.parent_id;
+  }
+  return false;
+}
+
+// Apply the entry-tree fields (type / content / parent) — kept out of the
+// shared meta helpers since projects don't have them. Returns an error string
+// or null.
+function applyEntryFields(id, projectId, body) {
+  if (body.type !== undefined) {
+    db.prepare('UPDATE writing_works SET type = ? WHERE id = ?').run(str(body.type).trim().slice(0, 40) || 'Livre', id);
+  }
+  if (body.content !== undefined) {
+    db.prepare('UPDATE writing_works SET content = ? WHERE id = ?').run(str(body.content), id);
+  }
+  if (body.parentId !== undefined) {
+    let pid = body.parentId === null || body.parentId === '' ? null : Number(body.parentId);
+    if (pid != null) {
+      const parent = db.prepare('SELECT id, project_id FROM writing_works WHERE id = ?').get(pid);
+      if (!parent || parent.project_id !== projectId || pid === id || wouldCycle(id, pid)) return 'invalid_parent';
+    }
+    db.prepare('UPDATE writing_works SET parent_id = ? WHERE id = ?').run(pid, id);
+  }
+  return null;
+}
+
+function entryWithCounts(w) {
+  return {
+    ...mapWorkCard(w),
+    chapterCount: db.prepare('SELECT COUNT(*) AS n FROM writing_chapters WHERE work_id = ?').get(w.id).n,
+    childCount: db.prepare('SELECT COUNT(*) AS n FROM writing_works WHERE parent_id = ?').get(w.id).n,
+  };
+}
+
 writingAdminRouter.get('/works/:id(\\d+)', (req, res) => {
   const w = db.prepare('SELECT * FROM writing_works WHERE id = ?').get(Number(req.params.id));
   if (!w) return res.status(404).json({ error: 'not_found' });
@@ -138,7 +177,8 @@ writingAdminRouter.get('/works/:id(\\d+)', (req, res) => {
     .all(w.id).map((c) => mapChapter(c, { withMedia: true }));
   const media = db.prepare('SELECT * FROM writing_media WHERE work_id = ? AND chapter_id IS NULL ORDER BY sort_order, id')
     .all(w.id).map(mapMedia);
-  res.json({ ...mapWorkCard(w), chapters, media });
+  const children = db.prepare('SELECT * FROM writing_works WHERE parent_id = ? ORDER BY sort_order, id').all(w.id).map(entryWithCounts);
+  res.json({ ...mapWorkCard(w), chapters, media, children });
 });
 
 writingAdminRouter.post('/projects/:id(\\d+)/works', (req, res) => {
@@ -146,6 +186,8 @@ writingAdminRouter.post('/projects/:id(\\d+)/works', (req, res) => {
   if (!projectExists(projectId)) return res.status(404).json({ error: 'not_found' });
   if (!str(req.body?.title).trim()) return res.status(400).json({ error: 'missing_title' });
   const r = metaInsert('writing_works', { project_id: projectId }, req.body);
+  const err = applyEntryFields(r.lastInsertRowid, projectId, req.body);
+  if (err) return res.status(400).json({ error: err });
   res.status(201).json(mapWorkCard(db.prepare('SELECT * FROM writing_works WHERE id = ?').get(r.lastInsertRowid)));
 });
 
@@ -155,6 +197,8 @@ writingAdminRouter.put('/works/:id(\\d+)', (req, res) => {
   if (!ex) return res.status(404).json({ error: 'not_found' });
   const out = metaUpdate('writing_works', id, ex, req.body);
   if (out.error) return res.status(400).json(out);
+  const err = applyEntryFields(id, ex.project_id, req.body);
+  if (err) return res.status(400).json({ error: err });
   res.json(mapWorkCard(db.prepare('SELECT * FROM writing_works WHERE id = ?').get(id)));
 });
 

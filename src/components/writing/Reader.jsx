@@ -136,8 +136,12 @@ export function Reader() {
         {/* Article */}
         <article ref={articleRef}>
           <header style={{ marginBottom: 48 }}>
-            <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: `rgba(${rgb},0.7)`, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 14 }}>
-              Lecture
+            <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: `rgba(${rgb},0.7)`, letterSpacing: '1.5px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              <button onClick={() => navigate(`/projets/ecriture/${project}`)} style={{ background: 'none', border: 'none', color: `rgba(${rgb},0.7)`, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 'inherit' }}>{work.project?.title || project}</button>
+              {(work.trail || []).map((t) => (
+                <span key={t.slug}><span style={{ opacity: 0.4 }}> / </span><button onClick={() => navigate(`/projets/ecriture/${project}/${t.slug}`)} style={{ background: 'none', border: 'none', color: `rgba(${rgb},0.7)`, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 'inherit' }}>{t.title}</button></span>
+              ))}
+              {work.type && <span style={{ marginLeft: 6, color: `rgb(${rgb})`, border: `1px solid rgba(${rgb},0.4)`, borderRadius: 4, padding: '1px 7px', textTransform: 'uppercase' }}>{work.type}</span>}
             </p>
             <h1 style={{
               fontFamily: "'Georgia',serif", fontSize: 'clamp(34px,5vw,58px)', fontWeight: 700,
@@ -154,13 +158,39 @@ export function Reader() {
             )}
           </header>
 
+          {work.content && (
+            <div style={{ fontFamily: "'Georgia','Times New Roman',serif", fontSize: 'clamp(16px,1.15vw,18px)', color: 'rgba(216,208,232,0.92)', maxWidth: 680, marginBottom: work.chapters.length ? 56 : 24 }}>
+              {renderMarkdown(work.content, ctx)}
+            </div>
+          )}
+
           {work.chapters.map((ch) => (
             <ChapterBlock key={ch.id} chapter={ch} ctx={ctx} rgb={rgb} onOpenMedia={(id) => setLightbox(mediaIndex(id))} />
           ))}
 
-          {!work.chapters.length && (
+          {!!(work.children || []).length && (
+            <section style={{ marginTop: work.chapters.length || work.content ? 40 : 0, paddingTop: 28, borderTop: `1px solid rgba(${rgb},0.18)` }}>
+              <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 13, fontWeight: 700, color: `rgba(${rgb},0.85)`, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 18 }}>
+                Contient
+              </h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 12 }}>
+                {work.children.map((c) => (
+                  <button key={c.id} onClick={() => navigate(`/projets/ecriture/${project}/${c.slug}`)}
+                    style={{ textAlign: 'left', background: 'rgba(14,9,28,0.72)', border: `1px solid rgba(${rgb},0.2)`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.2s' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = `rgba(${rgb},0.55)`; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = `rgba(${rgb},0.2)`; e.currentTarget.style.transform = 'none'; }}>
+                    <span style={{ display: 'block', fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, color: `rgb(${rgb})`, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 4 }}>{c.type}</span>
+                    <span style={{ display: 'block', fontFamily: "'Georgia',serif", fontSize: 17, fontWeight: 700, color: '#ede8f8' }}>{c.title}</span>
+                    {c.subtitle && <span style={{ display: 'block', fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(180,170,200,0.65)', marginTop: 3 }}>{c.subtitle}</span>}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {!work.chapters.length && !work.content && !(work.children || []).length && (
             <p style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(180,170,200,0.5)', padding: '40px 0' }}>
-              Aucun chapitre publié pour l’instant.
+              Cet élément est encore vide.
             </p>
           )}
 

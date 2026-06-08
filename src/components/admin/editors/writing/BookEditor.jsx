@@ -3,23 +3,29 @@ import { api } from '../../../../api/client';
 import { useConfirm } from '../../../../ui/ConfirmProvider';
 import { useToast } from '../../../../ui/ToastProvider';
 import { renderMarkdown } from '../../../writing/markdown';
-import { ACC, Button, Input } from '../../ui';
+import { ACC, Button, Field, Input } from '../../ui';
 import { MetaFields, emptyMeta, metaOf } from './MetaFields';
 import { MediaManager } from './MediaManager';
 import { DirtyBadge, MarkdownField, SelectField, addBtn, blockLabel, blockStyle, removeBtn } from './widgets';
 
-// Editor for one book (a work within a project). Meta + drag-reorder chapters
-// (token toolbar + live preview, fed by the project's characters/glossary) +
-// per-book and per-chapter media. No character linking — characters belong to
-// the project and are resolved by slug.
-export function BookEditor({ workId, projectId, characters, glossary, tracks, onClose, onSaved }) {
+// Suggested entry types (free text — these are one-click shortcuts).
+export const ENTRY_TYPES = ['Livre', 'Chapitre', 'Récit', 'Lettre', 'Lore', 'Monde', 'Région', 'Cité', 'Ville', 'Lieu', 'Carte', 'Personnage', 'Faction', 'Objet'];
+
+const entryMeta = (w) => ({ ...metaOf(w), type: w.type || 'Livre', content: w.content || '' });
+const newEntryMeta = () => ({ ...emptyMeta(), type: 'Livre', content: '' });
+
+// Editor for one entry (a typed node of the project tree). Meta + a type + an
+// optional direct lore `content` + drag-reorder chapters (token toolbar + live
+// preview) + media. Characters/glossary are project-scoped and resolved by slug.
+export function BookEditor({ workId, projectId, parentId = null, characters, glossary, tracks, onClose, onSaved, onOpenChild }) {
   const toast = useToast();
   const confirm = useConfirm();
   const isNew = workId === 'new';
 
-  const [meta, setMeta] = useState(emptyMeta());
-  const [savedMeta, setSavedMeta] = useState(emptyMeta());
+  const [meta, setMeta] = useState(newEntryMeta());
+  const [savedMeta, setSavedMeta] = useState(newEntryMeta());
   const [chapters, setChapters] = useState([]);
+  const [children, setChildren] = useState([]);
   const [workMedia, setWorkMedia] = useState([]);
   const [id, setId] = useState(isNew ? null : workId);
   const [loading, setLoading] = useState(!isNew);
@@ -27,9 +33,10 @@ export function BookEditor({ workId, projectId, characters, glossary, tracks, on
 
   const load = async (theId) => {
     const w = await api.writing.works.get(theId);
-    const m = metaOf(w);
+    const m = entryMeta(w);
     setMeta(m); setSavedMeta(m);
     setChapters(w.chapters || []);
+    setChildren(w.children || []);
     setWorkMedia(w.media || []);
     setId(w.id);
   };
@@ -47,10 +54,10 @@ export function BookEditor({ workId, projectId, characters, glossary, tracks, on
     setSavingMeta(true);
     try {
       if (!id) {
-        const created = await api.writing.works.createIn(projectId, meta);
+        const created = await api.writing.works.createIn(projectId, { ...meta, parentId });
         setSavedMeta(meta);
         await load(created.id);
-        toast.success('Livre créé');
+        toast.success('Élément créé');
       } else {
         await api.writing.works.update(id, meta);
         setSavedMeta(meta);
@@ -77,26 +84,51 @@ export function BookEditor({ workId, projectId, characters, glossary, tracks, on
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, gap: 12, flexWrap: 'wrap' }}>
-        <button onClick={onClose} style={{ background: 'none', border: '1px solid rgba(80,50,130,0.32)', color: 'rgba(232,228,248,0.75)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13 }}>← Tous les livres</button>
+        <button onClick={onClose} style={{ background: 'none', border: '1px solid rgba(80,50,130,0.32)', color: 'rgba(232,228,248,0.75)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13 }}>← Retour</button>
         <DirtyBadge dirty={metaDirty} />
       </div>
 
       <div style={blockStyle}>
-        <span style={blockLabel}>Livre</span>
+        <span style={blockLabel}>Élément {parentId && !id ? '(sous-élément)' : ''}</span>
+        <TypeField value={meta.type} onChange={(v) => setMeta({ ...meta, type: v })} />
         <MetaFields meta={meta} setMeta={setMeta} publishLabel="Publié (visible dans le projet)" />
+        <Field label="Lore / texte direct (Markdown) — affiché en haut de la page de lecture">
+          <MarkdownField value={meta.content} onChange={(v) => setMeta({ ...meta, content: v })} characters={characters} glossary={glossary} rows={6} placeholder="Description, lore… (laisse vide si l'élément ne contient que des chapitres ou des sous-éléments)" />
+        </Field>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Button onClick={saveMeta} disabled={savingMeta || !metaDirty}>{savingMeta ? '…' : (id ? 'Enregistrer le livre' : 'Créer le livre')}</Button>
+          <Button onClick={saveMeta} disabled={savingMeta || !metaDirty}>{savingMeta ? '…' : (id ? 'Enregistrer l\'élément' : 'Créer l\'élément')}</Button>
         </div>
       </div>
 
       {!id && (
         <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: 'rgba(180,170,200,0.55)', fontStyle: 'italic', padding: '8px 0' }}>
-          Crée le livre pour pouvoir ajouter des chapitres et des médias.
+          Crée l'élément pour pouvoir ajouter des chapitres, des sous-éléments et des médias.
         </p>
       )}
 
       {id && (
         <>
+          {/* Sub-elements (tree children) */}
+          <div style={{ ...blockStyle, paddingBottom: 12 }}>
+            <span style={blockLabel}>Sous-éléments (ville, lettre, lore…)</span>
+            {children.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                {children.map((c) => (
+                  <button key={c.id} onClick={() => onOpenChild?.(c.id)} style={childRow}>
+                    <span style={typeChip}>{c.type}</span>
+                    <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 14, fontWeight: 600, color: '#ede8f8' }}>{c.title || '—'}</span>
+                    {!c.isPublished && <span style={{ fontSize: 10, color: 'rgba(180,170,200,0.6)' }}>masqué</span>}
+                    <span style={{ marginLeft: 'auto', fontSize: 11, color: 'rgba(180,170,200,0.5)' }}>{c.childCount ? `${c.childCount} sous-élément(s)` : ''} {c.chapterCount ? `· ${c.chapterCount} chap.` : ''}</span>
+                    <span style={{ color: ACC }}>Ouvrir →</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: 'rgba(180,170,200,0.5)', marginBottom: 8 }}>Aucun sous-élément.</p>
+            )}
+            <button style={addBtn} onClick={() => onOpenChild?.('new', id)}>+ Ajouter un sous-élément</button>
+          </div>
+
           <div style={{ ...blockStyle, paddingBottom: 6 }}>
             <span style={blockLabel}>Chapitres (glisser pour réordonner)</span>
             <ChapterList
@@ -108,20 +140,50 @@ export function BookEditor({ workId, projectId, characters, glossary, tracks, on
           </div>
 
           <div style={blockStyle}>
-            <MediaManager owner={{ workId: id }} media={workMedia} onChanged={reloadWork} label="Médias du livre (galerie, cartes)" />
+            <MediaManager owner={{ workId: id }} media={workMedia} onChanged={reloadWork} label="Médias de l'élément (galerie, cartes)" />
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Button variant="danger" onClick={async () => {
-              const ok = await confirm({ title: 'Supprimer le livre', message: 'Tous ses chapitres et médias seront supprimés. Définitif.', confirmLabel: 'Supprimer', danger: true });
+              const ok = await confirm({ title: 'Supprimer l\'élément', message: 'Ses chapitres, sous-éléments et médias seront supprimés. Définitif.', confirmLabel: 'Supprimer', danger: true });
               if (!ok) return;
-              try { await api.writing.works.remove(id); toast.success('Livre supprimé'); onSaved?.(); onClose(); }
+              try { await api.writing.works.remove(id); toast.success('Élément supprimé'); onSaved?.(); onClose(); }
               catch (e) { toast.error(e.message); }
-            }}>Supprimer le livre</Button>
+            }}>Supprimer l'élément</Button>
           </div>
         </>
       )}
     </div>
+  );
+}
+
+const childRow = {
+  display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+  background: 'rgba(8,5,18,0.5)', border: '1px solid rgba(80,50,130,0.28)', borderRadius: 8,
+  padding: '8px 12px', cursor: 'pointer', fontFamily: "'Inter',sans-serif",
+};
+const typeChip = {
+  fontSize: 10, color: ACC, background: 'rgba(201,168,232,0.12)', border: '1px solid rgba(201,168,232,0.3)',
+  borderRadius: 4, padding: '1px 7px', letterSpacing: '0.5px', flexShrink: 0, fontFamily: "'JetBrains Mono',monospace",
+};
+
+// Free-text type with one-click suggestions (Ville, Cité, Lettre…).
+function TypeField({ value, onChange }) {
+  return (
+    <Field label="Type (Ville, Cité, Monde, Région, Lettre, Livre, Lore…)">
+      <Input value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder="Livre" />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+        {ENTRY_TYPES.map((t) => (
+          <button key={t} type="button" onClick={() => onChange(t)}
+            style={{
+              background: value === t ? 'rgba(201,168,232,0.18)' : 'transparent',
+              border: `1px solid ${value === t ? ACC : 'rgba(80,50,130,0.4)'}`,
+              color: value === t ? ACC : 'rgba(180,170,200,0.7)', borderRadius: 20,
+              padding: '3px 10px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 11.5,
+            }}>{t}</button>
+        ))}
+      </div>
+    </Field>
   );
 }
 

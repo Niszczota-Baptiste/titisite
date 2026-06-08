@@ -370,7 +370,15 @@ export function migrate() {
   ensureColumn('writing_works', 'tags', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn('writing_works', 'ambient_effect', "TEXT NOT NULL DEFAULT 'none'");
   ensureColumn('writing_works', 'project_id', 'INTEGER REFERENCES writing_projects(id) ON DELETE CASCADE');
+  // Tree of typed entries within a project: a work can be nested under another
+  // work (parent_id), carries a free `type` (Livre, Chapitre, Lettre, Ville,
+  // Cité, Monde, Région, Lore…) and an optional `content` for direct lore text
+  // (shown above its chapters/children).
+  ensureColumn('writing_works', 'parent_id', 'INTEGER REFERENCES writing_works(id) ON DELETE CASCADE');
+  ensureColumn('writing_works', 'type', "TEXT NOT NULL DEFAULT 'Livre'");
+  ensureColumn('writing_works', 'content', "TEXT NOT NULL DEFAULT ''");
   db.exec(`CREATE INDEX IF NOT EXISTS idx_writing_works_project ON writing_works(project_id, sort_order);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_writing_works_parent ON writing_works(parent_id, sort_order);`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS writing_chapters (

@@ -31,7 +31,7 @@ describe('writing — public reading API (projects → books)', () => {
     const f = fetcher(server.base);
     const r = await f.get('/api/ecriture/nostra');
     assert.equal(r.status, 200);
-    assert.ok(r.json.books.length >= 2);
+    assert.ok(r.json.entries.length >= 2);
     assert.ok(r.json.characters.some((c) => c.slug === 'nielas'));
     assert.ok(r.json.glossary.length >= 2);
   });
@@ -116,6 +116,30 @@ describe('writing — admin CRUD (project-scoped)', () => {
     const pubA = await fetcher(server.base).get('/api/ecriture/univers-a');
     assert.ok(pubA.json.characters.some((c) => c.name === 'Alpha'));
     assert.ok(!pubA.json.characters.some((c) => c.name === 'Beta'));
+  });
+
+  it('nests typed entries (tree) and exposes children + breadcrumb', async () => {
+    const f = await loggedIn(ADMIN);
+    const proj = (await f.post('/api/writing/projects', { body: { title: 'Arbre', isPublished: true } })).json;
+    const region = (await f.post(`/api/writing/projects/${proj.id}/works`, { body: { title: 'Le Nord', type: 'Région', content: 'Froid.', isPublished: true } })).json;
+    assert.equal(region.type, 'Région');
+    const city = (await f.post(`/api/writing/projects/${proj.id}/works`, { body: { title: 'Aldoria', type: 'Cité', parentId: region.id, isPublished: true } })).json;
+    assert.equal(city.parentId, region.id);
+
+    // Top-level listing shows only roots.
+    const proj2 = await fetcher(server.base).get(`/api/ecriture/${proj.slug}`);
+    assert.ok(proj2.json.entries.some((e) => e.slug === region.slug));
+    assert.ok(!proj2.json.entries.some((e) => e.slug === city.slug), 'child leaked to top level');
+
+    // Reading the region exposes its child + content; reading the city has a trail.
+    const reg = await fetcher(server.base).get(`/api/ecriture/${proj.slug}/${region.slug}`);
+    assert.equal(reg.json.content, 'Froid.');
+    assert.ok(reg.json.children.some((c) => c.slug === city.slug));
+    const cit = await fetcher(server.base).get(`/api/ecriture/${proj.slug}/${city.slug}`);
+    assert.deepEqual(cit.json.trail.map((t) => t.title), ['Le Nord']);
+
+    // Cycle guard: region can't become a child of its own descendant.
+    assert.equal((await f.put(`/api/writing/works/${region.id}`, { body: { parentId: city.id } })).json.error, 'invalid_parent');
   });
 
   it('reorders books within a project', async () => {

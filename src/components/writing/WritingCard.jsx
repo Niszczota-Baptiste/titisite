@@ -54,6 +54,15 @@ export function WritingCard({ work, to }) {
             fontFamily: "'Inter',sans-serif", backdropFilter: 'blur(8px)',
           }}>{badge.label}</span>
         )}
+        {work.type && (
+          <span style={{
+            position: 'absolute', top: 12, left: 12,
+            background: 'rgba(8,5,18,0.7)', color: `rgb(${rgb})`,
+            border: `1px solid rgba(${rgb},0.4)`,
+            fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 6,
+            fontFamily: "'JetBrains Mono',monospace", letterSpacing: '0.5px', backdropFilter: 'blur(8px)',
+          }}>{work.type}</span>
+        )}
       </div>
 
       <div style={{ padding: '20px 24px 22px' }}>

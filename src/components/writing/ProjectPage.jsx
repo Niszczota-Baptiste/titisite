@@ -54,11 +54,11 @@ export function ProjectPage() {
           {project.description && <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, color: 'rgba(160,150,185,0.7)', lineHeight: 1.8, maxWidth: 620, marginTop: 12, fontStyle: 'italic' }}>{project.description}</p>}
         </header>
 
-        <Heading rgb={rgb}>Livres</Heading>
+        <Heading rgb={rgb}>Contenu</Heading>
         <WritingLibrary
-          works={project.books}
+          works={project.entries}
           accentHex={acc}
-          emptyHint="Aucun livre publié pour le moment."
+          emptyHint="Aucun contenu publié pour le moment."
           cardTo={(b) => `/projets/ecriture/${slug}/${b.slug}`}
         />
 

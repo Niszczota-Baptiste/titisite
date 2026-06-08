@@ -18,8 +18,10 @@ export function mapProjectCard(r) {
 
 export function mapWorkCard(r) {
   return {
-    id: r.id, projectId: r.project_id, slug: r.slug, title: r.title, titleKr: r.title_kr,
-    subtitle: r.subtitle, description: r.description, status: r.status, accentColor: r.accent_color,
+    id: r.id, projectId: r.project_id, parentId: r.parent_id, slug: r.slug,
+    title: r.title, titleKr: r.title_kr, type: r.type || 'Livre',
+    subtitle: r.subtitle, description: r.description, content: r.content || '',
+    status: r.status, accentColor: r.accent_color,
     coverImage: r.cover_image, tags: parseTags(r.tags), ambientEffect: r.ambient_effect || 'none',
     isPublished: r.is_published === 1, sortOrder: r.sort_order,
   };
@@ -83,14 +85,29 @@ ecritureRouter.get('/', (_req, res) => {
   })));
 });
 
-// GET /api/ecriture/:project — project landing: books + characters + glossary
+// Published direct children of an entry (or top-level when parentId is null),
+// each annotated with how many published children it has (a "container").
+function publishedEntries(projectId, parentId) {
+  const rows = parentId == null
+    ? db.prepare('SELECT * FROM writing_works WHERE project_id = ? AND parent_id IS NULL AND is_published = 1 ORDER BY sort_order, id').all(projectId)
+    : db.prepare('SELECT * FROM writing_works WHERE parent_id = ? AND is_published = 1 ORDER BY sort_order, id').all(parentId);
+  return rows.map((w) => ({
+    ...mapWorkCard(w),
+    childCount: db.prepare('SELECT COUNT(*) AS n FROM writing_works WHERE parent_id = ? AND is_published = 1').get(w.id).n,
+  }));
+}
+
+// GET /api/ecriture/:project — project landing: top-level entries + characters + glossary
 ecritureRouter.get('/:project', (req, res) => {
   const p = db.prepare('SELECT * FROM writing_projects WHERE slug = ? AND is_published = 1').get(req.params.project);
   if (!p) return res.status(404).json({ error: 'not_found' });
-  const books = db.prepare('SELECT * FROM writing_works WHERE project_id = ? AND is_published = 1 ORDER BY sort_order, id')
-    .all(p.id).map(mapWorkCard);
   const glossary = p.has_glossary ? projectGlossary(p.id) : [];
-  res.json({ ...mapProjectCard(p), books, characters: projectCharacters(p.id), glossary });
+  res.json({
+    ...mapProjectCard(p),
+    entries: publishedEntries(p.id, null),
+    characters: projectCharacters(p.id),
+    glossary,
+  });
 });
 
 // GET /api/ecriture/:project/personnages/:slug — a character of the project
@@ -102,7 +119,9 @@ ecritureRouter.get('/:project/personnages/:slug', (req, res) => {
   res.json({ ...mapCharacter(c), project: { slug: p.slug, title: p.title, accentColor: p.accent_color } });
 });
 
-// GET /api/ecriture/:project/:work — a book for reading mode
+// GET /api/ecriture/:project/:work — an entry for reading mode: its own lore
+// content + chapters + media, its published child entries (to navigate deeper),
+// and the ancestor breadcrumb.
 ecritureRouter.get('/:project/:work', (req, res) => {
   const p = db.prepare('SELECT * FROM writing_projects WHERE slug = ? AND is_published = 1').get(req.params.project);
   if (!p) return res.status(404).json({ error: 'not_found' });
@@ -115,11 +134,25 @@ ecritureRouter.get('/:project/:work', (req, res) => {
   const media = db.prepare('SELECT * FROM writing_media WHERE work_id = ? AND chapter_id IS NULL ORDER BY sort_order, id')
     .all(w.id).map(mapMedia);
 
+  // Ancestor breadcrumb (only published ancestors), nearest-last.
+  const trail = [];
+  let cur = w.parent_id;
+  const guard = new Set();
+  while (cur && !guard.has(cur)) {
+    guard.add(cur);
+    const a = db.prepare('SELECT id, slug, title, parent_id, is_published FROM writing_works WHERE id = ?').get(cur);
+    if (!a || !a.is_published) break;
+    trail.unshift({ slug: a.slug, title: a.title });
+    cur = a.parent_id;
+  }
+
   res.json({
     ...mapWorkCard(w),
     project: { slug: p.slug, title: p.title, accentColor: p.accent_color },
+    trail,
     chapters,
     media,
+    children: publishedEntries(p.id, w.id),
     characters: projectCharacters(p.id),
     glossary: p.has_glossary ? projectGlossary(p.id) : [],
   });
