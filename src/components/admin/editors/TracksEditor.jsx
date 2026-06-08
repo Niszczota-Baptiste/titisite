@@ -92,8 +92,15 @@ function ClipTimeline({ clipStart, audioDur, onChange }) {
   );
 }
 
+const selectStyle = {
+  width: '100%', background: 'rgba(14,8,32,0.72)',
+  border: '1px solid rgba(80,50,130,0.24)', borderRadius: 8,
+  padding: '10px 12px', color: '#ede8f8',
+  fontFamily: "'Inter',sans-serif", fontSize: 13.5, outline: 'none',
+};
+
 // ── Per-track form with audio ──────────────────────────────────────────────
-function TrackForm({ d, set }) {
+function TrackForm({ d, set, works = [] }) {
   const confirm = useConfirm();
   const audioRef = useRef(null);
   const [audioDur, setAudioDur] = useState(0);
@@ -218,6 +225,20 @@ function TrackForm({ d, set }) {
         value={d.ost}
         onChange={(v) => set((p) => ({ ...p, ost: v }))}
       />
+
+      {/* Optional link to a written work — for tracks that carry a lore. */}
+      <Field label="Texte associé (lore) — lien affiché sous le morceau">
+        <select
+          value={d.loreSlug || ''}
+          onChange={(e) => set((p) => ({ ...p, loreSlug: e.target.value }))}
+          style={selectStyle}
+        >
+          <option value="">— aucun —</option>
+          {works.map((w) => (
+            <option key={w.id} value={w.slug}>{w.title}{w.isPublished ? '' : ' (masqué)'}</option>
+          ))}
+        </select>
+      </Field>
 
       {/* Audio section — only for existing tracks */}
       {d.id && (
@@ -356,9 +377,13 @@ function TrackForm({ d, set }) {
   );
 }
 
-const EMPTY = { title: '', genre: '', duration: '0:00', clip_start: 0, ost: false };
+const EMPTY = { title: '', genre: '', duration: '0:00', clip_start: 0, ost: false, loreSlug: '' };
 
 export function TracksEditor() {
+  // Written works, to let a track point at its associated lore.
+  const [works, setWorks] = useState([]);
+  useEffect(() => { api.writing.works.list().then(setWorks).catch(() => {}); }, []);
+
   return (
     <ItemList
       title="Musique"
@@ -380,6 +405,9 @@ export function TracksEditor() {
           {tr.ost && (
             <span style={{ fontSize: 9.5, color: ACC, border: `1px solid ${ACC_DIM}`, padding: '1px 6px', borderRadius: 4, letterSpacing: '0.5px' }}>OST</span>
           )}
+          {tr.loreSlug && (
+            <span style={{ fontSize: 9.5, color: '#9ad4ae', border: '1px solid rgba(154,212,174,0.35)', padding: '1px 6px', borderRadius: 4, letterSpacing: '0.5px' }}>lore</span>
+          )}
           <span style={{
             marginLeft: 'auto', fontFamily: 'monospace', fontSize: 12, color: 'rgba(180,170,200,0.6)',
           }}>
@@ -387,7 +415,7 @@ export function TracksEditor() {
           </span>
         </div>
       )}
-      renderForm={(d, set) => <TrackForm d={d} set={set} />}
+      renderForm={(d, set) => <TrackForm d={d} set={set} works={works} />}
     />
   );
 }

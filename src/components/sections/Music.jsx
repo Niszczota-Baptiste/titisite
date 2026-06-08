@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { trackEvent } from '../../api/client';
 import { ACCENTS } from '../../data/constants';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -81,7 +82,7 @@ function Waveform({ playing, accent }) {
   );
 }
 
-function TrackRow({ track, playing, progress, onToggle, accent, mobile }) {
+function TrackRow({ track, playing, progress, onToggle, onLore, accent, mobile }) {
   const [hov, setHov] = useState(false);
   const acc = ACCENTS[accent] || ACCENTS.violet;
   return (
@@ -129,6 +130,23 @@ function TrackRow({ track, playing, progress, onToggle, accent, mobile }) {
           )}
         </p>
       </div>
+      {track.loreSlug && (
+        <button
+          data-interactive
+          onClick={(e) => { e.stopPropagation(); onLore(track.loreSlug, track.title); }}
+          title="Lire le texte associé"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            background: `rgba(${acc.rgb},0.1)`, border: `1px solid rgba(${acc.rgb},0.3)`,
+            color: acc.hex, borderRadius: 20, padding: '4px 11px', cursor: 'pointer',
+            fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 600, flexShrink: 0,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = `rgba(${acc.rgb},0.2)`; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = `rgba(${acc.rgb},0.1)`; }}
+        >
+          ✦ Lore ↗
+        </button>
+      )}
       <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-faint)' }}>
         {track.duration}
       </span>
@@ -146,6 +164,12 @@ export function Music({ t, accent, tracks = [] }) {
   const audioRef = useRef(null);
   const acc = ACCENTS[accent] || ACCENTS.violet;
   const mobile = useIsMobile(860);
+  const navigate = useNavigate();
+
+  const goLore = (slug, title) => {
+    trackEvent('link_click', `lore:${title || slug}`);
+    navigate(`/projets/ecriture/${slug}`);
+  };
 
   useEffect(() => { window.__musicPlaying = playing !== null; }, [playing]);
 
@@ -466,6 +490,7 @@ export function Music({ t, accent, tracks = [] }) {
             playing={playing === i}
             progress={progress[i] || 0}
             onToggle={() => toggle(i)}
+            onLore={goLore}
             accent={accent}
             mobile={mobile}
           />
