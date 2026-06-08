@@ -205,6 +205,52 @@ export const api = {
     summary: () => request('GET', `/workspaces/${slug}/summary`),
   }),
 
+  // ── Writing space (RP / worldbuilding « Nostra ») ──
+  // Public reading endpoints (no auth) + admin CRUD (admin cookie required).
+  ecriture: {
+    list:        () => request('GET', '/ecriture'),
+    get:         (slug) => request('GET', `/ecriture/${slug}`),
+    personnage:  (slug) => request('GET', `/personnages/${slug}`),
+    lexique:     () => request('GET', '/lexique'),
+  },
+  writing: {
+    works: {
+      list:    () => request('GET', '/writing/works'),
+      get:     (id) => request('GET', `/writing/works/${id}`),
+      create:  (b) => request('POST', '/writing/works', b),
+      update:  (id, b) => request('PUT', `/writing/works/${id}`, b),
+      remove:  (id) => request('DELETE', `/writing/works/${id}`),
+      reorder: (order) => request('POST', '/writing/works/reorder', { order }),
+      setCharacters: (id, characterIds) => request('PUT', `/writing/works/${id}/characters`, { characterIds }),
+    },
+    chapters: {
+      create:  (workId, b) => request('POST', `/writing/works/${workId}/chapters`, b),
+      update:  (id, b) => request('PUT', `/writing/chapters/${id}`, b),
+      remove:  (id) => request('DELETE', `/writing/chapters/${id}`),
+      reorder: (workId, order) => request('POST', `/writing/works/${workId}/chapters/reorder`, { order }),
+    },
+    media: {
+      create:  (b) => request('POST', '/writing/media', b),
+      update:  (id, b) => request('PUT', `/writing/media/${id}`, b),
+      remove:  (id) => request('DELETE', `/writing/media/${id}`),
+      reorder: (order) => request('POST', '/writing/media/reorder', { order }),
+    },
+    characters: {
+      list:    () => request('GET', '/writing/characters'),
+      create:  (b) => request('POST', '/writing/characters', b),
+      update:  (id, b) => request('PUT', `/writing/characters/${id}`, b),
+      remove:  (id) => request('DELETE', `/writing/characters/${id}`),
+      reorder: (order) => request('POST', '/writing/characters/reorder', { order }),
+    },
+    glossary: {
+      list:    () => request('GET', '/writing/glossary'),
+      create:  (b) => request('POST', '/writing/glossary', b),
+      update:  (id, b) => request('PUT', `/writing/glossary/${id}`, b),
+      remove:  (id) => request('DELETE', `/writing/glossary/${id}`),
+      reorder: (order) => request('POST', '/writing/glossary/reorder', { order }),
+    },
+  },
+
   // Global
   events:   (params = {}) => {
     const q = new URLSearchParams();
