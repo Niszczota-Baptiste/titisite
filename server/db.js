@@ -301,6 +301,63 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_events_name ON events(name, created_at);`);
 
+  // ── Page timings (dwell time + scroll depth, RGPD-friendly) ──
+  // One row per end-of-visit beacon. `duration_ms` is the *active* time only
+  // (paused while the tab is hidden, capped server-side). `scroll_pct` is the
+  // furthest 0..100 scroll position reached. Same daily-rotating visitor_hash
+  // as pageviews — no PII, no cross-day tracking possible.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS page_timings (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      path         TEXT NOT NULL,
+      duration_ms  INTEGER NOT NULL,
+      scroll_pct   INTEGER NOT NULL DEFAULT 0,
+      visitor_hash TEXT NOT NULL DEFAULT '',
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_page_timings_created ON page_timings(created_at);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_page_timings_path ON page_timings(path);`);
+
+  // ── Link clicks (enriched: internal nav, writing zone, outbound) ──
+  // Captures cross-page navigation initiated from the writing zone (chapter ↔
+  // book ↔ project), plus outbound links. `to_host` is empty for same-origin
+  // navigations; for outbound it stores the hostname only (no path/query =
+  // no PII tokens). Same privacy model as pageviews.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS link_clicks (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_path    TEXT NOT NULL,
+      to_path      TEXT NOT NULL DEFAULT '',
+      to_host      TEXT NOT NULL DEFAULT '',
+      kind         TEXT NOT NULL DEFAULT 'internal',
+      visitor_hash TEXT NOT NULL DEFAULT '',
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_link_clicks_created ON link_clicks(created_at);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_link_clicks_from ON link_clicks(from_path);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_link_clicks_kind ON link_clicks(kind, created_at);`);
+
+  // ── First seen of each path (powers "new pages" dashboard section) ──
+  // Captures the very first time a given public path was viewed. Back-filled
+  // on first migration from the existing `pageviews` table so pre-existing
+  // installs don't lose history.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS path_first_seen (
+      path          TEXT PRIMARY KEY,
+      first_seen_at INTEGER NOT NULL
+    );
+  `);
+  // One-shot backfill: seed first_seen_at from the earliest pageview per path.
+  const fsCount = db.prepare(`SELECT COUNT(*) AS n FROM path_first_seen`).get().n;
+  if (fsCount === 0) {
+    db.exec(`
+      INSERT OR IGNORE INTO path_first_seen (path, first_seen_at)
+      SELECT path, MIN(created_at) FROM pageviews GROUP BY path
+    `);
+  }
+
   // ── Project images (portfolio pages hero + screenshots) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS project_images (

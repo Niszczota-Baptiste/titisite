@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect } from 'react';
-import { Route, Routes, useLocation } from 'react-router-dom';
-import { api } from './api/client';
+import { lazy, Suspense } from 'react';
+import { Route, Routes } from 'react-router-dom';
+import { usePageTracking } from './hooks/usePageTracking';
 
 const Public = lazy(() => import('./pages/Public'));
 const Admin = lazy(() => import('./pages/Admin'));
@@ -13,14 +13,10 @@ function Loading() {
   return <div style={{ minHeight: '100vh', background: '#050511' }} />;
 }
 
-// Fires one analytics beacon per public route change. The back-office areas
-// (/admin, /project) are skipped here and server-side, so they never count.
+// Fires a pageview hit + dwell-time / scroll beacons on every public route
+// change. Skipped server-side too for /admin and /project workspaces.
 function RouteTracker() {
-  const { pathname } = useLocation();
-  useEffect(() => {
-    if (pathname.startsWith('/admin') || pathname.startsWith('/project')) return;
-    api.analytics.hit(pathname, document.referrer).catch(() => {});
-  }, [pathname]);
+  usePageTracking();
   return null;
 }
 

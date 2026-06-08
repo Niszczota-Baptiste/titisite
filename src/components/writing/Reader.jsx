@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api } from '../../api/client';
+import { api, trackClick } from '../../api/client';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { AmbientEffect } from './AmbientEffect';
 import { Lightbox } from './Lightbox';
@@ -72,13 +72,20 @@ export function Reader() {
     setTocOpen(false);
   };
 
+  // Navigate within the writing zone and beacon the hop (powers the
+  // "parcours / transitions" section of the Fréquentation dashboard).
+  const goWriting = useCallback((to) => {
+    trackClick(to, 'writing_nav');
+    navigate(to);
+  }, [navigate]);
+
   if (loading) {
     return <ReaderShell><div style={loadingStyle}>loading…</div></ReaderShell>;
   }
   if (!work) {
     return (
       <ReaderShell>
-        <NotFound label="Texte introuvable" onBack={() => navigate(`/projets/ecriture/${project}`)} backLabel="← Le projet" />
+        <NotFound label="Texte introuvable" onBack={() => goWriting(`/projets/ecriture/${project}`)} backLabel="← Le projet" />
       </ReaderShell>
     );
   }
@@ -110,7 +117,7 @@ export function Reader() {
       <ReaderNav
         crumb={`${work.project?.title || project} / ${work.title}`}
         accent={acc}
-        onBack={() => navigate(`/projets/ecriture/${project}`)}
+        onBack={() => goWriting(`/projets/ecriture/${project}`)}
         right={mobile ? (
           <button onClick={() => setTocOpen((o) => !o)} style={tocToggleStyle(rgb)}>Sommaire</button>
         ) : null}
@@ -138,9 +145,9 @@ export function Reader() {
         <article ref={articleRef}>
           <header style={{ marginBottom: 48 }}>
             <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: `rgba(${rgb},0.7)`, letterSpacing: '1.5px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-              <button onClick={() => navigate(`/projets/ecriture/${project}`)} style={{ background: 'none', border: 'none', color: `rgba(${rgb},0.7)`, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 'inherit' }}>{work.project?.title || project}</button>
+              <button onClick={() => goWriting(`/projets/ecriture/${project}`)} style={{ background: 'none', border: 'none', color: `rgba(${rgb},0.7)`, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 'inherit' }}>{work.project?.title || project}</button>
               {(work.trail || []).map((t) => (
-                <span key={t.slug}><span style={{ opacity: 0.4 }}> / </span><button onClick={() => navigate(`/projets/ecriture/${project}/${t.slug}`)} style={{ background: 'none', border: 'none', color: `rgba(${rgb},0.7)`, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 'inherit' }}>{t.title}</button></span>
+                <span key={t.slug}><span style={{ opacity: 0.4 }}> / </span><button onClick={() => goWriting(`/projets/ecriture/${project}/${t.slug}`)} style={{ background: 'none', border: 'none', color: `rgba(${rgb},0.7)`, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 'inherit' }}>{t.title}</button></span>
               ))}
               {work.type && <span style={{ marginLeft: 6, color: `rgb(${rgb})`, border: `1px solid rgba(${rgb},0.4)`, borderRadius: 4, padding: '1px 7px', textTransform: 'uppercase' }}>{work.type}</span>}
             </p>
@@ -162,7 +169,7 @@ export function Reader() {
           {!!(work.linkedCharacters || []).length && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 36 }}>
               {work.linkedCharacters.map((c) => (
-                <button key={c.id} onClick={() => navigate(`/projets/ecriture/${project}/personnages/${c.slug}`)}
+                <button key={c.id} onClick={() => goWriting(`/projets/ecriture/${project}/personnages/${c.slug}`)}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `rgba(${rgb},0.08)`, border: `1px solid rgba(${rgb},0.28)`, borderRadius: 20, padding: '5px 14px', cursor: 'pointer', fontFamily: "'Inter',sans-serif" }}>
                   {c.note && <span style={{ fontSize: 10, color: `rgb(${rgb})`, textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: "'JetBrains Mono',monospace" }}>{c.note}</span>}
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#ede8f8' }}>{c.name}</span>
@@ -188,7 +195,7 @@ export function Reader() {
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 12 }}>
                 {work.children.map((c) => (
-                  <button key={c.id} onClick={() => navigate(`/projets/ecriture/${project}/${c.slug}`)}
+                  <button key={c.id} onClick={() => goWriting(`/projets/ecriture/${project}/${c.slug}`)}
                     style={{ textAlign: 'left', background: 'rgba(14,9,28,0.72)', border: `1px solid rgba(${rgb},0.2)`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.2s' }}
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = `rgba(${rgb},0.55)`; e.currentTarget.style.transform = 'translateY(-2px)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = `rgba(${rgb},0.2)`; e.currentTarget.style.transform = 'none'; }}>

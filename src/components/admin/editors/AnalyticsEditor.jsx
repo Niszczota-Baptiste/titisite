@@ -77,16 +77,23 @@ const KEYFRAMES = `
 export function AnalyticsEditor() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState(null);
+  const [writing, setWriting] = useState(null);
   const [err, setErr] = useState(null);
   const [tick, setTick] = useState(0);
   const [loadedAt, setLoadedAt] = useState(null);
 
   useEffect(() => {
     let alive = true;
-    setData(null); setErr(null);
-    api.analytics.summary(days)
-      .then((r) => { if (alive) { setData(r); setLoadedAt(new Date()); } })
-      .catch((e) => { if (alive) setErr(e.message); });
+    setData(null); setWriting(null); setErr(null);
+    Promise.all([
+      api.analytics.summary(days),
+      api.analytics.writingSummary(days).catch(() => null),
+    ]).then(([summary, w]) => {
+      if (!alive) return;
+      setData(summary);
+      setWriting(w);
+      setLoadedAt(new Date());
+    }).catch((e) => { if (alive) setErr(e.message); });
     return () => { alive = false; };
   }, [days, tick]);
 
@@ -337,6 +344,137 @@ export function AnalyticsEditor() {
             </>
           )}
 
+          {/* ── Nouveautés & dernières modifications ── */}
+          {data.recentPages?.length > 0 && (
+            <>
+              <SectionTitle>Nouveautés du site</SectionTitle>
+              <Card>
+                <RecentPagesList rows={data.recentPages} days={days} />
+              </Card>
+            </>
+          )}
+
+          {/* ── Engagement (dwell, scroll, rebond, entrées/sorties) ── */}
+          {data.engagement && (
+            <>
+              <SectionTitle>Engagement</SectionTitle>
+              <div style={{
+                display: 'grid', gap: 12, marginBottom: 18,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              }}>
+                <StatCard
+                  value={`${data.engagement.bounceRate}%`}
+                  label="Taux de rebond"
+                  accent="#e8a87c"
+                  sub={`${data.engagement.sessions} session${data.engagement.sessions > 1 ? 's' : ''}`}
+                />
+                <StatCard
+                  value={formatDuration(data.engagement.avgSessionSec)}
+                  label="Durée moy. session"
+                  accent="#9ad4ae"
+                  delay={0.05}
+                />
+              </div>
+              <div style={{
+                display: 'grid', gap: 16, marginBottom: 18,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              }}>
+                <Card title="Temps moyen / médian par page">
+                  <DwellList rows={data.engagement.dwell} />
+                </Card>
+                <Card title="Profondeur de scroll">
+                  <ScrollDepthList rows={data.engagement.scrollDepth} />
+                </Card>
+                <RankCard
+                  title="Pages d'entrée"
+                  rows={data.engagement.entryPages.map((r) => ({ label: r.path, value: r.count, mono: true }))}
+                  empty="Aucune donnée"
+                  color="#9ad4ae"
+                />
+                <RankCard
+                  title="Pages de sortie"
+                  rows={data.engagement.exitPages.map((r) => ({ label: r.path, value: r.count, mono: true }))}
+                  empty="Aucune donnée"
+                  color="#e8a87c"
+                />
+              </div>
+            </>
+          )}
+
+          {/* ── Zone Écriture ── */}
+          {writing && writing.zoneTotals?.views > 0 && (
+            <>
+              <SectionTitle>Zone Écriture</SectionTitle>
+              <div style={{
+                display: 'grid', gap: 12, marginBottom: 18,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              }}>
+                <StatCard value={writing.zoneTotals.views} label="Vues zone écriture" accent="#c9a8e8" icon="✎" />
+                <StatCard value={writing.zoneTotals.visitors} label="Lecteurs uniques" accent="#9ad4ae" delay={0.05} />
+                <StatCard value={writing.projects.length} label="Univers consultés" accent="#7eb8f7" delay={0.1} />
+              </div>
+
+              {writing.projects.length > 0 && (
+                <Card title="Vues par univers" style={{ marginBottom: 18 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {writing.projects.map((p, i) => (
+                      <BarRow
+                        key={p.slug}
+                        label={<span style={{ fontFamily: 'monospace', fontSize: 12 }}>{p.slug}</span>}
+                        value={p.views}
+                        max={Math.max(...writing.projects.map((x) => x.views), 1)}
+                        delay={i * 0.04}
+                      />
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              <div style={{
+                display: 'grid', gap: 16, marginBottom: 18,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              }}>
+                <RankCard
+                  title="Livres / chapitres les plus lus"
+                  rows={writing.topWorks.map((w) => ({
+                    label: `${w.project} / ${w.work}`,
+                    value: w.views,
+                    mono: true,
+                  }))}
+                  empty="Aucune lecture enregistrée"
+                />
+                <Card title="Parcours · transitions les plus fréquentes">
+                  <TransitionsList rows={writing.transitions} />
+                </Card>
+                <RankCard
+                  title="Entrées de la zone écriture"
+                  rows={writing.entryPaths.map((r) => ({ label: r.path, value: r.count, mono: true }))}
+                  empty="Aucune entrée"
+                  color="#9ad4ae"
+                />
+                <RankCard
+                  title="Sorties de la zone écriture"
+                  rows={writing.exitPaths.map((r) => ({ label: r.path, value: r.count, mono: true }))}
+                  empty="Aucune sortie"
+                  color="#e8a87c"
+                />
+                {writing.outbound.length > 0 && (
+                  <RankCard
+                    title="Liens externes cliqués"
+                    rows={writing.outbound.map((r) => ({ label: r.to_host, value: r.count, mono: true }))}
+                    empty="Aucun clic sortant"
+                    color="#7eb8f7"
+                  />
+                )}
+                {writing.dwell.length > 0 && (
+                  <Card title="Temps de lecture par texte">
+                    <DwellList rows={writing.dwell} showScroll />
+                  </Card>
+                )}
+              </div>
+            </>
+          )}
+
           {/* ── Footer ── */}
           <div style={{
             marginTop: 36, paddingTop: 20, borderTop: '1px solid rgba(60,40,100,0.18)',
@@ -579,6 +717,206 @@ function WorldMap({ countries }) {
           {totalVisitors} visiteur{totalVisitors > 1 ? 's' : ''} · {plotted.length} pays
         </span>
       </div>
+    </div>
+  );
+}
+
+function SectionTitle({ children }) {
+  return (
+    <h3 style={{
+      fontFamily: "'Space Grotesk',sans-serif", fontSize: 18, fontWeight: 700,
+      color: '#ede8f8', margin: '30px 0 14px',
+      borderLeft: `3px solid rgba(${ACC_RGB},0.45)`, paddingLeft: 12,
+    }}>
+      {children}
+    </h3>
+  );
+}
+
+function formatDuration(seconds) {
+  if (!seconds || seconds < 1) return '—';
+  if (seconds < 60) return `${seconds} s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s ? `${m} min ${s.toString().padStart(2, '0')}` : `${m} min`;
+}
+
+function RecentPagesList({ rows, days }) {
+  // "Nouveau" = path appeared during this window. We show the absolute date so
+  // a 90-day window still distinguishes "today" from "two months ago".
+  if (rows.length === 0) {
+    return <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif", fontSize: 12.5 }}>
+      Aucune nouvelle page sur les {days} derniers jours.
+    </p>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {rows.map((r, i) => {
+        const date = new Date(r.first_seen_at * 1000);
+        const dateLabel = date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+        return (
+          <div
+            key={r.path}
+            style={{
+              display: 'grid', gap: 10, alignItems: 'center',
+              gridTemplateColumns: '78px 1fr auto',
+              padding: '8px 4px',
+              borderBottom: i === rows.length - 1 ? 'none' : '1px solid rgba(60,40,100,0.18)',
+            }}
+          >
+            <span style={{
+              fontFamily: 'monospace', fontSize: 9.5, color: ACC,
+              background: `rgba(${ACC_RGB},0.14)`, border: `1px solid rgba(${ACC_RGB},0.3)`,
+              borderRadius: 4, padding: '2px 6px', textAlign: 'center',
+              letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700,
+            }}>NOUVEAU</span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{
+                display: 'block', fontFamily: 'monospace', fontSize: 12, color: '#ede8f8',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{r.path}</span>
+              <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: 'rgba(180,170,200,0.55)' }}>
+                {dateLabel}
+              </span>
+            </span>
+            <span style={{
+              fontFamily: "'Space Grotesk',sans-serif", fontSize: 13, fontWeight: 700,
+              color: '#ede8f8', fontVariantNumeric: 'tabular-nums',
+            }}>{r.views}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DwellList({ rows, showScroll }) {
+  const visible = rows.filter((r) => r.count > 0);
+  if (visible.length === 0) {
+    return <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif", fontSize: 12.5 }}>
+      Pas encore de mesure de temps.
+    </p>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {visible.map((r, i) => (
+        <div
+          key={r.path}
+          style={{
+            display: 'grid', gap: 8, alignItems: 'baseline',
+            gridTemplateColumns: '1fr auto auto',
+            padding: '6px 0',
+            borderBottom: i === visible.length - 1 ? 'none' : '1px solid rgba(60,40,100,0.18)',
+          }}
+        >
+          <span style={{
+            fontFamily: 'monospace', fontSize: 12, color: ACC,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{r.path}</span>
+          <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: 'rgba(180,170,200,0.65)' }}>
+            méd. {formatDuration(r.medianSec)}
+          </span>
+          <span style={{
+            fontFamily: "'Space Grotesk',sans-serif", fontSize: 13, fontWeight: 700,
+            color: '#ede8f8', fontVariantNumeric: 'tabular-nums',
+          }}>
+            {formatDuration(r.avgSec)}
+            {showScroll && r.avgScroll !== undefined && (
+              <span style={{ marginLeft: 8, fontFamily: 'monospace', fontSize: 10.5, fontWeight: 500, color: 'rgba(180,170,200,0.6)' }}>
+                {r.avgScroll}% ↓
+              </span>
+            )}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ScrollDepthList({ rows }) {
+  const visible = rows.filter((r) => r.samples > 0);
+  if (visible.length === 0) {
+    return <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif", fontSize: 12.5 }}>
+      Pas encore de mesure de scroll.
+    </p>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {visible.map((r) => (
+        <div key={r.path}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6,
+            fontFamily: 'monospace', fontSize: 11.5,
+          }}>
+            <span style={{ color: ACC, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.path}</span>
+            <span style={{ color: 'rgba(180,170,200,0.55)', flexShrink: 0 }}>{r.samples} mesure{r.samples > 1 ? 's' : ''}</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+            {[
+              { k: 'p25', l: '25%' },
+              { k: 'p50', l: '50%' },
+              { k: 'p75', l: '75%' },
+              { k: 'p100', l: '100%' },
+            ].map(({ k, l }) => (
+              <div key={k} style={{
+                background: `rgba(${ACC_RGB},0.08)`,
+                border: `1px solid rgba(${ACC_RGB},0.18)`,
+                borderRadius: 6, padding: '6px 8px', textAlign: 'center',
+              }}>
+                <div style={{ fontFamily: 'monospace', fontSize: 9.5, color: 'rgba(180,170,200,0.5)', letterSpacing: '0.5px' }}>{l}</div>
+                <div style={{
+                  fontFamily: "'Space Grotesk',sans-serif", fontSize: 14, fontWeight: 700,
+                  color: r[k] >= 50 ? ACC : 'rgba(232,228,248,0.88)',
+                }}>{r[k]}%</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TransitionsList({ rows }) {
+  if (!rows || rows.length === 0) {
+    return <p style={{ color: 'rgba(180,170,200,0.5)', fontFamily: "'Inter',sans-serif", fontSize: 12.5 }}>
+      Aucun enchaînement enregistré.
+    </p>;
+  }
+  const max = Math.max(...rows.map((r) => r.count), 1);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {rows.map((r, i) => (
+        <div key={i} style={{
+          padding: '6px 0',
+          borderBottom: i === rows.length - 1 ? 'none' : '1px solid rgba(60,40,100,0.18)',
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5,
+            fontFamily: 'monospace', fontSize: 11.5, minWidth: 0,
+          }}>
+            <span style={{
+              color: 'rgba(232,228,248,0.85)', flex: 1, minWidth: 0,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{r.from_path}</span>
+            <span style={{ color: `rgba(${ACC_RGB},0.6)`, flexShrink: 0 }}>→</span>
+            <span style={{
+              color: ACC, flex: 1, minWidth: 0,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{r.to_path || '(externe)'}</span>
+            <span style={{
+              fontFamily: "'Space Grotesk',sans-serif", fontSize: 12, fontWeight: 700,
+              color: '#ede8f8', flexShrink: 0, fontVariantNumeric: 'tabular-nums',
+            }}>{r.count}</span>
+          </div>
+          <div style={{ height: 3, borderRadius: 2, background: 'rgba(60,40,100,0.35)', overflow: 'hidden' }}>
+            <div style={{
+              width: `${(r.count / max) * 100}%`, height: '100%', borderRadius: 2,
+              background: `linear-gradient(90deg,${ACC},${ACC}aa)`,
+            }} />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

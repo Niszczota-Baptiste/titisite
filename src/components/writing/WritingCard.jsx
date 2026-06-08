@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { trackClick } from '../../api/client';
 import { hexToRgb } from './tokens';
 
 const STATUS_BADGE = {
@@ -23,7 +24,13 @@ export function WritingCard({ work, to }) {
       data-interactive
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
-      onClick={() => navigate(to || `/projets/ecriture/${work.slug}`)}
+      onClick={() => {
+        const dest = to || `/projets/ecriture/${work.slug}`;
+        if (typeof window !== 'undefined' && window.location.pathname.startsWith('/projets/ecriture')) {
+          trackClick(dest, 'writing_nav');
+        }
+        navigate(dest);
+      }}
       style={{
         background: hov ? 'var(--surface-hov)' : 'var(--surface)',
         border: `1px solid ${hov ? `rgba(${rgb},0.5)` : 'var(--border)'}`,

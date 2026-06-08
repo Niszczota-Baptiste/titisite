@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api } from '../../api/client';
+import { api, trackClick } from '../../api/client';
 import { useReveal } from '../../hooks/useReveal';
 import { AmbientEffect } from './AmbientEffect';
 import { WritingLibrary } from './WritingLibrary';
@@ -16,6 +16,7 @@ export function ProjectPage() {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   useReveal();
+  const goWriting = useCallback((to) => { trackClick(to, 'writing_nav'); navigate(to); }, [navigate]);
 
   useEffect(() => {
     let alive = true;
@@ -31,7 +32,7 @@ export function ProjectPage() {
     return <ReaderShell><div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono',monospace", color: '#4a3860' }}>loading…</div></ReaderShell>;
   }
   if (!project) {
-    return <ReaderShell><NotFound label="Univers introuvable" onBack={() => navigate('/projets/ecriture')} backLabel="← Tous les univers" /></ReaderShell>;
+    return <ReaderShell><NotFound label="Univers introuvable" onBack={() => goWriting('/projets/ecriture')} backLabel="← Tous les univers" /></ReaderShell>;
   }
 
   const acc = project.accentColor || '#c9a8e8';
@@ -40,7 +41,7 @@ export function ProjectPage() {
   return (
     <ReaderShell>
       <AmbientEffect effect={project.ambientEffect} accent={acc} />
-      <ReaderNav crumb={project.title} accent={acc} onBack={() => navigate('/projets/ecriture')} />
+      <ReaderNav crumb={project.title} accent={acc} onBack={() => goWriting('/projets/ecriture')} />
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: 'clamp(40px,7vh,84px) clamp(16px,5vw,56px) 120px' }}>
         <header style={{ marginBottom: 48 }}>
           <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: `rgba(${rgb},0.75)`, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 14 }}>
@@ -69,7 +70,7 @@ export function ProjectPage() {
               {project.characters.map((c) => (
                 <button
                   key={c.id}
-                  onClick={() => navigate(`/projets/ecriture/${slug}/personnages/${c.slug}`)}
+                  onClick={() => goWriting(`/projets/ecriture/${slug}/personnages/${c.slug}`)}
                   style={{ display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', background: 'rgba(14,9,28,0.72)', border: `1px solid rgba(${rgb},0.18)`, borderRadius: 14, padding: 14, cursor: 'pointer', transition: 'all 0.2s' }}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = `rgba(${rgb},0.5)`; e.currentTarget.style.transform = 'translateY(-2px)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = `rgba(${rgb},0.18)`; e.currentTarget.style.transform = 'none'; }}

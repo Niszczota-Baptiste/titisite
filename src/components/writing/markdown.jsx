@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import { trackClick } from '../../api/client';
 import { CharacterLink, KoreanTerm } from './tokens';
 
 // In-house Markdown subset → React elements. Deliberately NOT a full Markdown
@@ -69,8 +70,18 @@ function parseInline(text, ctx, keyPrefix) {
       );
     } else if (linkLabel !== undefined) {
       const href = safeHref(linkUrl);
+      const isExternal = !!href && /^https?:\/\//i.test(href);
       nodes.push(href
-        ? <a key={key} href={href} target="_blank" rel="noopener noreferrer" style={{ color: ctx.accent || ACC, textDecoration: 'underline' }}>{linkLabel}</a>
+        ? (
+          <a
+            key={key}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => { if (isExternal) trackClick(href, 'writing_external'); }}
+            style={{ color: ctx.accent || ACC, textDecoration: 'underline' }}
+          >{linkLabel}</a>
+        )
         : linkLabel);
     }
     last = m.index + m[0].length;

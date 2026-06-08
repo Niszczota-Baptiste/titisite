@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api } from '../../api/client';
+import { api, trackClick } from '../../api/client';
 import { renderMarkdown } from './markdown';
 import { Avatar, hexToRgb } from './tokens';
 import { NotFound, ReaderNav, ReaderShell } from './shell';
@@ -14,6 +14,7 @@ export function CharacterPage() {
   const navigate = useNavigate();
   const [character, setCharacter] = useState(null);
   const [loading, setLoading] = useState(true);
+  const goWriting = useCallback((to) => { trackClick(to, 'writing_nav'); navigate(to); }, [navigate]);
 
   useEffect(() => {
     let alive = true;
@@ -29,7 +30,7 @@ export function CharacterPage() {
     return <ReaderShell><div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono',monospace", color: '#4a3860' }}>loading…</div></ReaderShell>;
   }
   if (!character) {
-    return <ReaderShell><NotFound label="Personnage introuvable" onBack={() => navigate(`/projets/ecriture/${project}`)} backLabel="← Le projet" /></ReaderShell>;
+    return <ReaderShell><NotFound label="Personnage introuvable" onBack={() => goWriting(`/projets/ecriture/${project}`)} backLabel="← Le projet" /></ReaderShell>;
   }
 
   const rgb = '201,168,232';
@@ -37,7 +38,7 @@ export function CharacterPage() {
 
   return (
     <ReaderShell>
-      <ReaderNav crumb={`${character.project?.title || project} / ${character.name}`} accent={ACC} onBack={() => navigate(`/projets/ecriture/${project}`)} />
+      <ReaderNav crumb={`${character.project?.title || project} / ${character.name}`} accent={ACC} onBack={() => goWriting(`/projets/ecriture/${project}`)} />
       <div style={{ maxWidth: 760, margin: '0 auto', padding: 'clamp(40px,7vh,84px) clamp(16px,5vw,40px) 120px' }}>
         <header style={{ display: 'flex', gap: 22, alignItems: 'center', marginBottom: 36, flexWrap: 'wrap' }}>
           <Avatar character={character} rgb={rgb} size={96} />
@@ -71,7 +72,7 @@ export function CharacterPage() {
         {character.project && (
           <Block title="Univers" rgb={rgb}>
             <button
-              onClick={() => navigate(`/projets/ecriture/${character.project.slug}`)}
+              onClick={() => goWriting(`/projets/ecriture/${character.project.slug}`)}
               style={{ background: `rgba(${rgb},0.1)`, border: `1px solid rgba(${rgb},0.3)`, color: `rgb(${rgb})`, borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13.5, fontWeight: 600 }}
             >{character.project.title} →</button>
           </Block>

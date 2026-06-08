@@ -25,6 +25,39 @@ export function trackEvent(name, label) {
   try { api.analytics.event(name, label).catch(() => {}); } catch { /* ignore */ }
 }
 
+// Beacon a JSON body even during page unload — uses navigator.sendBeacon when
+// available (works through pagehide / tab close), falls back to fetch with
+// keepalive. Never throws.
+export function sendBeaconJSON(url, body) {
+  try {
+    const json = JSON.stringify(body);
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      const blob = new Blob([json], { type: 'application/json' });
+      if (navigator.sendBeacon(url, blob)) return;
+    }
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: json,
+      keepalive: true,
+    }).catch(() => {});
+  } catch { /* ignore */ }
+}
+
+// Fire-and-forget link-click beacon. `to` may be a path ('/foo') or an
+// absolute URL ('https://example.com'). `kind` is one of the allowlist
+// enforced server-side.
+export function trackClick(to, kind) {
+  try {
+    sendBeaconJSON('/api/analytics/click', {
+      from: typeof window !== 'undefined' ? window.location.pathname : '/',
+      to,
+      kind,
+    });
+  } catch { /* ignore */ }
+}
+
 async function request(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
   const res = await fetch(`/api${path}`, {
@@ -125,6 +158,7 @@ export const api = {
     hit:     (path, referrer) => request('POST', '/analytics/hit', { path, referrer }),
     event:   (name, label) => request('POST', '/analytics/event', { name, label }),
     summary: (days) => request('GET', `/analytics/summary${days ? `?days=${days}` : ''}`),
+    writingSummary: (days) => request('GET', `/analytics/summary/writing${days ? `?days=${days}` : ''}`),
   },
 
   // Public-site collections (admin-only writes)
