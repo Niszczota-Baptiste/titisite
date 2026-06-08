@@ -11,8 +11,8 @@ import { DirtyBadge, MarkdownField, SelectField, addBtn, blockLabel, blockStyle,
 // Suggested entry types (free text — these are one-click shortcuts).
 export const ENTRY_TYPES = ['Livre', 'Chapitre', 'Récit', 'Lettre', 'Lore', 'Monde', 'Région', 'Cité', 'Ville', 'Lieu', 'Carte', 'Personnage', 'Faction', 'Objet'];
 
-const entryMeta = (w) => ({ ...metaOf(w), type: w.type || 'Livre', content: w.content || '' });
-const newEntryMeta = () => ({ ...emptyMeta(), type: 'Livre', content: '' });
+const entryMeta = (w) => ({ ...metaOf(w), type: w.type || 'Livre', content: w.content || '', audioTrackId: w.audioTrackId ?? null, linkedCharacters: w.linkedCharacters || [] });
+const newEntryMeta = () => ({ ...emptyMeta(), type: 'Livre', content: '', audioTrackId: null, linkedCharacters: [] });
 
 // Editor for one entry (a typed node of the project tree). Meta + a type + an
 // optional direct lore `content` + drag-reorder chapters (token toolbar + live
@@ -95,6 +95,14 @@ export function BookEditor({ workId, projectId, parentId = null, characters, glo
         <Field label="Lore / texte direct (Markdown) — affiché en haut de la page de lecture">
           <MarkdownField value={meta.content} onChange={(v) => setMeta({ ...meta, content: v })} characters={characters} glossary={glossary} rows={6} placeholder="Description, lore… (laisse vide si l'élément ne contient que des chapitres ou des sous-éléments)" />
         </Field>
+        <SelectField
+          label="Musique (OST) de l'élément — jouée sur son lore"
+          value={meta.audioTrackId ? String(meta.audioTrackId) : ''}
+          onChange={(v) => setMeta({ ...meta, audioTrackId: v ? Number(v) : null })}
+          options={tracks.filter((t) => t.ost && t.filename).map((t) => ({ value: String(t.id), label: `${t.title}${t.genre ? ` · ${t.genre}` : ''}` }))}
+          allowEmpty="— aucune —"
+        />
+        <LinkedCharacters value={meta.linkedCharacters} onChange={(v) => setMeta({ ...meta, linkedCharacters: v })} characters={characters} />
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Button onClick={saveMeta} disabled={savingMeta || !metaDirty}>{savingMeta ? '…' : (id ? 'Enregistrer l\'élément' : 'Créer l\'élément')}</Button>
         </div>
@@ -166,6 +174,44 @@ const typeChip = {
   fontSize: 10, color: ACC, background: 'rgba(201,168,232,0.12)', border: '1px solid rgba(201,168,232,0.3)',
   borderRadius: 4, padding: '1px 7px', letterSpacing: '0.5px', flexShrink: 0, fontFamily: "'JetBrains Mono',monospace",
 };
+
+// Link project characters to this element, each with a free note (e.g. "Auteur").
+function LinkedCharacters({ value = [], onChange, characters = [] }) {
+  const byId = (id) => characters.find((c) => c.id === id);
+  const available = characters.filter((c) => !value.some((l) => l.id === c.id));
+  return (
+    <div style={blockStyle}>
+      <span style={blockLabel}>Personnages liés (auteur, mentionné…)</span>
+      {value.length === 0 && (
+        <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: 'rgba(180,170,200,0.5)', marginBottom: 8 }}>
+          {characters.length ? 'Aucun personnage lié.' : 'Crée des personnages dans l’onglet « Personnages » pour les lier.'}
+        </p>
+      )}
+      {value.map((l, i) => (
+        <div key={l.id} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
+          <span style={{ width: 130, flexShrink: 0, fontFamily: "'Space Grotesk',sans-serif", fontSize: 13, color: '#ede8f8' }}>{byId(l.id)?.name || `#${l.id}`}</span>
+          <Input
+            value={l.note || ''}
+            onChange={(e) => { const next = [...value]; next[i] = { ...l, note: e.target.value }; onChange(next); }}
+            placeholder="Note / rôle (ex. Auteur, Mentionné…)"
+            style={{ flex: 1, marginBottom: 0 }}
+          />
+          <button style={removeBtn} onClick={() => onChange(value.filter((x) => x.id !== l.id))}>×</button>
+        </div>
+      ))}
+      {available.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => { const id = Number(e.target.value); if (id) onChange([...value, { id, note: '' }]); }}
+          style={{ width: '100%', background: 'rgba(14,8,32,0.72)', border: '1px solid rgba(80,50,130,0.24)', borderRadius: 8, padding: '9px 12px', color: '#ede8f8', fontFamily: "'Inter',sans-serif", fontSize: 13, outline: 'none', marginTop: 6 }}
+        >
+          <option value="">+ Lier un personnage…</option>
+          {available.map((c) => <option key={c.id} value={c.id}>{c.name}{c.role ? ` · ${c.role}` : ''}</option>)}
+        </select>
+      )}
+    </div>
+  );
+}
 
 // Free-text type with one-click suggestions (Ville, Cité, Lettre…).
 function TypeField({ value, onChange }) {

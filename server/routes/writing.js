@@ -17,14 +17,27 @@ export function mapProjectCard(r) {
 }
 
 export function mapWorkCard(r) {
+  let linked = [];
+  try { linked = JSON.parse(r.linked_characters || '[]'); } catch { linked = []; }
   return {
     id: r.id, projectId: r.project_id, parentId: r.parent_id, slug: r.slug,
     title: r.title, titleKr: r.title_kr, type: r.type || 'Livre',
     subtitle: r.subtitle, description: r.description, content: r.content || '',
     status: r.status, accentColor: r.accent_color,
     coverImage: r.cover_image, tags: parseTags(r.tags), ambientEffect: r.ambient_effect || 'none',
+    audioTrackId: r.audio_track_id, track: mapTrack(r.audio_track_id),
+    linkedCharacters: Array.isArray(linked) ? linked : [],
     isPublished: r.is_published === 1, sortOrder: r.sort_order,
   };
+}
+
+// Resolve [{id,note}] links to full character cards (for the reader page).
+function resolveLinkedCharacters(linked) {
+  return (Array.isArray(linked) ? linked : []).map((l) => {
+    const c = db.prepare('SELECT * FROM characters WHERE id = ?').get(l.id);
+    if (!c) return null;
+    return { id: c.id, slug: c.slug, name: c.name, nameKr: c.name_kr, role: c.role, avatarImage: c.avatar_image, note: l.note || '' };
+  }).filter(Boolean);
 }
 
 export function mapMedia(r) {
@@ -146,13 +159,15 @@ ecritureRouter.get('/:project/:work', (req, res) => {
     cur = a.parent_id;
   }
 
+  const card = mapWorkCard(w);
   res.json({
-    ...mapWorkCard(w),
+    ...card,
     project: { slug: p.slug, title: p.title, accentColor: p.accent_color },
     trail,
     chapters,
     media,
     children: publishedEntries(p.id, w.id),
+    linkedCharacters: resolveLinkedCharacters(card.linkedCharacters),
     characters: projectCharacters(p.id),
     glossary: p.has_glossary ? projectGlossary(p.id) : [],
   });

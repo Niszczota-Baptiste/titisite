@@ -142,6 +142,29 @@ describe('writing — admin CRUD (project-scoped)', () => {
     assert.equal((await f.put(`/api/writing/works/${region.id}`, { body: { parentId: city.id } })).json.error, 'invalid_parent');
   });
 
+  it('links characters (with a note) and an OST to an element', async () => {
+    const f = await loggedIn(ADMIN);
+    const proj = (await f.post('/api/writing/projects', { body: { title: 'Lié', isPublished: true } })).json;
+    const char = (await f.post(`/api/writing/projects/${proj.id}/characters`, { body: { name: 'Nielas' } })).json;
+    const track = (await f.get('/api/tracks')).json[0];
+    const book = (await f.post(`/api/writing/projects/${proj.id}/works`, {
+      body: { title: 'Livre I', isPublished: true, audioTrackId: track.id, linkedCharacters: [{ id: char.id, note: 'Auteur' }] },
+    })).json;
+    assert.equal(book.audioTrackId, track.id);
+
+    const view = await fetcher(server.base).get(`/api/ecriture/${proj.slug}/${book.slug}`);
+    assert.equal(view.json.track?.id, track.id);
+    assert.equal(view.json.linkedCharacters[0].name, 'Nielas');
+    assert.equal(view.json.linkedCharacters[0].note, 'Auteur');
+
+    // A character from another project can't be linked.
+    const other = (await f.post('/api/writing/projects', { body: { title: 'Autre' } })).json;
+    const ghost = (await f.post(`/api/writing/projects/${other.id}/characters`, { body: { name: 'Ghost' } })).json;
+    await f.put(`/api/writing/works/${book.id}`, { body: { linkedCharacters: [{ id: ghost.id, note: 'x' }] } });
+    const v2 = await fetcher(server.base).get(`/api/ecriture/${proj.slug}/${book.slug}`);
+    assert.equal(v2.json.linkedCharacters.length, 0, 'cross-project character leaked');
+  });
+
   it('reorders books within a project', async () => {
     const f = await loggedIn(ADMIN);
     const proj = (await f.post('/api/writing/projects', { body: { title: 'Ordre' } })).json;

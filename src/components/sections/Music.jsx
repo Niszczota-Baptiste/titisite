@@ -134,7 +134,7 @@ function TrackRow({ track, playing, progress, onToggle, onLore, accent, mobile }
       {track.loreSlug && (
         <button
           data-interactive
-          onClick={(e) => { e.stopPropagation(); onLore(track.loreSlug, track.title); }}
+          onClick={(e) => { e.stopPropagation(); onLore(track.loreSlug, track.title, track.loreEntry); }}
           title="Lire le texte associé"
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -167,9 +167,9 @@ export function Music({ t, accent, tracks = [] }) {
   const mobile = useIsMobile(860);
   const navigate = useNavigate();
 
-  const goLore = (slug, title) => {
+  const goLore = (slug, title, entry) => {
     trackEvent('link_click', `lore:${title || slug}`);
-    navigate(`/projets/ecriture/${slug}`);
+    navigate(`/projets/ecriture/${slug}${entry ? `/${entry}` : ''}`);
   };
 
   useEffect(() => { window.__musicPlaying = playing !== null; }, [playing]);

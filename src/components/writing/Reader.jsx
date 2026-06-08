@@ -88,8 +88,9 @@ export function Reader() {
   // Track to play for the chapter currently in view. Chapters without a track
   // keep the previous one playing (no cut), so we only surface a real track.
   const activeChapter = work.chapters.find((c) => c.id === activeId);
-  const activeTrack = activeChapter?.track?.filename ? activeChapter.track : null;
-  const hasAnyTrack = work.chapters.some((c) => c.track?.filename);
+  const elementTrack = work.track?.filename ? work.track : null;
+  const activeTrack = (activeChapter?.track?.filename ? activeChapter.track : null) || elementTrack;
+  const hasAnyTrack = Boolean(elementTrack) || work.chapters.some((c) => c.track?.filename);
 
   // Flat, in-reading-order media list so the lightbox can sweep the whole work.
   const flatMedia = [];
@@ -157,6 +158,18 @@ export function Reader() {
               <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, color: 'rgba(160,150,185,0.7)', lineHeight: 1.8, maxWidth: 620, marginTop: 14, fontStyle: 'italic' }}>{work.description}</p>
             )}
           </header>
+
+          {!!(work.linkedCharacters || []).length && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 36 }}>
+              {work.linkedCharacters.map((c) => (
+                <button key={c.id} onClick={() => navigate(`/projets/ecriture/${project}/personnages/${c.slug}`)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `rgba(${rgb},0.08)`, border: `1px solid rgba(${rgb},0.28)`, borderRadius: 20, padding: '5px 14px', cursor: 'pointer', fontFamily: "'Inter',sans-serif" }}>
+                  {c.note && <span style={{ fontSize: 10, color: `rgb(${rgb})`, textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: "'JetBrains Mono',monospace" }}>{c.note}</span>}
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#ede8f8' }}>{c.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {work.content && (
             <div style={{ fontFamily: "'Georgia','Times New Roman',serif", fontSize: 'clamp(16px,1.15vw,18px)', color: 'rgba(216,208,232,0.92)', maxWidth: 680, marginBottom: work.chapters.length ? 56 : 24 }}>

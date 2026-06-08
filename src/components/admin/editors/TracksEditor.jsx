@@ -100,6 +100,24 @@ const selectStyle = {
   fontFamily: "'Inter',sans-serif", fontSize: 13.5, outline: 'none',
 };
 
+// Element picker within a chosen lore project (loads the project's tree flat).
+function LoreEntrySelect({ projectSlug, projects, value, onChange }) {
+  const [entries, setEntries] = useState([]);
+  useEffect(() => {
+    const proj = projects.find((p) => p.slug === projectSlug);
+    if (!proj) { setEntries([]); return; }
+    api.writing.projects.get(proj.id).then((dd) => setEntries(dd.books || [])).catch(() => setEntries([]));
+  }, [projectSlug, projects]);
+  return (
+    <Field label="Élément précis (optionnel) — sinon le lien pointe vers l'univers">
+      <select value={value || ''} onChange={(e) => onChange(e.target.value)} style={selectStyle}>
+        <option value="">— tout l'univers —</option>
+        {entries.map((en) => <option key={en.id} value={en.slug}>{en.type} : {en.title}{en.parentId ? ' (sous-élément)' : ''}</option>)}
+      </select>
+    </Field>
+  );
+}
+
 // ── Per-track form with audio ──────────────────────────────────────────────
 function TrackForm({ d, set, works = [] }) {
   const confirm = useConfirm();
@@ -253,6 +271,9 @@ function TrackForm({ d, set, works = [] }) {
           ))}
         </select>
       </Field>
+      {d.loreSlug && (
+        <LoreEntrySelect projectSlug={d.loreSlug} projects={works} value={d.loreEntry} onChange={(v) => set((p) => ({ ...p, loreEntry: v }))} />
+      )}
 
       {/* Audio section — only for existing tracks */}
       {d.id && (
@@ -391,7 +412,7 @@ function TrackForm({ d, set, works = [] }) {
   );
 }
 
-const EMPTY = { title: '', genre: '', duration: '0:00', clip_start: 0, ost: false, loreSlug: '', effect: 'none' };
+const EMPTY = { title: '', genre: '', duration: '0:00', clip_start: 0, ost: false, loreSlug: '', loreEntry: '', effect: 'none' };
 
 export function TracksEditor() {
   // Writing projects, to let a track point at its associated lore (universe).

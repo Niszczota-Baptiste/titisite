@@ -377,6 +377,10 @@ export function migrate() {
   ensureColumn('writing_works', 'parent_id', 'INTEGER REFERENCES writing_works(id) ON DELETE CASCADE');
   ensureColumn('writing_works', 'type', "TEXT NOT NULL DEFAULT 'Livre'");
   ensureColumn('writing_works', 'content', "TEXT NOT NULL DEFAULT ''");
+  // Optional OST for the element's own lore content, and characters linked to
+  // the element with a free note (e.g. "Auteur : Nielas") — JSON [{id,note}].
+  ensureColumn('writing_works', 'audio_track_id', 'INTEGER REFERENCES tracks(id) ON DELETE SET NULL');
+  ensureColumn('writing_works', 'linked_characters', "TEXT NOT NULL DEFAULT '[]'");
   db.exec(`CREATE INDEX IF NOT EXISTS idx_writing_works_project ON writing_works(project_id, sort_order);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_writing_works_parent ON writing_works(parent_id, sort_order);`);
 

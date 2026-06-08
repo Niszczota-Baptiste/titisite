@@ -159,6 +159,15 @@ function applyEntryFields(id, projectId, body) {
     }
     db.prepare('UPDATE writing_works SET parent_id = ? WHERE id = ?').run(pid, id);
   }
+  if (body.audioTrackId !== undefined) {
+    db.prepare('UPDATE writing_works SET audio_track_id = ? WHERE id = ?').run(loadTrackId(body.audioTrackId), id);
+  }
+  if (body.linkedCharacters !== undefined) {
+    const clean = (Array.isArray(body.linkedCharacters) ? body.linkedCharacters : [])
+      .map((l) => ({ id: Number(l.id), note: typeof l.note === 'string' ? l.note.slice(0, 120) : '' }))
+      .filter((l) => db.prepare('SELECT 1 FROM characters WHERE id = ? AND project_id = ?').get(l.id, projectId));
+    db.prepare('UPDATE writing_works SET linked_characters = ? WHERE id = ?').run(JSON.stringify(clean), id);
+  }
   return null;
 }
 
