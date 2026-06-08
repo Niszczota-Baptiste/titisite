@@ -163,8 +163,13 @@ export function KoreanTerm({ term, entry, accent = ACC }) {
 }
 
 function firstLine(s) {
-  const line = String(s || '').split('\n').find((l) => l.trim());
-  return line || '';
+  const line = String(s || '').split('\n').find((l) => l.trim()) || '';
+  // Strip token/markdown syntax so the card preview reads cleanly.
+  return line
+    .replace(/\[\[perso:([^\]]*)\]\]/g, (_, inner) => inner.split('|').pop())
+    .replace(/\{\{kr:([^}]*)\}\}/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1');
 }
 
 export function hexToRgb(hex) {

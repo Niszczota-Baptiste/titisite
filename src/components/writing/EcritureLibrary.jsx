@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
+import { useReveal } from '../../hooks/useReveal';
 import { WritingLibrary } from './WritingLibrary';
 import { Avatar } from './tokens';
 import { ReaderNav, ReaderShell } from './shell';
@@ -17,6 +18,10 @@ export function EcritureLibrary() {
   const [characters, setCharacters] = useState([]);
   const [glossary, setGlossary] = useState([]);
   const [loading, setLoading] = useState(true);
+  // The library cards carry the `.reveal` class (shared with the home grid);
+  // this page has no global observer, so drive one here. The hook re-runs each
+  // render, picking up cards once the async fetch resolves.
+  useReveal();
 
   useEffect(() => {
     let alive = true;
