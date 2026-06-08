@@ -55,7 +55,10 @@ export function ProjectsEditor({ onOpen }) {
     try { setProjects(await api.writing.projects.reorder(order)); } catch (e) { toast.error(e.message); }
   };
 
-  const form = (
+  // Only build the form when a draft exists — `draft.hasGlossary` is read
+  // eagerly here, so computing this with a null draft (no active edit) crashes
+  // and blanks the whole admin.
+  const form = draft ? (
     <div style={{ ...box, borderColor: `rgba(${ACC_RGB},0.4)` }}>
       <div style={blockStyle}>
         <span style={blockLabel}>Projet / univers</span>
@@ -71,7 +74,7 @@ export function ProjectsEditor({ onOpen }) {
         <Button onClick={save} disabled={saving}>{saving ? '…' : 'Enregistrer'}</Button>
       </div>
     </div>
-  );
+  ) : null;
 
   return (
     <div>
