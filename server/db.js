@@ -312,6 +312,106 @@ export function migrate() {
       created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
   `);
+
+  // ── Writing space (RP / worldbuilding — univers « Nostra ») ──────────────────
+  // Relational, like the workspace tables: a work owns ordered chapters, each
+  // chapter may point at an existing music track (FK to `tracks`, the JSON-blob
+  // collection — its PK is a plain integer). No audio is stored here; the
+  // reading-mode player streams the full file through the existing
+  // /api/audio/:filename endpoint. Images reuse the project_images pipeline
+  // (uploaded via /api/images, served via /api/images/:filename), so writing_media
+  // only references the on-disk UUID filename — never a raw path.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS writing_works (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug         TEXT NOT NULL UNIQUE,
+      title        TEXT NOT NULL,
+      title_kr     TEXT NOT NULL DEFAULT '',
+      subtitle     TEXT NOT NULL DEFAULT '',
+      description  TEXT NOT NULL DEFAULT '',
+      status       TEXT NOT NULL DEFAULT 'brouillon' CHECK (status IN ('brouillon','wip','termine')),
+      accent_color TEXT NOT NULL DEFAULT '#c9a8e8',
+      cover_image  TEXT NOT NULL DEFAULT '',
+      is_published INTEGER NOT NULL DEFAULT 0,
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_writing_works_sort ON writing_works(sort_order);`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS writing_chapters (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      work_id        INTEGER NOT NULL REFERENCES writing_works(id) ON DELETE CASCADE,
+      number         TEXT NOT NULL DEFAULT '',
+      title          TEXT NOT NULL DEFAULT '',
+      title_kr       TEXT NOT NULL DEFAULT '',
+      content        TEXT NOT NULL DEFAULT '',
+      audio_track_id INTEGER REFERENCES tracks(id) ON DELETE SET NULL,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      created_at     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_writing_chapters_work ON writing_chapters(work_id, sort_order);`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS characters (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug         TEXT NOT NULL UNIQUE,
+      name         TEXT NOT NULL,
+      name_kr      TEXT NOT NULL DEFAULT '',
+      role         TEXT NOT NULL DEFAULT '',
+      bio          TEXT NOT NULL DEFAULT '',
+      avatar_image TEXT NOT NULL DEFAULT '',
+      relations    TEXT NOT NULL DEFAULT '[]',
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+
+  // n-n link work ↔ character
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS work_characters (
+      work_id      INTEGER NOT NULL REFERENCES writing_works(id) ON DELETE CASCADE,
+      character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+      PRIMARY KEY (work_id, character_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_work_characters_char ON work_characters(character_id);`);
+
+  // Media (screenshots / schemas / maps) attached to a work or a chapter.
+  // `filename` is the UUID produced by the shared image uploader and must match
+  // a project_images row to be served — same anti-leak guard as audio/images.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS writing_media (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      work_id    INTEGER REFERENCES writing_works(id) ON DELETE CASCADE,
+      chapter_id INTEGER REFERENCES writing_chapters(id) ON DELETE CASCADE,
+      type       TEXT NOT NULL DEFAULT 'screenshot' CHECK (type IN ('screenshot','schema','carte')),
+      filename   TEXT NOT NULL,
+      caption    TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_writing_media_work ON writing_media(work_id, sort_order);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_writing_media_chapter ON writing_media(chapter_id, sort_order);`);
+
+  // Korean glossary for the reading-mode tooltips ({{kr:…}} tokens).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS glossary_terms (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      term_kr      TEXT NOT NULL,
+      romanization TEXT NOT NULL DEFAULT '',
+      meaning      TEXT NOT NULL DEFAULT '',
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
 }
 
 function ensureColumn(table, column, ddl) {

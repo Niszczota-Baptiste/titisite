@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { COLLECTIONS, count, insert, migrate } from './db.js';
 import { ensureSeedUsers } from './users.js';
+import { seedWritingIfEmpty } from './seed-writing.js';
 import { migrateOrphansToDefault } from './workspaces.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +43,8 @@ export async function seedIfEmpty({ force = false } = {}) {
 
   const wsMigration = migrateOrphansToDefault();
   if (wsMigration) results.workspaces = wsMigration;
+
+  results.writing = seedWritingIfEmpty();
 
   return results;
 }
