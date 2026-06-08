@@ -123,13 +123,21 @@ ecritureRouter.get('/:slug', (req, res) => {
 // ── Public character sheets (no auth) ────────────────────────────────────────
 export const personnagesRouter = Router();
 
-// GET /api/personnages — index of every character (worldbuilding is public)
+// GET /api/personnages — index of characters that appear in at least one
+// published work. Characters tied only to drafts stay hidden so unreleased
+// worldbuilding doesn't leak.
 personnagesRouter.get('/', (_req, res) => {
-  const rows = db.prepare('SELECT * FROM characters ORDER BY sort_order, name').all();
+  const rows = db.prepare(`
+    SELECT DISTINCT c.* FROM characters c
+    JOIN work_characters wc ON wc.character_id = c.id
+    JOIN writing_works w ON w.id = wc.work_id AND w.is_published = 1
+    ORDER BY c.sort_order, c.name
+  `).all();
   res.json(rows.map(mapCharacter));
 });
 
-// GET /api/personnages/:slug — character + the published works they appear in
+// GET /api/personnages/:slug — character + the published works they appear in.
+// 404 if the character isn't in any published work yet.
 personnagesRouter.get('/:slug', (req, res) => {
   const c = db.prepare('SELECT * FROM characters WHERE slug = ?').get(req.params.slug);
   if (!c) return res.status(404).json({ error: 'not_found' });
@@ -139,6 +147,7 @@ personnagesRouter.get('/:slug', (req, res) => {
     WHERE wc.character_id = ? AND w.is_published = 1
     ORDER BY w.sort_order, w.id
   `).all(c.id).map((w) => ({ slug: w.slug, title: w.title, accentColor: w.accent_color }));
+  if (!works.length) return res.status(404).json({ error: 'not_found' });
   res.json({ ...mapCharacter(c), works });
 });
 

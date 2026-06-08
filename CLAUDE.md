@@ -21,8 +21,23 @@ Single-process Node app:
   by workspace_id**. Mounted under `/api/workspaces/:slug/{...}` behind
   `resolveWorkspace` middleware (`server/middleware/scope.js`) so the route
   handler always has `req.workspace` and never serves cross-workspace rows.
+- The **writing space** (RP / worldbuilding « Nostra ») is **relational**
+  (not JSON-blob): `writing_works` → `writing_chapters`
+  (`audio_track_id` is an FK to the existing `tracks` collection — the OST
+  flag lives in the track JSON blob), `characters` + `work_characters` (n-n),
+  `writing_media` (reuses the `/api/images` pipeline — stores the UUID
+  filename, never a path), `glossary_terms`. Public read at
+  `/api/ecriture`, `/api/ecriture/:slug`, `/api/personnages[/:slug]`,
+  `/api/lexique`; admin CRUD under `/api/writing/*`
+  (`server/routes/writing.js` + `writing-admin.js`). Reading mode at
+  `/projets/ecriture/*` streams the **full** audio file (the 30s cap is
+  client-only in `Music.jsx`). Chapter Markdown supports
+  `[[perso:slug|Label]]` and `{{kr:terme}}` tokens, rendered by the in-house,
+  XSS-safe renderer in `src/components/writing/markdown.jsx` (no
+  `dangerouslySetInnerHTML`, no markdown dependency).
 - Frontend API calls go through `src/api/client.js`. Use `api.ws(slug).x`
-  helpers for scoped resources, never hand-build URLs.
+  helpers for scoped resources and `api.ecriture.*` / `api.writing.*` for the
+  writing space, never hand-build URLs.
 - Components imports: prefer the existing primitives in
   `src/components/admin/ui.jsx` (Button, Field, Input, Textarea) and
   `src/components/project/shared.jsx` (Section, Modal, Tag, Avatar,
@@ -119,3 +134,4 @@ DB at `DB_PATH` (default `./data.sqlite`) and seeds:
 | New scoped API resource | new file in `server/routes/` with `Router({ mergeParams: true })`, then mount under the `scoped` router in `server/index.js` |
 | New public-site collection | append to `PUBLIC_COLLECTIONS` in `server/db.js`, create `src/data/<name>.js`, add seed mapping in `server/seed.js`, write the section + its admin editor |
 | New public setting | use the existing `site_settings` k/v table — see `server/routes/settings.js` |
+| New writing-space field/resource | add the column/table in `server/db.js#migrate`, the mapper + route in `server/routes/writing.js` (public) / `writing-admin.js` (admin), an `api.*` helper in `src/api/client.js`, then the editor in `src/components/admin/editors/writing/` and reader UI in `src/components/writing/` |
