@@ -49,7 +49,9 @@ export function RelationalList({ title, addLabel = '+ Ajouter', api: m, emptyDra
     try { setItems(await m.reorder(order)); } catch (e) { toast.error(e.message); }
   };
 
-  const form = (
+  // Only build the form when a draft exists — renderForm dereferences draft
+  // fields, so calling it with null (no active edit) would crash.
+  const form = draft ? (
     <div style={{ ...box, borderColor: `rgba(${ACC_RGB},0.4)` }}>
       {renderForm(draft, setDraft)}
       <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end', borderTop: '1px solid rgba(60,40,100,0.12)', paddingTop: 14 }}>
@@ -57,7 +59,7 @@ export function RelationalList({ title, addLabel = '+ Ajouter', api: m, emptyDra
         <Button onClick={save} disabled={saving}>{saving ? '…' : 'Enregistrer'}</Button>
       </div>
     </div>
-  );
+  ) : null;
 
   return (
     <div>

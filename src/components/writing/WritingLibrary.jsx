@@ -61,7 +61,10 @@ export function WritingLibrary({ works = [], loading = false, emptyHint, accentH
         gap: 18,
       }}>
         {visible.map((w, i) => (
-          <div key={w.id} className="reveal" style={{ transitionDelay: `${i * 0.08}s` }}>
+          // Self-contained entrance animation (not the global `.reveal`
+          // observer): it replays on every mount, so cards reappear correctly
+          // when the genre filter changes back to "Tous".
+          <div key={w.id} style={{ animation: `fadeUp 0.5s ease both`, animationDelay: `${Math.min(i * 0.06, 0.4)}s` }}>
             <WritingCard work={w} to={cardTo ? cardTo(w) : undefined} />
           </div>
         ))}
