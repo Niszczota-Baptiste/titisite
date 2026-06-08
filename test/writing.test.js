@@ -145,6 +145,8 @@ describe('writing — admin CRUD', () => {
     const f = await loggedIn(ADMIN);
     const a = (await f.post('/api/writing/works', { body: { title: 'Effet', ambientEffect: 'petals' } })).json;
     assert.equal(a.ambientEffect, 'petals');
+    const fw = (await f.post('/api/writing/works', { body: { title: 'EffetFW', ambientEffect: 'fireworks' } })).json;
+    assert.equal(fw.ambientEffect, 'fireworks');
     const b = (await f.post('/api/writing/works', { body: { title: 'Effet2', ambientEffect: 'lasers' } })).json;
     assert.equal(b.ambientEffect, 'none', 'unknown effect should fall back to none');
     const c = (await f.post('/api/writing/works', { body: { title: 'Effet3' } })).json;

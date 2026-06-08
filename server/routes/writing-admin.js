@@ -13,7 +13,7 @@ writingAdminRouter.use(requireAuth, requireRole('admin'));
 
 const WORK_STATUS = new Set(['brouillon', 'wip', 'termine']);
 const MEDIA_TYPE = new Set(['screenshot', 'schema', 'carte']);
-const AMBIENT = new Set(['none', 'petals', 'leaves', 'snow', 'embers', 'fireflies']);
+const AMBIENT = new Set(['none', 'petals', 'leaves', 'snow', 'embers', 'fireflies', 'notes', 'wind', 'waves', 'fireworks']);
 const ambientOf = (v, fallback = 'none') => (AMBIENT.has(v) ? v : fallback);
 
 const str = (v, fallback = '') => (typeof v === 'string' ? v : fallback);
