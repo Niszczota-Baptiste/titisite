@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { Lightbox } from './Lightbox';
 import { renderMarkdown } from './markdown';
 import { ReaderAudio } from './ReaderAudio';
 import { hexToRgb } from './tokens';
@@ -20,6 +21,7 @@ export function Reader() {
   const [activeId, setActiveId] = useState(null);
   const [progress, setProgress] = useState(0);
   const [tocOpen, setTocOpen] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
   const articleRef = useRef(null);
 
   useEffect(() => {
@@ -93,6 +95,12 @@ export function Reader() {
   const activeTrack = activeChapter?.track?.filename ? activeChapter.track : null;
   const hasAnyTrack = work.chapters.some((c) => c.track?.filename);
 
+  // Flat, in-reading-order media list so the lightbox can sweep the whole work.
+  const flatMedia = [];
+  work.chapters.forEach((c) => (c.media || []).forEach((m) => flatMedia.push(m)));
+  (work.media || []).forEach((m) => flatMedia.push(m));
+  const mediaIndex = (id) => flatMedia.findIndex((m) => m.id === id);
+
   return (
     <ReaderShell>
       {/* Reading progress bar */}
@@ -149,7 +157,7 @@ export function Reader() {
           </header>
 
           {work.chapters.map((ch) => (
-            <ChapterBlock key={ch.id} chapter={ch} ctx={ctx} rgb={rgb} acc={acc} />
+            <ChapterBlock key={ch.id} chapter={ch} ctx={ctx} rgb={rgb} onOpenMedia={(id) => setLightbox(mediaIndex(id))} />
           ))}
 
           {!work.chapters.length && (
@@ -157,11 +165,49 @@ export function Reader() {
               Aucun chapitre publié pour l’instant.
             </p>
           )}
+
+          {!!(work.media || []).length && (
+            <section style={{ marginTop: 24, paddingTop: 28, borderTop: `1px solid rgba(${rgb},0.18)` }}>
+              <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 13, fontWeight: 700, color: `rgba(${rgb},0.85)`, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 18 }}>
+                Galerie &amp; cartes
+              </h2>
+              <MediaGrid media={work.media} rgb={rgb} onOpen={(id) => setLightbox(mediaIndex(id))} />
+            </section>
+          )}
         </article>
       </div>
 
       {hasAnyTrack && <ReaderAudio activeTrack={activeTrack} accent={acc} />}
+      <Lightbox items={flatMedia} index={lightbox} onClose={() => setLightbox(null)} onNavigate={setLightbox} />
     </ReaderShell>
+  );
+}
+
+export function MediaGrid({ media = [], rgb, onOpen }) {
+  if (!media.length) return null;
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 12 }}>
+      {media.map((m) => (
+        <figure key={m.id} style={{ margin: 0 }}>
+          <button
+            type="button"
+            onClick={() => onOpen(m.id)}
+            style={{
+              display: 'block', width: '100%', padding: 0, cursor: 'zoom-in',
+              border: `1px solid rgba(${rgb},0.22)`, borderRadius: 12, overflow: 'hidden',
+              background: 'rgba(12,8,24,0.8)', aspectRatio: '4/3', transition: 'border-color 0.2s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.borderColor = `rgba(${rgb},0.55)`)}
+            onMouseLeave={(e) => (e.currentTarget.style.borderColor = `rgba(${rgb},0.22)`)}
+          >
+            <img src={m.url} alt={m.caption || ''} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          </button>
+          {m.caption && (
+            <figcaption style={{ fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: 'rgba(180,170,200,0.65)', marginTop: 6, lineHeight: 1.5 }}>{m.caption}</figcaption>
+          )}
+        </figure>
+      ))}
+    </div>
   );
 }
 
@@ -198,7 +244,7 @@ function Toc({ work, activeId, onGo, rgb, acc }) {
   );
 }
 
-function ChapterBlock({ chapter, ctx, rgb, acc }) {
+function ChapterBlock({ chapter, ctx, rgb, onOpenMedia }) {
   const body = useMemo(() => renderMarkdown(chapter.content, ctx), [chapter.content, ctx]);
   return (
     <section
@@ -218,6 +264,11 @@ function ChapterBlock({ chapter, ctx, rgb, acc }) {
       <div style={{ fontFamily: "'Georgia','Times New Roman',serif", fontSize: 'clamp(16px,1.15vw,18px)', color: 'rgba(216,208,232,0.92)', maxWidth: 680 }}>
         {body}
       </div>
+      {!!(chapter.media || []).length && (
+        <div style={{ marginTop: 28 }}>
+          <MediaGrid media={chapter.media} rgb={rgb} onOpen={onOpenMedia} />
+        </div>
+      )}
     </section>
   );
 }
