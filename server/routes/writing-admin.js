@@ -101,6 +101,9 @@ writingAdminRouter.get('/projects/:id(\\d+)', (req, res) => {
 writingAdminRouter.post('/projects', (req, res) => {
   if (!str(req.body?.title).trim()) return res.status(400).json({ error: 'missing_title' });
   const r = metaInsert('writing_projects', {}, req.body);
+  if (req.body.hasGlossary !== undefined) {
+    db.prepare('UPDATE writing_projects SET has_glossary = ? WHERE id = ?').run(req.body.hasGlossary ? 1 : 0, r.lastInsertRowid);
+  }
   res.status(201).json(mapProjectCard(db.prepare('SELECT * FROM writing_projects WHERE id = ?').get(r.lastInsertRowid)));
 });
 
@@ -110,6 +113,9 @@ writingAdminRouter.put('/projects/:id(\\d+)', (req, res) => {
   if (!ex) return res.status(404).json({ error: 'not_found' });
   const out = metaUpdate('writing_projects', id, ex, req.body);
   if (out.error) return res.status(400).json(out);
+  if (req.body.hasGlossary !== undefined) {
+    db.prepare('UPDATE writing_projects SET has_glossary = ? WHERE id = ?').run(req.body.hasGlossary ? 1 : 0, id);
+  }
   res.json(mapProjectCard(db.prepare('SELECT * FROM writing_projects WHERE id = ?').get(id)));
 });
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../../../api/client';
 import { useConfirm } from '../../../../ui/ConfirmProvider';
 import { useToast } from '../../../../ui/ToastProvider';
-import { ACC, ACC_RGB, Button, box } from '../../ui';
+import { ACC, ACC_RGB, Button, CheckboxField, box } from '../../ui';
 import { MetaFields, emptyMeta, metaOf } from './MetaFields';
 import { blockLabel, blockStyle } from './widgets';
 
@@ -25,8 +25,8 @@ export function ProjectsEditor({ onOpen }) {
   };
   useEffect(() => { load(); }, []); // eslint-disable-line
 
-  const startCreate = () => { setEditing('new'); setDraft(emptyMeta()); };
-  const startEdit = (p) => { setEditing(p.id); setDraft(metaOf(p)); };
+  const startCreate = () => { setEditing('new'); setDraft({ ...emptyMeta(), hasGlossary: false }); };
+  const startEdit = (p) => { setEditing(p.id); setDraft({ ...metaOf(p), hasGlossary: p.hasGlossary }); };
   const cancel = () => { setEditing(null); setDraft(null); };
 
   const save = async () => {
@@ -60,6 +60,11 @@ export function ProjectsEditor({ onOpen }) {
       <div style={blockStyle}>
         <span style={blockLabel}>Projet / univers</span>
         <MetaFields meta={draft} setMeta={setDraft} publishLabel="Publié (visible sur la page d’accueil)" />
+        <CheckboxField
+          label="Activer le lexique coréen (termes {{kr:…}} et onglet Lexique)"
+          value={draft.hasGlossary}
+          onChange={(v) => setDraft({ ...draft, hasGlossary: v })}
+        />
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', borderTop: '1px solid rgba(60,40,100,0.12)', paddingTop: 14 }}>
         <Button variant="ghost" onClick={cancel} disabled={saving}>Annuler</Button>
@@ -99,7 +104,7 @@ export function ProjectsEditor({ onOpen }) {
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <IconBtn onClick={() => move(p.id, -1)}>↑</IconBtn>
                     <IconBtn onClick={() => move(p.id, +1)}>↓</IconBtn>
-                    <Button onClick={() => onOpen(p.id, p.title)}>Gérer le contenu →</Button>
+                    <Button onClick={() => onOpen(p.id, p.title, p.hasGlossary)}>Gérer le contenu →</Button>
                     <Button variant="ghost" onClick={() => startEdit(p)}>Éditer</Button>
                     <Button variant="danger" onClick={() => remove(p.id)}>Supprimer</Button>
                   </div>

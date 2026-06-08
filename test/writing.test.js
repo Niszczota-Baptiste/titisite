@@ -137,6 +137,20 @@ describe('writing — admin CRUD (project-scoped)', () => {
     assert.equal((await f.post('/api/writing/media', { body: { type: 'screenshot' } })).status, 400);
   });
 
+  it('per-project glossary toggle hides the lexicon publicly', async () => {
+    const f = await loggedIn(ADMIN);
+    const p = (await f.post('/api/writing/projects', { body: { title: 'Sans Lexique', isPublished: true, hasGlossary: false } })).json;
+    assert.equal(p.hasGlossary, false);
+    // a term can still be created (kept in DB) but is not exposed publicly
+    await f.post(`/api/writing/projects/${p.id}/glossary`, { body: { termKr: '비' } });
+    const pub = await fetcher(server.base).get(`/api/ecriture/${p.slug}`);
+    assert.deepEqual(pub.json.glossary, [], 'glossary leaked while disabled');
+
+    const on = (await f.put(`/api/writing/projects/${p.id}`, { body: { hasGlossary: true } })).json;
+    assert.equal(on.hasGlossary, true);
+    assert.equal((await fetcher(server.base).get(`/api/ecriture/${p.slug}`)).json.glossary.length, 1);
+  });
+
   it('cascades: deleting a project removes its books and characters', async () => {
     const f = await loggedIn(ADMIN);
     const proj = (await f.post('/api/writing/projects', { body: { title: 'Éphémère', isPublished: true } })).json;

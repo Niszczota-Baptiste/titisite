@@ -12,9 +12,10 @@ export function WritingEditor() {
       <ProjectWorkspace
         projectId={open.id}
         projectTitle={open.title}
+        hasGlossary={open.hasGlossary}
         onBack={() => setOpen(null)}
       />
     );
   }
-  return <ProjectsEditor onOpen={(id, title) => setOpen({ id, title })} />;
+  return <ProjectsEditor onOpen={(id, title, hasGlossary) => setOpen({ id, title, hasGlossary })} />;
 }

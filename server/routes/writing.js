@@ -11,6 +11,7 @@ export function mapProjectCard(r) {
     id: r.id, slug: r.slug, title: r.title, titleKr: r.title_kr, subtitle: r.subtitle,
     description: r.description, status: r.status, accentColor: r.accent_color,
     coverImage: r.cover_image, tags: parseTags(r.tags), ambientEffect: r.ambient_effect || 'none',
+    hasGlossary: r.has_glossary === 1,
     isPublished: r.is_published === 1, sortOrder: r.sort_order,
   };
 }
@@ -88,7 +89,8 @@ ecritureRouter.get('/:project', (req, res) => {
   if (!p) return res.status(404).json({ error: 'not_found' });
   const books = db.prepare('SELECT * FROM writing_works WHERE project_id = ? AND is_published = 1 ORDER BY sort_order, id')
     .all(p.id).map(mapWorkCard);
-  res.json({ ...mapProjectCard(p), books, characters: projectCharacters(p.id), glossary: projectGlossary(p.id) });
+  const glossary = p.has_glossary ? projectGlossary(p.id) : [];
+  res.json({ ...mapProjectCard(p), books, characters: projectCharacters(p.id), glossary });
 });
 
 // GET /api/ecriture/:project/personnages/:slug — a character of the project
@@ -119,6 +121,6 @@ ecritureRouter.get('/:project/:work', (req, res) => {
     chapters,
     media,
     characters: projectCharacters(p.id),
-    glossary: projectGlossary(p.id),
+    glossary: p.has_glossary ? projectGlossary(p.id) : [],
   });
 });

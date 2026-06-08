@@ -7,14 +7,16 @@ import { GlossaryEditor } from './GlossaryEditor';
 const SUB = [
   { key: 'books', label: 'Livres', Editor: BooksEditor },
   { key: 'characters', label: 'Personnages', Editor: CharactersEditor },
-  { key: 'glossary', label: 'Lexique', Editor: GlossaryEditor },
+  { key: 'glossary', label: 'Lexique', Editor: GlossaryEditor, needsGlossary: true },
 ];
 
 // Content workspace for one project: its books, characters and glossary — all
-// scoped to the project.
-export function ProjectWorkspace({ projectId, projectTitle, onBack }) {
+// scoped to the project. The Lexique tab only shows when the project enabled it.
+export function ProjectWorkspace({ projectId, projectTitle, hasGlossary, onBack }) {
+  const tabs = SUB.filter((s) => !s.needsGlossary || hasGlossary);
   const [sub, setSub] = useState('books');
-  const Active = SUB.find((s) => s.key === sub).Editor;
+  const active = tabs.find((s) => s.key === sub) || tabs[0];
+  const Active = active.Editor;
 
   return (
     <div>
@@ -26,8 +28,8 @@ export function ProjectWorkspace({ projectId, projectTitle, onBack }) {
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
-        {SUB.map((s) => {
-          const on = sub === s.key;
+        {tabs.map((s) => {
+          const on = active.key === s.key;
           return (
             <button key={s.key} onClick={() => setSub(s.key)} style={{
               background: on ? `rgba(${ACC_RGB},0.14)` : 'transparent',
@@ -40,7 +42,7 @@ export function ProjectWorkspace({ projectId, projectTitle, onBack }) {
         })}
       </div>
 
-      <Active key={`${projectId}-${sub}`} projectId={projectId} />
+      <Active key={`${projectId}-${active.key}`} projectId={projectId} />
     </div>
   );
 }

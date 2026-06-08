@@ -334,6 +334,7 @@ export function migrate() {
       cover_image  TEXT NOT NULL DEFAULT '',
       tags         TEXT NOT NULL DEFAULT '[]',
       ambient_effect TEXT NOT NULL DEFAULT 'none',
+      has_glossary INTEGER NOT NULL DEFAULT 1,
       is_published INTEGER NOT NULL DEFAULT 0,
       sort_order   INTEGER NOT NULL DEFAULT 0,
       created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
@@ -341,6 +342,8 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_writing_projects_sort ON writing_projects(sort_order);`);
+  // Per-project toggle for the Korean glossary feature (not every universe uses it).
+  ensureColumn('writing_projects', 'has_glossary', 'INTEGER NOT NULL DEFAULT 1');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS writing_works (
