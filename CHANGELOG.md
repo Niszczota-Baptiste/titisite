@@ -5,6 +5,24 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — carte-3d-ecriture
+
+### Added
+- **Carte du monde 3D par univers** (espace Écriture) : île isométrique low-poly
+  (three.js / react-three-fiber, lazy-loaded), 6 biomes, 10 bâtiments, zones
+  cliquables liées aux livres/personnages/lexique (contenu résolu côté serveur,
+  zéro double saisie) ou libres. Survol = halo + aperçu ; clic = zoom caméra +
+  panneau latéral (Markdown maison, stats chapitres/mots/minutes, CTA).
+  Recherche, filtres par catégorie, arcs de connexion entre zones, lucioles,
+  animation d'intro (respecte `prefers-reduced-motion`), qualité auto sur
+  mobile, fallback clavier/lecteur d'écran. Onglet admin « Carte 3D » avec
+  placement **drag & drop directement sur l'île**. Voir `docs/carte-3d.md`.
+- Table `writing_map_zones` + colonne `writing_projects.map_biome` ;
+  `GET /api/ecriture/:project` expose `map: { biome, zones }` ; CRUD admin
+  sous `/api/writing/projects/:id/map-zones`.
+
+---
+
 ## [Unreleased] — production-deployment-prep
 
 ### Security

@@ -510,6 +510,43 @@ export function migrate() {
   ensureColumn('glossary_terms', 'project_id', 'INTEGER REFERENCES writing_projects(id) ON DELETE CASCADE');
   db.exec(`CREATE INDEX IF NOT EXISTS idx_glossary_project ON glossary_terms(project_id, sort_order);`);
 
+  // Interactive 3D world map of a project (« Carte du monde »). Each zone is a
+  // clickable building on the project's island. A zone either *links* an
+  // existing entity of the project (kind work/character/glossary + target_id —
+  // its title/cover/description are resolved at read time, no double entry) or
+  // is free-form (kind 'libre', all fields its own). Non-empty own fields
+  // always override the resolved ones. `connections` is a JSON array of other
+  // zone ids of the same project (drawn as arcs). The biome preset lives on
+  // writing_projects.map_biome; the map only renders when zones exist.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS writing_map_zones (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id  INTEGER NOT NULL REFERENCES writing_projects(id) ON DELETE CASCADE,
+      kind        TEXT NOT NULL DEFAULT 'libre' CHECK (kind IN ('work','character','glossary','libre')),
+      target_id   INTEGER,
+      title       TEXT NOT NULL DEFAULT '',
+      subtitle    TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      content     TEXT NOT NULL DEFAULT '',
+      cover_image TEXT NOT NULL DEFAULT '',
+      category    TEXT NOT NULL DEFAULT '',
+      tags        TEXT NOT NULL DEFAULT '[]',
+      date        TEXT NOT NULL DEFAULT '',
+      link        TEXT NOT NULL DEFAULT '',
+      x           REAL NOT NULL DEFAULT 0,
+      z           REAL NOT NULL DEFAULT 0,
+      scale       REAL NOT NULL DEFAULT 1,
+      rotation    REAL NOT NULL DEFAULT 0,
+      building    TEXT NOT NULL DEFAULT 'tour',
+      connections TEXT NOT NULL DEFAULT '[]',
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_map_zones_project ON writing_map_zones(project_id, sort_order);`);
+  ensureColumn('writing_projects', 'map_biome', "TEXT NOT NULL DEFAULT 'plaines'");
+
   // One-time migration for installs created before the project layer existed:
   // gather orphan works/characters/glossary under a single default project so
   // nothing is lost. Runs only while orphans exist (guarded), then never again.

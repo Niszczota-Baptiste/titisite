@@ -37,7 +37,12 @@ Single-process Node app:
   `src/components/writing/AmbientEffect.jsx`. Chapter Markdown supports
   `[[perso:slug|Label]]` and `{{kr:terme}}` tokens, rendered by the in-house,
   XSS-safe renderer in `src/components/writing/markdown.jsx` (no
-  `dangerouslySetInnerHTML`, no markdown dependency).
+  `dangerouslySetInnerHTML`, no markdown dependency). Each project can also
+  have a **3D world map** (`writing_map_zones` + `writing_projects.map_biome`,
+  rendered by `src/components/writing/map/` — three.js lazy-loaded, shown only
+  when zones exist). Zones either link an existing work/character/glossary
+  term (content resolved at read time) or are free-form; see
+  `docs/carte-3d.md`.
 - Frontend API calls go through `src/api/client.js`. Use `api.ws(slug).x`
   helpers for scoped resources and `api.ecriture.*` / `api.writing.*` for the
   writing space, never hand-build URLs.
@@ -138,3 +143,4 @@ DB at `DB_PATH` (default `./data.sqlite`) and seeds:
 | New public-site collection | append to `PUBLIC_COLLECTIONS` in `server/db.js`, create `src/data/<name>.js`, add seed mapping in `server/seed.js`, write the section + its admin editor |
 | New public setting | use the existing `site_settings` k/v table — see `server/routes/settings.js` |
 | New writing-space field/resource | add the column/table in `server/db.js#migrate`, the mapper + route in `server/routes/writing.js` (public) / `writing-admin.js` (admin), an `api.*` helper in `src/api/client.js`, then the editor in `src/components/admin/editors/writing/` and reader UI in `src/components/writing/` |
+| New 3D-map biome/building | `src/components/writing/map/presets.js` (+ the mesh in `buildings.jsx` for a building), then the matching allowlist in `server/routes/writing-admin.js` — see `docs/carte-3d.md` |

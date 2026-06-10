@@ -3,11 +3,13 @@ import { ACC, ACC_RGB } from '../../ui';
 import { BooksEditor } from './BooksEditor';
 import { CharactersEditor } from './CharactersEditor';
 import { GlossaryEditor } from './GlossaryEditor';
+import { MapEditor } from './MapEditor';
 
 const SUB = [
   { key: 'books', label: 'Livres', Editor: BooksEditor },
   { key: 'characters', label: 'Personnages', Editor: CharactersEditor },
   { key: 'glossary', label: 'Lexique', Editor: GlossaryEditor, needsGlossary: true },
+  { key: 'map', label: 'Carte 3D', Editor: MapEditor },
 ];
 
 // Content workspace for one project: its books, characters and glossary — all

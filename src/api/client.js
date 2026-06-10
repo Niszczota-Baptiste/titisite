@@ -284,6 +284,13 @@ export const api = {
       remove:  (id) => request('DELETE', `/writing/characters/${id}`),
       reorder: (order) => request('POST', `/writing/projects/${projectId}/characters/reorder`, { order }),
     }),
+    // 3D world-map zones of a project (admin editor « Carte »).
+    mapZonesFor: (projectId) => ({
+      list:   () => request('GET', `/writing/projects/${projectId}/map-zones`),
+      create: (b) => request('POST', `/writing/projects/${projectId}/map-zones`, b),
+      update: (id, b) => request('PUT', `/writing/map-zones/${id}`, b),
+      remove: (id) => request('DELETE', `/writing/map-zones/${id}`),
+    }),
     glossaryFor: (projectId) => ({
       list:    () => request('GET', `/writing/projects/${projectId}/glossary`),
       create:  (b) => request('POST', `/writing/projects/${projectId}/glossary`, b),

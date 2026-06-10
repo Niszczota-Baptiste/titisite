@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api, trackClick } from '../../api/client';
 import { useReveal } from '../../hooks/useReveal';
 import { AmbientEffect } from './AmbientEffect';
+import { WritingWorldMap } from './map/WorldMap';
 import { WritingLibrary } from './WritingLibrary';
 import { Avatar, hexToRgb } from './tokens';
 import { NotFound, ReaderNav, ReaderShell } from './shell';
@@ -54,6 +55,20 @@ export function ProjectPage() {
           {project.subtitle && <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 16, color: 'rgba(180,170,200,0.75)', lineHeight: 1.7, maxWidth: 620 }}>{project.subtitle}</p>}
           {project.description && <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, color: 'rgba(160,150,185,0.7)', lineHeight: 1.8, maxWidth: 620, marginTop: 12, fontStyle: 'italic' }}>{project.description}</p>}
         </header>
+
+        {project.map?.zones?.length > 0 && (
+          <section style={{ marginBottom: 64 }}>
+            <Heading rgb={rgb}>Carte du monde</Heading>
+            <WritingWorldMap
+              map={project.map}
+              accent={acc}
+              seed={project.id}
+              characters={project.characters}
+              glossary={project.glossary}
+              onNavigate={goWriting}
+            />
+          </section>
+        )}
 
         <Heading rgb={rgb}>Contenu</Heading>
         <WritingLibrary

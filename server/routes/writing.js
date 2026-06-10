@@ -11,7 +11,7 @@ export function mapProjectCard(r) {
     id: r.id, slug: r.slug, title: r.title, titleKr: r.title_kr, subtitle: r.subtitle,
     description: r.description, status: r.status, accentColor: r.accent_color,
     coverImage: r.cover_image, tags: parseTags(r.tags), ambientEffect: r.ambient_effect || 'none',
-    hasGlossary: r.has_glossary === 1,
+    hasGlossary: r.has_glossary === 1, mapBiome: r.map_biome || 'plaines',
     isPublished: r.is_published === 1, sortOrder: r.sort_order,
   };
 }
@@ -78,6 +78,73 @@ export function mapTerm(r) {
   return { id: r.id, projectId: r.project_id, termKr: r.term_kr, romanization: r.romanization, meaning: r.meaning, sortOrder: r.sort_order };
 }
 
+// ── World-map zones ───────────────────────────────────────────────────────────
+const countWords = (s) => (String(s || '').trim() ? String(s).trim().split(/\s+/).length : 0);
+
+function parseIds(raw) {
+  try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a.map(Number).filter(Number.isInteger) : []; } catch { return []; }
+}
+
+// A zone row → API shape. Linked kinds resolve their target's fields; the
+// zone's own non-empty fields override them. Returns null when a publicly
+// rendered zone points at an unpublished/deleted target (publicOnly).
+export function mapZone(r, projectSlug, { publicOnly = true } = {}) {
+  const zone = {
+    id: r.id, projectId: r.project_id, kind: r.kind, targetId: r.target_id,
+    title: r.title, subtitle: r.subtitle, description: r.description, content: r.content,
+    coverImage: r.cover_image, category: r.category, tags: parseTags(r.tags),
+    date: r.date, link: r.link,
+    x: r.x, z: r.z, scale: r.scale, rotation: r.rotation, building: r.building,
+    connections: parseIds(r.connections), sortOrder: r.sort_order, stats: null,
+  };
+  if (r.kind === 'work' && r.target_id) {
+    const w = db.prepare('SELECT * FROM writing_works WHERE id = ?').get(r.target_id);
+    if (!w || (publicOnly && w.is_published !== 1)) return null;
+    const chapters = db.prepare('SELECT content FROM writing_chapters WHERE work_id = ?').all(w.id);
+    const words = countWords(w.content) + chapters.reduce((n, c) => n + countWords(c.content), 0);
+    zone.title ||= w.title;
+    zone.subtitle ||= w.subtitle;
+    zone.description ||= w.description;
+    zone.coverImage ||= w.cover_image;
+    zone.category ||= w.type || 'Livre';
+    if (!zone.tags.length) zone.tags = parseTags(w.tags);
+    zone.link ||= `/projets/ecriture/${projectSlug}/${w.slug}`;
+    zone.stats = {
+      chapters: chapters.length,
+      words,
+      readingMin: words ? Math.max(1, Math.round(words / 200)) : 0,
+      updatedAt: w.updated_at,
+    };
+  } else if (r.kind === 'character' && r.target_id) {
+    const c = db.prepare('SELECT * FROM characters WHERE id = ?').get(r.target_id);
+    if (!c) return null;
+    zone.title ||= c.name;
+    zone.subtitle ||= c.name_kr;
+    zone.description ||= c.bio;
+    zone.coverImage ||= c.avatar_image;
+    zone.category ||= c.role || 'Personnage';
+    zone.link ||= `/projets/ecriture/${projectSlug}/personnages/${c.slug}`;
+  } else if (r.kind === 'glossary' && r.target_id) {
+    const g = db.prepare('SELECT * FROM glossary_terms WHERE id = ?').get(r.target_id);
+    if (!g) return null;
+    zone.title ||= g.term_kr;
+    zone.subtitle ||= g.romanization;
+    zone.description ||= g.meaning;
+    zone.category ||= 'Lexique';
+  }
+  return zone;
+}
+
+// All renderable zones of a project, connections pruned to surviving zones.
+export function projectMap(p, { publicOnly = true } = {}) {
+  const zones = db.prepare('SELECT * FROM writing_map_zones WHERE project_id = ? ORDER BY sort_order, id').all(p.id)
+    .map((z) => mapZone(z, p.slug, { publicOnly }))
+    .filter(Boolean);
+  const alive = new Set(zones.map((z) => z.id));
+  for (const z of zones) z.connections = z.connections.filter((id) => alive.has(id) && id !== z.id);
+  return { biome: p.map_biome || 'plaines', zones };
+}
+
 // Project-scoped helpers reused by reader + project endpoints.
 function projectCharacters(projectId) {
   return db.prepare('SELECT * FROM characters WHERE project_id = ? ORDER BY sort_order, name').all(projectId).map(mapCharacter);
@@ -120,6 +187,7 @@ ecritureRouter.get('/:project', (req, res) => {
     entries: publishedEntries(p.id, null),
     characters: projectCharacters(p.id),
     glossary,
+    map: projectMap(p),
   });
 });
 
