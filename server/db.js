@@ -546,6 +546,10 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_map_zones_project ON writing_map_zones(project_id, sort_order);`);
   ensureColumn('writing_projects', 'map_biome', "TEXT NOT NULL DEFAULT 'plaines'");
+  // Free-form terrain description (JSON: regions/rivers/lakes/paths/biomes…)
+  // consumed by the voxel engine client-side — see docs/carte-3d.md. Editing
+  // it never requires touching the engine code.
+  ensureColumn('writing_projects', 'map_terrain', "TEXT NOT NULL DEFAULT ''");
 
   // One-time migration for installs created before the project layer existed:
   // gather orphan works/characters/glossary under a single default project so

@@ -5,12 +5,12 @@ import * as THREE from 'three';
 import { Building, BUILDING_HEIGHT } from './buildings';
 import { hexToRgb } from '../tokens';
 
-// One clickable zone: its building, a base pad, a hover halo, a click pulse
-// and the floating label / quick-preview card (drei Html → real DOM, so the
-// preview inherits the site's typography).
+// One clickable zone: its voxel building on a stone platform, a hover halo,
+// a click pulse and the floating label / quick-preview card (drei Html → real
+// DOM, so the preview inherits the site's typography).
 
 export function ZoneMarker({
-  zone, accent, hovered, selected, dimmed,
+  zone, groundY, accent, hovered, selected, dimmed,
   onHover, onSelect, editable, onDragStart,
 }) {
   const group = useRef();
@@ -36,7 +36,7 @@ export function ZoneMarker({
   const pulseAge = pulse ? Math.min(1, (Date.now() - pulse) / 650) : 1;
 
   return (
-    <group position={[zone.x, 0, zone.z]}>
+    <group position={[zone.x, groundY, zone.z]}>
       <group
         ref={group}
         rotation={[0, zone.rotation, 0]}
@@ -54,27 +54,30 @@ export function ZoneMarker({
           onSelect(zone.id);
         }}
       >
-        <mesh position={[0, 0.09, 0]}>
-          <cylinderGeometry args={[1.7, 1.95, 0.22, 9]} />
-          <meshStandardMaterial color={selected ? accent : '#3a3152'} flatShading transparent opacity={selected ? 0.55 : 0.9} />
+        {/* Voxel stone platform under the building */}
+        <mesh position={[0, 0.12, 0]}>
+          <boxGeometry args={[3.6, 0.26, 3]} />
+          <meshStandardMaterial color={selected ? accent : '#6f6a78'} flatShading transparent opacity={selected ? 0.6 : 1} />
         </mesh>
-        <Building type={zone.building} accent={accent} lit={lit} />
+        <group position={[0, 0.25, 0]}>
+          <Building type={zone.building} accent={accent} lit={lit} />
+        </group>
       </group>
 
       {/* Hover halo + click pulse, on the ground, unaffected by building scale */}
-      <mesh ref={halo} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.24, 0]}>
-        <ringGeometry args={[1.95, 2.2, 36]} />
+      <mesh ref={halo} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.34, 0]}>
+        <ringGeometry args={[2.3, 2.55, 36]} />
         <meshBasicMaterial color={accent} transparent opacity={0} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       {pulseAge < 1 && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.26, 0]} scale={1 + pulseAge * 2.6}>
-          <ringGeometry args={[1.8, 2, 36]} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.36, 0]} scale={1 + pulseAge * 2.6}>
+          <ringGeometry args={[2.1, 2.3, 36]} />
           <meshBasicMaterial color={accent} transparent opacity={(1 - pulseAge) * 0.8} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
       )}
 
       {!dimmed && (
-        <Html position={[0, height + 1, 0]} center distanceFactor={26} style={{ pointerEvents: 'none' }} zIndexRange={[20, 0]}>
+        <Html position={[0, height + 1.2, 0]} center distanceFactor={26} style={{ pointerEvents: 'none' }} zIndexRange={[20, 0]}>
           {hovered && !selected ? (
             <div style={{
               width: 230, background: 'rgba(11,6,32,0.94)', border: `1px solid rgba(${rgb},0.45)`,

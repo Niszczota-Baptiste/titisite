@@ -5,6 +5,27 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — carte-voxel-minecraft
+
+### Changed
+- **Refonte direction artistique de la carte** : moteur **voxel multi-biomes**
+  façon Minecraft/diorama. Terrain entièrement piloté par données
+  (`writing_projects.map_terrain`, JSON : régions/hauteurs, rivières, lacs,
+  forêts, chemins, biomes personnalisés) — éditable dans l'admin avec aperçu
+  live, ponts automatiques au-dessus de l'eau, plages générées, 9 biomes de
+  base (plaines, forêt, montagne, désert, marais, toundra, neige, océan,
+  volcan).
+- **Mode 2D** type carte Minecraft, généré automatiquement depuis les mêmes
+  grilles que la 3D (canvas pixelisé + marqueurs DOM, zéro three.js, choix
+  persisté) + bascule **jour/nuit** en 3D (transition douce).
+- **Bâtiments voxel en blueprints** (listes de boîtes, géométrie fusionnée) :
+  set coréen d'après les builds Minecraft fournis — pagode, hanok, pavillon
+  rouge, porte de pierre aux bambous — + les 10 types historiques revoxelisés.
+- **Connexions typées** `{ to, style }` : `route` (chemin creusé + pont +
+  pulse lumineux au survol) ou `arc` (ligne lumineuse) ; anciens ids nus
+  migrés automatiquement. Effets : brume au sol, eau scintillante animée,
+  drag & drop admin ancré au relief.
+
 ## [Unreleased] — carte-3d-ecriture
 
 ### Added

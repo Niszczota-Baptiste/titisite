@@ -6,12 +6,18 @@ function parseTags(raw) {
   try { const t = JSON.parse(raw || '[]'); return Array.isArray(t) ? t : []; } catch { return []; }
 }
 
+function parseTerrain(raw) {
+  if (!raw) return null;
+  try { const t = JSON.parse(raw); return t && typeof t === 'object' && !Array.isArray(t) ? t : null; } catch { return null; }
+}
+
 export function mapProjectCard(r) {
   return {
     id: r.id, slug: r.slug, title: r.title, titleKr: r.title_kr, subtitle: r.subtitle,
     description: r.description, status: r.status, accentColor: r.accent_color,
     coverImage: r.cover_image, tags: parseTags(r.tags), ambientEffect: r.ambient_effect || 'none',
     hasGlossary: r.has_glossary === 1, mapBiome: r.map_biome || 'plaines',
+    mapTerrain: parseTerrain(r.map_terrain),
     isPublished: r.is_published === 1, sortOrder: r.sort_order,
   };
 }
@@ -81,8 +87,17 @@ export function mapTerm(r) {
 // ── World-map zones ───────────────────────────────────────────────────────────
 const countWords = (s) => (String(s || '').trim() ? String(s).trim().split(/\s+/).length : 0);
 
-function parseIds(raw) {
-  try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a.map(Number).filter(Number.isInteger) : []; } catch { return []; }
+// Connections are stored as [{ to, style }] (style: 'route' | 'arc'); plain
+// ids from older rows are normalized to routes.
+function parseConnections(raw) {
+  try {
+    const a = JSON.parse(raw || '[]');
+    if (!Array.isArray(a)) return [];
+    return a.map((c) => (typeof c === 'number'
+      ? { to: c, style: 'route' }
+      : { to: Number(c?.to), style: c?.style === 'arc' ? 'arc' : 'route' }))
+      .filter((c) => Number.isInteger(c.to));
+  } catch { return []; }
 }
 
 // A zone row → API shape. Linked kinds resolve their target's fields; the
@@ -95,7 +110,7 @@ export function mapZone(r, projectSlug, { publicOnly = true } = {}) {
     coverImage: r.cover_image, category: r.category, tags: parseTags(r.tags),
     date: r.date, link: r.link,
     x: r.x, z: r.z, scale: r.scale, rotation: r.rotation, building: r.building,
-    connections: parseIds(r.connections), sortOrder: r.sort_order, stats: null,
+    connections: parseConnections(r.connections), sortOrder: r.sort_order, stats: null,
   };
   if (r.kind === 'work' && r.target_id) {
     const w = db.prepare('SELECT * FROM writing_works WHERE id = ?').get(r.target_id);
@@ -141,8 +156,8 @@ export function projectMap(p, { publicOnly = true } = {}) {
     .map((z) => mapZone(z, p.slug, { publicOnly }))
     .filter(Boolean);
   const alive = new Set(zones.map((z) => z.id));
-  for (const z of zones) z.connections = z.connections.filter((id) => alive.has(id) && id !== z.id);
-  return { biome: p.map_biome || 'plaines', zones };
+  for (const z of zones) z.connections = z.connections.filter((c) => alive.has(c.to) && c.to !== z.id);
+  return { biome: p.map_biome || 'plaines', terrain: parseTerrain(p.map_terrain), zones };
 }
 
 // Project-scoped helpers reused by reader + project endpoints.

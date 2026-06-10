@@ -10,9 +10,11 @@ export function zoneMatches(zone, search, category) {
   return norm(search).split(/\s+/).every((w) => hay.includes(w));
 }
 
-// Search + category filters + contextual stats, overlaid on the canvas.
+// Search + category filters + view toggles (2D/3D, day/night) + contextual
+// stats, overlaid on the canvas.
 export function MapHud({
   zones, matching, search, setSearch, category, setCategory, accent, compact,
+  mode, setMode, dayMode, setDayMode,
 }) {
   const rgb = hexToRgb(accent) || '201,168,232';
   const categories = [...new Set(zones.map((z) => z.category).filter(Boolean))];
@@ -68,6 +70,37 @@ export function MapHud({
         )}
       </div>
 
+      <div style={{ position: 'absolute', top: 14, right: 14, zIndex: 20, display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: `1px solid rgba(${rgb},0.3)` }}>
+          {[['3d', '3D'], ['2d', 'Carte']].map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              aria-pressed={mode === m}
+              style={{
+                ...mono, fontSize: 10.5, letterSpacing: '0.5px', cursor: 'pointer', border: 'none',
+                background: mode === m ? `rgba(${rgb},0.28)` : 'rgba(9,5,22,0.82)',
+                color: mode === m ? accent : 'rgba(200,192,216,0.8)',
+                padding: '7px 12px',
+              }}
+            >{label}</button>
+          ))}
+        </div>
+        {mode === '3d' && (
+          <button
+            onClick={() => setDayMode(!dayMode)}
+            aria-pressed={dayMode}
+            aria-label={dayMode ? 'Passer en mode nuit' : 'Passer en mode jour'}
+            title={dayMode ? 'Mode nuit' : 'Mode jour'}
+            style={{
+              ...mono, fontSize: 13, cursor: 'pointer', width: 33,
+              background: 'rgba(9,5,22,0.82)', border: `1px solid rgba(${rgb},0.3)`,
+              borderRadius: 10, color: dayMode ? '#ffd98a' : accent, padding: 0,
+            }}
+          >{dayMode ? '☀' : '☾'}</button>
+        )}
+      </div>
+
       {!compact && (
         <div style={{
           position: 'absolute', bottom: 14, left: 14, zIndex: 20, pointerEvents: 'none',
@@ -78,13 +111,15 @@ export function MapHud({
         </div>
       )}
 
-      <div style={{
-        position: 'absolute', bottom: 14, right: 14, zIndex: 20, pointerEvents: 'none',
-        fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, color: 'rgba(180,170,200,0.55)',
-        background: 'rgba(9,5,22,0.7)', borderRadius: 8, padding: '5px 10px', textAlign: 'right',
-      }}>
-        {compact ? 'glisser · pincer pour zoomer' : 'glisser pour pivoter · molette pour zoomer'}
-      </div>
+      {mode === '3d' && (
+        <div style={{
+          position: 'absolute', bottom: 14, right: 14, zIndex: 20, pointerEvents: 'none',
+          fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, color: 'rgba(180,170,200,0.55)',
+          background: 'rgba(9,5,22,0.7)', borderRadius: 8, padding: '5px 10px', textAlign: 'right',
+        }}>
+          {compact ? 'glisser · pincer pour zoomer' : 'glisser pour pivoter · molette pour zoomer'}
+        </div>
+      )}
     </>
   );
 }

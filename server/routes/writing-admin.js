@@ -15,9 +15,15 @@ const STATUS = new Set(['brouillon', 'wip', 'termine']);
 const MEDIA_TYPE = new Set(['screenshot', 'schema', 'carte']);
 const AMBIENT = new Set(['none', 'petals', 'leaves', 'snow', 'embers', 'fireflies', 'notes', 'wind', 'waves', 'fireworks']);
 // World-map allowlists — mirrored client-side in src/components/writing/map/presets.js.
-const BIOMES = new Set(['plaines', 'foret', 'desert', 'ocean', 'neige', 'volcan']);
-const BUILDINGS = new Set(['tour', 'maison', 'donjon', 'temple', 'cristal', 'arbre', 'ruine', 'phare', 'tente', 'monolithe']);
+const BIOMES = new Set(['plaines', 'foret', 'desert', 'ocean', 'neige', 'volcan', 'montagne', 'marais', 'toundra']);
+const BUILDINGS = new Set([
+  'tour', 'maison', 'donjon', 'temple', 'cristal', 'arbre', 'ruine', 'phare', 'tente', 'monolithe',
+  'pagode', 'hanok', 'pavillon', 'porte',
+]);
 const ZONE_KINDS = new Set(['work', 'character', 'glossary', 'libre']);
+// Terrain JSON is engine data, not markup: stored as-is after a structural
+// check, normalized/clamped by the client engine at render time.
+const MAX_TERRAIN_BYTES = 120 * 1024;
 
 const str = (v, fallback = '') => (typeof v === 'string' ? v : fallback);
 const statusOf = (v, fb = 'brouillon') => (STATUS.has(v) ? v : fb);
@@ -119,6 +125,14 @@ writingAdminRouter.put('/projects/:id(\\d+)', (req, res) => {
   }
   if (req.body.mapBiome !== undefined && BIOMES.has(req.body.mapBiome)) {
     db.prepare('UPDATE writing_projects SET map_biome = ? WHERE id = ?').run(req.body.mapBiome, id);
+  }
+  if (req.body.mapTerrain !== undefined) {
+    const t = req.body.mapTerrain;
+    const valid = t === null || (typeof t === 'object' && !Array.isArray(t));
+    if (!valid) return res.status(400).json({ error: 'invalid_terrain' });
+    const json = t === null ? '' : JSON.stringify(t);
+    if (json.length > MAX_TERRAIN_BYTES) return res.status(400).json({ error: 'terrain_too_large' });
+    db.prepare('UPDATE writing_projects SET map_terrain = ? WHERE id = ?').run(json, id);
   }
   res.json(mapProjectCard(db.prepare('SELECT * FROM writing_projects WHERE id = ?').get(id)));
 });
@@ -440,12 +454,21 @@ function zoneTarget(kind, targetId, projectId) {
   return db.prepare(`SELECT 1 FROM ${table} WHERE id = ? AND project_id = ?`).get(id, projectId) ? id : undefined;
 }
 
+// Accepts plain ids (legacy) or { to, style } objects; stores the normalized
+// object form. style: 'route' (carved path/bridge) | 'arc' (luminous line).
 function cleanConnections(v, projectId, selfId) {
   if (!Array.isArray(v)) return [];
-  const ids = [...new Set(v.map(Number).filter(Number.isInteger))]
-    .filter((id) => id !== selfId
-      && db.prepare('SELECT 1 FROM writing_map_zones WHERE id = ? AND project_id = ?').get(id, projectId));
-  return ids.slice(0, 12);
+  const seen = new Set();
+  const out = [];
+  for (const c of v) {
+    const to = Number(typeof c === 'object' && c !== null ? c.to : c);
+    if (!Number.isInteger(to) || to === selfId || seen.has(to)) continue;
+    if (!db.prepare('SELECT 1 FROM writing_map_zones WHERE id = ? AND project_id = ?').get(to, projectId)) continue;
+    seen.add(to);
+    out.push({ to, style: c?.style === 'arc' ? 'arc' : 'route' });
+    if (out.length >= 12) break;
+  }
+  return out;
 }
 
 const adminZone = (id) => {
@@ -532,13 +555,15 @@ writingAdminRouter.delete('/map-zones/:id(\\d+)', (req, res) => {
   const id = Number(req.params.id);
   const ok = db.prepare('DELETE FROM writing_map_zones WHERE id = ?').run(id).changes > 0;
   if (!ok) return res.status(404).json({ error: 'not_found' });
-  // Drop dangling references from the remaining zones' connections.
+  // Drop dangling references from the remaining zones' connections (handles
+  // both the legacy plain-id form and the { to, style } form).
+  const refOf = (c) => (typeof c === 'object' && c !== null ? Number(c.to) : Number(c));
   for (const z of db.prepare('SELECT id, connections FROM writing_map_zones').all()) {
-    let ids = [];
-    try { ids = JSON.parse(z.connections || '[]'); } catch { ids = []; }
-    if (Array.isArray(ids) && ids.includes(id)) {
+    let conns = [];
+    try { conns = JSON.parse(z.connections || '[]'); } catch { conns = []; }
+    if (Array.isArray(conns) && conns.some((c) => refOf(c) === id)) {
       db.prepare('UPDATE writing_map_zones SET connections = ? WHERE id = ?')
-        .run(JSON.stringify(ids.filter((i) => i !== id)), z.id);
+        .run(JSON.stringify(conns.filter((c) => refOf(c) !== id)), z.id);
     }
   }
   res.status(204).end();

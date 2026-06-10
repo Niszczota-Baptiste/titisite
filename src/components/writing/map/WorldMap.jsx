@@ -1,12 +1,16 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { hexToRgb } from '../tokens';
+import { Map2D } from './Map2D';
 import { MapHud, zoneMatches } from './MapHud';
 import { ZonePanel } from './ZonePanel';
 
-// three.js + fiber + drei live in this chunk only — loaded when the map
-// actually scrolls into view, never as part of the main bundle.
+// three.js + fiber + drei live in this chunk only — loaded when the 3D mode
+// actually scrolls into view, never as part of the main bundle. The 2D mode
+// (Map2D) is pure canvas/DOM and ships with the page.
 const MapScene = lazy(() => import('./Scene'));
+
+const MODE_KEY = 'titisite-map-mode';
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -18,10 +22,10 @@ function detectQuality(isMobile) {
   return isMobile || cores <= 4 ? 'low' : 'high';
 }
 
-// Public 3D world map of a writing project. `map` is the `{ biome, zones }`
-// payload of /api/ecriture/:project; characters/glossary feed the Markdown
-// tokens inside zone contents.
-export function WritingWorldMap({ map, accent, seed, characters = [], glossary = [], onNavigate }) {
+// Public world map of a writing project. `map` is the `{ biome, terrain,
+// zones }` payload of /api/ecriture/:project; characters/glossary feed the
+// Markdown tokens inside zone contents.
+export function WritingWorldMap({ map, accent, characters = [], glossary = [], onNavigate }) {
   const isMobile = useIsMobile(720);
   const container = useRef(null);
   const [visible, setVisible] = useState(false);
@@ -29,6 +33,14 @@ export function WritingWorldMap({ map, accent, seed, characters = [], glossary =
   const [selectedId, setSelectedId] = useState(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
+  const [dayMode, setDayMode] = useState(false);
+  const [mode, setModeState] = useState(() => {
+    try { return localStorage.getItem(MODE_KEY) === '2d' ? '2d' : '3d'; } catch { return '3d'; }
+  });
+  const setMode = (m) => {
+    setModeState(m);
+    try { localStorage.setItem(MODE_KEY, m); } catch { /* ignore */ }
+  };
 
   const rgb = hexToRgb(accent) || '201,168,232';
   const zones = map.zones;
@@ -70,15 +82,16 @@ export function WritingWorldMap({ map, accent, seed, characters = [], glossary =
         boxShadow: `0 24px 80px rgba(0,0,0,0.5), inset 0 0 120px rgba(${rgb},0.05)`,
       }}
     >
-      {visible && (
+      {mode === '3d' && visible && (
         <Suspense fallback={<Loading accent={accent} rgb={rgb} />}>
           <MapScene
             zones={zones}
             biomeKey={map.biome}
+            terrain={map.terrain}
             accent={accent}
-            seed={seed || zones.length * 17 + 3}
             quality={quality}
             intro={!prefersReducedMotion()}
+            dayMode={dayMode}
             hoveredId={hoveredId}
             selectedId={selectedId}
             dimmedIds={dimmedIds}
@@ -87,7 +100,19 @@ export function WritingWorldMap({ map, accent, seed, characters = [], glossary =
           />
         </Suspense>
       )}
-      {!visible && <Loading accent={accent} rgb={rgb} />}
+      {mode === '3d' && !visible && <Loading accent={accent} rgb={rgb} />}
+      {mode === '2d' && (
+        <Map2D
+          map={map}
+          zones={zones}
+          accent={accent}
+          hoveredId={hoveredId}
+          selectedId={selectedId}
+          dimmedIds={dimmedIds}
+          onHover={setHoveredId}
+          onSelect={setSelectedId}
+        />
+      )}
 
       <MapHud
         zones={zones}
@@ -98,6 +123,10 @@ export function WritingWorldMap({ map, accent, seed, characters = [], glossary =
         setCategory={setCategory}
         accent={accent}
         compact={isMobile}
+        mode={mode}
+        setMode={setMode}
+        dayMode={dayMode}
+        setDayMode={setDayMode}
       />
 
       {selected && (

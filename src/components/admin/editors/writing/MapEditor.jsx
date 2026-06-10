@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import { api } from '../../../../api/client';
 import { useConfirm } from '../../../../ui/ConfirmProvider';
 import {
-  BIOME_OPTIONS, BUILDINGS, MAP_RADIUS, ZONE_KINDS,
+  BIOME_OPTIONS, BUILDINGS, MAP_RADIUS, TERRAIN_TEMPLATE, ZONE_KINDS,
 } from '../../../writing/map/presets';
 import { ACC, ACC_RGB, Button, Field, Input, Textarea } from '../../ui';
 import { ImageUploadField } from '../../ImageUploadField';
@@ -16,7 +16,8 @@ const draftOf = (z) => ({
   description: z.description, content: z.content, coverImage: z.coverImage,
   category: z.category, tags: z.tags || [], date: z.date, link: z.link,
   building: z.building, scale: z.scale, rotation: z.rotation,
-  connections: z.connections || [],
+  // Legacy rows stored plain ids; normalize to { to, style }.
+  connections: (z.connections || []).map((c) => (typeof c === 'number' ? { to: c, style: 'route' } : c)),
 });
 
 // « Carte » tab of a project workspace: pick the biome, then place/edit the
@@ -31,6 +32,9 @@ export function MapEditor({ projectId }) {
   const [dirty, setDirty] = useState(false);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
+  const [terrainText, setTerrainText] = useState('');
+  const [terrainOpen, setTerrainOpen] = useState(false);
+  const [terrainErr, setTerrainErr] = useState('');
 
   const zonesApi = useMemo(() => api.writing.mapZonesFor(projectId), [projectId]);
 
@@ -41,6 +45,7 @@ export function MapEditor({ projectId }) {
       if (!alive) return;
       setProject(p);
       setZones(zs);
+      setTerrainText(p.mapTerrain ? JSON.stringify(p.mapTerrain, null, 2) : '');
       setLoading(false);
     }).catch(() => { if (alive) { setErr('Chargement impossible.'); setLoading(false); } });
     return () => { alive = false; };
@@ -62,6 +67,28 @@ export function MapEditor({ projectId }) {
     setProject((p) => ({ ...p, mapBiome }));
     try { await api.writing.projects.update(projectId, { mapBiome }); }
     catch { setErr('Biome non enregistré.'); }
+  };
+
+  // Terrain JSON: validated locally, persisted, and applied live to the
+  // preview (the engine re-clamps everything anyway).
+  const applyTerrain = async () => {
+    setTerrainErr('');
+    let parsed = null;
+    if (terrainText.trim()) {
+      try { parsed = JSON.parse(terrainText); } catch { setTerrainErr('JSON invalide — vérifie virgules et guillemets.'); return; }
+      if (typeof parsed !== 'object' || Array.isArray(parsed)) { setTerrainErr('Le terrain doit être un objet JSON.'); return; }
+    }
+    try {
+      await api.writing.projects.update(projectId, { mapTerrain: parsed });
+      setProject((p) => ({ ...p, mapTerrain: parsed }));
+    } catch (e) {
+      setTerrainErr(e?.body?.error === 'terrain_too_large' ? 'Terrain trop volumineux (max 120 Ko).' : 'Enregistrement impossible.');
+    }
+  };
+
+  const insertTemplate = () => {
+    setTerrainText(JSON.stringify(TERRAIN_TEMPLATE, null, 2));
+    setTerrainErr('');
   };
 
   // Live position while dragging, persisted once on drop.
@@ -152,6 +179,40 @@ export function MapEditor({ projectId }) {
 
       {err && <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: '#ff8898', marginBottom: 10 }}>{err}</p>}
 
+      <div style={{ ...blockStyle, padding: '12px 16px' }}>
+        <button
+          type="button"
+          onClick={() => setTerrainOpen((o) => !o)}
+          style={{ ...blockLabel, marginBottom: terrainOpen ? 12 : 0, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', width: '100%' }}
+        >
+          {terrainOpen ? '▾' : '▸'} Terrain du monde (montagnes, rivières, lacs, forêts, biomes…)
+        </button>
+        {terrainOpen && (
+          <>
+            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(180,170,200,0.65)', marginBottom: 8, lineHeight: 1.6 }}>
+              Décris le relief en JSON : <code>regions</code> (biome + hauteur), <code>rivers</code>, <code>lakes</code>, <code>forests</code>, <code>paths</code>, <code>waterLevel</code>, <code>seed</code>, et des biomes personnalisés via <code>biomes</code>. Schéma complet dans <code>docs/carte-3d.md</code>. Vide = île simple du biome de base.
+            </p>
+            <textarea
+              value={terrainText}
+              onChange={(e) => setTerrainText(e.target.value)}
+              rows={12}
+              spellCheck={false}
+              placeholder='{ "regions": [{ "biome": "montagne", "cx": 8, "cz": -6, "r": 9, "height": 6 }] }'
+              style={{
+                width: '100%', background: 'rgba(8,5,18,0.8)', border: '1px solid rgba(80,50,130,0.28)',
+                borderRadius: 8, padding: '12px 14px', color: '#ede8f8', outline: 'none',
+                fontFamily: "'JetBrains Mono',monospace", fontSize: 12, lineHeight: 1.6, resize: 'vertical',
+              }}
+            />
+            {terrainErr && <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: '#ff8898', margin: '8px 0 0' }}>{terrainErr}</p>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <Button onClick={applyTerrain}>Appliquer & enregistrer</Button>
+              <Button variant="ghost" onClick={insertTemplate}>Insérer le modèle d'exemple</Button>
+            </div>
+          </>
+        )}
+      </div>
+
       <div style={{
         position: 'relative', height: 460, borderRadius: 14, overflow: 'hidden',
         border: `1px solid rgba(${ACC_RGB},0.25)`, background: '#0a0618', marginBottom: 18,
@@ -165,10 +226,11 @@ export function MapEditor({ projectId }) {
           <MapScene
             zones={zones}
             biomeKey={project?.mapBiome || 'plaines'}
+            terrain={project?.mapTerrain || null}
             accent={project?.accentColor || ACC}
-            seed={projectId}
             quality="high"
             intro={false}
+            dayMode={false}
             hoveredId={hoveredId}
             selectedId={selectedId}
             dimmedIds={new Set()}
@@ -271,27 +333,48 @@ export function MapEditor({ projectId }) {
 
           {zones.length > 1 && (
             <div style={blockStyle}>
-              <span style={blockLabel}>Connexions (arcs lumineux vers d'autres zones)</span>
+              <span style={blockLabel}>Connexions vers d'autres zones</span>
+              <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: 'rgba(180,170,200,0.6)', marginBottom: 10 }}>
+                🛣 route — chemin creusé dans le terrain (pont au-dessus de l'eau) · ✨ arc — ligne lumineuse. Re-clique sur le style pour basculer.
+              </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {zones.filter((z) => z.id !== selectedId).map((z) => {
-                  const on = (draft.connections || []).includes(z.id);
+                  const conn = (draft.connections || []).find((c) => c.to === z.id);
                   return (
-                    <button
-                      key={z.id}
-                      type="button"
-                      onClick={() => edit({
-                        connections: on
-                          ? draft.connections.filter((id) => id !== z.id)
-                          : [...(draft.connections || []), z.id],
-                      })}
-                      style={{
-                        background: on ? `rgba(${ACC_RGB},0.18)` : 'transparent',
-                        border: `1px solid ${on ? ACC : 'rgba(80,50,130,0.3)'}`,
-                        color: on ? ACC : 'rgba(180,170,200,0.75)', borderRadius: 16,
-                        padding: '5px 12px', cursor: 'pointer',
-                        fontFamily: "'Inter',sans-serif", fontSize: 12,
-                      }}
-                    >{on ? '⛓ ' : ''}{z.title || 'Sans titre'}</button>
+                    <span key={z.id} style={{ display: 'inline-flex' }}>
+                      <button
+                        type="button"
+                        onClick={() => edit({
+                          connections: conn
+                            ? draft.connections.filter((c) => c.to !== z.id)
+                            : [...(draft.connections || []), { to: z.id, style: 'route' }],
+                        })}
+                        style={{
+                          background: conn ? `rgba(${ACC_RGB},0.18)` : 'transparent',
+                          border: `1px solid ${conn ? ACC : 'rgba(80,50,130,0.3)'}`,
+                          borderRadius: conn ? '16px 0 0 16px' : 16,
+                          color: conn ? ACC : 'rgba(180,170,200,0.75)',
+                          padding: '5px 12px', cursor: 'pointer',
+                          fontFamily: "'Inter',sans-serif", fontSize: 12,
+                        }}
+                      >{z.title || 'Sans titre'}</button>
+                      {conn && (
+                        <button
+                          type="button"
+                          title={conn.style === 'route' ? 'Route au sol — cliquer pour passer en arc lumineux' : 'Arc lumineux — cliquer pour passer en route'}
+                          onClick={() => edit({
+                            connections: draft.connections.map((c) => (c.to === z.id
+                              ? { ...c, style: c.style === 'route' ? 'arc' : 'route' }
+                              : c)),
+                          })}
+                          style={{
+                            background: `rgba(${ACC_RGB},0.28)`, border: `1px solid ${ACC}`, borderLeft: 'none',
+                            borderRadius: '0 16px 16px 0', color: ACC, padding: '5px 10px',
+                            cursor: 'pointer', fontSize: 12,
+                          }}
+                        >{conn.style === 'route' ? '🛣' : '✨'}</button>
+                      )}
+                    </span>
                   );
                 })}
               </div>

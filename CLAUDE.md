@@ -38,11 +38,11 @@ Single-process Node app:
   `[[perso:slug|Label]]` and `{{kr:terme}}` tokens, rendered by the in-house,
   XSS-safe renderer in `src/components/writing/markdown.jsx` (no
   `dangerouslySetInnerHTML`, no markdown dependency). Each project can also
-  have a **3D world map** (`writing_map_zones` + `writing_projects.map_biome`,
-  rendered by `src/components/writing/map/` — three.js lazy-loaded, shown only
-  when zones exist). Zones either link an existing work/character/glossary
-  term (content resolved at read time) or are free-form; see
-  `docs/carte-3d.md`.
+  have a **voxel world map** (`writing_map_zones` + `writing_projects.map_biome`
+  / `map_terrain` JSON, rendered by `src/components/writing/map/` — three.js
+  lazy-loaded 3D + auto-generated 2D mode, shown only when zones exist). Zones
+  either link an existing work/character/glossary term (content resolved at
+  read time) or are free-form; see `docs/carte-3d.md`.
 - Frontend API calls go through `src/api/client.js`. Use `api.ws(slug).x`
   helpers for scoped resources and `api.ecriture.*` / `api.writing.*` for the
   writing space, never hand-build URLs.

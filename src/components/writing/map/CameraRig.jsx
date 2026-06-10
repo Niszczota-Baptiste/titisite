@@ -40,7 +40,9 @@ export function CameraRig({ controlsRef, focus, intro, onIntroEnd }) {
       return;
     }
     if (!controls) return;
-    const dest = focus ? new THREE.Vector3(focus.x, 1.2, focus.z) : new THREE.Vector3(0, 0, 0);
+    const dest = focus
+      ? new THREE.Vector3(focus.x, (focus.y || 0) + 1.4, focus.z)
+      : new THREE.Vector3(0, 1.5, 0);
     target.current.set(
       THREE.MathUtils.damp(controls.target.x, dest.x, 3.2, delta),
       THREE.MathUtils.damp(controls.target.y, dest.y, 3.2, delta),
