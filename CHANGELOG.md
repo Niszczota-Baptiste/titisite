@@ -7,6 +7,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] — hierarchie-monde-cite
 
+### Fixed
+- La molette sur la carte-monde publique ne fait plus défiler la page (React
+  enregistre `wheel` en passif ; listener natif non-passif + preventDefault).
+
+### Changed
+- **Zoom + déplacement dans les surfaces d'édition admin** : le board des
+  lieux/tracés/territoires et le pinceau de terrain zooment à la molette
+  (vers le curseur, jusqu'à ~28× — précision cellule par cellule sur un monde
+  1024) avec indicateur de zoom et bouton ⌂ ; déplacement en glissant le fond
+  (board) ou via le nouvel outil ✋ Naviguer (pinceau). Les coups de pinceau
+  ne repeignent plus que la région touchée (fluide sur les mondes colossaux).
+
 ### Added
 - **Tracé libre des routes** (deux niveaux de carte) : chaque connexion porte
   des points de passage `via` dessinés à la main — bouton ✏️ dans l'admin,

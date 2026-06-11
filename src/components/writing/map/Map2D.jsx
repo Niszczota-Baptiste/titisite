@@ -13,33 +13,49 @@ const shadeHex = (hex, f) => {
   return `rgb(${c((n >> 16) & 255)},${c((n >> 8) & 255)},${c(n & 255)})`;
 };
 
+// CSS color of one terrain cell (shared by the full and partial painters).
+function cellColor(world, i, j) {
+  const { grid, height, biome, beach, path, bridge, waterLevel, terrain } = world;
+  const idx = j * grid + i;
+  const h = height[idx];
+  if (h < waterLevel) {
+    // Depth-shaded water; bridges drawn as planks.
+    if (bridge[idx]) return '#8a6844';
+    return shadeHex(terrain.waterColor || '#1d4e6e', h > 0 ? 0.95 : 0.7);
+  }
+  const b = terrain.biomes[biome[idx]] || terrain.biomes.plaines;
+  let base = b.top;
+  if (beach[idx]) base = '#d8c084';
+  if (path[idx]) base = '#9c8f7a';
+  // NW relief shading, the classic in-game map trick.
+  const hNW = (i < 1 || j < 1) ? 0 : height[(j - 1) * grid + (i - 1)];
+  const rel = h - hNW;
+  const f = (0.95 + ((i * 7 + j * 13) % 5) * 0.02) * (rel > 0 ? 1.12 : rel < 0 ? 0.82 : 1);
+  return shadeHex(base, f);
+}
+
+// Repaint just a cell rectangle on an already-painted canvas — the brush
+// editor calls this per stroke instead of redrawing the whole world.
+export function paintWorldRegion(canvas, world, { px = 1, i0 = 0, j0 = 0, i1 = 0, j1 = 0 } = {}) {
+  const ctx = canvas.getContext('2d');
+  const G = world.grid;
+  for (let j = Math.max(0, j0); j <= Math.min(G - 1, j1); j++) {
+    for (let i = Math.max(0, i0); i <= Math.min(G - 1, i1); i++) {
+      ctx.fillStyle = cellColor(world, i, j);
+      ctx.fillRect(i * px, j * px, px, px);
+    }
+  }
+}
+
 export function paintWorld(canvas, world, accent, { routes = true, px = 6, zones = null } = {}) {
   canvas.width = world.grid * px;
   canvas.height = world.grid * px;
   const ctx = canvas.getContext('2d');
-  const { grid, height, biome, beach, path, bridge, waterLevel, terrain } = world;
-  const idx = (i, j) => j * grid + i;
-  const hAt = (i, j) => (i < 0 || j < 0 || i >= grid || j >= grid ? 0 : height[idx(i, j)]);
-  const water = terrain.waterColor || '#1d4e6e';
+  const { grid } = world;
 
   for (let j = 0; j < grid; j++) {
     for (let i = 0; i < grid; i++) {
-      const h = height[idx(i, j)];
-      let color;
-      if (h < waterLevel) {
-        // Depth-shaded water; bridges drawn as planks.
-        color = bridge[idx(i, j)] ? '#8a6844' : shadeHex(water, h > 0 ? 0.95 : 0.7);
-      } else {
-        const b = terrain.biomes[biome[idx(i, j)]] || terrain.biomes.plaines;
-        let base = b.top;
-        if (beach[idx(i, j)]) base = '#d8c084';
-        if (path[idx(i, j)]) base = '#9c8f7a';
-        // NW relief shading, the classic in-game map trick.
-        const rel = h - hAt(i - 1, j - 1);
-        const f = (0.95 + ((i * 7 + j * 13) % 5) * 0.02) * (rel > 0 ? 1.12 : rel < 0 ? 0.82 : 1);
-        color = shadeHex(base, f);
-      }
-      ctx.fillStyle = color;
+      ctx.fillStyle = cellColor(world, i, j);
       ctx.fillRect(i * px, j * px, px, px);
     }
   }

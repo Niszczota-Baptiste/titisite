@@ -193,6 +193,19 @@ export function WorldMapViewer({ worldmap, accent, characters, glossary, onNavig
     });
   };
 
+  // React registers `wheel` as passive, so preventDefault() there can't stop
+  // the page from scrolling under the map. Attach a non-passive native
+  // listener instead: the wheel zooms the map, never the page.
+  const wheelRef = useRef(onWheel);
+  wheelRef.current = onWheel;
+  useEffect(() => {
+    const el = viewport.current;
+    if (!el) return undefined;
+    const handler = (e) => { e.preventDefault(); wheelRef.current(e); };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
+
   const recenter = (term) => {
     setSearch(term);
     if (!term.trim()) return;
@@ -223,7 +236,6 @@ export function WorldMapViewer({ worldmap, accent, characters, glossary, onNavig
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onWheel={onWheel}
         style={{ position: 'absolute', inset: 0, cursor: 'grab', touchAction: 'none' }}
       />
 
