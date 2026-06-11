@@ -68,9 +68,9 @@ export function WorldMapViewer({ worldmap, accent, characters, glossary, onNavig
   // worlds), then every frame is just one scaled drawImage.
   const offscreen = useMemo(() => {
     const off = document.createElement('canvas');
-    paintWorld(off, world, accent, { px: world.grid > 160 ? 1 : 4 });
+    paintWorld(off, world, accent, { px: world.grid > 160 ? 1 : 4, zones });
     return off;
-  }, [world, accent]);
+  }, [world, accent, zones]);
 
   const draw = useCallback(() => {
     const el = viewport.current;
@@ -236,6 +236,31 @@ export function WorldMapViewer({ worldmap, accent, characters, glossary, onNavig
         const size = (m.tier === 3 ? 30 : m.tier === 2 ? 25 : 21) * (lit ? 1.15 : 1);
         const { left, top } = toScreen(z.x, z.z);
         if (left < -60 || top < -60) return null;
+        if (z.marker === 'etiquette') {
+          // Cartographic place name (mountain ranges, rivers…): rotated text,
+          // sized by the zone's scale, no badge.
+          const fs = (9 + 5 * (z.scale || 1)) * Math.min(2.2, Math.max(0.85, view.k / 2.6));
+          return (
+            <button
+              key={z.id}
+              onClick={() => !dimmed && openZone(z)}
+              onMouseEnter={() => !dimmed && setHoveredId(z.id)}
+              onMouseLeave={() => setHoveredId(null)}
+              aria-label={z.title}
+              style={{
+                position: 'absolute', left, top,
+                transform: `translate(-50%, -50%) rotate(${((z.rotation || 0) * 180) / Math.PI}deg)`,
+                background: 'none', border: 'none', padding: 2,
+                cursor: dimmed ? 'default' : 'pointer',
+                opacity: dimmed ? 0.25 : 1, zIndex: lit ? 6 : 2,
+                fontFamily: "'Georgia',serif", fontStyle: 'italic',
+                fontSize: fs, letterSpacing: '0.22em', whiteSpace: 'nowrap',
+                color: lit ? accent : 'rgba(240,238,250,0.88)',
+                textShadow: '0 1px 4px rgba(0,0,0,0.95), 0 0 10px rgba(0,0,0,0.7)',
+              }}
+            >{z.title}</button>
+          );
+        }
         return (
           <button
             key={z.id}

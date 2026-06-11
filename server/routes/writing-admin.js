@@ -23,7 +23,7 @@ const BIOMES = new Set([
 ]);
 const MARKERS = new Set([
   '', 'royaume', 'capitale', 'cite', 'village', 'forteresse', 'temple', 'port', 'ruine',
-  'antre', 'montagne', 'foret', 'ile', 'personnage', 'livre', 'lieu',
+  'antre', 'montagne', 'foret', 'ile', 'personnage', 'livre', 'lieu', 'etiquette',
 ]);
 const BUILDINGS = new Set([
   'tour', 'maison', 'donjon', 'temple', 'cristal', 'arbre', 'ruine', 'phare', 'tente', 'monolithe',
@@ -521,9 +521,17 @@ function zoneTarget(kind, targetId, projectId) {
   return db.prepare(`SELECT 1 FROM ${table} WHERE id = ? AND project_id = ?`).get(id, projectId) ? id : undefined;
 }
 
-// Accepts plain ids (legacy) or { to, style } objects; stores the normalized
-// object form, restricted to zones living on the same map (same worldmap /
-// same work / same legacy project scope).
+// Free-drawn waypoints of a connection/territory: clamped [x,z] pairs.
+const cleanPoints = (v, max) => (Array.isArray(v)
+  ? v.filter((p) => Array.isArray(p) && p.length === 2)
+    .slice(0, max)
+    .map(([x, z]) => [clamp(x, -640, 640, 0), clamp(z, -640, 640, 0)])
+  : []);
+
+// Accepts plain ids (legacy) or { to, style, via } objects; stores the
+// normalized form, restricted to zones living on the same map (same worldmap /
+// same work / same legacy project scope). `via` is the hand-drawn waypoint
+// list of the road/arc.
 function cleanConnections(v, scope, selfId) {
   if (!Array.isArray(v)) return [];
   const seen = new Set();
@@ -538,10 +546,19 @@ function cleanConnections(v, scope, selfId) {
         : db.prepare('SELECT 1 FROM writing_map_zones WHERE id = ? AND project_id = ? AND worldmap_id IS NULL AND work_id IS NULL').get(to, scope.projectId);
     if (!peer) continue;
     seen.add(to);
-    out.push({ to, style: c?.style === 'arc' ? 'arc' : 'route' });
+    out.push({ to, style: c?.style === 'arc' ? 'arc' : 'route', via: cleanPoints(c?.via, 24) });
     if (out.length >= 12) break;
   }
   return out;
+}
+
+// Territory polygon (worldmap POI): at least a triangle, optional border color.
+function cleanTerritory(v) {
+  if (!v || typeof v !== 'object') return '';
+  const points = cleanPoints(v.points, 60);
+  if (points.length < 3) return '';
+  const color = /^#[0-9a-f]{6}$/i.test(String(v.color || '')) ? v.color : '';
+  return JSON.stringify({ color, points });
 }
 
 const adminZone = (id) => {
@@ -562,13 +579,14 @@ function createZone(res, body, scope) {
   const lim = posLimit(scope);
   const r = db.prepare(`
     INSERT INTO writing_map_zones
-      (project_id, worldmap_id, work_id, kind, target_id, marker, title, subtitle, description,
-       content, cover_image, category, tags, date, link, x, z, scale, rotation, building,
-       connections, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (project_id, worldmap_id, work_id, kind, target_id, marker, territory, title, subtitle,
+       description, content, cover_image, category, tags, date, link, x, z, scale, rotation,
+       building, connections, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     scope.projectId, scope.worldmapId || null, scope.workId || null, kind, targetId,
     MARKERS.has(b.marker) ? b.marker : '',
+    cleanTerritory(b.territory),
     str(b.title).trim(), str(b.subtitle), str(b.description),
     str(b.content), str(b.coverImage), str(b.category).slice(0, 40),
     JSON.stringify(cleanTags(b.tags)), str(b.date).slice(0, 40), str(b.link).slice(0, 500),
@@ -641,14 +659,15 @@ writingAdminRouter.put('/map-zones/:id(\\d+)', (req, res) => {
   if (targetId === undefined) return res.status(400).json({ error: 'invalid_target' });
   db.prepare(`
     UPDATE writing_map_zones SET
-      kind = ?, target_id = ?, marker = ?, title = ?, subtitle = ?, description = ?, content = ?,
-      cover_image = ?, category = ?, tags = ?, date = ?, link = ?,
+      kind = ?, target_id = ?, marker = ?, territory = ?, title = ?, subtitle = ?, description = ?,
+      content = ?, cover_image = ?, category = ?, tags = ?, date = ?, link = ?,
       x = ?, z = ?, scale = ?, rotation = ?, building = ?, connections = ?,
       updated_at = strftime('%s','now')
     WHERE id = ?
   `).run(
     kind, targetId,
     b.marker === undefined ? ex.marker : (MARKERS.has(b.marker) ? b.marker : ex.marker),
+    b.territory === undefined ? ex.territory : cleanTerritory(b.territory),
     b.title === undefined ? ex.title : str(b.title).trim(),
     b.subtitle === undefined ? ex.subtitle : str(b.subtitle),
     b.description === undefined ? ex.description : str(b.description),

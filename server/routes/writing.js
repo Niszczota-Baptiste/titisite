@@ -6,6 +6,14 @@ function parseTags(raw) {
   try { const t = JSON.parse(raw || '[]'); return Array.isArray(t) ? t : []; } catch { return []; }
 }
 
+function parseTerritory(raw) {
+  if (!raw) return null;
+  try {
+    const t = JSON.parse(raw);
+    return t && Array.isArray(t.points) && t.points.length >= 3 ? t : null;
+  } catch { return null; }
+}
+
 function parseTerrain(raw) {
   if (!raw) return null;
   try { const t = JSON.parse(raw); return t && typeof t === 'object' && !Array.isArray(t) ? t : null; } catch { return null; }
@@ -95,8 +103,15 @@ function parseConnections(raw) {
     const a = JSON.parse(raw || '[]');
     if (!Array.isArray(a)) return [];
     return a.map((c) => (typeof c === 'number'
-      ? { to: c, style: 'route' }
-      : { to: Number(c?.to), style: c?.style === 'arc' ? 'arc' : 'route' }))
+      ? { to: c, style: 'route', via: [] }
+      : {
+        to: Number(c?.to),
+        style: c?.style === 'arc' ? 'arc' : 'route',
+        via: Array.isArray(c?.via)
+          ? c.via.filter((p) => Array.isArray(p) && p.length === 2)
+            .slice(0, 24).map(([x, z]) => [Number(x) || 0, Number(z) || 0])
+          : [],
+      }))
       .filter((c) => Number.isInteger(c.to));
   } catch { return []; }
 }
@@ -108,6 +123,7 @@ export function mapZone(r, projectSlug, { publicOnly = true } = {}) {
   const zone = {
     id: r.id, projectId: r.project_id, worldmapId: r.worldmap_id, workId: r.work_id,
     kind: r.kind, targetId: r.target_id, marker: r.marker || '',
+    territory: parseTerritory(r.territory),
     title: r.title, subtitle: r.subtitle, description: r.description, content: r.content,
     coverImage: r.cover_image, category: r.category, tags: parseTags(r.tags),
     date: r.date, link: r.link,

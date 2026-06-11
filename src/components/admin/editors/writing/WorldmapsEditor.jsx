@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../../../api/client';
 import { useConfirm } from '../../../../ui/ConfirmProvider';
-import { paintWorld } from '../../../writing/map/Map2D';
-import { MARKER_BY_KEY, MARKERS, ZONE_KINDS } from '../../../writing/map/presets';
+import { MARKERS, ZONE_KINDS } from '../../../writing/map/presets';
 import { buildWorld } from '../../../writing/map/terrain';
+import { ZoneBoard } from './ZoneBoard';
 import { ACC, ACC_RGB, Button, Field, Input, Textarea } from '../../ui';
 import { ImageUploadField } from '../../ImageUploadField';
 import { TerrainPainter } from './TerrainPainter';
@@ -19,7 +19,11 @@ const draftOf = (z) => ({
   kind: z.kind, targetId: z.targetId, marker: z.marker || 'lieu',
   title: z.title, subtitle: z.subtitle, description: z.description, content: z.content,
   coverImage: z.coverImage, category: z.category, tags: z.tags || [], date: z.date, link: z.link,
-  connections: (z.connections || []).map((c) => (typeof c === 'number' ? { to: c, style: 'route' } : c)),
+  scale: z.scale, rotation: z.rotation,
+  territory: z.territory || null,
+  connections: (z.connections || []).map((c) => (typeof c === 'number'
+    ? { to: c, style: 'route', via: [] }
+    : { via: [], ...c })),
 });
 
 export function WorldmapsEditor({ projectId }) {
@@ -34,6 +38,7 @@ export function WorldmapsEditor({ projectId }) {
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
   const [paintOpen, setPaintOpen] = useState(false);
+  const [pathEdit, setPathEdit] = useState(null); // { kind: 'via', to } | { kind: 'territory' }
   const [saving, setSaving] = useState(false);
   const [terrainVersion, setTerrainVersion] = useState(0);
 
@@ -65,6 +70,7 @@ export function WorldmapsEditor({ projectId }) {
     setSelectedId(id);
     setDirty(false);
     setErr('');
+    setPathEdit(null);
     const z = zones.find((x) => x.id === id);
     setDraft(z ? draftOf(z) : null);
   }, [zones]);
@@ -165,6 +171,41 @@ export function WorldmapsEditor({ projectId }) {
     } catch { setErr('Suppression impossible.'); }
   };
 
+  const world = useMemo(
+    () => (active ? buildWorld(active.terrain, 'plaines', zones, { world: true }) : null),
+    [active, zones],
+  );
+
+  // Live path-editing wiring: points come from the unsaved draft so the course
+  // follows the mouse, persisted with the usual « Enregistrer » button.
+  const selfZone = zones.find((z) => z.id === selectedId);
+  let boardPath = null;
+  if (pathEdit && draft && selfZone) {
+    if (pathEdit.kind === 'via') {
+      const other = zones.find((z) => z.id === pathEdit.to);
+      const conn = (draft.connections || []).find((c) => c.to === pathEdit.to);
+      if (other && conn) {
+        boardPath = {
+          points: conn.via || [],
+          endpoints: [[selfZone.x, selfZone.z], [other.x, other.z]],
+          closed: false,
+          color: null,
+          onChange: (pts) => edit({
+            connections: draft.connections.map((c) => (c.to === pathEdit.to ? { ...c, via: pts } : c)),
+          }),
+        };
+      }
+    } else {
+      boardPath = {
+        points: draft.territory?.points || [],
+        endpoints: null,
+        closed: true,
+        color: draft.territory?.color || null,
+        onChange: (pts) => edit({ territory: { color: draft.territory?.color || '', points: pts } }),
+      };
+    }
+  }
+
   if (loading) return <p style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(180,170,200,0.6)' }}>Chargement…</p>;
 
   const chip = (on) => ({
@@ -239,15 +280,27 @@ export function WorldmapsEditor({ projectId }) {
             )}
           </div>
 
-          <PoiBoard
-            worldmap={active}
-            zones={zones}
-            accent={project?.accentColor || ACC}
-            selectedId={selectedId}
-            onSelect={select}
-            onMove={movePoi}
-            onMoveEnd={movePoiEnd}
-          />
+          {pathEdit && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+              <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: ACC, margin: 0 }}>
+                {pathEdit.kind === 'via' ? '✏️ Tracé de la route' : '✏️ Territoire'} — clique sur la carte pour
+                ajouter un point, glisse un point pour le déplacer, double-clic pour le supprimer.
+              </p>
+              <Button variant="ghost" onClick={() => setPathEdit(null)}>Terminer</Button>
+            </div>
+          )}
+          {world && (
+            <ZoneBoard
+              world={world}
+              zones={zones}
+              accent={project?.accentColor || ACC}
+              selectedId={selectedId}
+              onSelect={select}
+              onMove={movePoi}
+              onMoveEnd={movePoiEnd}
+              pathEdit={boardPath}
+            />
+          )}
 
           {draft && selectedId != null ? (
             <div style={{ ...blockStyle, padding: '18px 20px' }}>
@@ -300,6 +353,44 @@ export function WorldmapsEditor({ projectId }) {
                 </div>
               </div>
 
+              {draft.marker === 'etiquette' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 4 }}>
+                  <Field label={`Taille du texte — ${Number(draft.scale ?? 1).toFixed(1)}×`}>
+                    <input type="range" min="0.5" max="2.2" step="0.1" value={draft.scale ?? 1} onChange={(e) => edit({ scale: Number(e.target.value) })} style={{ width: '100%', accentColor: ACC }} />
+                  </Field>
+                  <Field label={`Inclinaison — ${Math.round(((draft.rotation ?? 0) * 180) / Math.PI)}°`}>
+                    <input type="range" min={-1.57} max={1.57} step="0.05" value={draft.rotation ?? 0} onChange={(e) => edit({ rotation: Number(e.target.value) })} style={{ width: '100%', accentColor: ACC }} />
+                  </Field>
+                </div>
+              )}
+
+              <div style={blockStyle}>
+                <span style={blockLabel}>Territoire (zone d'influence dessinée autour du lieu)</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant={pathEdit?.kind === 'territory' ? 'primary' : 'ghost'}
+                    onClick={() => setPathEdit(pathEdit?.kind === 'territory' ? null : { kind: 'territory' })}
+                  >
+                    {pathEdit?.kind === 'territory' ? 'Terminer le dessin' : (draft.territory ? '✏️ Modifier le territoire' : '✏️ Dessiner le territoire')}
+                  </Button>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(180,170,200,0.75)' }}>
+                    Couleur
+                    <input
+                      type="color"
+                      value={draft.territory?.color || project?.accentColor || '#c9a8e8'}
+                      onChange={(e) => edit({ territory: { points: draft.territory?.points || [], color: e.target.value } })}
+                      style={{ width: 42, height: 28, padding: 2, background: 'none', border: '1px solid rgba(80,50,130,0.3)', borderRadius: 6, cursor: 'pointer' }}
+                    />
+                  </label>
+                  {draft.territory && (
+                    <Button variant="danger" onClick={() => { edit({ territory: null }); if (pathEdit?.kind === 'territory') setPathEdit(null); }}>Supprimer</Button>
+                  )}
+                  <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: 'rgba(180,170,200,0.55)' }}>
+                    {draft.territory?.points?.length ? `${draft.territory.points.length} points` : 'au moins 3 points'}
+                  </span>
+                </div>
+              </div>
+
               {zones.length > 1 && (
                 <div style={blockStyle}>
                   <span style={blockLabel}>Connexions (routes 🛣 / arcs ✨ vers d'autres lieux)</span>
@@ -320,12 +411,26 @@ export function WorldmapsEditor({ projectId }) {
                           {conn && (
                             <button
                               type="button"
+                              title={conn.style === 'route' ? 'Route — cliquer pour passer en arc' : 'Arc — cliquer pour passer en route'}
                               onClick={() => edit({
                                 connections: draft.connections.map((c) => (c.to === z.id
                                   ? { ...c, style: c.style === 'route' ? 'arc' : 'route' } : c)),
                               })}
-                              style={{ background: `rgba(${ACC_RGB},0.28)`, border: `1px solid ${ACC}`, borderLeft: 'none', borderRadius: '0 16px 16px 0', color: ACC, padding: '5px 10px', cursor: 'pointer', fontSize: 12 }}
+                              style={{ background: `rgba(${ACC_RGB},0.28)`, border: `1px solid ${ACC}`, borderLeft: 'none', color: ACC, padding: '5px 10px', cursor: 'pointer', fontSize: 12 }}
                             >{conn.style === 'route' ? '🛣' : '✨'}</button>
+                          )}
+                          {conn && (
+                            <button
+                              type="button"
+                              title="Dessiner le tracé point par point"
+                              onClick={() => setPathEdit(pathEdit?.kind === 'via' && pathEdit.to === z.id ? null : { kind: 'via', to: z.id })}
+                              style={{
+                                background: pathEdit?.kind === 'via' && pathEdit.to === z.id ? ACC : `rgba(${ACC_RGB},0.28)`,
+                                border: `1px solid ${ACC}`, borderLeft: 'none', borderRadius: '0 16px 16px 0',
+                                color: pathEdit?.kind === 'via' && pathEdit.to === z.id ? '#08051a' : ACC,
+                                padding: '5px 10px', cursor: 'pointer', fontSize: 12,
+                              }}
+                            >✏️</button>
                           )}
                         </span>
                       );
@@ -341,93 +446,6 @@ export function WorldmapsEditor({ projectId }) {
           )}
         </>
       )}
-    </div>
-  );
-}
-
-// The interactive 2D board: macro terrain + draggable POI markers.
-function PoiBoard({ worldmap, zones, accent, selectedId, onSelect, onMove, onMoveEnd }) {
-  const canvas = useRef(null);
-  const boardRef = useRef(null);
-  const drag = useRef(null);
-
-  const world = useMemo(
-    () => buildWorld(worldmap.terrain, 'plaines', zones, { world: true }),
-    [worldmap.terrain, zones],
-  );
-
-  useEffect(() => {
-    if (canvas.current) paintWorld(canvas.current, world, accent, { px: world.grid > 160 ? 1 : 6 });
-  }, [world, accent]);
-
-  const G = world.grid;
-  const pos = (x, z) => ({ left: `${((x + G / 2) / G) * 100}%`, top: `${((z + G / 2) / G) * 100}%` });
-
-  const toWorld = (e) => {
-    const r = boardRef.current.getBoundingClientRect();
-    const half = G / 2;
-    return [
-      Math.min(half, Math.max(-half, ((e.clientX - r.left) / r.width) * G - half)),
-      Math.min(half, Math.max(-half, ((e.clientY - r.top) / r.height) * G - half)),
-    ];
-  };
-
-  return (
-    <div
-      ref={boardRef}
-      onPointerMove={(e) => {
-        if (drag.current == null) return;
-        const [x, z] = toWorld(e);
-        onMove(drag.current, Math.round(x * 10) / 10, Math.round(z * 10) / 10);
-      }}
-      onPointerUp={() => {
-        if (drag.current != null) onMoveEnd(drag.current);
-        drag.current = null;
-      }}
-      style={{
-        position: 'relative', width: 'min(640px, 100%)', aspectRatio: '1',
-        borderRadius: 14, overflow: 'hidden', border: `1px solid rgba(${ACC_RGB},0.25)`,
-        marginBottom: 18, touchAction: 'none', background: '#0a1420',
-      }}
-    >
-      <canvas ref={canvas} aria-hidden style={{ width: '100%', height: '100%', display: 'block', imageRendering: 'pixelated' }} />
-      {zones.map((z) => {
-        const m = MARKER_BY_KEY[z.marker] || MARKER_BY_KEY.lieu;
-        const lit = selectedId === z.id;
-        return (
-          <button
-            key={z.id}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.currentTarget.setPointerCapture(e.pointerId);
-              drag.current = z.id;
-              onSelect(z.id);
-            }}
-            onPointerUp={() => { if (drag.current != null) onMoveEnd(drag.current); drag.current = null; }}
-            aria-label={z.title}
-            style={{
-              position: 'absolute', ...pos(z.x, z.z), transform: 'translate(-50%, -50%)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-              background: 'none', border: 'none', cursor: 'grab', padding: 4, zIndex: lit ? 5 : 2,
-              touchAction: 'none',
-            }}
-          >
-            <span style={{
-              width: 26, height: 26, borderRadius: '50%', fontSize: 13,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'rgba(11,6,32,0.88)',
-              border: `2px solid ${lit ? accent : `rgba(${ACC_RGB},0.55)`}`,
-              boxShadow: lit ? `0 0 12px rgba(${ACC_RGB},0.9)` : '0 2px 8px rgba(0,0,0,0.6)',
-            }}>{m.icon}</span>
-            <span style={{
-              fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, whiteSpace: 'nowrap',
-              color: lit ? accent : '#ede8f8', background: 'rgba(8,5,20,0.78)',
-              border: `1px solid rgba(${ACC_RGB},${lit ? 0.55 : 0.2})`,
-              borderRadius: 6, padding: '0 5px',
-            }}>{z.title}</span>
-          </button>
-        );
-      })}
     </div>
   );
 }

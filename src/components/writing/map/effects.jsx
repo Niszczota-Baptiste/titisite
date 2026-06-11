@@ -98,6 +98,11 @@ export function Connections({ world, accent, activeId }) {
   const arcs = useMemo(() => world.routes
     .filter((r) => r.style === 'arc')
     .map((r) => {
+      if (r.points.length > 2) {
+        // Hand-drawn course: glide through the waypoints, hugging the relief.
+        const pts = r.points.map(([x, z]) => new THREE.Vector3(x, world.heightAt(x, z) + 1.4, z));
+        return { key: r.key, points: new THREE.CatmullRomCurve3(pts).getPoints(12 * pts.length) };
+      }
       const [ax, az] = r.points[0];
       const [bx, bz] = r.points[r.points.length - 1];
       const a = new THREE.Vector3(ax, world.heightAt(ax, az) + 0.6, az);

@@ -97,6 +97,7 @@ export const MARKERS = [
   { value: 'personnage', label: 'Personnage', icon: '👤', tier: 1 },
   { value: 'livre', label: 'Récit', icon: '📖', tier: 1 },
   { value: 'lieu', label: 'Lieu', icon: '✦', tier: 1 },
+  { value: 'etiquette', label: 'Nom géographique (texte seul)', icon: '𝐀', tier: 2 },
 ];
 export const MARKER_BY_KEY = Object.fromEntries(MARKERS.map((m) => [m.value, m]));
 

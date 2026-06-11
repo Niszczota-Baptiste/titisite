@@ -63,11 +63,19 @@ vallée des âmes, basalte, End).
   - `x`, `z` (±40, selon la taille de carte), `scale`, `rotation`, `building` (14 types dont le set
     coréen `pagode`, `hanok`, `pavillon`, `porte`), `content` (Markdown maison,
     tokens `[[perso:…]]` / `{{kr:…}}`).
-  - `connections` : `[{ "to": id, "style": "route" | "arc" }]` (les anciens
-    ids nus sont normalisés en routes). **route** = chemin creusé dans le
-    terrain, pont en planches au-dessus de l'eau, pulse lumineux qui parcourt
-    la route quand une extrémité est survolée/sélectionnée ; **arc** = ligne
-    lumineuse pointillée animée.
+  - `connections` : `[{ "to": id, "style": "route" | "arc", "via": [[x,z]…] }]`
+    (les anciens ids nus sont normalisés en routes). **route** = chemin creusé
+    dans le terrain, pont en planches au-dessus de l'eau, pulse lumineux quand
+    une extrémité est active ; **arc** = ligne lumineuse pointillée animée.
+    `via` = **tracé libre** dessiné point par point dans l'admin (bouton ✏️
+    d'une connexion → clic sur la carte 2D ajoute un point, glisser déplace,
+    double-clic supprime) ; sans `via`, la route suit une courbe automatique.
+  - `territory` (POI de carte-monde) : polygone `{ color, points:[[x,z]…] }`
+    dessiné autour d'une capitale/cité — rendu en zone teintée + frontière
+    pointillée colorée sur l'atlas.
+  - marqueur `etiquette` : **nom géographique en texte seul** (monts, fleuves…),
+    sans pastille — taille via `scale`, inclinaison via `rotation` (sliders
+    dans l'admin), typographie cartographique italique.
 
 ## Éditer le monde
 

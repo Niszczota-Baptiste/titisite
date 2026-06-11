@@ -231,21 +231,31 @@ export function buildWorld(rawTerrain, baseBiome, zones, { world = false } = {})
     for (const c of z.connections || []) {
       const to = typeof c === 'number' ? c : c.to;
       const style = typeof c === 'number' ? 'route' : c.style;
+      const via = (typeof c === 'object' && Array.isArray(c.via)) ? c.via : [];
       const other = zoneById.get(to);
       const key = z.id < to ? `${z.id}-${to}` : `${to}-${z.id}`;
       if (!other || seen.has(key)) continue;
       seen.add(key);
-      if (style !== 'route') { routes.push({ key, a: z.id, b: to, style, points: [[z.x, z.z], [other.x, other.z]] }); continue; }
-      // Gentle S-curve so roads don't look like ruler lines.
-      const mx = (z.x + other.x) / 2 + noise(z.x, other.z) * 6 - 3;
-      const mz = (z.z + other.z) / 2 + noise(other.x, z.z) * 6 - 3;
-      const pts = [];
-      for (let s = 0; s <= 16; s++) {
-        const u = s / 16;
-        pts.push([
-          (1 - u) * (1 - u) * z.x + 2 * (1 - u) * u * mx + u * u * other.x,
-          (1 - u) * (1 - u) * z.z + 2 * (1 - u) * u * mz + u * u * other.z,
-        ]);
+      if (style !== 'route') {
+        routes.push({ key, a: z.id, b: to, style, points: [[z.x, z.z], ...via, [other.x, other.z]] });
+        continue;
+      }
+      let pts;
+      if (via.length) {
+        // Hand-drawn course: follow the editor's waypoints exactly.
+        pts = [[z.x, z.z], ...via, [other.x, other.z]];
+      } else {
+        // Gentle S-curve so auto roads don't look like ruler lines.
+        const mx = (z.x + other.x) / 2 + noise(z.x, other.z) * 6 - 3;
+        const mz = (z.z + other.z) / 2 + noise(other.x, z.z) * 6 - 3;
+        pts = [];
+        for (let s = 0; s <= 16; s++) {
+          const u = s / 16;
+          pts.push([
+            (1 - u) * (1 - u) * z.x + 2 * (1 - u) * u * mx + u * u * other.x,
+            (1 - u) * (1 - u) * z.z + 2 * (1 - u) * u * mz + u * u * other.z,
+          ]);
+        }
       }
       const sampled = [];
       carve(pts, sampled);

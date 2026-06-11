@@ -8,6 +8,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased] — hierarchie-monde-cite
 
 ### Added
+- **Tracé libre des routes** (deux niveaux de carte) : chaque connexion porte
+  des points de passage `via` dessinés à la main — bouton ✏️ dans l'admin,
+  clic sur la carte 2D pour ajouter un point, glisser pour déplacer,
+  double-clic pour supprimer ; la route creusée (et l'arc lumineux) suivent
+  exactement le tracé, en 2D comme en 3D (Catmull-Rom épousant le relief).
+- **Territoires** sur la carte-monde : polygone dessiné point par point autour
+  d'une capitale/cité (couleur au choix) — zone d'influence teintée +
+  frontière pointillée sur l'atlas public et le board admin.
+- **Noms géographiques** : marqueur `etiquette` (texte cartographique seul,
+  italique) pour nommer monts, fleuves, mers… taille et inclinaison réglables
+  (sliders), grossit avec le zoom.
 - **Cartes-mondes géantes 2D** (« atlas ») : plusieurs par univers (Surface,
   Profondeurs…), échelle configurable (1 cellule = 8/16/32 blocs, mondes
   jusqu'à ~32 000 blocs de côté), pan + zoom libres (molette/pinch, zoom vers

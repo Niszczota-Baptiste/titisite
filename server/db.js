@@ -567,6 +567,9 @@ export function migrate() {
   ensureColumn('writing_map_zones', 'worldmap_id', 'INTEGER REFERENCES writing_worldmaps(id) ON DELETE CASCADE');
   ensureColumn('writing_map_zones', 'work_id', 'INTEGER REFERENCES writing_works(id) ON DELETE CASCADE');
   ensureColumn('writing_map_zones', 'marker', "TEXT NOT NULL DEFAULT ''");
+  // Territory polygon owned by a world-map POI (JSON { color, points:[[x,z]…] },
+  // drawn as a tinted area + dashed border around its capital/city).
+  ensureColumn('writing_map_zones', 'territory', "TEXT NOT NULL DEFAULT ''");
   db.exec(`CREATE INDEX IF NOT EXISTS idx_map_zones_worldmap ON writing_map_zones(worldmap_id, sort_order);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_map_zones_work ON writing_map_zones(work_id, sort_order);`);
   ensureColumn('writing_works', 'map_biome', "TEXT NOT NULL DEFAULT 'plaines'");

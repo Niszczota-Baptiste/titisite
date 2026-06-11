@@ -6,7 +6,9 @@ import {
 } from '../../../writing/map/presets';
 import { ACC, ACC_RGB, Button, Field, Input, Textarea } from '../../ui';
 import { ImageUploadField } from '../../ImageUploadField';
+import { buildWorld } from '../../../writing/map/terrain';
 import { TerrainPainter } from './TerrainPainter';
+import { ZoneBoard } from './ZoneBoard';
 import { DirtyBadge, GenreTags, MarkdownField, SelectField, blockLabel, blockStyle } from './widgets';
 
 // Same lazy chunk as the public map — three.js never enters the admin bundle.
@@ -17,8 +19,10 @@ const draftOf = (z) => ({
   description: z.description, content: z.content, coverImage: z.coverImage,
   category: z.category, tags: z.tags || [], date: z.date, link: z.link,
   building: z.building, scale: z.scale, rotation: z.rotation,
-  // Legacy rows stored plain ids; normalize to { to, style }.
-  connections: (z.connections || []).map((c) => (typeof c === 'number' ? { to: c, style: 'route' } : c)),
+  // Legacy rows stored plain ids; normalize to { to, style, via }.
+  connections: (z.connections || []).map((c) => (typeof c === 'number'
+    ? { to: c, style: 'route', via: [] }
+    : { via: [], ...c })),
 });
 
 // Local voxel map editor: pick the biome, then place/edit the zones by
@@ -41,6 +45,7 @@ export function MapEditor({ projectId, workId }) {
   const [terrainErr, setTerrainErr] = useState('');
   const [terrainSaving, setTerrainSaving] = useState(false);
   const [terrainVersion, setTerrainVersion] = useState(0);
+  const [routeTo, setRouteTo] = useState(null); // connection whose course is being drawn (2D board)
 
   const [owner, setOwner] = useState(null); // the map holder: a work, or the project itself
 
@@ -76,6 +81,7 @@ export function MapEditor({ projectId, workId }) {
     setSelectedId(id);
     setDirty(false);
     setErr('');
+    setRouteTo(null);
     setDraft(id == null ? null : (() => {
       const z = zones.find((x) => x.id === id);
       return z ? draftOf(z) : null;
@@ -194,6 +200,24 @@ export function MapEditor({ projectId, workId }) {
 
   const linked = draft && draft.kind !== 'libre';
   const inherited = linked ? ' (hérité du contenu lié si vide)' : '';
+
+  // 2D course editor for the selected connection: same world as the 3D scene,
+  // saved with the usual « Enregistrer » button.
+  const localWorld = routeTo != null
+    ? buildWorld(owner?.mapTerrain || null, owner?.mapBiome || 'plaines', zones)
+    : null;
+  const selfZone = zones.find((z) => z.id === selectedId);
+  const routeOther = zones.find((z) => z.id === routeTo);
+  const routeConn = draft?.connections?.find((c) => c.to === routeTo);
+  const boardPath = localWorld && selfZone && routeOther && routeConn ? {
+    points: routeConn.via || [],
+    endpoints: [[selfZone.x, selfZone.z], [routeOther.x, routeOther.z]],
+    closed: false,
+    color: null,
+    onChange: (pts) => edit({
+      connections: draft.connections.map((c) => (c.to === routeTo ? { ...c, via: pts } : c)),
+    }),
+  } : null;
 
   return (
     <div>
@@ -431,15 +455,44 @@ export function MapEditor({ projectId, workId }) {
                           })}
                           style={{
                             background: `rgba(${ACC_RGB},0.28)`, border: `1px solid ${ACC}`, borderLeft: 'none',
-                            borderRadius: '0 16px 16px 0', color: ACC, padding: '5px 10px',
+                            color: ACC, padding: '5px 10px',
                             cursor: 'pointer', fontSize: 12,
                           }}
                         >{conn.style === 'route' ? '🛣' : '✨'}</button>
+                      )}
+                      {conn && (
+                        <button
+                          type="button"
+                          title="Dessiner le tracé point par point (vue 2D)"
+                          onClick={() => setRouteTo(routeTo === z.id ? null : z.id)}
+                          style={{
+                            background: routeTo === z.id ? ACC : `rgba(${ACC_RGB},0.28)`,
+                            border: `1px solid ${ACC}`, borderLeft: 'none', borderRadius: '0 16px 16px 0',
+                            color: routeTo === z.id ? '#08051a' : ACC, padding: '5px 10px',
+                            cursor: 'pointer', fontSize: 12,
+                          }}
+                        >✏️</button>
                       )}
                     </span>
                   );
                 })}
               </div>
+              {boardPath && (
+                <div style={{ marginTop: 14 }}>
+                  <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: ACC, marginBottom: 8 }}>
+                    ✏️ Tracé vers « {routeOther?.title} » — clique sur la carte pour ajouter un point,
+                    glisse pour déplacer, double-clic pour supprimer. Enregistre la zone pour appliquer.
+                  </p>
+                  <ZoneBoard
+                    world={localWorld}
+                    zones={zones}
+                    accent={owner?.accentColor || project?.accentColor || ACC}
+                    selectedId={selectedId}
+                    pathEdit={boardPath}
+                    maxWidth={460}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -13,7 +13,7 @@ const shadeHex = (hex, f) => {
   return `rgb(${c((n >> 16) & 255)},${c((n >> 8) & 255)},${c(n & 255)})`;
 };
 
-export function paintWorld(canvas, world, accent, { routes = true, px = 6 } = {}) {
+export function paintWorld(canvas, world, accent, { routes = true, px = 6, zones = null } = {}) {
   canvas.width = world.grid * px;
   canvas.height = world.grid * px;
   const ctx = canvas.getContext('2d');
@@ -44,19 +44,42 @@ export function paintWorld(canvas, world, accent, { routes = true, px = 6 } = {}
     }
   }
 
+  const toPx = ([x, z]) => [(x + grid / 2) * px, (z + grid / 2) * px];
+
+  // Territories: tinted area + dashed border, owned by a POI (capital/city).
+  if (zones) {
+    for (const z of zones) {
+      const t = z.territory;
+      if (!t || !Array.isArray(t.points) || t.points.length < 3) continue;
+      const color = t.color || accent;
+      ctx.beginPath();
+      t.points.forEach((pt, i) => (i ? ctx.lineTo(...toPx(pt)) : ctx.moveTo(...toPx(pt))));
+      ctx.closePath();
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1, px * 0.6);
+      ctx.setLineDash([px * 2, px * 1.4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+  }
+
   if (!routes) return;
 
-  // Luminous 'arc' connections, dashed in the accent color.
+  // Luminous 'arc' connections, dashed polylines through their waypoints.
   ctx.strokeStyle = accent;
   ctx.globalAlpha = 0.75;
   ctx.lineWidth = 2;
   ctx.setLineDash([6, 5]);
   for (const r of world.routes) {
     if (r.style !== 'arc' || r.points.length < 2) continue;
-    const toPx = ([x, z]) => [(x + grid / 2) * px, (z + grid / 2) * px];
     ctx.beginPath();
     ctx.moveTo(...toPx(r.points[0]));
-    ctx.lineTo(...toPx(r.points[r.points.length - 1]));
+    for (let k = 1; k < r.points.length; k++) ctx.lineTo(...toPx(r.points[k]));
     ctx.stroke();
   }
   ctx.setLineDash([]);
