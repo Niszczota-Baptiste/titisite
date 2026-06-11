@@ -77,20 +77,43 @@ export const MAP_SIZES = [
   { value: 80, label: 'Très grande (80)' },
 ];
 
-// Default terrain when the project hasn't defined one yet: a soft island of
-// the base biome with a couple of relief bumps. Shown in the admin editor as
-// the starting template.
+// Example terrain inserted by the admin JSON tab: a square forest world with
+// winding violet rivers, flower clearings and a lordly mountain to the east —
+// modeled after the user's Minecraft survey map. Demonstrates shape/size,
+// waterColor and per-project custom biomes.
 export const TERRAIN_TEMPLATE = {
-  seed: 7,
+  shape: 'carre',
+  size: 64,
+  seed: 23,
   waterLevel: 1,
+  waterColor: '#7263d8',
+  baseBiome: 'foret',
+  biomes: {
+    sombre: { label: 'Forêt sombre', top: '#2f6038', side: '#54422f', decor: 'arbre', density: 0.24 },
+    clairiere: { label: 'Clairière fleurie', top: '#4f8a4f', side: '#5d4a39', decor: 'fleurs', density: 0.35 },
+  },
   regions: [
-    { biome: 'foret', cx: -8, cz: -6, r: 10, height: 3, relief: 1.5 },
-    { biome: 'montagne', cx: 10, cz: -10, r: 8, height: 6, relief: 3 },
-    { biome: 'plaines', cx: 4, cz: 8, r: 12, height: 2, relief: 1 },
+    { biome: 'montagne', cx: 18, cz: 13, r: 12, height: 6, relief: 2.5 },
+    { biome: 'sombre', cx: -22, cz: -18, r: 9, height: 1, relief: 0.8 },
+    { biome: 'sombre', cx: 6, cz: -24, r: 8, height: 0.8, relief: 0.6 },
+    { biome: 'sombre', cx: -2, cz: 14, r: 9, height: 0.8, relief: 0.6 },
+    { biome: 'sombre', cx: 24, cz: -12, r: 7, height: 0.6, relief: 0.5 },
+    { biome: 'clairiere', cx: -28, cz: 8, r: 6, height: 0.3, relief: 0.3 },
+    { biome: 'clairiere', cx: 12, cz: 28, r: 7, height: 0.3, relief: 0.3 },
+    { biome: 'clairiere', cx: 28, cz: -26, r: 5, height: 0.3, relief: 0.3 },
   ],
-  rivers: [{ points: [[10, -18], [6, -6], [0, 2], [-4, 12], [-6, 20]], width: 1.4 }],
-  lakes: [{ cx: -12, cz: 8, r: 4 }],
-  forests: [{ cx: -8, cz: -6, r: 7, density: 0.3 }],
+  rivers: [
+    { points: [[-13, -32], [-15, -24], [-11, -17], [-13, -10], [-11, -7]], width: 1.3 },
+    { points: [[-11, -7], [-14, 0], [-18, 5], [-17, 12], [-19, 22], [-18, 32]], width: 1.3 },
+    { points: [[-30, -14], [-26, -6], [-21, 2], [-18, 5]], width: 1.1 },
+    { points: [[-11, -7], [-5, -4], [1, -6], [6, -3]], width: 1.0 },
+  ],
+  lakes: [
+    { cx: -11, cz: -8, r: 4.5 },
+    { cx: -19, cz: 6, r: 3 },
+    { cx: -28, cz: -22, r: 3 },
+  ],
+  forests: [{ cx: 0, cz: 0, r: 34, density: 0.12 }],
   paths: [],
 };
 
@@ -112,7 +135,7 @@ export function normalizeTerrain(raw, baseBiome) {
         label: String(b.label || key).slice(0, 30),
         top: hex(b.top, '#4f8a4f'),
         side: hex(b.side, '#7a6248'),
-        decor: ['herbe', 'arbre', 'sapin', 'cactus', 'rocher', 'roseau', 'palmier', 'bambou', 'none'].includes(b.decor) ? b.decor : 'herbe',
+        decor: ['herbe', 'fleurs', 'arbre', 'sapin', 'cactus', 'rocher', 'roseau', 'palmier', 'bambou', 'none'].includes(b.decor) ? b.decor : 'herbe',
         density: num(b.density, 0, 0.5, 0.06),
       };
     }

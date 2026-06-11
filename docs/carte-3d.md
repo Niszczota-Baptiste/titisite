@@ -94,8 +94,8 @@ Trois façons, de la plus simple à la plus fine :
 - `rivers`/`lakes` creusent sous le niveau d'eau avec berges douces ;
   les plages de sable apparaissent automatiquement au contact de l'eau.
 - `biomes` déclare des **biomes personnalisés par projet** (fusionnés sur les
-  presets) — décors possibles : `herbe`, `arbre`, `sapin`, `cactus`,
-  `rocher`, `roseau`, `palmier`, `bambou`, `none`.
+  presets) — décors possibles : `herbe`, `fleurs`, `arbre`, `sapin`,
+  `cactus`, `rocher`, `roseau`, `palmier`, `bambou`, `none`.
 - Tout est clampé par `presets.js#normalizeTerrain` ; un JSON vide donne une
   île simple du biome de base.
 - Champ optionnel `grid` (écrit par le pinceau) : `{ size, heights: [lignes

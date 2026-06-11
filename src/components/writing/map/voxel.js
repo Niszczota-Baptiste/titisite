@@ -136,6 +136,11 @@ export function buildDecorGeometry(world, zones, rng, quality) {
 
   const KINDS = {
     herbe: (x, y, z) => { buf.box(x, y + 0.18, z, 0.1, 0.36, 0.1, colorOf('#5fae5a')); },
+    fleurs: (x, y, z) => {
+      buf.box(x, y + 0.14, z, 0.07, 0.28, 0.07, colorOf('#4f8a4f'));
+      const head = rng();
+      buf.box(x, y + 0.34, z, 0.16, 0.14, 0.16, colorOf(head > 0.4 ? '#c43c3c' : head > 0.2 ? '#d8d4c8' : '#d8b34c'));
+    },
     arbre: (x, y, z) => {
       const th = 1 + Math.floor(rng() * 2);
       buf.box(x, y + th / 2, z, 0.3, th, 0.3, colorOf('#5a4030'));

@@ -15,6 +15,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   stable sous tous les angles.
 
 ### Added
+- Décor `fleurs` (têtes rouges/blanches/jaunes) + modèle d'exemple « monde
+  forestier » reproduisant une carte Minecraft fournie : carré 64, rivières
+  violettes sinueuses, forêt sombre, clairières fleuries, montagne
+  seigneuriale (bouton « Insérer le modèle d'exemple » de l'admin).
 - **Éditeur de terrain au pinceau** (admin, sans JSON) : on peint
   élévation/abaissement, eau et biomes directement sur la carte 2D ; le
   dessin est sauvé en grilles compactes (`mapTerrain.grid`) et remplace le
