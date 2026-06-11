@@ -68,24 +68,42 @@ function baseHeight(shape, x, z, grid, W, noise) {
   return inside > 0 ? W + inside * (1 + noise(x, z) * 1.2) : 0;
 }
 
+// Expand one possibly RLE row ("12a4b" = 12×'a' + 4×'b') to plain chars.
+function expandRow(row, size, rle) {
+  if (!rle) return row;
+  let out = '';
+  let count = '';
+  for (const ch of String(row)) {
+    if (ch >= '0' && ch <= '9' && count.length < 5) { count += ch; continue; }
+    out += ch.repeat(Math.min(size - out.length, Math.max(1, Number(count || 1))));
+    count = '';
+    if (out.length >= size) break;
+  }
+  return out;
+}
+
 // Decode the painted grid layer into height/biome arrays.
 function applyPaintedGrid(g, height, biome, gridSize, fallbackBiome) {
   for (let j = 0; j < gridSize; j++) {
-    const hRow = g.heights[j] || '';
-    const cRow = g.cells[j] || '';
+    const hRow = expandRow(g.heights[j] || '', gridSize, g.rle);
+    const cRow = expandRow(g.cells[j] || '', gridSize, g.rle);
     for (let i = 0; i < gridSize; i++) {
-      const h = parseInt(hRow[i] || '0', 16);
+      const hc = hRow[i] || '0';
+      const hNew = 'ghijklmnopqrs'.indexOf(hc);
+      const h = hNew >= 0 ? hNew : parseInt(hc, 16);
       height[j * gridSize + i] = Number.isFinite(h) ? Math.min(MAX_H, Math.max(0, h)) : 0;
-      const pi = parseInt(cRow[i] || '0', 36);
-      biome[j * gridSize + i] = g.palette[pi] || fallbackBiome;
+      const cc = cRow[i] || '0';
+      const pNew = 'abcdefABCDEFGHIJKLMNOPQRSTUVWXYZuvwxyz'.indexOf(cc);
+      const pi = g.rle ? pNew : parseInt(cc, 36);
+      biome[j * gridSize + i] = g.palette[pi >= 0 ? pi : 0] || fallbackBiome;
     }
   }
 }
 
 // Build every grid the renderers need from the project's terrain JSON + its
 // zones. Deterministic for a given input.
-export function buildWorld(rawTerrain, baseBiome, zones) {
-  const t = normalizeTerrain(rawTerrain, baseBiome);
+export function buildWorld(rawTerrain, baseBiome, zones, { world = false } = {}) {
+  const t = normalizeTerrain(rawTerrain, baseBiome, { world });
   const noise = makeNoise(t.seed);
   const W = t.waterLevel;
   const GRID = t.size;
@@ -259,9 +277,27 @@ export function buildWorld(rawTerrain, baseBiome, zones) {
   };
 }
 
+// Run-length encode a row of plain chars ("aaab" → "3ab"); counts are digits,
+// so value chars must be non-digits.
+function rleRow(chars) {
+  let out = '';
+  let i = 0;
+  while (i < chars.length) {
+    let n = 1;
+    while (i + n < chars.length && chars[i + n] === chars[i]) n++;
+    out += (n > 1 ? String(n) : '') + chars[i];
+    i += n;
+  }
+  return out;
+}
+
+const H_CHARS = 'ghijklmnopqrs'; // heights 0..12 as non-digit chars (RLE-safe)
+const P_CHARS = 'abcdefABCDEFGHIJKLMNOPQRSTUVWXYZuvwxyz'; // palette indexes
+
 // Serialize painted height/biome arrays back into the terrain JSON `grid`
-// layer (compact row strings: heights in hex 0..c, biomes as palette indexes
-// in base 36). Inverse of applyPaintedGrid.
+// layer. Rows are RLE-compressed (hand-painted maps are mostly flat runs, so
+// even a 1250×1250 world stays well under the server size cap). Inverse of
+// applyPaintedGrid, which expands via expandRow + the same char tables.
 export function encodeGrid(size, height, biome) {
   const palette = [];
   const paletteIdx = new Map();
@@ -272,13 +308,13 @@ export function encodeGrid(size, height, biome) {
     let cRow = '';
     for (let i = 0; i < size; i++) {
       const k = j * size + i;
-      hRow += Math.min(MAX_H, Math.max(0, Math.round(height[k]))).toString(16);
+      hRow += H_CHARS[Math.min(MAX_H, Math.max(0, Math.round(height[k])))];
       const b = biome[k];
       if (!paletteIdx.has(b)) { paletteIdx.set(b, palette.length); palette.push(b); }
-      cRow += paletteIdx.get(b).toString(36);
+      cRow += P_CHARS[paletteIdx.get(b)] || 'a';
     }
-    heights.push(hRow);
-    cells.push(cRow);
+    heights.push(rleRow(hRow));
+    cells.push(rleRow(cRow));
   }
-  return { size, heights, biomes: { palette, cells } };
+  return { size, rle: true, heights, biomes: { palette, cells } };
 }

@@ -15,7 +15,16 @@ const STATUS = new Set(['brouillon', 'wip', 'termine']);
 const MEDIA_TYPE = new Set(['screenshot', 'schema', 'carte']);
 const AMBIENT = new Set(['none', 'petals', 'leaves', 'snow', 'embers', 'fireflies', 'notes', 'wind', 'waves', 'fireworks']);
 // World-map allowlists — mirrored client-side in src/components/writing/map/presets.js.
-const BIOMES = new Set(['plaines', 'foret', 'bambou', 'desert', 'ocean', 'neige', 'volcan', 'montagne', 'marais', 'toundra']);
+const BIOMES = new Set([
+  'plaines', 'tournesols', 'foret', 'bouleaux', 'foret_sombre', 'cerisiers', 'jungle', 'bambou',
+  'taiga', 'taiga_enneigee', 'neige', 'pics_geles', 'montagne', 'collines', 'savane', 'desert',
+  'badlands', 'marais', 'mangrove', 'champignons', 'plage', 'ocean', 'toundra',
+  'neant', 'foret_pourpre', 'foret_biscornue', 'vallee_ames', 'basalte', 'end', 'volcan',
+]);
+const MARKERS = new Set([
+  '', 'royaume', 'capitale', 'cite', 'village', 'forteresse', 'temple', 'port', 'ruine',
+  'antre', 'montagne', 'foret', 'ile', 'personnage', 'livre', 'lieu',
+]);
 const BUILDINGS = new Set([
   'tour', 'maison', 'donjon', 'temple', 'cristal', 'arbre', 'ruine', 'phare', 'tente', 'monolithe',
   'pagode', 'hanok', 'pavillon', 'porte',
@@ -24,6 +33,7 @@ const ZONE_KINDS = new Set(['work', 'character', 'glossary', 'libre']);
 // Terrain JSON is engine data, not markup: stored as-is after a structural
 // check, normalized/clamped by the client engine at render time.
 const MAX_TERRAIN_BYTES = 120 * 1024;
+const MAX_WORLD_TERRAIN_BYTES = 1536 * 1024;
 
 const str = (v, fallback = '') => (typeof v === 'string' ? v : fallback);
 const statusOf = (v, fb = 'brouillon') => (STATUS.has(v) ? v : fb);
@@ -182,6 +192,16 @@ function applyEntryFields(id, projectId, body) {
   }
   if (body.audioTrackId !== undefined) {
     db.prepare('UPDATE writing_works SET audio_track_id = ? WHERE id = ?').run(loadTrackId(body.audioTrackId), id);
+  }
+  if (body.mapBiome !== undefined && BIOMES.has(body.mapBiome)) {
+    db.prepare('UPDATE writing_works SET map_biome = ? WHERE id = ?').run(body.mapBiome, id);
+  }
+  if (body.mapTerrain !== undefined) {
+    const t = body.mapTerrain;
+    if (t !== null && (typeof t !== 'object' || Array.isArray(t))) return 'invalid_terrain';
+    const json = t === null ? '' : JSON.stringify(t);
+    if (json.length > MAX_TERRAIN_BYTES) return 'terrain_too_large';
+    db.prepare('UPDATE writing_works SET map_terrain = ? WHERE id = ?').run(json, id);
   }
   if (body.linkedCharacters !== undefined) {
     const clean = (Array.isArray(body.linkedCharacters) ? body.linkedCharacters : [])
@@ -437,11 +457,58 @@ writingAdminRouter.post('/projects/:id(\\d+)/glossary/reorder', (req, res) => {
   res.json(db.prepare('SELECT * FROM glossary_terms WHERE project_id = ? ORDER BY sort_order, id').all(Number(req.params.id)).map(mapTerm));
 });
 
-// ── World-map zones (scoped to a project) ────────────────────────────────────
+// ── World maps (giant 2D atlases) + zones ────────────────────────────────────
 const clamp = (v, min, max, fb) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fb;
 };
+
+const mapWorldmap = (r) => ({
+  id: r.id, projectId: r.project_id, name: r.name,
+  terrain: (() => { try { return r.terrain ? JSON.parse(r.terrain) : null; } catch { return null; } })(),
+  sortOrder: r.sort_order,
+});
+
+writingAdminRouter.get('/projects/:id(\\d+)/worldmaps', (req, res) => {
+  if (!projectExists(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
+  res.json(db.prepare('SELECT * FROM writing_worldmaps WHERE project_id = ? ORDER BY sort_order, id')
+    .all(Number(req.params.id)).map(mapWorldmap));
+});
+
+writingAdminRouter.post('/projects/:id(\\d+)/worldmaps', (req, res) => {
+  const projectId = Number(req.params.id);
+  if (!projectExists(projectId)) return res.status(404).json({ error: 'not_found' });
+  const name = str(req.body?.name).trim().slice(0, 60) || 'Surface';
+  const r = db.prepare('INSERT INTO writing_worldmaps (project_id, name, sort_order) VALUES (?, ?, ?)')
+    .run(projectId, name, nextSort('writing_worldmaps', 'WHERE project_id = ?', [projectId]));
+  res.status(201).json(mapWorldmap(db.prepare('SELECT * FROM writing_worldmaps WHERE id = ?').get(r.lastInsertRowid)));
+});
+
+writingAdminRouter.put('/worldmaps/:id(\\d+)', (req, res) => {
+  const id = Number(req.params.id);
+  const ex = db.prepare('SELECT * FROM writing_worldmaps WHERE id = ?').get(id);
+  if (!ex) return res.status(404).json({ error: 'not_found' });
+  const b = req.body || {};
+  if (b.name !== undefined) {
+    const name = str(b.name).trim().slice(0, 60);
+    if (!name) return res.status(400).json({ error: 'missing_name' });
+    db.prepare("UPDATE writing_worldmaps SET name = ?, updated_at = strftime('%s','now') WHERE id = ?").run(name, id);
+  }
+  if (b.terrain !== undefined) {
+    const t = b.terrain;
+    if (t !== null && (typeof t !== 'object' || Array.isArray(t))) return res.status(400).json({ error: 'invalid_terrain' });
+    const json = t === null ? '' : JSON.stringify(t);
+    if (json.length > MAX_WORLD_TERRAIN_BYTES) return res.status(400).json({ error: 'terrain_too_large' });
+    db.prepare("UPDATE writing_worldmaps SET terrain = ?, updated_at = strftime('%s','now') WHERE id = ?").run(json, id);
+  }
+  res.json(mapWorldmap(db.prepare('SELECT * FROM writing_worldmaps WHERE id = ?').get(id)));
+});
+
+writingAdminRouter.delete('/worldmaps/:id(\\d+)', (req, res) => {
+  const ok = db.prepare('DELETE FROM writing_worldmaps WHERE id = ?').run(Number(req.params.id)).changes > 0;
+  if (!ok) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
 
 // The zone's target must exist and belong to the same project (no cross-
 // universe leak through the map). Returns the validated id or undefined.
@@ -455,15 +522,21 @@ function zoneTarget(kind, targetId, projectId) {
 }
 
 // Accepts plain ids (legacy) or { to, style } objects; stores the normalized
-// object form. style: 'route' (carved path/bridge) | 'arc' (luminous line).
-function cleanConnections(v, projectId, selfId) {
+// object form, restricted to zones living on the same map (same worldmap /
+// same work / same legacy project scope).
+function cleanConnections(v, scope, selfId) {
   if (!Array.isArray(v)) return [];
   const seen = new Set();
   const out = [];
   for (const c of v) {
     const to = Number(typeof c === 'object' && c !== null ? c.to : c);
     if (!Number.isInteger(to) || to === selfId || seen.has(to)) continue;
-    if (!db.prepare('SELECT 1 FROM writing_map_zones WHERE id = ? AND project_id = ?').get(to, projectId)) continue;
+    const peer = scope.worldmapId
+      ? db.prepare('SELECT 1 FROM writing_map_zones WHERE id = ? AND worldmap_id = ?').get(to, scope.worldmapId)
+      : scope.workId
+        ? db.prepare('SELECT 1 FROM writing_map_zones WHERE id = ? AND work_id = ?').get(to, scope.workId)
+        : db.prepare('SELECT 1 FROM writing_map_zones WHERE id = ? AND project_id = ? AND worldmap_id IS NULL AND work_id IS NULL').get(to, scope.projectId);
+    if (!peer) continue;
     seen.add(to);
     out.push({ to, style: c?.style === 'arc' ? 'arc' : 'route' });
     if (out.length >= 12) break;
@@ -477,39 +550,81 @@ const adminZone = (id) => {
   return mapZone(r, slug, { publicOnly: false });
 };
 
+// World maps span up to 1280 cells; local voxel maps stay within ±40.
+const posLimit = (scope) => (scope.worldmapId ? 640 : 40);
+
+function createZone(res, body, scope) {
+  const b = body || {};
+  const kind = ZONE_KINDS.has(b.kind) ? b.kind : 'libre';
+  const targetId = zoneTarget(kind, b.targetId, scope.projectId);
+  if (targetId === undefined) return res.status(400).json({ error: 'invalid_target' });
+  if (kind === 'libre' && !str(b.title).trim()) return res.status(400).json({ error: 'missing_title' });
+  const lim = posLimit(scope);
+  const r = db.prepare(`
+    INSERT INTO writing_map_zones
+      (project_id, worldmap_id, work_id, kind, target_id, marker, title, subtitle, description,
+       content, cover_image, category, tags, date, link, x, z, scale, rotation, building,
+       connections, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    scope.projectId, scope.worldmapId || null, scope.workId || null, kind, targetId,
+    MARKERS.has(b.marker) ? b.marker : '',
+    str(b.title).trim(), str(b.subtitle), str(b.description),
+    str(b.content), str(b.coverImage), str(b.category).slice(0, 40),
+    JSON.stringify(cleanTags(b.tags)), str(b.date).slice(0, 40), str(b.link).slice(0, 500),
+    clamp(b.x, -lim, lim, 0), clamp(b.z, -lim, lim, 0),
+    clamp(b.scale, 0.5, 2.2, 1), clamp(b.rotation, -Math.PI, Math.PI, 0),
+    BUILDINGS.has(b.building) ? b.building : 'tour',
+    JSON.stringify(cleanConnections(b.connections, scope, 0)),
+    nextSort('writing_map_zones', scope.worldmapId ? 'WHERE worldmap_id = ?' : scope.workId ? 'WHERE work_id = ?' : 'WHERE project_id = ?',
+      [scope.worldmapId || scope.workId || scope.projectId]),
+  );
+  res.status(201).json(adminZone(r.lastInsertRowid));
+}
+
+const listZones = (res, where, param, projectId) => {
+  const slug = db.prepare('SELECT slug FROM writing_projects WHERE id = ?').get(projectId)?.slug || '';
+  res.json(db.prepare(`SELECT * FROM writing_map_zones WHERE ${where} ORDER BY sort_order, id`).all(param)
+    .map((z) => mapZone(z, slug, { publicOnly: false })).filter(Boolean));
+};
+
+// Legacy project-level zones (pre-hierarchy installs).
 writingAdminRouter.get('/projects/:id(\\d+)/map-zones', (req, res) => {
   const projectId = Number(req.params.id);
-  const p = db.prepare('SELECT * FROM writing_projects WHERE id = ?').get(projectId);
-  if (!p) return res.status(404).json({ error: 'not_found' });
-  const zones = db.prepare('SELECT * FROM writing_map_zones WHERE project_id = ? ORDER BY sort_order, id').all(projectId)
-    .map((z) => mapZone(z, p.slug, { publicOnly: false })).filter(Boolean);
-  res.json(zones);
+  if (!projectExists(projectId)) return res.status(404).json({ error: 'not_found' });
+  listZones(res, 'project_id = ? AND worldmap_id IS NULL AND work_id IS NULL', projectId, projectId);
 });
 
 writingAdminRouter.post('/projects/:id(\\d+)/map-zones', (req, res) => {
   const projectId = Number(req.params.id);
   if (!projectExists(projectId)) return res.status(404).json({ error: 'not_found' });
-  const b = req.body || {};
-  const kind = ZONE_KINDS.has(b.kind) ? b.kind : 'libre';
-  const targetId = zoneTarget(kind, b.targetId, projectId);
-  if (targetId === undefined) return res.status(400).json({ error: 'invalid_target' });
-  if (kind === 'libre' && !str(b.title).trim()) return res.status(400).json({ error: 'missing_title' });
-  const r = db.prepare(`
-    INSERT INTO writing_map_zones
-      (project_id, kind, target_id, title, subtitle, description, content, cover_image,
-       category, tags, date, link, x, z, scale, rotation, building, connections, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    projectId, kind, targetId, str(b.title).trim(), str(b.subtitle), str(b.description),
-    str(b.content), str(b.coverImage), str(b.category).slice(0, 40),
-    JSON.stringify(cleanTags(b.tags)), str(b.date).slice(0, 40), str(b.link).slice(0, 500),
-    clamp(b.x, -40, 40, 0), clamp(b.z, -40, 40, 0),
-    clamp(b.scale, 0.5, 2.2, 1), clamp(b.rotation, -Math.PI, Math.PI, 0),
-    BUILDINGS.has(b.building) ? b.building : 'tour',
-    JSON.stringify(cleanConnections(b.connections, projectId, 0)),
-    nextSort('writing_map_zones', 'WHERE project_id = ?', [projectId]),
-  );
-  res.status(201).json(adminZone(r.lastInsertRowid));
+  createZone(res, req.body, { projectId });
+});
+
+// World-map POI.
+writingAdminRouter.get('/worldmaps/:id(\\d+)/zones', (req, res) => {
+  const wm = db.prepare('SELECT * FROM writing_worldmaps WHERE id = ?').get(Number(req.params.id));
+  if (!wm) return res.status(404).json({ error: 'not_found' });
+  listZones(res, 'worldmap_id = ?', wm.id, wm.project_id);
+});
+
+writingAdminRouter.post('/worldmaps/:id(\\d+)/zones', (req, res) => {
+  const wm = db.prepare('SELECT * FROM writing_worldmaps WHERE id = ?').get(Number(req.params.id));
+  if (!wm) return res.status(404).json({ error: 'not_found' });
+  createZone(res, req.body, { projectId: wm.project_id, worldmapId: wm.id });
+});
+
+// Local-map zones of a work (cité, région…).
+writingAdminRouter.get('/works/:id(\\d+)/map-zones', (req, res) => {
+  const w = db.prepare('SELECT id, project_id FROM writing_works WHERE id = ?').get(Number(req.params.id));
+  if (!w) return res.status(404).json({ error: 'not_found' });
+  listZones(res, 'work_id = ?', w.id, w.project_id);
+});
+
+writingAdminRouter.post('/works/:id(\\d+)/map-zones', (req, res) => {
+  const w = db.prepare('SELECT id, project_id FROM writing_works WHERE id = ?').get(Number(req.params.id));
+  if (!w) return res.status(404).json({ error: 'not_found' });
+  createZone(res, req.body, { projectId: w.project_id, workId: w.id });
 });
 
 writingAdminRouter.put('/map-zones/:id(\\d+)', (req, res) => {
@@ -517,6 +632,8 @@ writingAdminRouter.put('/map-zones/:id(\\d+)', (req, res) => {
   const ex = db.prepare('SELECT * FROM writing_map_zones WHERE id = ?').get(id);
   if (!ex) return res.status(404).json({ error: 'not_found' });
   const b = req.body || {};
+  const scope = { projectId: ex.project_id, worldmapId: ex.worldmap_id, workId: ex.work_id };
+  const lim = posLimit(scope);
   const kind = b.kind === undefined ? ex.kind : (ZONE_KINDS.has(b.kind) ? b.kind : ex.kind);
   const targetId = b.kind === undefined && b.targetId === undefined
     ? ex.target_id
@@ -524,13 +641,14 @@ writingAdminRouter.put('/map-zones/:id(\\d+)', (req, res) => {
   if (targetId === undefined) return res.status(400).json({ error: 'invalid_target' });
   db.prepare(`
     UPDATE writing_map_zones SET
-      kind = ?, target_id = ?, title = ?, subtitle = ?, description = ?, content = ?,
+      kind = ?, target_id = ?, marker = ?, title = ?, subtitle = ?, description = ?, content = ?,
       cover_image = ?, category = ?, tags = ?, date = ?, link = ?,
       x = ?, z = ?, scale = ?, rotation = ?, building = ?, connections = ?,
       updated_at = strftime('%s','now')
     WHERE id = ?
   `).run(
     kind, targetId,
+    b.marker === undefined ? ex.marker : (MARKERS.has(b.marker) ? b.marker : ex.marker),
     b.title === undefined ? ex.title : str(b.title).trim(),
     b.subtitle === undefined ? ex.subtitle : str(b.subtitle),
     b.description === undefined ? ex.description : str(b.description),
@@ -540,12 +658,12 @@ writingAdminRouter.put('/map-zones/:id(\\d+)', (req, res) => {
     b.tags === undefined ? ex.tags : JSON.stringify(cleanTags(b.tags)),
     b.date === undefined ? ex.date : str(b.date).slice(0, 40),
     b.link === undefined ? ex.link : str(b.link).slice(0, 500),
-    b.x === undefined ? ex.x : clamp(b.x, -40, 40, ex.x),
-    b.z === undefined ? ex.z : clamp(b.z, -40, 40, ex.z),
+    b.x === undefined ? ex.x : clamp(b.x, -lim, lim, ex.x),
+    b.z === undefined ? ex.z : clamp(b.z, -lim, lim, ex.z),
     b.scale === undefined ? ex.scale : clamp(b.scale, 0.5, 2.2, ex.scale),
     b.rotation === undefined ? ex.rotation : clamp(b.rotation, -Math.PI, Math.PI, ex.rotation),
     b.building === undefined ? ex.building : (BUILDINGS.has(b.building) ? b.building : ex.building),
-    b.connections === undefined ? ex.connections : JSON.stringify(cleanConnections(b.connections, ex.project_id, id)),
+    b.connections === undefined ? ex.connections : JSON.stringify(cleanConnections(b.connections, scope, id)),
     id,
   );
   res.json(adminZone(id));

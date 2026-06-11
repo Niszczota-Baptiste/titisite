@@ -37,12 +37,15 @@ Single-process Node app:
   `src/components/writing/AmbientEffect.jsx`. Chapter Markdown supports
   `[[perso:slug|Label]]` and `{{kr:terme}}` tokens, rendered by the in-house,
   XSS-safe renderer in `src/components/writing/markdown.jsx` (no
-  `dangerouslySetInnerHTML`, no markdown dependency). Each project can also
-  have a **voxel world map** (`writing_map_zones` + `writing_projects.map_biome`
-  / `map_terrain` JSON, rendered by `src/components/writing/map/` — three.js
-  lazy-loaded 3D + auto-generated 2D mode, shown only when zones exist). Zones
-  either link an existing work/character/glossary term (content resolved at
-  read time) or are free-form; see `docs/carte-3d.md`.
+  `dangerouslySetInnerHTML`, no markdown dependency). Maps are two-level
+  (`src/components/writing/map/`, see `docs/carte-3d.md`): **worldmaps**
+  (`writing_worldmaps`, giant pannable 2D atlases with tiered POI markers,
+  Minecraft-style biomes, on the project page) and **local voxel maps** per
+  work (`writing_works.map_biome`/`map_terrain`, three.js lazy-loaded 3D +
+  auto-generated 2D, on the reader page). `writing_map_zones` rows are scoped
+  by `worldmap_id` or `work_id` and either link an existing
+  work/character/glossary term (content resolved at read time) or are
+  free-form.
 - Frontend API calls go through `src/api/client.js`. Use `api.ws(slug).x`
   helpers for scoped resources and `api.ecriture.*` / `api.writing.*` for the
   writing space, never hand-build URLs.

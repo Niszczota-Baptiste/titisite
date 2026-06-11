@@ -4,6 +4,7 @@ import { api, trackClick } from '../../api/client';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { AmbientEffect } from './AmbientEffect';
 import { Lightbox } from './Lightbox';
+import { WritingWorldMap } from './map/WorldMap';
 import { renderMarkdown } from './markdown';
 import { ReaderAudio } from './ReaderAudio';
 import { hexToRgb } from './tokens';
@@ -176,6 +177,21 @@ export function Reader() {
                 </button>
               ))}
             </div>
+          )}
+
+          {work.map?.zones?.length > 0 && (
+            <section style={{ marginBottom: 48 }}>
+              <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 13, fontWeight: 700, color: `rgba(${rgb},0.85)`, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 18 }}>
+                Carte de {work.title}
+              </h2>
+              <WritingWorldMap
+                map={work.map}
+                accent={acc}
+                characters={work.characters || []}
+                glossary={work.glossary || []}
+                onNavigate={goWriting}
+              />
+            </section>
           )}
 
           {work.content && (

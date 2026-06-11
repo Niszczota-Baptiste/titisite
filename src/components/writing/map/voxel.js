@@ -147,6 +147,47 @@ export function buildDecorGeometry(world, zones, rng, quality) {
       buf.box(x, y + th + 0.6, z, 1.5, 1.2, 1.5, colorOf('#3c7a45'));
       buf.box(x, y + th + 1.5, z, 0.9, 0.7, 0.9, colorOf('#46894f'));
     },
+    bouleau: (x, y, z) => {
+      const th = 1.2 + rng();
+      buf.box(x, y + th / 2, z, 0.24, th, 0.24, colorOf('#e8e4d8'));
+      buf.box(x, y + th * 0.4, z + 0.13, 0.26, 0.18, 0.04, colorOf('#3a3a36'));
+      buf.box(x, y + th + 0.55, z, 1.2, 1.1, 1.2, colorOf('#74a84e'));
+      buf.box(x, y + th + 1.3, z, 0.7, 0.5, 0.7, colorOf('#80b258'));
+    },
+    cerisier: (x, y, z) => {
+      buf.box(x, y + 0.55, z, 0.28, 1.1, 0.28, colorOf('#4a3328'));
+      buf.box(x + 0.2, y + 1.15, z, 0.22, 0.5, 0.22, colorOf('#4a3328'));
+      buf.box(x, y + 1.7, z, 1.7, 0.9, 1.7, colorOf('#e8a8c8'));
+      buf.box(x + 0.4, y + 2.3, z - 0.2, 0.9, 0.5, 0.9, colorOf('#f0bcd6'));
+    },
+    jungle: (x, y, z) => {
+      const th = 2.2 + rng() * 1.4;
+      buf.box(x, y + th / 2, z, 0.34, th, 0.34, colorOf('#5a4326'));
+      buf.box(x, y + th + 0.5, z, 1.8, 1, 1.8, colorOf('#2c8a2c'));
+      buf.box(x + 0.6, y + th * 0.55, z + 0.3, 0.8, 0.16, 0.8, colorOf('#36963a'));
+      buf.box(x, y + th + 1.2, z, 1, 0.5, 1, colorOf('#36963a'));
+    },
+    acacia: (x, y, z) => {
+      buf.box(x, y + 0.6, z, 0.24, 1.2, 0.24, colorOf('#6e4a32'));
+      buf.box(x + 0.25, y + 1.25, z + 0.1, 0.2, 0.4, 0.2, colorOf('#6e4a32'));
+      buf.box(x + 0.3, y + 1.55, z + 0.1, 1.9, 0.22, 1.6, colorOf('#7a9a3c'));
+    },
+    champignon: (x, y, z) => {
+      buf.box(x, y + 0.4, z, 0.22, 0.8, 0.22, colorOf('#d8d0c0'));
+      buf.box(x, y + 0.95, z, 0.95, 0.45, 0.95, colorOf(rng() > 0.4 ? '#b03030' : '#9a6e4a'));
+      buf.box(x + 0.25, y + 1.2, z + 0.2, 0.2, 0.08, 0.2, colorOf('#e8e2d4'));
+    },
+    pic_glace: (x, y, z) => {
+      const th = 1.6 + rng() * 1.8;
+      buf.box(x, y + th / 2, z, 0.7, th, 0.7, colorOf('#bcd8ee'));
+      buf.box(x, y + th + 0.3, z, 0.4, 0.7, 0.4, colorOf('#d4e8f8'));
+    },
+    chorus: (x, y, z) => {
+      const th = 1.4 + rng() * 1.2;
+      buf.box(x, y + th / 2, z, 0.22, th, 0.22, colorOf('#8a5a9a'));
+      buf.box(x + 0.2, y + th * 0.7, z, 0.4, 0.2, 0.2, colorOf('#8a5a9a'));
+      buf.box(x, y + th + 0.16, z, 0.32, 0.32, 0.32, colorOf('#b08ac0'));
+    },
     sapin: (x, y, z) => {
       buf.box(x, y + 0.4, z, 0.26, 0.8, 0.26, colorOf('#4c382b'));
       buf.box(x, y + 1.1, z, 1.3, 0.6, 1.3, colorOf('#2e5e44'));

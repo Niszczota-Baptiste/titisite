@@ -1,13 +1,26 @@
-# Carte du monde voxel (espace Écriture)
+# Cartes du monde (espace Écriture)
 
-Petit monde interactif inspiré de Minecraft / Tiny Glade, affiché sur la page
-publique d'un univers (`/projets/ecriture/:project`). Le terrain est un
-diorama **voxel multi-biomes** entièrement piloté par données ; les zones
-cliquables (bâtiments) représentent les livres, personnages, termes du lexique
-ou des lieux libres. La carte n'apparaît **que si l'univers a au moins une
-zone** configurée dans l'admin — sinon la page reste inchangée.
+Système de cartes à deux niveaux, inspiré de Minecraft :
 
-## Deux modes d'affichage
+1. **Cartes-mondes** (« atlas ») — l'univers entier en 2D à l'échelle macro
+   (1 cellule = 8/16/32 blocs, jusqu'à ~32 000 blocs de côté), plusieurs par
+   univers (Surface, Profondeurs…), pan + zoom libres, marqueurs de POI
+   hiérarchisés (👑 royaume / 🏰 capitale toujours étiquetés, villages au
+   zoom). Cliquer un lieu joue une plongée cinématique puis ouvre sa page de
+   lore. Affichées sur la page de l'univers (`/projets/ecriture/:project`) dès
+   qu'une carte-monde existe (sinon, la carte voxel projet legacy s'affiche
+   encore).
+2. **Cartes locales** — le diorama **voxel 3D/2D** d'un élément (cité,
+   région… = `writing_works`), affiché sur sa page de lecture quand il a des
+   zones. C'est l'ancien moteur de carte d'univers, descendu d'un niveau.
+
+Les biomes suivent l'Overworld de Minecraft (~23 : plaines, tournesols,
+forêts, bouleaux, forêt sombre, cerisiers, jungle, bambous, taïgas, neiges,
+pics gelés, montagnes, collines, savane, désert, badlands, marais, mangrove,
+champignons, plage, océan…) + Nether/End (néant, forêts pourpre/biscornue,
+vallée des âmes, basalte, End).
+
+## Modes d'affichage des cartes locales
 
 - **3D** : monde isométrique voxel (three.js + react-three-fiber), rotation /
   zoom, survol (halo + aperçu), clic (zoom cinématique + panneau latéral),
@@ -34,13 +47,16 @@ zone** configurée dans l'admin — sinon la page reste inchangée.
 
 ## Modèle de données
 
-- `writing_projects.map_biome` — biome de base (allowlist : `plaines`,
-  `foret`, `bambou` (forêt de bambous), `montagne`, `desert`, `marais`,
-  `toundra`, `neige`, `ocean`, `volcan`).
-- `writing_projects.map_terrain` — **JSON de terrain** libre (voir schéma),
-  stocké tel quel (≤ 120 Ko), normalisé/clampé par le moteur client. Ajouter
-  montagnes, rivières ou biomes ne touche jamais le code.
-- Table `writing_map_zones` (scopée par `project_id`) :
+- Table `writing_worldmaps` (scopée par `project_id`) : `name` + `terrain`
+  JSON (≤ 1,5 Mo — la couche `grid` peinte est compressée RLE, ~100 Ko pour
+  un monde 640×640). `blocksPerCell` (8/16/32) donne l'échelle affichée.
+- `writing_works.map_biome` / `map_terrain` — la carte locale d'un élément
+  (≤ 120 Ko). Les colonnes équivalentes sur `writing_projects` restent pour
+  les installs pré-hiérarchie.
+- Table `writing_map_zones`, scopée par `worldmap_id` (POI d'atlas, champ
+  `marker` : royaume, capitale, cite, village, forteresse, temple, port,
+  ruine, antre, montagne, foret, ile, personnage, livre, lieu) **ou**
+  `work_id` (zone de carte locale, champ `building`) :
   - `kind` : `work` / `character` / `glossary` (zone **liée** — contenu résolu
     depuis l'entité à la lecture, les champs propres non vides surchargent) ou
     `libre`.
@@ -108,12 +124,17 @@ Trois façons, de la plus simple à la plus fine :
 
 ## API
 
-- Public : `GET /api/ecriture/:project` → `map: { biome, terrain, zones }`
-  (zones résolues, brouillons exclus, stats chapitres/mots/minutes).
-- Admin : `GET|POST /api/writing/projects/:id/map-zones`,
-  `PUT|DELETE /api/writing/map-zones/:id` ; biome + terrain via
-  `PUT /api/writing/projects/:id` (`mapBiome`, `mapTerrain`). Côté client :
-  `api.writing.mapZonesFor(projectId)`.
+- Public : `GET /api/ecriture/:project` → `worldmaps: [{ id, name, terrain,
+  zones }]` (+ `map` legacy) ; `GET /api/ecriture/:project/:work` →
+  `map: { biome, terrain, zones }` (carte locale). Zones résolues, brouillons
+  exclus, stats chapitres/mots/minutes.
+- Admin : worldmaps `GET|POST /api/writing/projects/:id/worldmaps`,
+  `PUT|DELETE /api/writing/worldmaps/:id` ; POI
+  `GET|POST /api/writing/worldmaps/:id/zones` ; zones locales
+  `GET|POST /api/writing/works/:id/map-zones` ;
+  `PUT|DELETE /api/writing/map-zones/:id` (commun). Carte locale d'un work
+  via `PUT /api/writing/works/:id` (`mapBiome`, `mapTerrain`). Côté client :
+  `api.writing.worldmaps.*` / `api.writing.workMapZonesFor(workId)`.
 
 ## Fichiers
 
@@ -130,11 +151,14 @@ Trois façons, de la plus simple à la plus fine :
 | `map/CameraRig.jsx` | Intro caméra (sautée si `prefers-reduced-motion`) + recentrage sur sélection |
 | `map/effects.jsx` | Lucioles, brume au sol, arcs lumineux + pulses de routes |
 | `map/Map2D.jsx` | Vue 2D auto-générée (canvas pixelisé + marqueurs DOM) |
-| `map/WorldMap.jsx` | Wrapper public : modes 2D/3D, lazy-mount, recherche/filtres/sélection |
+| `map/WorldMap.jsx` | Wrapper public carte locale : modes 2D/3D, lazy-mount, recherche/filtres/sélection |
+| `map/WorldAtlas.jsx` | Carte-monde publique : pan/zoom canvas, marqueurs hiérarchisés, plongée cinématique vers les pages de lore, onglets multi-mondes |
 | `map/MapHud.jsx` | Recherche, filtres, bascules 2D/3D et jour/nuit, stats |
 | `map/ZonePanel.jsx` | Panneau latéral de détail (Markdown maison, stats, CTA) |
 | `admin/editors/writing/TerrainPainter.jsx` | Pinceau 2D : élever/abaisser/eau/biome, forme & taille, sauvegarde en couche `grid` |
-| `admin/editors/writing/MapEditor.jsx` | Onglet admin : biome, terrain (pinceau + JSON, aperçu live), drag & drop sur le relief, connexions typées |
+| `admin/editors/writing/MapEditor.jsx` | Carte locale d'un élément : biome, terrain (pinceau + JSON), drag & drop 3D, connexions |
+| `admin/editors/writing/WorldmapsEditor.jsx` | Cartes-mondes : CRUD, pinceau macro, POI drag & drop sur la 2D, marqueurs |
+| `admin/editors/writing/MapsHub.jsx` | Onglet « Cartes » : bascule cartes-mondes / cartes locales |
 
 ## Accessibilité / SEO
 

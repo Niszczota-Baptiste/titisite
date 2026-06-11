@@ -9,17 +9,42 @@
 // terrain JSON ({ "biomes": { "mien": { top, side, decor, density } } }) —
 // the engine merges them over these defaults, so adding a biome never
 // requires touching the engine.
+// Biome palette modeled on Minecraft's Overworld + a few Nether/End biomes
+// for supernatural regions. Legacy keys (montagne, marais, neige, ocean,
+// volcan, toundra…) are kept so existing terrains keep rendering.
 export const BIOMES = {
-  plaines:  { label: 'Plaines',  top: '#4f8a4f', side: '#7a6248', decor: 'herbe',  density: 0.05 },
-  foret:    { label: 'Forêt',    top: '#3a7a48', side: '#6e5840', decor: 'arbre',  density: 0.16 },
-  bambou:   { label: 'Forêt de bambous', top: '#5da348', side: '#6e5840', decor: 'bambou', density: 0.3 },
-  montagne: { label: 'Montagne', top: '#8a8d96', side: '#7b7d85', decor: 'rocher', density: 0.05 },
-  desert:   { label: 'Désert',   top: '#d8c084', side: '#b09159', decor: 'cactus', density: 0.04 },
-  marais:   { label: 'Marais',   top: '#5e7045', side: '#565040', decor: 'roseau', density: 0.12 },
-  toundra:  { label: 'Toundra',  top: '#9aa68f', side: '#7d7565', decor: 'rocher', density: 0.04 },
-  neige:    { label: 'Neige',    top: '#e8edf2', side: '#9aa4b5', decor: 'sapin',  density: 0.08 },
-  ocean:    { label: 'Océan',    top: '#d8c084', side: '#b09159', decor: 'palmier', density: 0.05 },
-  volcan:   { label: 'Volcan',   top: '#4a3a3e', side: '#4a3c40', decor: 'rocher', density: 0.06 },
+  // ── Overworld ──
+  plaines:    { label: 'Plaines', top: '#8ab94f', side: '#7a6248', decor: 'herbe', density: 0.05 },
+  tournesols: { label: 'Plaines de tournesols', top: '#8fbc4e', side: '#7a6248', decor: 'fleurs', density: 0.3 },
+  foret:      { label: 'Forêt', top: '#5d9a44', side: '#6e5840', decor: 'arbre', density: 0.18 },
+  bouleaux:   { label: 'Forêt de bouleaux', top: '#77ab5a', side: '#6e5840', decor: 'bouleau', density: 0.16 },
+  foret_sombre: { label: 'Forêt sombre', top: '#3c6e2c', side: '#54422f', decor: 'arbre', density: 0.3 },
+  cerisiers:  { label: 'Bosquet de cerisiers', top: '#9fc77f', side: '#7a6248', decor: 'cerisier', density: 0.14 },
+  jungle:     { label: 'Jungle', top: '#2c8a2c', side: '#5a4a30', decor: 'jungle', density: 0.24 },
+  bambou:     { label: 'Jungle de bambous', top: '#5da348', side: '#6e5840', decor: 'bambou', density: 0.3 },
+  taiga:      { label: 'Taïga', top: '#4a7a52', side: '#6e5840', decor: 'sapin', density: 0.2 },
+  taiga_enneigee: { label: 'Taïga enneigée', top: '#9db8a4', side: '#7d7565', decor: 'sapin', density: 0.15 },
+  neige:      { label: 'Plaines enneigées', top: '#e8edf2', side: '#9aa4b5', decor: 'sapin', density: 0.04 },
+  pics_geles: { label: 'Pics gelés', top: '#cfe0f0', side: '#9aa4b5', decor: 'pic_glace', density: 0.08 },
+  montagne:   { label: 'Montagnes (pics rocheux)', top: '#8a8d96', side: '#7b7d85', decor: 'rocher', density: 0.05 },
+  collines:   { label: 'Collines balayées', top: '#6f8a66', side: '#7b7d85', decor: 'rocher', density: 0.08 },
+  savane:     { label: 'Savane', top: '#b8ab5e', side: '#9a7a4a', decor: 'acacia', density: 0.06 },
+  desert:     { label: 'Désert', top: '#d8c084', side: '#b09159', decor: 'cactus', density: 0.04 },
+  badlands:   { label: 'Badlands', top: '#c0683a', side: '#984e2c', decor: 'rocher', density: 0.03 },
+  marais:     { label: 'Marais', top: '#5e7045', side: '#565040', decor: 'roseau', density: 0.12 },
+  mangrove:   { label: 'Marais de mangroves', top: '#4c6e3a', side: '#4a3e2c', decor: 'arbre', density: 0.22 },
+  champignons: { label: 'Champs de champignons', top: '#8a7a8a', side: '#6e5e6e', decor: 'champignon', density: 0.12 },
+  plage:      { label: 'Plage', top: '#d8c084', side: '#b09159', decor: 'none', density: 0 },
+  ocean:      { label: 'Océan (rives)', top: '#d8c084', side: '#b09159', decor: 'palmier', density: 0.05 },
+  toundra:    { label: 'Toundra', top: '#9aa68f', side: '#7d7565', decor: 'rocher', density: 0.04 },
+  // ── Nether / End ──
+  neant:      { label: 'Néant (Nether)', top: '#7a3a34', side: '#5a2a26', decor: 'rocher', density: 0.06 },
+  foret_pourpre: { label: 'Forêt pourpre', top: '#7a2438', side: '#5a1c2c', decor: 'champignon', density: 0.18 },
+  foret_biscornue: { label: 'Forêt biscornue', top: '#2c7a6e', side: '#1e564e', decor: 'champignon', density: 0.18 },
+  vallee_ames: { label: 'Vallée de sable des âmes', top: '#5a4a3c', side: '#473a30', decor: 'none', density: 0 },
+  basalte:    { label: 'Deltas de basalte', top: '#4a4a52', side: '#3a3a42', decor: 'rocher', density: 0.1 },
+  end:        { label: "L'End", top: '#d8d0a8', side: '#b8b088', decor: 'chorus', density: 0.08 },
+  volcan:     { label: 'Volcan', top: '#4a3a3e', side: '#4a3c40', decor: 'rocher', density: 0.06 },
 };
 
 export const BIOME_OPTIONS = Object.entries(BIOMES).map(([value, b]) => ({ value, label: b.label }));
@@ -52,6 +77,32 @@ export const BUILDINGS = [
   { value: 'phare', label: 'Phare' },
   { value: 'tente', label: 'Campement' },
   { value: 'monolithe', label: 'Monolithe' },
+];
+
+// 2D markers for the giant world maps. `tier` drives size + label visibility:
+// 3 = always labeled (kingdoms/capitals), 2 = labeled when zoomed, 1 = hover.
+export const MARKERS = [
+  { value: 'royaume', label: 'Royaume', icon: '👑', tier: 3 },
+  { value: 'capitale', label: 'Capitale', icon: '🏰', tier: 3 },
+  { value: 'cite', label: 'Cité', icon: '🏛️', tier: 2 },
+  { value: 'village', label: 'Village', icon: '🏘️', tier: 1 },
+  { value: 'forteresse', label: 'Forteresse', icon: '🗼', tier: 2 },
+  { value: 'temple', label: 'Temple', icon: '⛩️', tier: 1 },
+  { value: 'port', label: 'Port', icon: '⚓', tier: 1 },
+  { value: 'ruine', label: 'Ruine', icon: '🏚️', tier: 1 },
+  { value: 'antre', label: 'Antre', icon: '💀', tier: 1 },
+  { value: 'montagne', label: 'Montagne', icon: '⛰️', tier: 1 },
+  { value: 'foret', label: 'Forêt', icon: '🌲', tier: 1 },
+  { value: 'ile', label: 'Île', icon: '🏝️', tier: 1 },
+  { value: 'personnage', label: 'Personnage', icon: '👤', tier: 1 },
+  { value: 'livre', label: 'Récit', icon: '📖', tier: 1 },
+  { value: 'lieu', label: 'Lieu', icon: '✦', tier: 1 },
+];
+export const MARKER_BY_KEY = Object.fromEntries(MARKERS.map((m) => [m.value, m]));
+
+export const DECOR_KINDS = [
+  'herbe', 'fleurs', 'arbre', 'bouleau', 'cerisier', 'sapin', 'jungle', 'acacia',
+  'cactus', 'rocher', 'roseau', 'palmier', 'bambou', 'champignon', 'pic_glace', 'chorus', 'none',
 ];
 
 export const ZONE_KINDS = [
@@ -122,8 +173,10 @@ export const TERRAIN_TEMPLATE = {
 // Normalize a free-form terrain JSON (admin-edited) into safe, clamped data.
 // Unknown fields are dropped, every number is bounded — the engine never has
 // to trust the input.
-export function normalizeTerrain(raw, baseBiome) {
+export function normalizeTerrain(raw, baseBiome, { world = false } = {}) {
   const t = raw && typeof raw === 'object' ? raw : {};
+  const maxSize = world ? 1280 : 88;
+  const defSize = world ? 256 : 48;
   const num = (v, min, max, fb) => {
     const n = Number(v);
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fb;
@@ -137,14 +190,14 @@ export function normalizeTerrain(raw, baseBiome) {
         label: String(b.label || key).slice(0, 30),
         top: hex(b.top, '#4f8a4f'),
         side: hex(b.side, '#7a6248'),
-        decor: ['herbe', 'fleurs', 'arbre', 'sapin', 'cactus', 'rocher', 'roseau', 'palmier', 'bambou', 'none'].includes(b.decor) ? b.decor : 'herbe',
+        decor: DECOR_KINDS.includes(b.decor) ? b.decor : 'herbe',
         density: num(b.density, 0, 0.5, 0.06),
       };
     }
   }
   const biomes = { ...BIOMES, ...customBiomes };
   const biomeKey = (v) => (biomes[v] ? v : (biomes[baseBiome] ? baseBiome : 'plaines'));
-  const size = Math.min(88, Math.max(32, Math.round(num(t.size, 32, 88, 48) / 2) * 2));
+  const size = Math.min(maxSize, Math.max(32, Math.round(num(t.size, 32, maxSize, defSize) / 2) * 2));
   const half = size / 2;
   const pts = (v) => (Array.isArray(v) ? v.slice(0, 60).map((p) => [
     num(p?.[0], -half - 4, half + 4, 0), num(p?.[1], -half - 4, half + 4, 0),
@@ -161,17 +214,19 @@ export function normalizeTerrain(raw, baseBiome) {
   if (t.grid && typeof t.grid === 'object'
     && Array.isArray(t.grid.heights) && t.grid.heights.every((r) => typeof r === 'string')
     && t.grid.biomes && Array.isArray(t.grid.biomes.palette) && Array.isArray(t.grid.biomes.cells)) {
-    const gsize = Math.min(88, Math.max(32, Math.round(Number(t.grid.size) || 48)));
+    const gsize = Math.min(maxSize, Math.max(32, Math.round(Number(t.grid.size) || defSize)));
     grid = {
       size: gsize,
-      heights: t.grid.heights.slice(0, gsize).map((r) => String(r).slice(0, gsize)),
+      rle: t.grid.rle === true,
+      heights: t.grid.heights.slice(0, gsize).map((r) => String(r)),
       palette: t.grid.biomes.palette.slice(0, 36).map((k) => String(k).slice(0, 24)),
-      cells: t.grid.biomes.cells.slice(0, gsize).map((r) => String(r).slice(0, gsize)),
+      cells: t.grid.biomes.cells.slice(0, gsize).map((r) => String(r)),
     };
   }
 
   return {
     seed: num(t.seed, 0, 2 ** 31, 7),
+    blocksPerCell: [8, 16, 32].includes(Number(t.blocksPerCell)) ? Number(t.blocksPerCell) : 16,
     size: grid ? grid.size : size,
     shape: ['ile', 'continent', 'carre'].includes(t.shape) ? t.shape : 'ile',
     grid,

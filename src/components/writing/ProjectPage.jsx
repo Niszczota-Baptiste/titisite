@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api, trackClick } from '../../api/client';
 import { useReveal } from '../../hooks/useReveal';
 import { AmbientEffect } from './AmbientEffect';
+import { WorldAtlas } from './map/WorldAtlas';
 import { WritingWorldMap } from './map/WorldMap';
 import { WritingLibrary } from './WritingLibrary';
 import { Avatar, hexToRgb } from './tokens';
@@ -56,7 +57,19 @@ export function ProjectPage() {
           {project.description && <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, color: 'rgba(160,150,185,0.7)', lineHeight: 1.8, maxWidth: 620, marginTop: 12, fontStyle: 'italic' }}>{project.description}</p>}
         </header>
 
-        {project.map?.zones?.length > 0 && (
+        {project.worldmaps?.length > 0 ? (
+          <section style={{ marginBottom: 64 }}>
+            <Heading rgb={rgb}>Carte du monde</Heading>
+            <WorldAtlas
+              worldmaps={project.worldmaps}
+              accent={acc}
+              characters={project.characters}
+              glossary={project.glossary}
+              onNavigate={goWriting}
+            />
+          </section>
+        ) : project.map?.zones?.length > 0 && (
+          // Legacy project-level voxel map (pre « monde → cité » hierarchy).
           <section style={{ marginBottom: 64 }}>
             <Heading rgb={rgb}>Carte du monde</Heading>
             <WritingWorldMap

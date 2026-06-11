@@ -1,9 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { paintWorld } from '../../../writing/map/Map2D';
 import { MAP_SHAPES, MAP_SIZES, normalizeTerrain } from '../../../writing/map/presets';
+
 import { buildWorld, encodeGrid, MAX_H } from '../../../writing/map/terrain';
 import { ACC, ACC_RGB, Button } from '../../ui';
 import { DirtyBadge, SelectField } from './widgets';
+
+// Macro sizes for the giant 2D world maps (1 cell = 8/16/32 blocks).
+const WORLD_SIZES = [
+  { value: 256, label: 'Petit monde (256)' },
+  { value: 384, label: 'Monde moyen (384)' },
+  { value: 512, label: 'Grand monde (512)' },
+  { value: 640, label: 'Monde géant (640)' },
+  { value: 1024, label: 'Monde colossal (1024)' },
+];
+const BLOCK_SCALES = [
+  { value: '8', label: '1 cellule = 8 blocs' },
+  { value: '16', label: '1 cellule = 16 blocs' },
+  { value: '32', label: '1 cellule = 32 blocs' },
+];
 
 // Hand-paint the world without touching JSON: brushes edit explicit
 // height/biome grids on a top-down pixel map (the same renderer as the public
@@ -19,8 +34,8 @@ const TOOLS = [
 ];
 
 // Generated base grids (no zones: plateaus/routes are applied at render time).
-function generate(raw, baseBiome) {
-  const w = buildWorld(raw, baseBiome, []);
+function generate(raw, baseBiome, world) {
+  const w = buildWorld(raw, baseBiome, [], { world });
   return {
     size: w.grid,
     height: Array.from(w.height),
@@ -50,23 +65,26 @@ function previewWorld(g) {
   };
 }
 
-export function TerrainPainter({ terrain, baseBiome, accent, onSave, saving }) {
+export function TerrainPainter({ terrain, baseBiome, accent, onSave, saving, world = false }) {
   const canvas = useRef(null);
   const stroke = useRef(null); // Set of cells already hit by the current stroke
-  const [grids, setGrids] = useState(() => generate(terrain, baseBiome));
+  const [grids, setGrids] = useState(() => generate(terrain, baseBiome, world));
   const [tool, setTool] = useState('elever');
   const [brush, setBrush] = useState(2);
   const [brushBiome, setBrushBiome] = useState(baseBiome);
   const [dirty, setDirty] = useState(false);
 
-  const norm = useMemo(() => normalizeTerrain(terrain, baseBiome), [terrain, baseBiome]);
+  const norm = useMemo(() => normalizeTerrain(terrain, baseBiome, { world }), [terrain, baseBiome, world]);
   const [shape, setShape] = useState(norm.shape);
   const [size, setSize] = useState(norm.size);
+  const [blocksPerCell, setBlocksPerCell] = useState(norm.blocksPerCell);
 
   const biomeOptions = Object.entries(grids.biomes).map(([value, b]) => ({ value, label: b.label || value }));
 
   const repaint = useCallback((g) => {
-    if (canvas.current) paintWorld(canvas.current, previewWorld(g), accent, { routes: false });
+    if (canvas.current) {
+      paintWorld(canvas.current, previewWorld(g), accent, { routes: false, px: g.size > 160 ? 1 : 6 });
+    }
   }, [accent]);
 
   useEffect(() => { repaint(grids); }, [grids, repaint]);
@@ -103,7 +121,7 @@ export function TerrainPainter({ terrain, baseBiome, accent, onSave, saving }) {
 
   const regenerate = (nextShape = shape, nextSize = size) => {
     const { grid: _g, ...rest } = terrain && typeof terrain === 'object' ? terrain : {};
-    setGrids(generate({ ...rest, shape: nextShape, size: nextSize }, baseBiome));
+    setGrids(generate({ ...rest, shape: nextShape, size: nextSize }, baseBiome, world));
     setDirty(true);
   };
 
@@ -115,6 +133,7 @@ export function TerrainPainter({ terrain, baseBiome, accent, onSave, saving }) {
       ...rest,
       size: grids.size,
       shape,
+      ...(world ? { blocksPerCell } : {}),
       grid: encodeGrid(grids.size, grids.height, grids.biome),
     });
     setDirty(false);
@@ -123,7 +142,7 @@ export function TerrainPainter({ terrain, baseBiome, accent, onSave, saving }) {
   const removeDrawing = () => {
     const { grid: _g, ...rest } = terrain && typeof terrain === 'object' ? terrain : {};
     onSave(Object.keys(rest).length ? rest : null);
-    setGrids(generate(rest, baseBiome));
+    setGrids(generate(rest, baseBiome, world));
     setDirty(false);
   };
 
@@ -174,7 +193,15 @@ export function TerrainPainter({ terrain, baseBiome, accent, onSave, saving }) {
         />
         <div style={{ minWidth: 200, flex: '0 1 240px' }}>
           <SelectField label="Forme (régénère le relief)" value={shape} onChange={(v) => { setShape(v); regenerate(v, size); }} options={MAP_SHAPES} />
-          <SelectField label="Taille de la carte" value={String(size)} onChange={(v) => { setSize(Number(v)); regenerate(shape, Number(v)); }} options={MAP_SIZES.map((s) => ({ value: String(s.value), label: s.label }))} />
+          <SelectField label="Taille de la carte" value={String(size)} onChange={(v) => { setSize(Number(v)); regenerate(shape, Number(v)); }} options={(world ? WORLD_SIZES : MAP_SIZES).map((s) => ({ value: String(s.value), label: s.label }))} />
+          {world && (
+            <>
+              <SelectField label="Échelle" value={String(blocksPerCell)} onChange={(v) => { setBlocksPerCell(Number(v)); setDirty(true); }} options={BLOCK_SCALES} />
+              <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: 'rgba(180,170,200,0.7)', marginBottom: 12 }}>
+                ≈ {(size * blocksPerCell).toLocaleString('fr-FR')} × {(size * blocksPerCell).toLocaleString('fr-FR')} blocs
+              </p>
+            </>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Button variant="ghost" onClick={() => regenerate()}>↺ Régénérer le relief</Button>
             <Button variant="danger" onClick={removeDrawing} disabled={saving}>Supprimer le dessin (revenir au généré)</Button>

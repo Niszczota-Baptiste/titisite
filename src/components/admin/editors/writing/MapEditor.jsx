@@ -21,9 +21,11 @@ const draftOf = (z) => ({
   connections: (z.connections || []).map((c) => (typeof c === 'number' ? { to: c, style: 'route' } : c)),
 });
 
-// « Carte » tab of a project workspace: pick the biome, then place/edit the
-// zones by dragging them directly on the 3D island.
-export function MapEditor({ projectId }) {
+// Local voxel map editor: pick the biome, then place/edit the zones by
+// dragging them directly on the 3D island. With `workId` it edits the map of
+// that element (cité, région… — shown on its reader page); without it, the
+// legacy project-level map.
+export function MapEditor({ projectId, workId }) {
   const confirm = useConfirm();
   const [project, setProject] = useState(null);
   const [zones, setZones] = useState([]);
@@ -40,20 +42,35 @@ export function MapEditor({ projectId }) {
   const [terrainSaving, setTerrainSaving] = useState(false);
   const [terrainVersion, setTerrainVersion] = useState(0);
 
-  const zonesApi = useMemo(() => api.writing.mapZonesFor(projectId), [projectId]);
+  const [owner, setOwner] = useState(null); // the map holder: a work, or the project itself
+
+  const zonesApi = useMemo(
+    () => (workId ? api.writing.workMapZonesFor(workId) : api.writing.mapZonesFor(projectId)),
+    [projectId, workId],
+  );
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.all([api.writing.projects.get(projectId), zonesApi.list()]).then(([p, zs]) => {
+    Promise.all([
+      api.writing.projects.get(projectId),
+      workId ? api.writing.works.get(workId) : null,
+      zonesApi.list(),
+    ]).then(([p, w, zs]) => {
       if (!alive) return;
       setProject(p);
+      setOwner(workId ? w : p);
       setZones(zs);
-      setTerrainText(p.mapTerrain ? JSON.stringify(p.mapTerrain, null, 2) : '');
+      const t = (workId ? w : p).mapTerrain;
+      setTerrainText(t ? JSON.stringify(t, null, 2) : '');
       setLoading(false);
     }).catch(() => { if (alive) { setErr('Chargement impossible.'); setLoading(false); } });
     return () => { alive = false; };
-  }, [projectId, zonesApi]);
+  }, [projectId, workId, zonesApi]);
+
+  const saveOwner = (body) => (workId
+    ? api.writing.works.update(workId, body)
+    : api.writing.projects.update(projectId, body));
 
   const select = useCallback((id) => {
     setSelectedId(id);
@@ -68,8 +85,8 @@ export function MapEditor({ projectId }) {
   const edit = (patch) => { setDraft((d) => ({ ...d, ...patch })); setDirty(true); };
 
   const setBiome = async (mapBiome) => {
-    setProject((p) => ({ ...p, mapBiome }));
-    try { await api.writing.projects.update(projectId, { mapBiome }); }
+    setOwner((o) => ({ ...o, mapBiome }));
+    try { await saveOwner({ mapBiome }); }
     catch { setErr('Biome non enregistré.'); }
   };
 
@@ -79,8 +96,8 @@ export function MapEditor({ projectId }) {
     setTerrainErr('');
     setTerrainSaving(true);
     try {
-      await api.writing.projects.update(projectId, { mapTerrain: parsed });
-      setProject((p) => ({ ...p, mapTerrain: parsed }));
+      await saveOwner({ mapTerrain: parsed });
+      setOwner((o) => ({ ...o, mapTerrain: parsed }));
       setTerrainText(parsed ? JSON.stringify(parsed, null, 2) : '');
       setTerrainVersion((v) => v + 1);
     } catch (e) {
@@ -182,13 +199,13 @@ export function MapEditor({ projectId }) {
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div style={{ width: 220 }}>
-          <SelectField label="Biome de l'île" value={project?.mapBiome || 'plaines'} onChange={setBiome} options={BIOME_OPTIONS} />
+          <SelectField label="Biome de l'île" value={owner?.mapBiome || 'plaines'} onChange={setBiome} options={BIOME_OPTIONS} />
         </div>
         <div style={{ marginBottom: 14 }}>
           <Button onClick={addZone}>+ Ajouter une zone</Button>
         </div>
         <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(180,170,200,0.6)', marginBottom: 18 }}>
-          Glisse un bâtiment pour le déplacer · clique pour l'éditer. La carte n'apparaît sur le site que si elle contient des zones.
+          Glisse un bâtiment pour le déplacer · clique pour l'éditer. La carte n'apparaît sur la page que si elle contient des zones.
         </p>
       </div>
 
@@ -225,8 +242,8 @@ export function MapEditor({ projectId }) {
             {terrainMode === 'pinceau' ? (
               <TerrainPainter
                 key={terrainVersion}
-                terrain={project?.mapTerrain || null}
-                baseBiome={project?.mapBiome || 'plaines'}
+                terrain={owner?.mapTerrain || null}
+                baseBiome={owner?.mapBiome || 'plaines'}
                 accent={project?.accentColor || ACC}
                 saving={terrainSaving}
                 onSave={saveTerrain}
@@ -270,8 +287,8 @@ export function MapEditor({ projectId }) {
         <Suspense fallback={<p style={{ padding: 20, fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(180,170,200,0.5)' }}>Chargement de la 3D…</p>}>
           <MapScene
             zones={zones}
-            biomeKey={project?.mapBiome || 'plaines'}
-            terrain={project?.mapTerrain || null}
+            biomeKey={owner?.mapBiome || 'plaines'}
+            terrain={owner?.mapTerrain || null}
             accent={project?.accentColor || ACC}
             quality="high"
             intro={false}

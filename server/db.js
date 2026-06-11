@@ -545,6 +545,32 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_map_zones_project ON writing_map_zones(project_id, sort_order);`);
+  // Map hierarchy (« monde → cité ») :
+  // - a project owns *world maps* (writing_worldmaps — giant 2D atlases with
+  //   POI), several per project (Surface, Profondeurs…) ;
+  // - each work (Cité, Région…) can carry its own local voxel map
+  //   (writing_works.map_biome/map_terrain) shown on its reader page ;
+  // - zones are scoped by `worldmap_id` (world POI, 2D marker) or `work_id`
+  //   (local-map building). Rows with neither are pre-hierarchy leftovers.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS writing_worldmaps (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES writing_projects(id) ON DELETE CASCADE,
+      name       TEXT NOT NULL DEFAULT 'Surface',
+      terrain    TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_worldmaps_project ON writing_worldmaps(project_id, sort_order);`);
+  ensureColumn('writing_map_zones', 'worldmap_id', 'INTEGER REFERENCES writing_worldmaps(id) ON DELETE CASCADE');
+  ensureColumn('writing_map_zones', 'work_id', 'INTEGER REFERENCES writing_works(id) ON DELETE CASCADE');
+  ensureColumn('writing_map_zones', 'marker', "TEXT NOT NULL DEFAULT ''");
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_map_zones_worldmap ON writing_map_zones(worldmap_id, sort_order);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_map_zones_work ON writing_map_zones(work_id, sort_order);`);
+  ensureColumn('writing_works', 'map_biome', "TEXT NOT NULL DEFAULT 'plaines'");
+  ensureColumn('writing_works', 'map_terrain', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('writing_projects', 'map_biome', "TEXT NOT NULL DEFAULT 'plaines'");
   // Free-form terrain description (JSON: regions/rivers/lakes/paths/biomes…)
   // consumed by the voxel engine client-side — see docs/carte-3d.md. Editing

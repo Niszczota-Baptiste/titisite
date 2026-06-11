@@ -13,8 +13,7 @@ const shadeHex = (hex, f) => {
   return `rgb(${c((n >> 16) & 255)},${c((n >> 8) & 255)},${c(n & 255)})`;
 };
 
-export function paintWorld(canvas, world, accent, { routes = true } = {}) {
-  const px = 6;
+export function paintWorld(canvas, world, accent, { routes = true, px = 6 } = {}) {
   canvas.width = world.grid * px;
   canvas.height = world.grid * px;
   const ctx = canvas.getContext('2d');

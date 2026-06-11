@@ -5,6 +5,29 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — hierarchie-monde-cite
+
+### Added
+- **Cartes-mondes géantes 2D** (« atlas ») : plusieurs par univers (Surface,
+  Profondeurs…), échelle configurable (1 cellule = 8/16/32 blocs, mondes
+  jusqu'à ~32 000 blocs de côté), pan + zoom libres (molette/pinch, zoom vers
+  le curseur), recherche qui recentre, **POI à marqueurs hiérarchisés**
+  (👑 royaume, 🏰 capitale, cité, village, forteresse, temple, port, ruine…)
+  avec étiquettes selon importance et niveau de zoom. Clic sur un lieu =
+  **plongée cinématique** puis ouverture de sa page de lore.
+- **Cartes locales par élément** : chaque cité/région (`writing_works`) porte
+  sa propre carte voxel 3D/2D sur sa page de lecture (`map_biome` +
+  `map_terrain` par work, zones scopées `work_id`) — l'ancien moteur de carte
+  d'univers descend d'un niveau ; admin via l'onglet « Cartes » (cartes-mondes
+  + sélecteur d'élément).
+- **Biomes Minecraft complets** : ~23 biomes Overworld (tournesols, bouleaux,
+  forêt sombre, cerisiers, jungle, taïgas, pics gelés, collines, savane,
+  badlands, mangrove, champignons…) + Nether/End (néant, forêts
+  pourpre/biscornue, vallée des âmes, basalte, End), avec 7 nouveaux décors
+  voxel (bouleau, cerisier, jungle, acacia, champignon, pic de glace, chorus).
+- Couche peinte compressée **RLE** (un monde 640×640 ≈ 100 Ko), table
+  `writing_worldmaps`, endpoints publics `worldmaps`/`map` et CRUD admin.
+
 ## [Unreleased] — carte-voxel-minecraft
 
 ### Fixed

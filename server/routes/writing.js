@@ -33,6 +33,7 @@ export function mapWorkCard(r) {
     coverImage: r.cover_image, tags: parseTags(r.tags), ambientEffect: r.ambient_effect || 'none',
     audioTrackId: r.audio_track_id, track: mapTrack(r.audio_track_id),
     linkedCharacters: Array.isArray(linked) ? linked : [],
+    mapBiome: r.map_biome || 'plaines', mapTerrain: parseTerrain(r.map_terrain),
     isPublished: r.is_published === 1, sortOrder: r.sort_order,
   };
 }
@@ -105,7 +106,8 @@ function parseConnections(raw) {
 // rendered zone points at an unpublished/deleted target (publicOnly).
 export function mapZone(r, projectSlug, { publicOnly = true } = {}) {
   const zone = {
-    id: r.id, projectId: r.project_id, kind: r.kind, targetId: r.target_id,
+    id: r.id, projectId: r.project_id, worldmapId: r.worldmap_id, workId: r.work_id,
+    kind: r.kind, targetId: r.target_id, marker: r.marker || '',
     title: r.title, subtitle: r.subtitle, description: r.description, content: r.content,
     coverImage: r.cover_image, category: r.category, tags: parseTags(r.tags),
     date: r.date, link: r.link,
@@ -150,14 +152,48 @@ export function mapZone(r, projectSlug, { publicOnly = true } = {}) {
   return zone;
 }
 
-// All renderable zones of a project, connections pruned to surviving zones.
-export function projectMap(p, { publicOnly = true } = {}) {
-  const zones = db.prepare('SELECT * FROM writing_map_zones WHERE project_id = ? ORDER BY sort_order, id').all(p.id)
-    .map((z) => mapZone(z, p.slug, { publicOnly }))
-    .filter(Boolean);
+// Resolve + prune a set of zone rows for one map (world or local).
+function resolveZones(rows, projectSlug, publicOnly) {
+  const zones = rows.map((z) => mapZone(z, projectSlug, { publicOnly })).filter(Boolean);
   const alive = new Set(zones.map((z) => z.id));
   for (const z of zones) z.connections = z.connections.filter((c) => alive.has(c.to) && c.to !== z.id);
-  return { biome: p.map_biome || 'plaines', terrain: parseTerrain(p.map_terrain), zones };
+  return zones;
+}
+
+// A project's world maps (giant 2D atlases) with their POI.
+export function projectWorldmaps(p, { publicOnly = true } = {}) {
+  return db.prepare('SELECT * FROM writing_worldmaps WHERE project_id = ? ORDER BY sort_order, id').all(p.id)
+    .map((wm) => ({
+      id: wm.id, name: wm.name, terrain: parseTerrain(wm.terrain),
+      zones: resolveZones(
+        db.prepare('SELECT * FROM writing_map_zones WHERE worldmap_id = ? ORDER BY sort_order, id').all(wm.id),
+        p.slug, publicOnly,
+      ),
+    }));
+}
+
+// A work's local voxel map (shown on its reader page when zones exist).
+export function workMap(w, projectSlug, { publicOnly = true } = {}) {
+  return {
+    biome: w.map_biome || 'plaines',
+    terrain: parseTerrain(w.map_terrain),
+    zones: resolveZones(
+      db.prepare('SELECT * FROM writing_map_zones WHERE work_id = ? ORDER BY sort_order, id').all(w.id),
+      projectSlug, publicOnly,
+    ),
+  };
+}
+
+// Legacy project-level map (pre « monde → cité » hierarchy): zones attached
+// directly to the project. Kept so old data still renders if no worldmap
+// exists yet.
+export function projectMap(p, { publicOnly = true } = {}) {
+  const rows = db.prepare('SELECT * FROM writing_map_zones WHERE project_id = ? AND worldmap_id IS NULL AND work_id IS NULL ORDER BY sort_order, id').all(p.id);
+  return {
+    biome: p.map_biome || 'plaines',
+    terrain: parseTerrain(p.map_terrain),
+    zones: resolveZones(rows, p.slug, publicOnly),
+  };
 }
 
 // Project-scoped helpers reused by reader + project endpoints.
@@ -202,6 +238,7 @@ ecritureRouter.get('/:project', (req, res) => {
     entries: publishedEntries(p.id, null),
     characters: projectCharacters(p.id),
     glossary,
+    worldmaps: projectWorldmaps(p),
     map: projectMap(p),
   });
 });
@@ -250,6 +287,7 @@ ecritureRouter.get('/:project/:work', (req, res) => {
     chapters,
     media,
     children: publishedEntries(p.id, w.id),
+    map: workMap(w, p.slug),
     linkedCharacters: resolveLinkedCharacters(card.linkedCharacters),
     characters: projectCharacters(p.id),
     glossary: p.has_glossary ? projectGlossary(p.id) : [],

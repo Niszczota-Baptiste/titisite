@@ -284,7 +284,27 @@ export const api = {
       remove:  (id) => request('DELETE', `/writing/characters/${id}`),
       reorder: (order) => request('POST', `/writing/projects/${projectId}/characters/reorder`, { order }),
     }),
-    // 3D world-map zones of a project (admin editor « Carte »).
+    // Map hierarchy (admin « Cartes »): world maps (giant 2D atlases with POI)
+    // per project + local voxel maps per work. Zone update/remove are global.
+    worldmaps: {
+      listFor:   (projectId) => request('GET', `/writing/projects/${projectId}/worldmaps`),
+      createFor: (projectId, b) => request('POST', `/writing/projects/${projectId}/worldmaps`, b),
+      update:    (id, b) => request('PUT', `/writing/worldmaps/${id}`, b),
+      remove:    (id) => request('DELETE', `/writing/worldmaps/${id}`),
+      zonesFor:  (worldmapId) => ({
+        list:   () => request('GET', `/writing/worldmaps/${worldmapId}/zones`),
+        create: (b) => request('POST', `/writing/worldmaps/${worldmapId}/zones`, b),
+        update: (id, b) => request('PUT', `/writing/map-zones/${id}`, b),
+        remove: (id) => request('DELETE', `/writing/map-zones/${id}`),
+      }),
+    },
+    workMapZonesFor: (workId) => ({
+      list:   () => request('GET', `/writing/works/${workId}/map-zones`),
+      create: (b) => request('POST', `/writing/works/${workId}/map-zones`, b),
+      update: (id, b) => request('PUT', `/writing/map-zones/${id}`, b),
+      remove: (id) => request('DELETE', `/writing/map-zones/${id}`),
+    }),
+    // Legacy project-level zones (pre-hierarchy).
     mapZonesFor: (projectId) => ({
       list:   () => request('GET', `/writing/projects/${projectId}/map-zones`),
       create: (b) => request('POST', `/writing/projects/${projectId}/map-zones`, b),
