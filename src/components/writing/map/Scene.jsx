@@ -2,7 +2,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
-import { AMBIANCES, MAP_RADIUS } from './presets';
+import { AMBIANCES } from './presets';
 import { buildWorld } from './terrain';
 import { VoxelTerrain } from './VoxelTerrain';
 import { ZoneMarker } from './ZoneMarker';
@@ -16,15 +16,15 @@ import { Connections, Fireflies, GroundFog } from './effects';
 // Editable mode (admin): zones are draggable on the terrain itself; the parent
 // owns the positions and receives onZoneMove / onZoneMoveEnd.
 
-const clampToIsland = (x, z) => {
+const clampToWorld = (x, z, radius) => {
   const r = Math.hypot(x, z);
-  if (r <= MAP_RADIUS) return [x, z];
-  return [(x / r) * MAP_RADIUS, (z / r) * MAP_RADIUS];
+  if (r <= radius) return [x, z];
+  return [(x / r) * radius, (z / r) * radius];
 };
 
 // Smoothly drives sky, fog and lights toward the active ambiance so the
 // day/night toggle feels like a sunrise, not a switch.
-function Atmosphere({ ambiance }) {
+function Atmosphere({ ambiance, scale = 1 }) {
   const { scene } = useThree();
   const sun = useRef();
   const hemi = useRef();
@@ -35,8 +35,8 @@ function Atmosphere({ ambiance }) {
 
   useEffect(() => {
     if (!(scene.background instanceof THREE.Color)) scene.background = new THREE.Color(ambiance.sky);
-    if (!scene.fog) scene.fog = new THREE.Fog(ambiance.sky, 55, 150);
-  }, [scene, ambiance.sky]);
+    if (!scene.fog) scene.fog = new THREE.Fog(ambiance.sky, 55 * scale, 150 * scale);
+  }, [scene, ambiance.sky, scale]);
 
   useFrame((_, delta) => {
     const k = 1 - Math.exp(-2.2 * delta);
@@ -102,7 +102,7 @@ function SceneContent({
 
   return (
     <>
-      <Atmosphere ambiance={ambiance} />
+      <Atmosphere ambiance={ambiance} scale={world.grid / 48} />
       <pointLight position={[0, 16, 0]} intensity={dayMode ? 10 : 60} distance={70} color={accent} />
 
       {ambiance.stars && (
@@ -119,13 +119,13 @@ function SceneContent({
             if (dragId == null || !d || d.id !== dragId) return;
             e.stopPropagation();
             if (d.ox == null) { d.ox = e.point.x - d.x; d.oz = e.point.z - d.z; return; }
-            const [x, z] = clampToIsland(e.point.x - d.ox, e.point.z - d.oz);
+            const [x, z] = clampToWorld(e.point.x - d.ox, e.point.z - d.oz, world.radius);
             onZoneMove?.(dragId, Math.round(x * 10) / 10, Math.round(z * 10) / 10);
           },
         } : {}}
       />
-      <GroundFog color={dayMode ? '#ffffff' : accent} level={world.waterLevel} quality={quality} />
-      {!dayMode && <Fireflies count={quality === 'low' ? 50 : 140} color={accent} baseY={world.waterLevel + 1} />}
+      <GroundFog color={dayMode ? '#ffffff' : accent} level={world.waterLevel} quality={quality} spread={world.grid * 0.75} />
+      {!dayMode && <Fireflies count={quality === 'low' ? 50 : 140} color={accent} baseY={world.waterLevel + 1} radius={world.grid / 2} />}
       <Connections world={world} accent={accent} activeId={activeId} />
 
       {zones.map((zone) => (
@@ -148,6 +148,7 @@ function SceneContent({
         controlsRef={controls}
         focus={focusZone ? { x: focusZone.x, y: world.heightAt(focusZone.x, focusZone.z), z: focusZone.z } : null}
         intro={intro}
+        scale={world.grid / 48}
         onIntroEnd={() => setIntroRunning(false)}
       />
       <OrbitControls
@@ -157,7 +158,7 @@ function SceneContent({
         enableDamping
         dampingFactor={0.08}
         minDistance={12}
-        maxDistance={70}
+        maxDistance={70 * (world.grid / 48)}
         minPolarAngle={0.25}
         maxPolarAngle={1.32}
       />

@@ -6,6 +6,7 @@ import {
 } from '../../../writing/map/presets';
 import { ACC, ACC_RGB, Button, Field, Input, Textarea } from '../../ui';
 import { ImageUploadField } from '../../ImageUploadField';
+import { TerrainPainter } from './TerrainPainter';
 import { DirtyBadge, GenreTags, MarkdownField, SelectField, blockLabel, blockStyle } from './widgets';
 
 // Same lazy chunk as the public map — three.js never enters the admin bundle.
@@ -34,7 +35,10 @@ export function MapEditor({ projectId }) {
   const [loading, setLoading] = useState(true);
   const [terrainText, setTerrainText] = useState('');
   const [terrainOpen, setTerrainOpen] = useState(false);
+  const [terrainMode, setTerrainMode] = useState('pinceau'); // 'pinceau' | 'json'
   const [terrainErr, setTerrainErr] = useState('');
+  const [terrainSaving, setTerrainSaving] = useState(false);
+  const [terrainVersion, setTerrainVersion] = useState(0);
 
   const zonesApi = useMemo(() => api.writing.mapZonesFor(projectId), [projectId]);
 
@@ -69,8 +73,24 @@ export function MapEditor({ projectId }) {
     catch { setErr('Biome non enregistré.'); }
   };
 
-  // Terrain JSON: validated locally, persisted, and applied live to the
-  // preview (the engine re-clamps everything anyway).
+  // Persist a terrain object (from the brush editor or the JSON tab) and
+  // apply it live to the 3D preview.
+  const saveTerrain = async (parsed) => {
+    setTerrainErr('');
+    setTerrainSaving(true);
+    try {
+      await api.writing.projects.update(projectId, { mapTerrain: parsed });
+      setProject((p) => ({ ...p, mapTerrain: parsed }));
+      setTerrainText(parsed ? JSON.stringify(parsed, null, 2) : '');
+      setTerrainVersion((v) => v + 1);
+    } catch (e) {
+      setTerrainErr(e?.body?.error === 'terrain_too_large' ? 'Terrain trop volumineux (max 120 Ko).' : 'Enregistrement impossible.');
+    } finally {
+      setTerrainSaving(false);
+    }
+  };
+
+  // JSON tab: validated locally before going through saveTerrain.
   const applyTerrain = async () => {
     setTerrainErr('');
     let parsed = null;
@@ -78,12 +98,7 @@ export function MapEditor({ projectId }) {
       try { parsed = JSON.parse(terrainText); } catch { setTerrainErr('JSON invalide — vérifie virgules et guillemets.'); return; }
       if (typeof parsed !== 'object' || Array.isArray(parsed)) { setTerrainErr('Le terrain doit être un objet JSON.'); return; }
     }
-    try {
-      await api.writing.projects.update(projectId, { mapTerrain: parsed });
-      setProject((p) => ({ ...p, mapTerrain: parsed }));
-    } catch (e) {
-      setTerrainErr(e?.body?.error === 'terrain_too_large' ? 'Terrain trop volumineux (max 120 Ko).' : 'Enregistrement impossible.');
-    }
+    await saveTerrain(parsed);
   };
 
   const insertTemplate = () => {
@@ -189,26 +204,56 @@ export function MapEditor({ projectId }) {
         </button>
         {terrainOpen && (
           <>
-            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(180,170,200,0.65)', marginBottom: 8, lineHeight: 1.6 }}>
-              Décris le relief en JSON : <code>regions</code> (biome + hauteur), <code>rivers</code>, <code>lakes</code>, <code>forests</code>, <code>paths</code>, <code>waterLevel</code>, <code>seed</code>, et des biomes personnalisés via <code>biomes</code>. Schéma complet dans <code>docs/carte-3d.md</code>. Vide = île simple du biome de base.
-            </p>
-            <textarea
-              value={terrainText}
-              onChange={(e) => setTerrainText(e.target.value)}
-              rows={12}
-              spellCheck={false}
-              placeholder='{ "regions": [{ "biome": "montagne", "cx": 8, "cz": -6, "r": 9, "height": 6 }] }'
-              style={{
-                width: '100%', background: 'rgba(8,5,18,0.8)', border: '1px solid rgba(80,50,130,0.28)',
-                borderRadius: 8, padding: '12px 14px', color: '#ede8f8', outline: 'none',
-                fontFamily: "'JetBrains Mono',monospace", fontSize: 12, lineHeight: 1.6, resize: 'vertical',
-              }}
-            />
-            {terrainErr && <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: '#ff8898', margin: '8px 0 0' }}>{terrainErr}</p>}
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-              <Button onClick={applyTerrain}>Appliquer & enregistrer</Button>
-              <Button variant="ghost" onClick={insertTemplate}>Insérer le modèle d'exemple</Button>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+              {[['pinceau', '🖌 Pinceau (à la main)'], ['json', '{} JSON avancé']].map(([m, label]) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setTerrainMode(m)}
+                  style={{
+                    background: terrainMode === m ? `rgba(${ACC_RGB},0.16)` : 'transparent',
+                    border: `1px solid ${terrainMode === m ? ACC : 'rgba(80,50,130,0.3)'}`,
+                    color: terrainMode === m ? ACC : 'rgba(180,170,200,0.7)', borderRadius: 16,
+                    padding: '5px 14px', cursor: 'pointer',
+                    fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: terrainMode === m ? 700 : 400,
+                  }}
+                >{label}</button>
+              ))}
             </div>
+            {terrainErr && <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: '#ff8898', margin: '0 0 10px' }}>{terrainErr}</p>}
+
+            {terrainMode === 'pinceau' ? (
+              <TerrainPainter
+                key={terrainVersion}
+                terrain={project?.mapTerrain || null}
+                baseBiome={project?.mapBiome || 'plaines'}
+                accent={project?.accentColor || ACC}
+                saving={terrainSaving}
+                onSave={saveTerrain}
+              />
+            ) : (
+              <>
+                <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(180,170,200,0.65)', marginBottom: 8, lineHeight: 1.6 }}>
+                  Décris le relief en JSON : <code>shape</code> (ile / continent / carre), <code>size</code> (32–88), <code>regions</code> (biome + hauteur), <code>rivers</code>, <code>lakes</code>, <code>forests</code>, <code>paths</code>, <code>waterLevel</code>, <code>seed</code>, et des biomes personnalisés via <code>biomes</code>. Schéma complet dans <code>docs/carte-3d.md</code>. Vide = île simple du biome de base.
+                </p>
+                <textarea
+                  value={terrainText}
+                  onChange={(e) => setTerrainText(e.target.value)}
+                  rows={12}
+                  spellCheck={false}
+                  placeholder='{ "regions": [{ "biome": "montagne", "cx": 8, "cz": -6, "r": 9, "height": 6 }] }'
+                  style={{
+                    width: '100%', background: 'rgba(8,5,18,0.8)', border: '1px solid rgba(80,50,130,0.28)',
+                    borderRadius: 8, padding: '12px 14px', color: '#ede8f8', outline: 'none',
+                    fontFamily: "'JetBrains Mono',monospace", fontSize: 12, lineHeight: 1.6, resize: 'vertical',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <Button onClick={applyTerrain}>Appliquer & enregistrer</Button>
+                  <Button variant="ghost" onClick={insertTemplate}>Insérer le modèle d'exemple</Button>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GRID, cellToWorld } from './terrain';
+import { cellToWorld } from './terrain';
 
 // Geometry builders for the voxel look. Everything is merged into as few
 // BufferGeometries as possible (vertex colors, one material) — the whole
@@ -23,7 +23,9 @@ class GeoBuffer {
       this.nor.push(...normal);
       this.col.push(color.r * shade, color.g * shade, color.b * shade);
     }
-    this.idx.push(this.n, this.n + 1, this.n + 2, this.n, this.n + 2, this.n + 3);
+    // Corner lists are clockwise — emit counter-clockwise triangles so faces
+    // point outward (front-face culling ate the whole terrain otherwise).
+    this.idx.push(this.n, this.n + 2, this.n + 1, this.n, this.n + 3, this.n + 2);
     this.n += 4;
   }
 
@@ -84,7 +86,7 @@ export function buildTerrainGeometry(world) {
   for (let j = 0; j < grid; j++) {
     for (let i = 0; i < grid; i++) {
       const h = height[idx(i, j)];
-      const [x, z] = cellToWorld(i, j);
+      const [x, z] = cellToWorld(i, j, grid);
       if (h < waterLevel) {
         if (bridge[idx(i, j)]) {
           buf.box(x, waterLevel - 0.12, z, 1, 0.25, 1, plankColor);
@@ -129,7 +131,7 @@ export function buildDecorGeometry(world, zones, rng, quality) {
   const cache = new Map();
   const colorOf = (hex) => { if (!cache.has(hex)) cache.set(hex, new THREE.Color(hex)); return cache.get(hex); };
   const idx = (i, j) => j * grid + i;
-  const budget = quality === 'low' ? 160 : 380;
+  const budget = Math.round((quality === 'low' ? 160 : 380) * (grid / 48) ** 2);
   let used = 0;
 
   const KINDS = {
@@ -178,7 +180,7 @@ export function buildDecorGeometry(world, zones, rng, quality) {
       const b = terrain.biomes[biome[k]] || terrain.biomes.plaines;
       const p = Math.min(0.6, (b.density || 0) + decorBoost[k]);
       if (rng() > p) continue;
-      const [x, z] = cellToWorld(i, j);
+      const [x, z] = cellToWorld(i, j, grid);
       if (zones.some((zz) => Math.hypot(zz.x - x, zz.z - z) < 3.4 * (zz.scale || 1))) continue;
       const fn = KINDS[b.decor] || KINDS.herbe;
       fn(x + (rng() - 0.5) * 0.5, height[k], z + (rng() - 0.5) * 0.5);

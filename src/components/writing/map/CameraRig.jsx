@@ -11,7 +11,7 @@ const easeOutCubic = (t) => 1 - (1 - t) ** 3;
 // Drives the two camera motions that OrbitControls can't do on its own:
 // the opening fly-in, then the smooth re-targeting when a zone is selected.
 // User input always wins — once the intro is over we only damp the *target*.
-export function CameraRig({ controlsRef, focus, intro, onIntroEnd }) {
+export function CameraRig({ controlsRef, focus, intro, scale = 1, onIntroEnd }) {
   const { camera } = useThree();
   const elapsed = useRef(0);
   const introDone = useRef(!intro);
@@ -19,19 +19,19 @@ export function CameraRig({ controlsRef, focus, intro, onIntroEnd }) {
 
   // Initial placement only — intro/camera are stable for the component's life.
   useEffect(() => {
-    if (introDone.current) camera.position.copy(HOME_POS);
+    if (introDone.current) camera.position.copy(HOME_POS).multiplyScalar(scale);
     else {
-      camera.position.copy(INTRO_POS);
+      camera.position.copy(INTRO_POS).multiplyScalar(scale);
       camera.lookAt(0, 0, 0);
     }
-  }, [camera]);
+  }, [camera, scale]);
 
   useFrame((_, delta) => {
     const controls = controlsRef.current;
     if (!introDone.current) {
       elapsed.current += delta;
       const t = Math.min(1, elapsed.current / INTRO_SECONDS);
-      camera.position.lerpVectors(INTRO_POS, HOME_POS, easeOutCubic(t));
+      camera.position.lerpVectors(INTRO_POS, HOME_POS, easeOutCubic(t)).multiplyScalar(scale);
       camera.lookAt(0, 0, 0);
       if (t >= 1) {
         introDone.current = true;

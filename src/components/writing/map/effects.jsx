@@ -45,16 +45,16 @@ export function Fireflies({ count, color, radius = 24, baseY = 2 }) {
 
 // Soft volumetric-ish ground haze: a few large additive sprites hugging the
 // terrain, slowly drifting.
-export function GroundFog({ color, level, quality }) {
+export function GroundFog({ color, level, quality, spread = 36 }) {
   const group = useRef();
   const puffs = useMemo(() => {
     const rng = mulberry32(17);
     const n = quality === 'low' ? 4 : 8;
     return Array.from({ length: n }, () => ({
-      x: (rng() - 0.5) * 36, z: (rng() - 0.5) * 36,
+      x: (rng() - 0.5) * spread, z: (rng() - 0.5) * spread,
       s: 7 + rng() * 9, speed: 0.05 + rng() * 0.1, phase: rng() * Math.PI * 2,
     }));
-  }, [quality]);
+  }, [quality, spread]);
   const tex = useMemo(() => {
     const c = document.createElement('canvas');
     c.width = c.height = 64;

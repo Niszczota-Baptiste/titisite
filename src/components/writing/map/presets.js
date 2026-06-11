@@ -60,8 +60,22 @@ export const ZONE_KINDS = [
   { value: 'libre', label: 'Zone libre' },
 ];
 
-// Usable placement radius in world units (1 unit = 1 block).
+// Usable placement radius in world units (1 unit = 1 block) for the default
+// map size; bigger maps allow proportionally more (see terrain.js).
 export const MAP_RADIUS = 20;
+
+export const MAP_SHAPES = [
+  { value: 'ile', label: 'Île ronde' },
+  { value: 'continent', label: 'Continent (côtes irrégulières)' },
+  { value: 'carre', label: 'Carré' },
+];
+
+export const MAP_SIZES = [
+  { value: 40, label: 'Petite (40)' },
+  { value: 48, label: 'Normale (48)' },
+  { value: 64, label: 'Grande (64)' },
+  { value: 80, label: 'Très grande (80)' },
+];
 
 // Default terrain when the project hasn't defined one yet: a soft island of
 // the base biome with a couple of relief bumps. Shown in the admin editor as
@@ -105,17 +119,37 @@ export function normalizeTerrain(raw, baseBiome) {
   }
   const biomes = { ...BIOMES, ...customBiomes };
   const biomeKey = (v) => (biomes[v] ? v : (biomes[baseBiome] ? baseBiome : 'plaines'));
-  const pts = (v) => (Array.isArray(v) ? v.slice(0, 40).map((p) => [
-    num(p?.[0], -MAP_RADIUS - 4, MAP_RADIUS + 4, 0), num(p?.[1], -MAP_RADIUS - 4, MAP_RADIUS + 4, 0),
+  const size = Math.min(88, Math.max(32, Math.round(num(t.size, 32, 88, 48) / 2) * 2));
+  const half = size / 2;
+  const pts = (v) => (Array.isArray(v) ? v.slice(0, 60).map((p) => [
+    num(p?.[0], -half - 4, half + 4, 0), num(p?.[1], -half - 4, half + 4, 0),
   ]) : []);
   const area = (a) => ({
-    cx: num(a?.cx, -MAP_RADIUS, MAP_RADIUS, 0), cz: num(a?.cz, -MAP_RADIUS, MAP_RADIUS, 0),
-    r: num(a?.r, 1, MAP_RADIUS * 2, 5),
+    cx: num(a?.cx, -half, half, 0), cz: num(a?.cz, -half, half, 0),
+    r: num(a?.r, 1, size, 5),
   });
   const list = (v, max) => (Array.isArray(v) ? v.slice(0, max) : []);
 
+  // Hand-painted grid layer (written by the admin brush editor). When present
+  // it replaces the generated relief; strings are decoded lazily in terrain.js.
+  let grid = null;
+  if (t.grid && typeof t.grid === 'object'
+    && Array.isArray(t.grid.heights) && t.grid.heights.every((r) => typeof r === 'string')
+    && t.grid.biomes && Array.isArray(t.grid.biomes.palette) && Array.isArray(t.grid.biomes.cells)) {
+    const gsize = Math.min(88, Math.max(32, Math.round(Number(t.grid.size) || 48)));
+    grid = {
+      size: gsize,
+      heights: t.grid.heights.slice(0, gsize).map((r) => String(r).slice(0, gsize)),
+      palette: t.grid.biomes.palette.slice(0, 36).map((k) => String(k).slice(0, 24)),
+      cells: t.grid.biomes.cells.slice(0, gsize).map((r) => String(r).slice(0, gsize)),
+    };
+  }
+
   return {
     seed: num(t.seed, 0, 2 ** 31, 7),
+    size: grid ? grid.size : size,
+    shape: ['ile', 'continent', 'carre'].includes(t.shape) ? t.shape : 'ile',
+    grid,
     waterLevel: num(t.waterLevel, 0, 5, 1),
     waterColor: /^#[0-9a-f]{6}$/i.test(String(t.waterColor || '')) ? t.waterColor : null,
     baseBiome: biomeKey(t.baseBiome || baseBiome),

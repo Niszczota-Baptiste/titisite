@@ -44,7 +44,7 @@ zone** configurée dans l'admin — sinon la page reste inchangée.
   - `kind` : `work` / `character` / `glossary` (zone **liée** — contenu résolu
     depuis l'entité à la lecture, les champs propres non vides surchargent) ou
     `libre`.
-  - `x`, `z` (±20), `scale`, `rotation`, `building` (14 types dont le set
+  - `x`, `z` (±40, selon la taille de carte), `scale`, `rotation`, `building` (14 types dont le set
     coréen `pagode`, `hanok`, `pavillon`, `porte`), `content` (Markdown maison,
     tokens `[[perso:…]]` / `{{kr:…}}`).
   - `connections` : `[{ "to": id, "style": "route" | "arc" }]` (les anciens
@@ -53,11 +53,30 @@ zone** configurée dans l'admin — sinon la page reste inchangée.
     la route quand une extrémité est survolée/sélectionnée ; **arc** = ligne
     lumineuse pointillée animée.
 
+## Éditer le monde
+
+Trois façons, de la plus simple à la plus fine :
+
+1. **Pinceau (admin, sans JSON)** — onglet Carte 3D → « Terrain du monde » →
+   **Pinceau** : on peint directement sur la carte 2D (élever, abaisser, eau,
+   biome, taille de pinceau). Le dessin est sauvé dans `mapTerrain.grid`
+   (grilles explicites compactes, ~9 Ko en 64×64) et **remplace** le relief
+   généré ; plages, plateaux de zones et routes restent automatiques.
+   « Régénérer le relief » repart de la forme/taille choisie, « Supprimer le
+   dessin » revient au généré.
+2. **Forme & taille** — sélecteurs dans le même panneau : `ile` (ronde),
+   `continent` (côtes irrégulières), `carre` ; tailles 40/48/64/80 blocs
+   (32–88 en JSON). Caméra, brouillard et densité de décor s'adaptent.
+3. **JSON avancé** — onglet « JSON avancé », pour les rivières/régions
+   paramétriques et les biomes personnalisés (schéma ci-dessous).
+
 ## Schéma du terrain JSON
 
 ```json
 {
   "seed": 7,
+  "shape": "ile",
+  "size": 48,
   "waterLevel": 1,
   "waterColor": "#1d4e6e",
   "baseBiome": "plaines",
@@ -79,6 +98,13 @@ zone** configurée dans l'admin — sinon la page reste inchangée.
   `rocher`, `roseau`, `palmier`, `bambou`, `none`.
 - Tout est clampé par `presets.js#normalizeTerrain` ; un JSON vide donne une
   île simple du biome de base.
+- Champ optionnel `grid` (écrit par le pinceau) : `{ size, heights: [lignes
+  hex 0..c], biomes: { palette, cells } }` — quand il est présent, il remplace
+  la génération (`regions`/`rivers`/`lakes` sont ignorés).
+- Attention au winding : tout quad passe par `voxel.js#GeoBuffer.quad`, qui
+  émet les triangles en sens anti-horaire (les listes de coins sont décrites
+  en horaire) — inverser l'un sans l'autre fait disparaître les faces
+  (backface culling).
 
 ## API
 
@@ -107,7 +133,8 @@ zone** configurée dans l'admin — sinon la page reste inchangée.
 | `map/WorldMap.jsx` | Wrapper public : modes 2D/3D, lazy-mount, recherche/filtres/sélection |
 | `map/MapHud.jsx` | Recherche, filtres, bascules 2D/3D et jour/nuit, stats |
 | `map/ZonePanel.jsx` | Panneau latéral de détail (Markdown maison, stats, CTA) |
-| `admin/editors/writing/MapEditor.jsx` | Onglet admin : biome, éditeur de terrain JSON (aperçu live), drag & drop sur le relief, connexions typées |
+| `admin/editors/writing/TerrainPainter.jsx` | Pinceau 2D : élever/abaisser/eau/biome, forme & taille, sauvegarde en couche `grid` |
+| `admin/editors/writing/MapEditor.jsx` | Onglet admin : biome, terrain (pinceau + JSON, aperçu live), drag & drop sur le relief, connexions typées |
 
 ## Accessibilité / SEO
 

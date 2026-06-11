@@ -7,6 +7,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] — carte-voxel-minecraft
 
+### Fixed
+- **Rendu 3D cassé sur certaines cartes** : toute la géométrie voxel était
+  enroulée en sens horaire — le monde se rendait « retourné » (faces
+  extérieures supprimées par le backface culling, parois intérieures
+  visibles). Triangles désormais émis en anti-horaire : terrain plein et
+  stable sous tous les angles.
+
+### Added
+- **Éditeur de terrain au pinceau** (admin, sans JSON) : on peint
+  élévation/abaissement, eau et biomes directement sur la carte 2D ; le
+  dessin est sauvé en grilles compactes (`mapTerrain.grid`) et remplace le
+  relief généré. Boutons régénérer / supprimer le dessin.
+- **Formes et tailles de carte** : île ronde, continent aux côtes
+  irrégulières, carré ; tailles 40 à 80 blocs (sélecteurs dans l'admin,
+  32–88 en JSON). Caméra, brouillard, lucioles et densité de décor
+  s'adaptent à la taille.
+
 ### Changed
 - **Refonte direction artistique de la carte** : moteur **voxel multi-biomes**
   façon Minecraft/diorama. Terrain entièrement piloté par données

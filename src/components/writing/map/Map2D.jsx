@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { hexToRgb } from '../tokens';
-import { buildWorld, cellToWorld, GRID } from './terrain';
+import { buildWorld } from './terrain';
 
 // Minecraft-style 2D map, generated from the exact same world grids as the 3D
 // view (terrain.js is three-free, so this mode never loads the 3D chunk).
@@ -13,10 +13,10 @@ const shadeHex = (hex, f) => {
   return `rgb(${c((n >> 16) & 255)},${c((n >> 8) & 255)},${c(n & 255)})`;
 };
 
-function paint(canvas, world, accent) {
+export function paintWorld(canvas, world, accent, { routes = true } = {}) {
   const px = 6;
-  canvas.width = GRID * px;
-  canvas.height = GRID * px;
+  canvas.width = world.grid * px;
+  canvas.height = world.grid * px;
   const ctx = canvas.getContext('2d');
   const { grid, height, biome, beach, path, bridge, waterLevel, terrain } = world;
   const idx = (i, j) => j * grid + i;
@@ -45,6 +45,8 @@ function paint(canvas, world, accent) {
     }
   }
 
+  if (!routes) return;
+
   // Luminous 'arc' connections, dashed in the accent color.
   ctx.strokeStyle = accent;
   ctx.globalAlpha = 0.75;
@@ -52,7 +54,7 @@ function paint(canvas, world, accent) {
   ctx.setLineDash([6, 5]);
   for (const r of world.routes) {
     if (r.style !== 'arc' || r.points.length < 2) continue;
-    const toPx = ([x, z]) => [(x + GRID / 2) * px, (z + GRID / 2) * px];
+    const toPx = ([x, z]) => [(x + grid / 2) * px, (z + grid / 2) * px];
     ctx.beginPath();
     ctx.moveTo(...toPx(r.points[0]));
     ctx.lineTo(...toPx(r.points[r.points.length - 1]));
@@ -70,11 +72,12 @@ export function Map2D({
   const world = useMemo(() => buildWorld(map.terrain, map.biome, zones), [map.terrain, map.biome, zones]);
 
   useEffect(() => {
-    if (canvas.current) paint(canvas.current, world, accent);
+    if (canvas.current) paintWorld(canvas.current, world, accent);
   }, [world, accent]);
 
   // World x/z → percentage position inside the square canvas box.
-  const pos = (x, z) => ({ left: `${((x + GRID / 2) / GRID) * 100}%`, top: `${((z + GRID / 2) / GRID) * 100}%` });
+  const G = world.grid;
+  const pos = (x, z) => ({ left: `${((x + G / 2) / G) * 100}%`, top: `${((z + G / 2) / G) * 100}%` });
 
   return (
     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

@@ -1,15 +1,17 @@
-import { MAP_RADIUS, mulberry32, normalizeTerrain } from './presets';
+import { mulberry32, normalizeTerrain } from './presets';
 
 // Voxel terrain builder — pure data in, grids out. No three.js here: the same
 // build feeds the 3D mesh (VoxelTerrain) and the 2D canvas map (Map2D), which
 // is how the 2D view stays an exact projection of the 3D world.
+//
+// The world can be generated (shape + regions/rivers/lakes…) or hand-painted:
+// when the terrain JSON carries a `grid` layer (written by the admin brush
+// editor), those explicit heights/biomes replace the generated relief.
 
-export const GRID = 2 * (MAP_RADIUS + 4); // cells per side (1 cell = 1 block)
-const HALF = GRID / 2;
 export const MAX_H = 12;
 
-export const cellToWorld = (i, j) => [i - HALF + 0.5, j - HALF + 0.5];
-export const worldToCell = (x, z) => [Math.round(x + HALF - 0.5), Math.round(z + HALF - 0.5)];
+export const cellToWorld = (i, j, grid) => [i - grid / 2 + 0.5, j - grid / 2 + 0.5];
+export const worldToCell = (x, z, grid) => [Math.round(x + grid / 2 - 0.5), Math.round(z + grid / 2 - 0.5)];
 
 // Two-octave value noise on a seeded lattice — enough relief for a diorama.
 function makeNoise(seed) {
@@ -42,12 +44,52 @@ function polylineDist(x, z, points) {
   return best;
 }
 
+// Base landmass height (before regions), by map shape. Returns 0 for open sea.
+function baseHeight(shape, x, z, grid, W, noise) {
+  if (shape === 'carre') {
+    const half = grid / 2;
+    const b = Math.min(half - Math.abs(x), half - Math.abs(z));
+    if (b < 1.5) return 0;
+    const inside = Math.min(1, (b - 1.5) / 3);
+    return W + inside * (1 + noise(x, z) * 1.2);
+  }
+  if (shape === 'continent') {
+    const half = grid / 2;
+    const b = Math.min(half - Math.abs(x), half - Math.abs(z)) / 6;
+    const coast = Math.min(1, Math.max(0, b)) - noise(x * 1.6, z * 1.6) * 0.55;
+    if (coast <= 0.08) return 0;
+    return W + Math.min(1, coast * 2.2) * (1 + noise(x, z) * 1.4);
+  }
+  // 'ile' (default): round island with a noisy coastline.
+  const radius = grid / 2 - 4;
+  const d = Math.hypot(x, z);
+  const edge = radius + 1.5 + noise(x * 2, z * 2) * 3;
+  const inside = Math.min(1, Math.max(0, (edge - d) / 4));
+  return inside > 0 ? W + inside * (1 + noise(x, z) * 1.2) : 0;
+}
+
+// Decode the painted grid layer into height/biome arrays.
+function applyPaintedGrid(g, height, biome, gridSize, fallbackBiome) {
+  for (let j = 0; j < gridSize; j++) {
+    const hRow = g.heights[j] || '';
+    const cRow = g.cells[j] || '';
+    for (let i = 0; i < gridSize; i++) {
+      const h = parseInt(hRow[i] || '0', 16);
+      height[j * gridSize + i] = Number.isFinite(h) ? Math.min(MAX_H, Math.max(0, h)) : 0;
+      const pi = parseInt(cRow[i] || '0', 36);
+      biome[j * gridSize + i] = g.palette[pi] || fallbackBiome;
+    }
+  }
+}
+
 // Build every grid the renderers need from the project's terrain JSON + its
 // zones. Deterministic for a given input.
 export function buildWorld(rawTerrain, baseBiome, zones) {
   const t = normalizeTerrain(rawTerrain, baseBiome);
   const noise = makeNoise(t.seed);
   const W = t.waterLevel;
+  const GRID = t.size;
+  const radius = GRID / 2 - 4;
 
   const height = new Float32Array(GRID * GRID);
   const biome = new Array(GRID * GRID).fill(t.baseBiome);
@@ -56,62 +98,66 @@ export function buildWorld(rawTerrain, baseBiome, zones) {
   const bridge = new Uint8Array(GRID * GRID);
   const decorBoost = new Float32Array(GRID * GRID);
   const idx = (i, j) => j * GRID + i;
+  const toWorld = (i, j) => cellToWorld(i, j, GRID);
+  const toCell = (x, z) => worldToCell(x, z, GRID);
 
-  // 1) Base island: plateau with noisy edge, dropping under water outside.
-  for (let j = 0; j < GRID; j++) {
-    for (let i = 0; i < GRID; i++) {
-      const [x, z] = cellToWorld(i, j);
-      const d = Math.hypot(x, z);
-      const edge = MAP_RADIUS + 1.5 + noise(x * 2, z * 2) * 3;
-      const inside = Math.min(1, Math.max(0, (edge - d) / 4));
-      height[idx(i, j)] = inside > 0 ? W + inside * (1 + noise(x, z) * 1.2) : 0;
-    }
-  }
-
-  // 2) Regions: raise terrain and claim the biome where their weight wins.
-  const weight = new Float32Array(GRID * GRID);
-  for (const r of t.regions) {
+  if (t.grid) {
+    // Hand-painted world: explicit heights/biomes from the brush editor.
+    applyPaintedGrid(t.grid, height, biome, GRID, t.baseBiome);
+  } else {
+    // 1) Base landmass by shape.
     for (let j = 0; j < GRID; j++) {
       for (let i = 0; i < GRID; i++) {
-        const [x, z] = cellToWorld(i, j);
-        const f = Math.max(0, 1 - dist(x, z, r.cx, r.cz) / r.r);
-        if (f <= 0 || height[idx(i, j)] <= 0) continue;
-        height[idx(i, j)] += f * (r.height + noise(x + r.cx, z + r.cz) * r.relief * 2);
-        if (f > weight[idx(i, j)]) { weight[idx(i, j)] = f; biome[idx(i, j)] = r.biome; }
+        const [x, z] = toWorld(i, j);
+        height[idx(i, j)] = baseHeight(t.shape, x, z, GRID, W, noise);
+      }
+    }
+
+    // 2) Regions: raise terrain and claim the biome where their weight wins.
+    const weight = new Float32Array(GRID * GRID);
+    for (const r of t.regions) {
+      for (let j = 0; j < GRID; j++) {
+        for (let i = 0; i < GRID; i++) {
+          const [x, z] = toWorld(i, j);
+          const f = Math.max(0, 1 - dist(x, z, r.cx, r.cz) / r.r);
+          if (f <= 0 || height[idx(i, j)] <= 0) continue;
+          height[idx(i, j)] += f * (r.height + noise(x + r.cx, z + r.cz) * r.relief * 2);
+          if (f > weight[idx(i, j)]) { weight[idx(i, j)] = f; biome[idx(i, j)] = r.biome; }
+        }
+      }
+    }
+
+    // 3) Lakes & rivers carve below the water level.
+    for (const l of t.lakes) {
+      for (let j = 0; j < GRID; j++) {
+        for (let i = 0; i < GRID; i++) {
+          const [x, z] = toWorld(i, j);
+          const f = 1 - dist(x, z, l.cx, l.cz) / l.r;
+          if (f > 0.12) height[idx(i, j)] = Math.min(height[idx(i, j)], W - 1);
+          else if (f > 0) height[idx(i, j)] = Math.min(height[idx(i, j)], W + 0.4);
+        }
+      }
+    }
+    for (const r of t.rivers) {
+      if (r.points.length < 2) continue;
+      for (let j = 0; j < GRID; j++) {
+        for (let i = 0; i < GRID; i++) {
+          const [x, z] = toWorld(i, j);
+          const d = polylineDist(x, z, r.points);
+          // Low banks so the water stays visible instead of a deep canyon.
+          if (d < r.width) height[idx(i, j)] = Math.min(height[idx(i, j)], W - 1);
+          else if (d < r.width + 1.2) height[idx(i, j)] = Math.min(height[idx(i, j)], W);
+          else if (d < r.width + 2.4) height[idx(i, j)] = Math.min(height[idx(i, j)], W + 1);
+        }
       }
     }
   }
 
-  // 3) Lakes & rivers carve below the water level.
-  for (const l of t.lakes) {
-    for (let j = 0; j < GRID; j++) {
-      for (let i = 0; i < GRID; i++) {
-        const [x, z] = cellToWorld(i, j);
-        const f = 1 - dist(x, z, l.cx, l.cz) / l.r;
-        if (f > 0.12) height[idx(i, j)] = Math.min(height[idx(i, j)], W - 1);
-        else if (f > 0) height[idx(i, j)] = Math.min(height[idx(i, j)], W + 0.4);
-      }
-    }
-  }
-  for (const r of t.rivers) {
-    if (r.points.length < 2) continue;
-    for (let j = 0; j < GRID; j++) {
-      for (let i = 0; i < GRID; i++) {
-        const [x, z] = cellToWorld(i, j);
-        const d = polylineDist(x, z, r.points);
-        // Low banks so the water stays visible instead of a deep canyon.
-        if (d < r.width) height[idx(i, j)] = Math.min(height[idx(i, j)], W - 1);
-        else if (d < r.width + 1.2) height[idx(i, j)] = Math.min(height[idx(i, j)], W);
-        else if (d < r.width + 2.4) height[idx(i, j)] = Math.min(height[idx(i, j)], W + 1);
-      }
-    }
-  }
-
-  // 4) Forest patches just raise decor density.
+  // 4) Forest patches just raise decor density (also on painted worlds).
   for (const f of t.forests) {
     for (let j = 0; j < GRID; j++) {
       for (let i = 0; i < GRID; i++) {
-        const [x, z] = cellToWorld(i, j);
+        const [x, z] = toWorld(i, j);
         if (dist(x, z, f.cx, f.cz) < f.r) decorBoost[idx(i, j)] += f.density;
       }
     }
@@ -119,14 +165,14 @@ export function buildWorld(rawTerrain, baseBiome, zones) {
 
   // 5) Flatten a small plateau under each zone (and rescue zones over water).
   for (const z of zones) {
-    const [ci, cj] = worldToCell(z.x, z.z);
+    const [ci, cj] = toCell(z.x, z.z);
     const base = Math.max(W, Math.round(height[idx(
       Math.min(GRID - 1, Math.max(0, ci)), Math.min(GRID - 1, Math.max(0, cj)),
     )] || W));
     const r = 2.4 * (z.scale || 1);
     for (let j = 0; j < GRID; j++) {
       for (let i = 0; i < GRID; i++) {
-        const [x, zz] = cellToWorld(i, j);
+        const [x, zz] = toWorld(i, j);
         const d = dist(x, zz, z.x, z.z);
         if (d < r) height[idx(i, j)] = base;
         else if (d < r + 1.5) height[idx(i, j)] = (height[idx(i, j)] + base) / 2;
@@ -155,7 +201,7 @@ export function buildWorld(rawTerrain, baseBiome, zones) {
       for (let s = 0; s <= steps; s++) {
         const x = ax + ((bx - ax) * s) / steps;
         const z = az + ((bz - az) * s) / steps;
-        const [i, j] = worldToCell(x, z);
+        const [i, j] = toCell(x, z);
         if (i < 0 || j < 0 || i >= GRID || j >= GRID) continue;
         if (isWater(i, j)) bridge[idx(i, j)] = 1;
         else path[idx(i, j)] = 1;
@@ -200,14 +246,39 @@ export function buildWorld(rawTerrain, baseBiome, zones) {
   }
 
   const heightAt = (x, z) => {
-    const [i, j] = worldToCell(x, z);
+    const [i, j] = toCell(x, z);
     if (i < 0 || j < 0 || i >= GRID || j >= GRID) return 0;
     return Math.max(W, height[idx(i, j)]);
   };
 
   return {
-    terrain: t, grid: GRID, waterLevel: W,
+    terrain: t, grid: GRID, radius, waterLevel: W,
     height, biome, beach, path, bridge, decorBoost,
-    routes, heightAt, isWater: (x, z) => { const [i, j] = worldToCell(x, z); return i >= 0 && j >= 0 && i < GRID && j < GRID && isWater(i, j); },
+    routes, heightAt,
+    isWater: (x, z) => { const [i, j] = toCell(x, z); return i >= 0 && j >= 0 && i < GRID && j < GRID && isWater(i, j); },
   };
+}
+
+// Serialize painted height/biome arrays back into the terrain JSON `grid`
+// layer (compact row strings: heights in hex 0..c, biomes as palette indexes
+// in base 36). Inverse of applyPaintedGrid.
+export function encodeGrid(size, height, biome) {
+  const palette = [];
+  const paletteIdx = new Map();
+  const heights = [];
+  const cells = [];
+  for (let j = 0; j < size; j++) {
+    let hRow = '';
+    let cRow = '';
+    for (let i = 0; i < size; i++) {
+      const k = j * size + i;
+      hRow += Math.min(MAX_H, Math.max(0, Math.round(height[k]))).toString(16);
+      const b = biome[k];
+      if (!paletteIdx.has(b)) { paletteIdx.set(b, palette.length); palette.push(b); }
+      cRow += paletteIdx.get(b).toString(36);
+    }
+    heights.push(hRow);
+    cells.push(cRow);
+  }
+  return { size, heights, biomes: { palette, cells } };
 }
