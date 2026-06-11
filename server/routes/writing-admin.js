@@ -15,7 +15,7 @@ const STATUS = new Set(['brouillon', 'wip', 'termine']);
 const MEDIA_TYPE = new Set(['screenshot', 'schema', 'carte']);
 const AMBIENT = new Set(['none', 'petals', 'leaves', 'snow', 'embers', 'fireflies', 'notes', 'wind', 'waves', 'fireworks']);
 // World-map allowlists — mirrored client-side in src/components/writing/map/presets.js.
-const BIOMES = new Set(['plaines', 'foret', 'desert', 'ocean', 'neige', 'volcan', 'montagne', 'marais', 'toundra']);
+const BIOMES = new Set(['plaines', 'foret', 'bambou', 'desert', 'ocean', 'neige', 'volcan', 'montagne', 'marais', 'toundra']);
 const BUILDINGS = new Set([
   'tour', 'maison', 'donjon', 'temple', 'cristal', 'arbre', 'ruine', 'phare', 'tente', 'monolithe',
   'pagode', 'hanok', 'pavillon', 'porte',

@@ -35,8 +35,8 @@ zone** configurée dans l'admin — sinon la page reste inchangée.
 ## Modèle de données
 
 - `writing_projects.map_biome` — biome de base (allowlist : `plaines`,
-  `foret`, `montagne`, `desert`, `marais`, `toundra`, `neige`, `ocean`,
-  `volcan`).
+  `foret`, `bambou` (forêt de bambous), `montagne`, `desert`, `marais`,
+  `toundra`, `neige`, `ocean`, `volcan`).
 - `writing_projects.map_terrain` — **JSON de terrain** libre (voir schéma),
   stocké tel quel (≤ 120 Ko), normalisé/clampé par le moteur client. Ajouter
   montagnes, rivières ou biomes ne touche jamais le code.

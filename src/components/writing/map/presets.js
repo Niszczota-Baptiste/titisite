@@ -12,6 +12,7 @@
 export const BIOMES = {
   plaines:  { label: 'Plaines',  top: '#4f8a4f', side: '#7a6248', decor: 'herbe',  density: 0.05 },
   foret:    { label: 'Forêt',    top: '#3a7a48', side: '#6e5840', decor: 'arbre',  density: 0.16 },
+  bambou:   { label: 'Forêt de bambous', top: '#5da348', side: '#6e5840', decor: 'bambou', density: 0.3 },
   montagne: { label: 'Montagne', top: '#8a8d96', side: '#7b7d85', decor: 'rocher', density: 0.05 },
   desert:   { label: 'Désert',   top: '#d8c084', side: '#b09159', decor: 'cactus', density: 0.04 },
   marais:   { label: 'Marais',   top: '#5e7045', side: '#565040', decor: 'roseau', density: 0.12 },
@@ -94,6 +95,7 @@ export const TERRAIN_TEMPLATE = {
   },
   regions: [
     { biome: 'montagne', cx: 18, cz: 13, r: 12, height: 6, relief: 2.5 },
+    { biome: 'bambou', cx: -2, cz: 26, r: 9, height: 0.6, relief: 0.4 },
     { biome: 'sombre', cx: -22, cz: -18, r: 9, height: 1, relief: 0.8 },
     { biome: 'sombre', cx: 6, cz: -24, r: 8, height: 0.8, relief: 0.6 },
     { biome: 'sombre', cx: -2, cz: 14, r: 9, height: 0.8, relief: 0.6 },

@@ -171,15 +171,25 @@ export function buildDecorGeometry(world, zones, rng, quality) {
       buf.box(x, y + 2.1, z, 0.5, 0.22, 1.6, colorOf('#4d9152'));
     },
     bambou: (x, y, z) => {
-      buf.box(x - 0.2, y + 1.1, z, 0.14, 2.2, 0.14, colorOf('#6fae5c'));
-      buf.box(x + 0.2, y + 0.9, z + 0.15, 0.14, 1.8, 0.14, colorOf('#7cba66'));
-      buf.box(x, y + 2.3, z, 0.7, 0.16, 0.7, colorOf('#5fa252'));
+      // 2-3 canes of varying heights, each with a small leaf tuft.
+      const canes = 2 + Math.floor(rng() * 2);
+      for (let c = 0; c < canes; c++) {
+        const cx = x + (rng() - 0.5) * 0.7;
+        const cz = z + (rng() - 0.5) * 0.7;
+        const h = 1.6 + rng() * 1.6;
+        buf.box(cx, y + h / 2, cz, 0.13, h, 0.13, colorOf(rng() > 0.5 ? '#6fae5c' : '#7cba66'));
+        buf.box(cx, y + h + 0.08, cz, 0.55, 0.16, 0.55, colorOf('#5fa252'));
+        buf.box(cx + 0.18, y + h * 0.65, cz, 0.4, 0.12, 0.4, colorOf('#69aa58'));
+      }
     },
     none: () => {},
   };
 
-  for (let j = 1; j < grid - 1 && used < budget; j += 1) {
-    for (let i = 1; i < grid - 1 && used < budget; i += 1) {
+  // Collect candidates first, then thin them evenly: a row-by-row budget cut
+  // would strip the south of dense maps bare while the north stays lush.
+  const candidates = [];
+  for (let j = 1; j < grid - 1; j += 1) {
+    for (let i = 1; i < grid - 1; i += 1) {
       const k = idx(i, j);
       if (height[k] < waterLevel || path[k] || bridge[k] || beach[k]) continue;
       const b = terrain.biomes[biome[k]] || terrain.biomes.plaines;
@@ -187,10 +197,15 @@ export function buildDecorGeometry(world, zones, rng, quality) {
       if (rng() > p) continue;
       const [x, z] = cellToWorld(i, j, grid);
       if (zones.some((zz) => Math.hypot(zz.x - x, zz.z - z) < 3.4 * (zz.scale || 1))) continue;
-      const fn = KINDS[b.decor] || KINDS.herbe;
-      fn(x + (rng() - 0.5) * 0.5, height[k], z + (rng() - 0.5) * 0.5);
-      used++;
+      candidates.push({ x, z, y: height[k], decor: b.decor });
     }
+  }
+  const step = Math.max(1, candidates.length / budget);
+  for (let c = 0; c < candidates.length && used < budget; c += step) {
+    const cand = candidates[Math.floor(c)];
+    const fn = KINDS[cand.decor] || KINDS.herbe;
+    fn(cand.x + (rng() - 0.5) * 0.5, cand.y, cand.z + (rng() - 0.5) * 0.5);
+    used++;
   }
   return buf.build();
 }
