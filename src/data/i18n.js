@@ -3,7 +3,7 @@ export const i18n = {
     nav: { projects: 'Projets', photos: 'Photos', music: 'Musique', about: 'À propos', education: 'Formation', experience: 'Expérience', contact: 'Contact' },
     hero: { greeting: 'Bonjour, je suis', tagline: 'Créer, coder, composer.', role: 'Développeur Low-Code · AllShare', cta1: 'Voir mes projets', cta2: 'Me contacter' },
     projects: { title: 'Projets', subtitle: 'Applications & créations', filters: ['Tous', 'Web', 'Mobile', 'Expérimental'], demo: 'Démo', code: 'Code', wip: 'En cours' },
-    photos: { title: 'Photographies', subtitle: 'Instants capturés', all: 'Toutes', empty: 'La galerie arrive bientôt.' },
+    photos: { title: 'Photographies', subtitle: 'Instants capturés', all: 'Toutes', empty: 'La galerie arrive bientôt.', viewAll: 'Voir toutes les photos', hint: 'glisser pour tourner · cliquer pour agrandir' },
     music: {title: 'Musique',subtitle: 'Compositions & productions',
     noFile: 'Découvrir mon univers'},
     about: {
@@ -23,7 +23,7 @@ export const i18n = {
     nav: { projects: 'Projects', photos: 'Photos', music: 'Music', about: 'About', education: 'Education', experience: 'Experience', contact: 'Contact' },
     hero: { greeting: "Hi, I'm", tagline: 'Create, code, compose.', role: 'Low-Code Developer · AllShare', cta1: 'View my projects', cta2: 'Contact me' },
     projects: { title: 'Projects', subtitle: 'Applications & creations', filters: ['All', 'Web', 'Mobile', 'Experimental'], demo: 'Demo', code: 'Code', wip: 'In progress' },
-    photos: { title: 'Photography', subtitle: 'Captured moments', all: 'All', empty: 'The gallery is coming soon.' },
+    photos: { title: 'Photography', subtitle: 'Captured moments', all: 'All', empty: 'The gallery is coming soon.', viewAll: 'View all photos', hint: 'drag to spin · click to enlarge' },
     music: { title: 'Music',subtitle: 'Compositions & productions',noFile: 'Discover my universe'},
     about: {
       title: 'About',
@@ -42,7 +42,7 @@ export const i18n = {
     nav: { projects: '프로젝트', photos: '사진', music: '음악', about: '소개', education: '학력', experience: '경력', contact: '연락' },
     hero: { greeting: '안녕하세요, 저는', tagline: '창조하고, 코딩하고, 작곡하다.', role: '로우코드 개발자 · AllShare', cta1: '프로젝트 보기', cta2: '연락하기' },
     projects: { title: '프로젝트', subtitle: '애플리케이션 & 창작물', filters: ['전체', '웹', '모바일', '실험적'], demo: '데모', code: '코드', wip: '진행 중' },
-    photos: { title: '사진', subtitle: '포착된 순간들', all: '전체', empty: '갤러리가 곧 공개됩니다.' },
+    photos: { title: '사진', subtitle: '포착된 순간들', all: '전체', empty: '갤러리가 곧 공개됩니다.', viewAll: '모든 사진 보기', hint: '드래그로 회전 · 클릭해서 확대' },
     music: { title: '음악', subtitle: '작곡 & 프로덕션', noFile: '나의 세계를 발견해보세요' },
     about: {
       title: '소개',
