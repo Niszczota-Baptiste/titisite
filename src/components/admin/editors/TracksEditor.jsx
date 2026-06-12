@@ -357,7 +357,7 @@ function TrackForm({ d, set, works = [] }) {
                     {audioDur ? `Durée : ${fmtSec(audioDur)}` : 'Chargement…'}
                   </span>
                 </div>
-                <button
+                <button type="button"
                   onClick={removeAudio}
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
@@ -381,7 +381,7 @@ function TrackForm({ d, set, works = [] }) {
                 <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(180,170,200,0.5)' }}>
                   Clip : {fmtSec(clipStart)} → {fmtSec(clipStart + CLIP_SEC)} (30s)
                 </span>
-                <button
+                <button type="button"
                   onClick={togglePreview}
                   style={{
                     background: previewing ? ACC : 'rgba(201,168,232,0.12)',

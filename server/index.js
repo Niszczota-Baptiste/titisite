@@ -28,6 +28,7 @@ import { meRouter } from './routes/me.js';
 import { meetingsRouter } from './routes/meetings.js';
 import { minecraftRouter } from './routes/minecraft.js';
 import { settingsRouter } from './routes/settings.js';
+import { sitemapRouter } from './routes/sitemap.js';
 import { stairsRouter } from './routes/stairs.js';
 import { summaryRouter } from './routes/summary.js';
 import { tagsRouter } from './routes/tags.js';
@@ -163,6 +164,10 @@ const analyticsLimiter = rateLimit({
 });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+// SEO: dynamic sitemap built from the DB (registered before the static SPA
+// fallback so it wins over dist/). robots.txt points here.
+app.use('/', sitemapRouter);
 
 // Public audio streaming. Two layers of defense beyond the rate limiter:
 //   1. Filename regex prevents path traversal / weird chars.

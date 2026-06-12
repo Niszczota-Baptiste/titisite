@@ -56,7 +56,7 @@ export function NotFound({ label, onBack, backLabel }) {
   return (
     <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
       <p style={{ fontFamily: "'JetBrains Mono',monospace", color: '#4a3860', fontSize: 14 }}>404 — {label}</p>
-      <button onClick={onBack} style={{ background: 'transparent', border: '1px solid rgba(201,168,232,0.35)', color: '#c9a8e8', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontFamily: "'JetBrains Mono',monospace" }}>
+      <button type="button" onClick={onBack} style={{ background: 'transparent', border: '1px solid rgba(201,168,232,0.35)', color: '#c9a8e8', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontFamily: "'JetBrains Mono',monospace" }}>
         {backLabel || '← retour'}
       </button>
     </div>

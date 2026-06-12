@@ -126,7 +126,7 @@ export function ProjectsEditor({ onOpen }) {
 
 function IconBtn({ children, ...rest }) {
   return (
-    <button {...rest} style={{ width: 32, height: 32, borderRadius: 8, background: 'transparent', border: '1px solid rgba(80,50,130,0.28)', color: 'rgba(232,228,248,0.75)', cursor: 'pointer', fontSize: 14 }}
+    <button type="button" {...rest} style={{ width: 32, height: 32, borderRadius: 8, background: 'transparent', border: '1px solid rgba(80,50,130,0.28)', color: 'rgba(232,228,248,0.75)', cursor: 'pointer', fontSize: 14 }}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACC; e.currentTarget.style.color = ACC; }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(80,50,130,0.28)'; e.currentTarget.style.color = 'rgba(232,228,248,0.75)'; }}
     >{children}</button>

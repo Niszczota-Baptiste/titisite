@@ -275,7 +275,7 @@ export function MinecraftTab() {
               />
             </div>
             <div ref={sortRef} style={{ position: 'relative' }}>
-              <button
+              <button type="button"
                 onClick={() => setSortOpen((v) => !v)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8,
@@ -297,7 +297,7 @@ export function MinecraftTab() {
                   padding: 6, minWidth: 200,
                 }}>
                   {SORT_OPTIONS.map((o) => (
-                    <button
+                    <button type="button"
                       key={o.id}
                       onClick={() => { setSortBy(o.id); setSortOpen(false); }}
                       style={{
@@ -319,7 +319,7 @@ export function MinecraftTab() {
 
           {/* ── Favoris toggle + view mode ── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <button
+            <button type="button"
               onClick={() => setShowFavOnly((v) => !v)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
@@ -337,7 +337,7 @@ export function MinecraftTab() {
               border: '1px solid rgba(80,50,130,0.28)',
             }}>
               {['grid', 'list'].map((mode, i) => (
-                <button
+                <button type="button"
                   key={mode}
                   onClick={() => setViewMode(mode)}
                   title={mode === 'grid' ? 'Vue grille' : 'Vue liste'}
@@ -447,7 +447,7 @@ function StatCard({ label, value, unit, accent }) {
 
 function CategoryTab({ active, onClick, emoji, label, count }) {
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
@@ -549,7 +549,7 @@ function ItemCard({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
             </span>
           </div>
         </div>
-        <button
+        <button type="button"
           onClick={onToggleFav}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
@@ -598,7 +598,7 @@ function ItemCard({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
 
       {/* ── Actions ── */}
       <div style={{ display: 'flex', gap: 8 }}>
-        <button
+        <button type="button"
           onClick={onEdit}
           style={{
             flex: 1, padding: '9px', borderRadius: 8,
@@ -609,7 +609,7 @@ function ItemCard({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
         >
           ✏️ Modifier
         </button>
-        <button
+        <button type="button"
           onClick={onRemove}
           style={{
             flex: 1, padding: '9px', borderRadius: 8,
@@ -692,7 +692,7 @@ function ItemRow({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
         <AdjBtn delta={+1}  label="+1"  busy={busy} onAdjust={onAdjust} compact />
         <AdjBtn delta={+64} label="+64" busy={busy} onAdjust={onAdjust} compact />
 
-        <button
+        <button type="button"
           onClick={onToggleFav}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
@@ -702,7 +702,7 @@ function ItemRow({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
         >
           {r.favorite ? '★' : '☆'}
         </button>
-        <button
+        <button type="button"
           onClick={onEdit}
           style={{
             background: 'rgba(80,50,130,0.16)', border: '1px solid rgba(80,50,130,0.3)',
@@ -712,7 +712,7 @@ function ItemRow({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
         >
           ✏️
         </button>
-        <button
+        <button type="button"
           onClick={onRemove}
           style={{
             background: 'rgba(200,50,50,0.1)', border: '1px solid rgba(200,50,50,0.25)',

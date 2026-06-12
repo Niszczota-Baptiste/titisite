@@ -41,7 +41,7 @@ export function ZonePanel({ zone, accent, characters, glossary, onClose, onNavig
       }}
     >
       <style>{'@keyframes wmap-slide-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }'}</style>
-      <button
+      <button type="button"
         onClick={onClose}
         aria-label="Fermer le panneau"
         style={{
@@ -109,7 +109,7 @@ export function ZonePanel({ zone, accent, characters, glossary, onClose, onNavig
         )}
 
         {zone.link && (
-          <button
+          <button type="button"
             onClick={open}
             style={{
               width: '100%', background: `rgba(${rgb},0.14)`, border: `1px solid rgba(${rgb},0.45)`,

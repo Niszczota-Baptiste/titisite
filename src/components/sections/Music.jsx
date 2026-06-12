@@ -132,7 +132,7 @@ function TrackRow({ track, playing, progress, onToggle, onLore, accent, mobile }
         </p>
       </div>
       {track.loreSlug && (
-        <button
+        <button type="button"
           data-interactive
           onClick={(e) => { e.stopPropagation(); onLore(track.loreSlug, track.title, track.loreEntry); }}
           title="Lire le texte associé"
@@ -315,7 +315,7 @@ export function Music({ t, accent, tracks = [] }) {
   const isPlaying = playing !== null;
 
   const iconBtn = (active, onClick, children) => (
-    <button
+    <button type="button"
       data-interactive onClick={onClick}
       style={{
         background: 'none', border: 'none', cursor: 'pointer',
@@ -437,7 +437,7 @@ export function Music({ t, accent, tracks = [] }) {
                 <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" />
               </svg>
             ))}
-            <button
+            <button type="button"
               data-interactive
               onClick={() => toggle(playing ?? 0)}
               style={{

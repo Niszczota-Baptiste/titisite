@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, trackClick } from '../../api/client';
+import { usePageMeta } from '../../hooks/usePageMeta';
 import { renderMarkdown } from './markdown';
 import { Avatar, hexToRgb } from './tokens';
 import { NotFound, ReaderNav, ReaderShell } from './shell';
@@ -14,6 +15,7 @@ export function CharacterPage() {
   const navigate = useNavigate();
   const [character, setCharacter] = useState(null);
   const [loading, setLoading] = useState(true);
+  usePageMeta(character ? character.name : null, character ? (character.role || '') : null);
   const goWriting = useCallback((to) => { trackClick(to, 'writing_nav'); navigate(to); }, [navigate]);
 
   useEffect(() => {
@@ -71,7 +73,7 @@ export function CharacterPage() {
 
         {character.project && (
           <Block title="Univers" rgb={rgb}>
-            <button
+            <button type="button"
               onClick={() => goWriting(`/projets/ecriture/${character.project.slug}`)}
               style={{ background: `rgba(${rgb},0.1)`, border: `1px solid rgba(${rgb},0.3)`, color: `rgb(${rgb})`, borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13.5, fontWeight: 600 }}
             >{character.project.title} →</button>

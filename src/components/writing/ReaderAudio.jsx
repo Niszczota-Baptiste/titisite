@@ -155,7 +155,7 @@ export function ReaderAudio({ activeTrack, accent = '#c9a8e8' }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 12 : 18, padding: mobile ? '10px 16px' : '12px clamp(16px,5vw,56px)', maxWidth: 1180, margin: '0 auto' }}>
-        <button
+        <button type="button"
           onClick={toggle}
           aria-label={playing ? 'Pause' : 'Lecture'}
           style={{
@@ -181,7 +181,7 @@ export function ReaderAudio({ activeTrack, accent = '#c9a8e8' }) {
 
         {/* Volume */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
-          <button
+          <button type="button"
             onClick={() => changeVolume(volume > 0 ? 0 : 0.85)}
             aria-label={volume > 0 ? 'Couper le son' : 'Rétablir le son'}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(180,170,200,0.7)', padding: 0, display: 'flex' }}
@@ -200,7 +200,7 @@ export function ReaderAudio({ activeTrack, accent = '#c9a8e8' }) {
           />
         </div>
 
-        <button
+        <button type="button"
           onClick={() => setFollow((f) => !f)}
           title="Faire suivre la musique aux chapitres"
           style={{

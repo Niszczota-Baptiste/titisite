@@ -90,7 +90,7 @@ export function Button({ variant = 'primary', children, style, ...rest }) {
     },
   };
   return (
-    <button {...rest} style={{ ...base, ...variants[variant], ...(style || {}) }}>
+    <button type="button" {...rest} style={{ ...base, ...variants[variant], ...(style || {}) }}>
       {children}
     </button>
   );

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ACC, ACC_RGB, Button, CheckboxField, Field, Input, Textarea, inputStyle,
@@ -56,7 +56,7 @@ export function ErrorBanner({ error, onDismiss }) {
     }}>
       <span>{error}</span>
       {onDismiss && (
-        <button onClick={onDismiss} style={{
+        <button type="button" onClick={onDismiss} style={{
           background: 'none', border: 'none', color: '#ff8a9b',
           cursor: 'pointer', fontSize: 16,
         }}>×</button>
@@ -65,16 +65,45 @@ export function ErrorBanner({ error, onDismiss }) {
   );
 }
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Modal({ open, onClose, title, children, width = 640 }) {
+  const dialogRef = useRef(null);
+
   useEffect(() => {
     if (!open) return;
-    const fn = (e) => e.key === 'Escape' && onClose();
+    // Focus trap: Tab cycles inside the dialog, focus returns to the element
+    // that opened it on close (a11y — keyboard users can't escape into the
+    // page behind the overlay).
+    const previouslyFocused = document.activeElement;
+    const fn = (e) => {
+      if (e.key === 'Escape') return onClose();
+      if (e.key !== 'Tab') return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusables = [...dialog.querySelectorAll(FOCUSABLE)];
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     window.addEventListener('keydown', fn);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    // Move focus into the dialog (first focusable, or the dialog itself).
+    const dialog = dialogRef.current;
+    const target = dialog?.querySelector(FOCUSABLE) || dialog;
+    target?.focus?.();
     return () => {
       window.removeEventListener('keydown', fn);
       document.body.style.overflow = prev;
+      previouslyFocused?.focus?.();
     };
   }, [open, onClose]);
 
@@ -94,6 +123,10 @@ export function Modal({ open, onClose, title, children, width = 640 }) {
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: width, background: '#0b0620',
@@ -111,7 +144,7 @@ export function Modal({ open, onClose, title, children, width = 640 }) {
           }}>
             {title}
           </h3>
-          <button onClick={onClose} style={{
+          <button type="button" onClick={onClose} style={{
             background: 'none', border: 'none', color: 'rgba(180,170,200,0.6)',
             cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: 4,
           }}>×</button>

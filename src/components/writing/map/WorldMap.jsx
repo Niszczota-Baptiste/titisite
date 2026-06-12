@@ -145,7 +145,7 @@ export function WritingWorldMap({ map, accent, characters = [], glossary = [], o
         <ul>
           {zones.map((z) => (
             <li key={z.id}>
-              <button onClick={() => setSelectedId(z.id)}>{z.title}{z.category ? ` (${z.category})` : ''}</button>
+              <button type="button" onClick={() => setSelectedId(z.id)}>{z.title}{z.category ? ` (${z.category})` : ''}</button>
             </li>
           ))}
         </ul>

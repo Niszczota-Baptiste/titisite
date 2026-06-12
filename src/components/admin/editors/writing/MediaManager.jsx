@@ -86,7 +86,7 @@ export function MediaManager({ owner, media = [], onChanged, label = 'Médias' }
             >
               <div style={{ aspectRatio: '4/3', position: 'relative' }}>
                 <img src={m.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                <button
+                <button type="button"
                   onClick={() => remove(m.id)}
                   style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(10,4,24,0.85)', border: '1px solid rgba(255,100,120,0.35)', borderRadius: 6, color: 'rgba(255,120,140,0.9)', cursor: 'pointer', padding: '2px 8px', fontSize: 12 }}
                 >Supprimer</button>

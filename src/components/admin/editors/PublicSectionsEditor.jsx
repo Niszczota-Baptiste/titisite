@@ -237,7 +237,7 @@ export function PublicSectionsEditor() {
 
 function ArrowBtn({ children, disabled, ...rest }) {
   return (
-    <button
+    <button type="button"
       {...rest}
       disabled={disabled}
       style={{

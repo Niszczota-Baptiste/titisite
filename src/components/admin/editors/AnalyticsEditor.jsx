@@ -134,7 +134,7 @@ export function AnalyticsEditor() {
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {RANGES.map((r) => (
-            <button
+            <button type="button"
               key={r.days}
               onClick={() => setDays(r.days)}
               style={{
@@ -484,7 +484,7 @@ export function AnalyticsEditor() {
             <span style={{ fontFamily: 'monospace', fontSize: 10, color: 'rgba(180,170,200,0.4)' }}>
               {loadedAt && `dernière mise à jour · ${loadedAt.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
             </span>
-            <button
+            <button type="button"
               onClick={() => setTick((t) => t + 1)}
               style={{
                 background: `rgba(${ACC_RGB},0.14)`, border: `1px solid rgba(${ACC_RGB},0.35)`,

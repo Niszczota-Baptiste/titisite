@@ -54,10 +54,10 @@ export function CharactersEditor({ projectId }) {
                   placeholder="Frère de Nielas, ennemi juré…"
                   style={{ flex: 1, marginBottom: 0 }}
                 />
-                <button style={removeBtn} onClick={() => set({ ...d, relations: d.relations.filter((_, j) => j !== i) })}>×</button>
+                <button type="button" style={removeBtn} onClick={() => set({ ...d, relations: d.relations.filter((_, j) => j !== i) })}>×</button>
               </div>
             ))}
-            <button style={addBtn} onClick={() => set({ ...d, relations: [...(d.relations || []), ''] })}>+ Ajouter une relation</button>
+            <button type="button" style={addBtn} onClick={() => set({ ...d, relations: [...(d.relations || []), ''] })}>+ Ajouter une relation</button>
           </div>
         </>
       )}

@@ -43,7 +43,7 @@ export function PhotoGrid({ items = [], t, acc }) {
       {categories.length > 0 && (
         <div className="reveal" style={{ display: 'flex', gap: 8, marginBottom: 44, flexWrap: 'wrap' }}>
           {['all', ...categories].map((k) => (
-            <button
+            <button type="button"
               key={k}
               onClick={() => setFilter(k)}
               style={{

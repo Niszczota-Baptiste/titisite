@@ -12,7 +12,7 @@ export function FloatingPauseButton({ accent }) {
   };
 
   return (
-    <button
+    <button type="button"
       data-interactive
       onClick={toggle}
       title={paused ? 'Reprendre' : 'Suspendre animations'}

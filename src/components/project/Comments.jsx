@@ -104,7 +104,7 @@ export function Comments({ targetType, targetId = 0, compact = false }) {
                   <span style={{ ...muted, fontSize: 11 }}>
                     {relativeDate(c.createdAt)}
                     {canDelete && (
-                      <button
+                      <button type="button"
                         onClick={() => del(c.id)}
                         style={{
                           background: 'none', border: 'none', cursor: 'pointer',

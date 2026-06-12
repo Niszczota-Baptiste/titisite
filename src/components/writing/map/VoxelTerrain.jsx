@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mulberry32 } from './presets';
@@ -38,6 +38,13 @@ export function VoxelTerrain({ world, zones, quality, waterColor, groundProps = 
     [world, zones, quality],
   );
   const sparkleTex = useMemo(makeSparkleTexture, []);
+
+  // GPU cleanup: three.js never garbage-collects GPU buffers on its own.
+  // Each regenerated geometry/texture must be disposed when replaced or when
+  // the map unmounts, otherwise every terrain edit leaks VRAM.
+  useEffect(() => () => terrainGeo.dispose(), [terrainGeo]);
+  useEffect(() => () => decorGeo.dispose(), [decorGeo]);
+  useEffect(() => () => sparkleTex.dispose(), [sparkleTex]);
 
   useFrame(({ clock }) => {
     // River/sea flow: scroll the sparkle, breathe the water level a touch.

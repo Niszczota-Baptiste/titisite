@@ -23,7 +23,7 @@ export function ProjectWorkspace({ projectId, projectTitle, hasGlossary, onBack 
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
-        <button onClick={onBack} style={{ background: 'none', border: '1px solid rgba(80,50,130,0.32)', color: 'rgba(232,228,248,0.75)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13 }}>← Tous les projets</button>
+        <button type="button" onClick={onBack} style={{ background: 'none', border: '1px solid rgba(80,50,130,0.32)', color: 'rgba(232,228,248,0.75)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13 }}>← Tous les projets</button>
         <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 700, color: '#ede8f8' }}>
           {projectTitle}
         </h2>
@@ -33,7 +33,7 @@ export function ProjectWorkspace({ projectId, projectTitle, hasGlossary, onBack 
         {tabs.map((s) => {
           const on = active.key === s.key;
           return (
-            <button key={s.key} onClick={() => setSub(s.key)} style={{
+            <button type="button" key={s.key} onClick={() => setSub(s.key)} style={{
               background: on ? `rgba(${ACC_RGB},0.14)` : 'transparent',
               border: `1px solid ${on ? ACC : 'rgba(80,50,130,0.3)'}`,
               color: on ? ACC : 'rgba(180,170,200,0.7)',

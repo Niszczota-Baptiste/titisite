@@ -15,6 +15,10 @@ export function CursorEffect({ accent, activeSectionRef }) {
   });
 
   useEffect(() => {
+    // Accessibility: a custom animated cursor is pure motion decoration —
+    // with prefers-reduced-motion we keep the native cursor and render nothing.
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
+
     const s = S.current;
     const cv = trailCvs.current;
     const ctx = cv?.getContext('2d');
@@ -99,8 +103,16 @@ export function CursorEffect({ accent, activeSectionRef }) {
     }
     raf = requestAnimationFrame(tick);
 
+    // Stop the RAF loop while the tab is hidden; resume when it comes back.
+    const onVisibility = () => {
+      cancelAnimationFrame(raf);
+      if (!document.hidden) raf = requestAnimationFrame(tick);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       cancelAnimationFrame(raf);
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseover', onOver);
       window.removeEventListener('mousedown', onDown);

@@ -182,7 +182,7 @@ export function ItemList({
 
 function IconBtn({ children, ...rest }) {
   return (
-    <button
+    <button type="button"
       {...rest}
       style={{
         width: 32, height: 32, borderRadius: 8,

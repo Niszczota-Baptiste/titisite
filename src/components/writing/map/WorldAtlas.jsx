@@ -253,7 +253,7 @@ export function WorldMapViewer({ worldmap, accent, characters, glossary, onNavig
           // sized by the zone's scale, no badge.
           const fs = (9 + 5 * (z.scale || 1)) * Math.min(2.2, Math.max(0.85, view.k / 2.6));
           return (
-            <button
+            <button type="button"
               key={z.id}
               onClick={() => !dimmed && openZone(z)}
               onMouseEnter={() => !dimmed && setHoveredId(z.id)}
@@ -274,7 +274,7 @@ export function WorldMapViewer({ worldmap, accent, characters, glossary, onNavig
           );
         }
         return (
-          <button
+          <button type="button"
             key={z.id}
             onClick={() => !dimmed && openZone(z)}
             onMouseEnter={() => !dimmed && setHoveredId(z.id)}
@@ -350,7 +350,7 @@ export function WorldMapViewer({ worldmap, accent, characters, glossary, onNavig
       </div>
       <div style={{ position: 'absolute', top: 14, right: 14, zIndex: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {[['+', 1.4], ['−', 1 / 1.4], ['⌂', 0]].map(([label, f]) => (
-          <button
+          <button type="button"
             key={label}
             aria-label={label === '+' ? 'Zoomer' : label === '−' ? 'Dézoomer' : 'Vue d’ensemble'}
             onClick={() => (f === 0
@@ -394,7 +394,7 @@ export function WorldMapViewer({ worldmap, accent, characters, glossary, onNavig
       <nav aria-label="Lieux de la carte-monde" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}>
         <ul>
           {zones.map((z) => (
-            <li key={z.id}><button onClick={() => openZone(z)}>{z.title}{z.category ? ` (${z.category})` : ''}</button></li>
+            <li key={z.id}><button type="button" onClick={() => openZone(z)}>{z.title}{z.category ? ` (${z.category})` : ''}</button></li>
           ))}
         </ul>
       </nav>
@@ -413,7 +413,7 @@ export function WorldAtlas({ worldmaps, accent, characters, glossary, onNavigate
       {worldmaps.length > 1 && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
           {worldmaps.map((wm, i) => (
-            <button
+            <button type="button"
               key={wm.id}
               onClick={() => setActive(i)}
               style={{

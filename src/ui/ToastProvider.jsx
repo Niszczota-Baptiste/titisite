@@ -120,7 +120,7 @@ function Toaster({ items, onDismiss }) {
             }}>
               {t.message}
             </span>
-            <button
+            <button type="button"
               onClick={() => onDismiss(t.id)}
               aria-label="Fermer la notification"
               style={{

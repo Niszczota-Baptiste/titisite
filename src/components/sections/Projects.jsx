@@ -45,8 +45,8 @@ export function Projects({ t, lang, accent, items = [] }) {
 
       {/* Top selector: code projects | writing works */}
       <div className="reveal" style={{ display: 'flex', gap: 8, marginBottom: view === 'ecriture' ? 30 : 24, flexWrap: 'wrap' }}>
-        <button onClick={() => setView('code')} style={segBtn(view === 'code')}>Projets code</button>
-        <button onClick={() => setView('ecriture')} style={segBtn(view === 'ecriture')}>Projets écriture</button>
+        <button type="button" onClick={() => setView('code')} style={segBtn(view === 'code')}>Projets code</button>
+        <button type="button" onClick={() => setView('ecriture')} style={segBtn(view === 'ecriture')}>Projets écriture</button>
       </div>
 
       {view === 'code'
@@ -75,7 +75,7 @@ function CodeProjects({ items, t, lang, accent, acc }) {
     <>
       <div className="reveal" style={{ display: 'flex', gap: 8, marginBottom: 44, flexWrap: 'wrap' }}>
         {keys.map((k, i) => (
-          <button
+          <button type="button"
             key={k}
             onClick={() => setFilter(k)}
             style={{
@@ -158,7 +158,7 @@ function ProjectDetailModal({ p, t, lang, accent, onClose }) {
             position: 'absolute', inset: 0,
             background: `linear-gradient(135deg,rgba(${acc.rgb},0.06),transparent)`,
           }} />
-          <button onClick={onClose} style={{
+          <button type="button" onClick={onClose} style={{
             position: 'absolute', top: 12, right: 14,
             background: 'rgba(0,0,0,0.4)', border: 'none', color: 'rgba(255,255,255,0.7)',
             borderRadius: 8, width: 30, height: 30, cursor: 'pointer',
@@ -342,7 +342,7 @@ function ProjectCard({ p, t, lang, accent }) {
         </div>
 
         {p.problem && (
-          <button
+          <button type="button"
             onClick={(e) => {
               e.stopPropagation();
               setExp((x) => !x);
@@ -414,7 +414,7 @@ function ProjectCard({ p, t, lang, accent }) {
         }}
       >
         {/* Demo button — internal page / external URL / modal fallback */}
-        <button
+        <button type="button"
           onClick={(e) => {
             e.stopPropagation();
             trackEvent('project_view', p.title);
@@ -435,7 +435,7 @@ function ProjectCard({ p, t, lang, accent }) {
         </button>
 
         {/* Code button — opens git URL if set, otherwise disabled */}
-        <button
+        <button type="button"
           onClick={(e) => {
             e.stopPropagation();
             if (p.codeUrl) {

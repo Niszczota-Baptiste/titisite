@@ -183,13 +183,13 @@ export function ProjectsEditor() {
                   placeholder="Dictionnaire offline 10k entrées"
                   style={{ flex: 1, marginBottom: 0 }}
                 />
-                <button
+                <button type="button"
                   style={removeBtn}
                   onClick={() => set({ ...d, highlights: (d.highlights || []).filter((_, j) => j !== i) })}
                 >×</button>
               </div>
             ))}
-            <button
+            <button type="button"
               style={addBtn}
               onClick={() => set({ ...d, highlights: [...(d.highlights || []), ''] })}
             >+ Ajouter un point fort</button>
@@ -240,13 +240,13 @@ export function ProjectsEditor() {
                   placeholder="https://apps.apple.com/…"
                   style={{ flex: 1, marginBottom: 0 }}
                 />
-                <button
+                <button type="button"
                   style={removeBtn}
                   onClick={() => set({ ...d, links: (d.links || []).filter((_, j) => j !== i) })}
                 >×</button>
               </div>
             ))}
-            <button
+            <button type="button"
               style={addBtn}
               onClick={() => set({ ...d, links: [...(d.links || []), { label: '', url: '' }] })}
             >+ Ajouter un lien</button>

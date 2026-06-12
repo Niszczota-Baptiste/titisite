@@ -273,7 +273,7 @@ export function ZoneBoard({
         const release = () => { if (drag.current != null) onMoveEnd?.(drag.current); drag.current = null; };
         if (z.marker === 'etiquette') {
           return (
-            <button
+            <button type="button"
               key={z.id}
               onPointerDown={grab}
               onPointerUp={release}
@@ -290,7 +290,7 @@ export function ZoneBoard({
           );
         }
         return (
-          <button
+          <button type="button"
             key={z.id}
             onPointerDown={grab}
             onPointerUp={release}

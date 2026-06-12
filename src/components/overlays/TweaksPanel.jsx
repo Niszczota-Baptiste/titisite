@@ -49,7 +49,7 @@ export function TweaksPanel({ tweaks, setTweaks, visible }) {
         </p>
         <div style={{ display: 'flex', gap: 10 }}>
           {Object.entries(ACCENTS).map(([k, a]) => (
-            <button
+            <button type="button"
               key={k}
               onClick={() => set('accent', k)}
               title={k}
@@ -78,7 +78,7 @@ export function TweaksPanel({ tweaks, setTweaks, visible }) {
           ['geometric', 'Géométrique'],
           ['humanist', 'Humaniste'],
         ].map(([v, l]) => (
-          <button
+          <button type="button"
             key={v}
             onClick={() => set('fontStyle', v)}
             style={{

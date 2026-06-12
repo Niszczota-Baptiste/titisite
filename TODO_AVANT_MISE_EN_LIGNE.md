@@ -90,14 +90,12 @@ Tu dois voir `HTTP/2 200` et l'en-tête `strict-transport-security`.
 
 ---
 
-## Étape 6 — (Optionnel) Ajouter une image Open Graph
+## Étape 6 — (Optionnel) Remplacer l'image Open Graph
 
-Crée une image `1200 × 630 px` représentant ton portfolio,
-place-la dans `public/og-image.jpg`, puis ajoute dans `index.html` :
-
-```html
-<meta property="og:image" content="https://baptiste-niszczota.com/og-image.jpg" />
-```
+Les balises `og:image` / `twitter:image` sont déjà dans `index.html` et un
+placeholder `1200 × 630 px` existe dans `public/og-image.jpg`. Pour une vraie
+image (capture du site, visuel personnalisé), remplace simplement ce fichier
+en gardant le même nom et les mêmes dimensions.
 
 ---
 

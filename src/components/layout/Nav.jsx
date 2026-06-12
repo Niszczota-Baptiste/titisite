@@ -32,7 +32,7 @@ export function Nav({ lang, setLang, t, accent, mode, toggleMode, sections }) {
   const solid = scrolled || (mobile && menuOpen);
 
   const modeButton = (
-    <button
+    <button type="button"
       data-interactive
       onClick={toggleMode}
       aria-label={mode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
@@ -78,7 +78,7 @@ export function Nav({ lang, setLang, t, accent, mode, toggleMode, sections }) {
       }}
     >
       {['fr', 'en', 'ko'].map((l) => (
-        <button
+        <button type="button"
           key={l}
           onClick={() => setLang(l)}
           style={{
@@ -120,7 +120,7 @@ export function Nav({ lang, setLang, t, accent, mode, toggleMode, sections }) {
         </span>
 
         {mobile ? (
-          <button
+          <button type="button"
             data-interactive
             onClick={() => setMenuOpen((o) => !o)}
             aria-label={menuOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
@@ -147,7 +147,7 @@ export function Nav({ lang, setLang, t, accent, mode, toggleMode, sections }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
             <div style={{ display: 'flex', gap: 24 }}>
               {links.map((k) => (
-                <button
+                <button type="button"
                   key={k}
                   onClick={() => scroll(k)}
                   style={{
@@ -183,7 +183,7 @@ export function Nav({ lang, setLang, t, accent, mode, toggleMode, sections }) {
         >
           <div style={{ display: 'flex', flexDirection: 'column', padding: '12px 20px 20px' }}>
             {links.map((k) => (
-              <button
+              <button type="button"
                 key={k}
                 onClick={() => scroll(k)}
                 style={{

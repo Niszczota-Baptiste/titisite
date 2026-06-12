@@ -169,7 +169,7 @@ function DayCell({ cell, events, onMeeting, onFeature, onAddMeetingHere }) {
           color: isToday ? ACC : '#ede8f8',
         }}>{date.getDate()}</span>
         {inMonth && (
-          <button
+          <button type="button"
             onClick={onAddMeetingHere}
             title="Ajouter une réunion ce jour"
             style={{
@@ -195,7 +195,7 @@ function EventChip({ ev, onMeeting, onFeature }) {
   if (ev.type === 'meeting') {
     const time = new Date(ev.ts * 1000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     return (
-      <button
+      <button type="button"
         onClick={() => onMeeting(ev.data)}
         style={{
           ...chipStyle,
@@ -213,7 +213,7 @@ function EventChip({ ev, onMeeting, onFeature }) {
   const due = ev.data.status === 'done' ? 'done' : (ev.data.dueDate < Date.now() / 1000 ? 'overdue' : 'upcoming');
   const s = DUE_STYLES[due] || DUE_STYLES.upcoming;
   return (
-    <button
+    <button type="button"
       onClick={() => onFeature(ev.data)}
       style={{
         ...chipStyle,
@@ -275,7 +275,7 @@ function MobileAgenda({ cells, eventsByDay, onMeeting, onFeature, onAddMeetingHe
             </div>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
               {events.length === 0 ? (
-                <button
+                <button type="button"
                   onClick={() => onAddMeetingHere(cell.date)}
                   style={{
                     background: 'none', border: '1px dashed rgba(80,50,130,0.25)',

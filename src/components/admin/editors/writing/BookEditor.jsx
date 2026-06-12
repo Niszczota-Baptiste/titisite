@@ -84,7 +84,7 @@ export function BookEditor({ workId, projectId, parentId = null, characters, glo
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, gap: 12, flexWrap: 'wrap' }}>
-        <button onClick={onClose} style={{ background: 'none', border: '1px solid rgba(80,50,130,0.32)', color: 'rgba(232,228,248,0.75)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13 }}>← Retour</button>
+        <button type="button" onClick={onClose} style={{ background: 'none', border: '1px solid rgba(80,50,130,0.32)', color: 'rgba(232,228,248,0.75)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13 }}>← Retour</button>
         <DirtyBadge dirty={metaDirty} />
       </div>
 
@@ -122,7 +122,7 @@ export function BookEditor({ workId, projectId, parentId = null, characters, glo
             {children.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                 {children.map((c) => (
-                  <button key={c.id} onClick={() => onOpenChild?.(c.id)} style={childRow}>
+                  <button type="button" key={c.id} onClick={() => onOpenChild?.(c.id)} style={childRow}>
                     <span style={typeChip}>{c.type}</span>
                     <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 14, fontWeight: 600, color: '#ede8f8' }}>{c.title || '—'}</span>
                     {!c.isPublished && <span style={{ fontSize: 10, color: 'rgba(180,170,200,0.6)' }}>masqué</span>}
@@ -134,7 +134,7 @@ export function BookEditor({ workId, projectId, parentId = null, characters, glo
             ) : (
               <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: 'rgba(180,170,200,0.5)', marginBottom: 8 }}>Aucun sous-élément.</p>
             )}
-            <button style={addBtn} onClick={() => onOpenChild?.('new', id)}>+ Ajouter un sous-élément</button>
+            <button type="button" style={addBtn} onClick={() => onOpenChild?.('new', id)}>+ Ajouter un sous-élément</button>
           </div>
 
           <div style={{ ...blockStyle, paddingBottom: 6 }}>
@@ -144,7 +144,7 @@ export function BookEditor({ workId, projectId, parentId = null, characters, glo
               characters={characters} glossary={glossary} tracks={tracks}
               accent={meta.accentColor} onStructureChange={reloadWork}
             />
-            <button style={addBtn} onClick={addChapter}>+ Ajouter un chapitre</button>
+            <button type="button" style={addBtn} onClick={addChapter}>+ Ajouter un chapitre</button>
           </div>
 
           <div style={blockStyle}>
@@ -196,7 +196,7 @@ function LinkedCharacters({ value = [], onChange, characters = [] }) {
             placeholder="Note / rôle (ex. Auteur, Mentionné…)"
             style={{ flex: 1, marginBottom: 0 }}
           />
-          <button style={removeBtn} onClick={() => onChange(value.filter((x) => x.id !== l.id))}>×</button>
+          <button type="button" style={removeBtn} onClick={() => onChange(value.filter((x) => x.id !== l.id))}>×</button>
         </div>
       ))}
       {available.length > 0 && (
@@ -314,7 +314,7 @@ function ChapterRow({ index, chapter, characters, glossary, trackOptions, accent
         <Input value={draft.number} onChange={(e) => set({ number: e.target.value })} placeholder="Chapitre I" style={{ width: 120, marginBottom: 0 }} />
         <Input value={draft.title} onChange={(e) => set({ title: e.target.value })} placeholder="Titre du chapitre" style={{ flex: 1, marginBottom: 0 }} />
         <Input value={draft.titleKr} onChange={(e) => set({ titleKr: e.target.value })} placeholder="제목" style={{ width: 100, marginBottom: 0 }} />
-        <button style={removeBtn} onClick={onDelete} title="Supprimer">×</button>
+        <button type="button" style={removeBtn} onClick={onDelete} title="Supprimer">×</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10, alignItems: 'end' }}>

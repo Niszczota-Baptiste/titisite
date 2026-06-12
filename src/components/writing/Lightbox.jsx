@@ -39,11 +39,11 @@ export function Lightbox({ items, index, onClose, onNavigate }) {
         alignItems: 'center', justifyContent: 'center', padding: 24,
       }}
     >
-      <button onClick={onClose} aria-label="Fermer" style={btn('top: 16px; right: 20px')}>×</button>
+      <button type="button" onClick={onClose} aria-label="Fermer" style={btn('top: 16px; right: 20px')}>×</button>
       {items.length > 1 && (
         <>
-          <button onClick={(e) => { e.stopPropagation(); go(-1); }} aria-label="Précédent" style={btn('left: 16px; top: 50%; transform: translateY(-50%)')}>‹</button>
-          <button onClick={(e) => { e.stopPropagation(); go(1); }} aria-label="Suivant" style={btn('right: 16px; top: 50%; transform: translateY(-50%)')}>›</button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); go(-1); }} aria-label="Précédent" style={btn('left: 16px; top: 50%; transform: translateY(-50%)')}>‹</button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); go(1); }} aria-label="Suivant" style={btn('right: 16px; top: 50%; transform: translateY(-50%)')}>›</button>
         </>
       )}
       <img

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
+import { usePageMeta } from '../../hooks/usePageMeta';
 import { useReveal } from '../../hooks/useReveal';
 import { WritingLibrary } from './WritingLibrary';
 import { ReaderNav, ReaderShell } from './shell';
@@ -12,6 +13,7 @@ export function EcritureLibrary() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  usePageMeta('Espace écriture', 'Mes univers de jeu de rôle — chacun avec ses livres, ses personnages et son lexique.');
   useReveal();
 
   useEffect(() => {

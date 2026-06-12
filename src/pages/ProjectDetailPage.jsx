@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { usePageMeta } from '../hooks/usePageMeta';
 import { TWEAK_DEFAULTS } from '../data/constants';
 import { projects as defaultProjects } from '../data/projects';
 import {
@@ -54,6 +55,10 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
 
   useReveal([id, loading]);
+  usePageMeta(
+    project ? project.title : null,
+    project ? (project.tagline || project.desc?.[lang] || project.desc?.fr || '') : null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +99,7 @@ export default function ProjectDetailPage() {
         <p style={{ fontFamily: "'JetBrains Mono',monospace", color: '#4a3860', fontSize: 14 }}>
           404 — projet introuvable
         </p>
-        <button onClick={() => navigate('/')} style={{
+        <button type="button" onClick={() => navigate('/')} style={{
           background: 'transparent', border: '1px solid rgba(201,168,232,0.35)',
           color: '#c9a8e8', borderRadius: 8, padding: '8px 16px',
           cursor: 'pointer', fontFamily: "'JetBrains Mono',monospace",

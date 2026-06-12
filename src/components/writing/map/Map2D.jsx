@@ -132,7 +132,7 @@ export function Map2D({
           const dimmed = dimmedIds.has(z.id);
           const lit = hoveredId === z.id || selectedId === z.id;
           return (
-            <button
+            <button type="button"
               key={z.id}
               onClick={() => onSelect(z.id)}
               onMouseEnter={() => !dimmed && onHover(z.id)}

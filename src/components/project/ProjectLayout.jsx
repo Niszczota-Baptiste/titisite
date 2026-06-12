@@ -191,7 +191,7 @@ function Shell({ user, logout, isAdmin, breadcrumb, children }) {
         </div>
 
         {mobile ? (
-          <button
+          <button type="button"
             onClick={() => setMenuOpen((o) => !o)}
             aria-label="Menu"
             style={{
@@ -258,7 +258,7 @@ function ProjectSwitcher({ current, all }) {
 
   return (
     <span data-project-switcher style={{ position: 'relative' }}>
-      <button
+      <button type="button"
         onClick={() => setOpen((o) => !o)}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,

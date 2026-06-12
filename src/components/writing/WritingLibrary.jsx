@@ -49,9 +49,9 @@ export function WritingLibrary({ works = [], loading = false, emptyHint, accentH
     <div>
       {genres.length >= 2 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
-          <button onClick={() => setGenre('all')} style={chip(genre === 'all')}>Tous</button>
+          <button type="button" onClick={() => setGenre('all')} style={chip(genre === 'all')}>Tous</button>
           {genres.map((g) => (
-            <button key={g} onClick={() => setGenre(g)} style={chip(genre === g)}>{g}</button>
+            <button type="button" key={g} onClick={() => setGenre(g)} style={chip(genre === g)}>{g}</button>
           ))}
         </div>
       )}

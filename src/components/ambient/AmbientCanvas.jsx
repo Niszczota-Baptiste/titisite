@@ -85,9 +85,26 @@ export function AmbientCanvas({ scrollRef, activeSectionRef, accent, mode }) {
 
       raf = requestAnimationFrame(draw);
     }
+
+    // Accessibility / battery: with prefers-reduced-motion we paint a single
+    // static frame instead of looping; when the tab is hidden the loop stops
+    // entirely and resumes on return.
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion) {
+      draw(0);
+      cancelAnimationFrame(raf);
+      return () => window.removeEventListener('resize', resize);
+    }
+
     raf = requestAnimationFrame(draw);
+    const onVisibility = () => {
+      cancelAnimationFrame(raf);
+      if (!document.hidden) raf = requestAnimationFrame(draw);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       cancelAnimationFrame(raf);
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', resize);
     };
   }, [scrollRef, activeSectionRef]);

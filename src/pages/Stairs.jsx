@@ -167,7 +167,7 @@ function StairsApp() {
       </main>
 
       {mobile && editing === null && (
-        <button
+        <button type="button"
           onClick={() => setEditing('new')}
           aria-label="Ajouter un escalier"
           style={fabStyle}
@@ -214,7 +214,7 @@ function Header({ user, logout, isAdmin, mobile }) {
         </Link>
 
         {mobile ? (
-          <button
+          <button type="button"
             onClick={() => setMenuOpen((o) => !o)}
             aria-label="Menu"
             style={{
@@ -561,7 +561,7 @@ function CountryGroup({ country, regions, mobile, onEdit, onRemove, onRegeocode 
       border: '1px solid rgba(80,50,130,0.18)',
       borderRadius: 14, overflow: 'hidden',
     }}>
-      <button
+      <button type="button"
         onClick={() => setOpen((v) => !v)}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1044,7 +1044,7 @@ function popupHtml(s) {
       <div><strong>${s.stepCount}</strong> marches · ${s.isEven ? 'pair' : 'impair'}${big}${cm}</div>
       ${s.city || s.country ? `<div style="opacity:0.7;">${escapeHtml([s.city, s.region, s.country].filter(Boolean).join(', '))}</div>` : ''}
       <div style="margin-top:6px;">
-        <button data-stair-edit="${s.id}" style="
+        <button type="button" data-stair-edit="${s.id}" style="
           background:#c9a8e8;color:#08051a;border:none;border-radius:4px;
           padding:3px 8px;font-size:11px;cursor:pointer;font-weight:600;
         ">Éditer</button>

@@ -89,7 +89,7 @@ export function Dashboard() {
         </div>
 
         {mobile ? (
-          <button
+          <button type="button"
             onClick={() => setMenuOpen((o) => !o)}
             aria-label="Menu"
             aria-expanded={menuOpen}
@@ -137,7 +137,7 @@ export function Dashboard() {
             }}>Sections</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {TABS.map((t) => (
-                <button
+                <button type="button"
                   key={t.key}
                   onClick={() => { setActive(t.key); setMenuOpen(false); }}
                   style={{
@@ -181,7 +181,7 @@ export function Dashboard() {
           overflowX: 'auto',
         }}>
           {TABS.map((t) => (
-            <button
+            <button type="button"
               key={t.key}
               onClick={() => setActive(t.key)}
               style={{

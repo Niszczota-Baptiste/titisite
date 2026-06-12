@@ -106,7 +106,7 @@ export function PhotoLightbox({ photos, index, setIndex, onClose, acc }) {
       }}
     >
       {photos.length > 1 && (
-        <button
+        <button type="button"
           aria-label="Photo précédente"
           onClick={(e) => { e.stopPropagation(); go(-1); }}
           onMouseEnter={navHover} onMouseLeave={navOut}
@@ -142,7 +142,7 @@ export function PhotoLightbox({ photos, index, setIndex, onClose, acc }) {
       </figure>
 
       {photos.length > 1 && (
-        <button
+        <button type="button"
           aria-label="Photo suivante"
           onClick={(e) => { e.stopPropagation(); go(1); }}
           onMouseEnter={navHover} onMouseLeave={navOut}
@@ -154,7 +154,7 @@ export function PhotoLightbox({ photos, index, setIndex, onClose, acc }) {
         </button>
       )}
 
-      <button
+      <button type="button"
         aria-label="Fermer"
         onClick={(e) => { e.stopPropagation(); onClose(); }}
         onMouseEnter={navHover} onMouseLeave={navOut}

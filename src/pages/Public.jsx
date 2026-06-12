@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { TWEAK_DEFAULTS } from '../data/constants';
 import { i18n } from '../data/i18n';
 import { useContent } from '../hooks/useContent';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 const DEFAULT_SECTIONS = [
   { id: 'projects',   visible: true },
@@ -54,6 +55,7 @@ export default function Public() {
   const { accent } = tweaks;
   const t = i18n[lang] || i18n.fr;
   const { data } = useContent();
+  usePageMeta(); // home page → site defaults
   const [sections, setSections] = useState(DEFAULT_SECTIONS);
   useEffect(() => {
     api.publicSections()

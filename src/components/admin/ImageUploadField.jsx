@@ -53,7 +53,7 @@ export function ImageUploadField({ value, onChange, label, aspect = '16/9' }) {
         }}>
           <img src={value} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 8 }}>
-            <button
+            <button type="button"
               onClick={handleRemove}
               style={{
                 background: 'rgba(10,4,24,0.85)', border: '1px solid rgba(255,100,120,0.35)',

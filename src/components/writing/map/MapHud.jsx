@@ -47,7 +47,7 @@ export function MapHud({
             {categories.map((c) => {
               const on = category === c;
               return (
-                <button
+                <button type="button"
                   key={c}
                   onClick={() => setCategory(on ? '' : c)}
                   aria-pressed={on}
@@ -73,7 +73,7 @@ export function MapHud({
       <div style={{ position: 'absolute', top: 14, right: 14, zIndex: 20, display: 'flex', gap: 6 }}>
         <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: `1px solid rgba(${rgb},0.3)` }}>
           {[['3d', '3D'], ['2d', 'Carte']].map(([m, label]) => (
-            <button
+            <button type="button"
               key={m}
               onClick={() => setMode(m)}
               aria-pressed={mode === m}
@@ -87,7 +87,7 @@ export function MapHud({
           ))}
         </div>
         {mode === '3d' && (
-          <button
+          <button type="button"
             onClick={() => setDayMode(!dayMode)}
             aria-pressed={dayMode}
             aria-label={dayMode ? 'Passer en mode nuit' : 'Passer en mode jour'}

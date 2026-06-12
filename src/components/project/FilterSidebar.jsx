@@ -149,7 +149,7 @@ export function FilterSidebar({ filters, setFilters, users, counts, onTagsMutate
               ['include', 'Include'],
               ['exclude', 'Exclude'],
             ].map(([v, l]) => (
-              <button
+              <button type="button"
                 key={v}
                 onClick={() => setFilters((f) => ({ ...f, tagMode: v }))}
                 style={{
@@ -255,7 +255,7 @@ function PanelHeader({ title, count, action }) {
         )}
       </div>
       {action && (
-        <button
+        <button type="button"
           onClick={action.onClick}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
@@ -300,7 +300,7 @@ function Collapsible({ title, count, open, onToggle, action, children }) {
           )}
         </button>
         {open && action && (
-          <button
+          <button type="button"
             onClick={action.onClick}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',

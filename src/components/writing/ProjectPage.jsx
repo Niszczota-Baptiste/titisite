@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, trackClick } from '../../api/client';
+import { usePageMeta } from '../../hooks/usePageMeta';
 import { useReveal } from '../../hooks/useReveal';
 import { AmbientEffect } from './AmbientEffect';
 import { WorldAtlas } from './map/WorldAtlas';
@@ -17,6 +18,7 @@ export function ProjectPage() {
   const navigate = useNavigate();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  usePageMeta(project ? project.title : null, project ? (project.subtitle || project.description || '') : null);
   useReveal();
   const goWriting = useCallback((to) => { trackClick(to, 'writing_nav'); navigate(to); }, [navigate]);
 
@@ -96,7 +98,7 @@ export function ProjectPage() {
             <Heading rgb={rgb} style={{ marginTop: 72 }}>Personnages</Heading>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 14 }}>
               {project.characters.map((c) => (
-                <button
+                <button type="button"
                   key={c.id}
                   onClick={() => goWriting(`/projets/ecriture/${slug}/personnages/${c.slug}`)}
                   style={{ display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', background: 'rgba(14,9,28,0.72)', border: `1px solid rgba(${rgb},0.18)`, borderRadius: 14, padding: 14, cursor: 'pointer', transition: 'all 0.2s' }}

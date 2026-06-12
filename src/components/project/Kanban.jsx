@@ -149,7 +149,7 @@ function QuickAdd({ colKey, onAdd, onCancel }) {
       />
       <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
         {Object.entries(PRIORITIES).map(([k, v]) => (
-          <button key={k} onClick={() => setPri(k)} style={{
+          <button type="button" key={k} onClick={() => setPri(k)} style={{
             flex: 1, background: priority === k ? v.bg : 'none',
             border: `1px solid ${priority === k ? v.color + '55' : 'rgba(60,40,100,0.3)'}`,
             color: priority === k ? v.color : '#6a6080',
@@ -159,11 +159,11 @@ function QuickAdd({ colKey, onAdd, onCancel }) {
         ))}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={submit} style={{
+        <button type="button" onClick={submit} style={{
           flex: 1, background: ACC, color: '#08051a', border: 'none',
           borderRadius: 7, padding: '7px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
         }}>Ajouter</button>
-        <button onClick={onCancel} style={{
+        <button type="button" onClick={onCancel} style={{
           background: 'none', border: '1px solid rgba(60,40,100,0.3)',
           color: '#6a6080', borderRadius: 7, padding: '7px 12px', fontSize: 12, cursor: 'pointer',
         }}>×</button>
@@ -354,7 +354,7 @@ function KanbanColumn({ col, cards, users, dragOver, onDragOver, onDrop, onDragL
 
       {/* Add button */}
       {!adding && (
-        <button
+        <button type="button"
           onClick={() => setAdding(true)}
           style={{
             marginTop: 8, background: 'none',
@@ -416,7 +416,7 @@ function FilterPanel({ filters, setFilters, allTags, users, items }) {
       {allTags.length > 0 && (
         <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10.5, color: '#4a3860', fontWeight: 600, letterSpacing: '0.8px', textTransform: 'uppercase', marginRight: 2 }}>Tags</span>
-          <button
+          <button type="button"
             onClick={() => setFilters((f) => ({ ...f, tagMode: f.tagMode === 'include' ? 'exclude' : 'include' }))}
             style={{
               background: 'none', border: '1px solid rgba(60,40,100,0.3)', borderRadius: 4,
@@ -427,7 +427,7 @@ function FilterPanel({ filters, setFilters, allTags, users, items }) {
             {filters.tagMode === 'include' ? 'inclure' : 'exclure'}
           </button>
           {allTags.map((t) => (
-            <button key={t} onClick={() => toggle('tags', t)} style={{
+            <button type="button" key={t} onClick={() => toggle('tags', t)} style={{
               background: filters.tags.includes(t) ? 'rgba(120,80,200,0.2)' : 'none',
               border: `1px solid ${filters.tags.includes(t) ? 'rgba(160,110,220,0.5)' : 'rgba(60,40,100,0.25)'}`,
               color: filters.tags.includes(t) ? ACC : '#6a6080',
@@ -441,7 +441,7 @@ function FilterPanel({ filters, setFilters, allTags, users, items }) {
       <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 10.5, color: '#4a3860', fontWeight: 600, letterSpacing: '0.8px', textTransform: 'uppercase', marginRight: 2 }}>Priorité</span>
         {Object.entries(PRIORITIES).map(([k, v]) => (
-          <button key={k} onClick={() => toggle('priorities', k)} style={{
+          <button type="button" key={k} onClick={() => toggle('priorities', k)} style={{
             background: filters.priorities.includes(k) ? v.bg : 'none',
             border: `1px solid ${filters.priorities.includes(k) ? v.color + '66' : 'rgba(60,40,100,0.25)'}`,
             color: filters.priorities.includes(k) ? v.color : '#6a6080',
@@ -458,7 +458,7 @@ function FilterPanel({ filters, setFilters, allTags, users, items }) {
             const selected = filters.assignees.some((x) => sameId(x, id));
             const isNone = id == null;
             return (
-              <button
+              <button type="button"
                 key={id ?? 'none'}
                 onClick={() => toggleAssignee(id)}
                 style={{
@@ -483,7 +483,7 @@ function FilterPanel({ filters, setFilters, allTags, users, items }) {
       )}
 
       {/* Overdue */}
-      <button onClick={() => setFilters((f) => ({ ...f, overdue: !f.overdue }))} style={{
+      <button type="button" onClick={() => setFilters((f) => ({ ...f, overdue: !f.overdue }))} style={{
         background: filters.overdue ? 'rgba(255,138,155,0.1)' : 'none',
         border: `1px solid ${filters.overdue ? 'rgba(255,138,155,0.4)' : 'rgba(60,40,100,0.25)'}`,
         color: filters.overdue ? '#ff8a9b' : '#6a6080',
@@ -492,7 +492,7 @@ function FilterPanel({ filters, setFilters, allTags, users, items }) {
 
       {/* Reset */}
       {(filters.tags.length + filters.priorities.length + filters.assignees.length + (filters.overdue ? 1 : 0)) > 0 && (
-        <button onClick={() => setFilters(DEFAULT_FILTERS)} style={{
+        <button type="button" onClick={() => setFilters(DEFAULT_FILTERS)} style={{
           background: 'none', border: 'none', color: '#6a6080',
           fontSize: 12, cursor: 'pointer', textDecoration: 'underline', marginLeft: 'auto',
         }}>Réinitialiser</button>
@@ -642,7 +642,7 @@ export function KanbanTab() {
         </div>
 
         {/* Filters toggle */}
-        <button
+        <button type="button"
           onClick={() => setShowFilters((v) => !v)}
           style={{
             background: showFilters || activeFilters > 0 ? 'rgba(120,80,200,0.15)' : 'rgba(14,9,28,0.6)',
@@ -667,7 +667,7 @@ export function KanbanTab() {
         </button>
 
         {/* New card */}
-        <button
+        <button type="button"
           onClick={() => setEditing({ status: mobile ? activeCol : 'backlog' })}
           style={{
             background: ACC, color: '#08051a', border: 'none', borderRadius: 8,
@@ -774,7 +774,7 @@ function MobileColumnTabs({ columns, activeCol, onChange, counts }) {
         const active = activeCol === c.key;
         const cnt = counts[c.key] || 0;
         return (
-          <button
+          <button type="button"
             key={c.key}
             onClick={() => onChange(c.key)}
             style={{

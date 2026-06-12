@@ -88,7 +88,7 @@ export function Hero({ t, lang, accent, mode }) {
             animation: 'fadeUp 0.7s ease both', animationDelay: '0.65s',
           }}
         >
-          <button
+          <button type="button"
             ref={btn1}
             onClick={() => scroll('projects')}
             style={{
@@ -104,7 +104,7 @@ export function Hero({ t, lang, accent, mode }) {
           >
             {t.hero.cta1}
           </button>
-          <button
+          <button type="button"
             ref={btn2}
             onClick={() => scroll('contact')}
             style={{

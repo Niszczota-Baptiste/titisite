@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { ACCENTS, TWEAK_DEFAULTS } from '../data/constants';
 import { i18n } from '../data/i18n';
 import { photos as defaultPhotos } from '../data/photos';
+import { usePageMeta } from '../hooks/usePageMeta';
 import { useReveal } from '../hooks/useReveal';
 import { SectionHeader } from '../components/layout/SectionHeader';
 import { PhotoGrid } from '../components/photos/PhotoGrid';
@@ -30,6 +31,7 @@ export default function PhotosPage() {
   const acc = ACCENTS[accent] || ACCENTS.violet;
 
   const [photos, setPhotos] = useState(null);
+  usePageMeta(t.photos.title, t.photos.subtitle);
   useReveal();
 
   useEffect(() => {
