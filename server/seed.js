@@ -11,6 +11,7 @@ const DATA_DIR = path.join(__dirname, '..', 'src', 'data');
 
 const SOURCES = {
   projects:   { file: 'projects.js',   key: 'projects' },
+  photos:     { file: 'photos.js',     key: 'photos' },
   tracks:     { file: 'tracks.js',     key: 'tracks' },
   education:  { file: 'education.js',  key: 'education' },
   experience: { file: 'experience.js', key: 'experience' },

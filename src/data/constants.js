@@ -14,6 +14,7 @@ export const SECTION_MOODS = {
   default:    { bgD: [5, 5, 17],  bgL: [236, 229, 247], int: 1.0,  dft: 1.0,  pulse: false },
   hero:       { bgD: [5, 5, 17],  bgL: [236, 229, 247], int: 1.0,  dft: 1.0,  pulse: false },
   projects:   { bgD: [6, 4, 24],  bgL: [237, 232, 251], int: 1.6,  dft: 1.15, pulse: false },
+  photos:     { bgD: [3, 2, 12],  bgL: [235, 229, 249], int: 0.6,  dft: 0.35, pulse: false },
   music:      { bgD: [2, 1, 8],   bgL: [230, 222, 244], int: 0.95, dft: 0.55, pulse: true  },
   about:      { bgD: [4, 3, 14],  bgL: [238, 234, 248], int: 0.62, dft: 0.28, pulse: false },
   education:  { bgD: [5, 5, 17],  bgL: [236, 229, 247], int: 0.8,  dft: 0.7,  pulse: false },
@@ -24,6 +25,7 @@ export const SECTION_MOODS = {
 
 export const CURSOR_LABELS = {
   music: '♪',
+  photos: '◎',
   projects: '/>',
   about: '~',
   contact: '@',

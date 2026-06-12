@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ACCENTS } from '../../data/constants';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
-const NAV_IDS = new Set(['projects', 'music', 'about', 'education', 'experience', 'contact']);
+const NAV_IDS = new Set(['projects', 'photos', 'music', 'about', 'education', 'experience', 'contact']);
 
 export function Nav({ lang, setLang, t, accent, mode, toggleMode, sections }) {
   const [scrolled, setScrolled] = useState(false);

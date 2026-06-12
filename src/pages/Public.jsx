@@ -6,6 +6,7 @@ import { useContent } from '../hooks/useContent';
 
 const DEFAULT_SECTIONS = [
   { id: 'projects',   visible: true },
+  { id: 'photos',     visible: true },
   { id: 'music',      visible: true },
   { id: 'about',      visible: true },
   { id: 'education',  visible: true },
@@ -29,6 +30,7 @@ import { Education } from '../components/sections/Education';
 import { Experience } from '../components/sections/Experience';
 import { Hero } from '../components/sections/Hero';
 import { Music } from '../components/sections/Music';
+import { Photos } from '../components/sections/Photos';
 import { Projects } from '../components/sections/Projects';
 
 import { EasterEgg } from '../components/overlays/EasterEgg';
@@ -105,7 +107,7 @@ export default function Public() {
   }, []);
 
   useEffect(() => {
-    const ids = ['hero', 'projects', 'music', 'about', 'education', 'experience', 'contact', 'current'];
+    const ids = ['hero', 'projects', 'photos', 'music', 'about', 'education', 'experience', 'contact', 'current'];
     const obs = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => { if (e.isIntersecting) activeSectionRef.current = e.target.id; });
@@ -147,6 +149,7 @@ export default function Public() {
           if (!s.visible) return null;
           switch (s.id) {
             case 'projects':   return <Projects key="projects" t={t} lang={lang} accent={accent} items={data.projects} />;
+            case 'photos':     return <Photos key="photos" t={t} accent={accent} items={data.photos} />;
             case 'music':      return <Music key="music" t={t} accent={accent} tracks={data.tracks} />;
             case 'about':      return <About key="about" t={t} accent={accent} />;
             case 'education':  return <Education key="education" t={t} lang={lang} accent={accent} items={data.education} />;

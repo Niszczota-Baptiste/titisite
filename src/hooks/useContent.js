@@ -3,11 +3,13 @@ import { api } from '../api/client';
 import { currently as defaultCurrently } from '../data/currently';
 import { education as defaultEducation } from '../data/education';
 import { experience as defaultExperience } from '../data/experience';
+import { photos as defaultPhotos } from '../data/photos';
 import { projects as defaultProjects } from '../data/projects';
 import { tracks as defaultTracks } from '../data/tracks';
 
 const FALLBACKS = {
   projects: defaultProjects,
+  photos: defaultPhotos,
   tracks: defaultTracks,
   education: defaultEducation,
   experience: defaultExperience,
