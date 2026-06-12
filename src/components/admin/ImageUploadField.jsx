@@ -86,7 +86,7 @@ export function ImageUploadField({ value, onChange, label, aspect = '16/9' }) {
             <>
               <span style={{ fontSize: 20, color: `rgba(${ACC_RGB},0.5)` }}>↑</span>
               <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: 'rgba(180,170,200,0.55)' }}>
-                Cliquer pour uploader (JPG, PNG, WebP — max 10 Mo)
+                Cliquer pour uploader (JPG, PNG, WebP — max 40 Mo, compressé automatiquement)
               </span>
             </>
           )}

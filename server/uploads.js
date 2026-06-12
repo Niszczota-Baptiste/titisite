@@ -125,7 +125,10 @@ export const ALLOWED_IMAGE = {
   mime: new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']),
   ext:  new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']),
 };
-export const IMAGE_MAX_BYTES = Number(process.env.IMAGE_MAX_BYTES || 10 * 1024 * 1024); // 10 MB
+// Large cap on purpose : les panoramas iPhone font 20-60 Mo. L'image est
+// recompressée côté serveur (sharp → WebP) juste après l'upload, donc le
+// fichier servi au public reste léger quelle que soit la taille d'entrée.
+export const IMAGE_MAX_BYTES = Number(process.env.IMAGE_MAX_BYTES || 40 * 1024 * 1024); // 40 MB
 export const uploadImage = makeUploader(ALLOWED_IMAGE, IMAGE_MAX_BYTES);
 
 export function uploadPath(filename) {

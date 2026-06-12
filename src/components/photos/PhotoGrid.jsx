@@ -3,7 +3,12 @@ import { PhotoLightbox, protectProps, protectedImgStyle, Signature } from './sha
 
 // Masonry gallery with category filters and lightbox. Used by the /photos
 // page (full gallery) and as the section fallback when the carousel doesn't
-// make sense (fewer than 3 photos).
+// make sense (fewer than 3 photos). Panoramas (ratio ≥ 2:1) break out of the
+// columns and span the full width — squeezed into a column they'd become a
+// sliver.
+const PANO_RATIO = 2;
+const isPano = (p) => p.w > 0 && p.h > 0 && p.w / p.h >= PANO_RATIO;
+
 export function PhotoGrid({ items = [], t, acc }) {
   const [filter, setFilter] = useState('all');
   const [lightbox, setLightbox] = useState(-1);
@@ -13,6 +18,22 @@ export function PhotoGrid({ items = [], t, acc }) {
     [items],
   );
   const vis = filter === 'all' ? items : items.filter((p) => p.category === filter);
+
+  // Blocs alternés : suites de photos normales (colonnes masonry) et
+  // panoramas pleine largeur, dans l'ordre d'origine.
+  const blocks = useMemo(() => {
+    const out = [];
+    vis.forEach((p, idx) => {
+      if (isPano(p)) {
+        out.push({ pano: { p, idx } });
+      } else {
+        const last = out[out.length - 1];
+        if (last?.run) last.run.push({ p, idx });
+        else out.push({ run: [{ p, idx }] });
+      }
+    });
+    return out;
+  }, [vis]);
 
   // The lightbox indexes into the filtered list — close it when that changes.
   useEffect(() => { setLightbox(-1); }, [filter]);
@@ -41,11 +62,19 @@ export function PhotoGrid({ items = [], t, acc }) {
         </div>
       )}
 
-      <div className="r-grid-photos">
-        {vis.map((p, i) => (
-          <PhotoCard key={p.id ?? p.url} p={p} acc={acc} index={i} onOpen={() => setLightbox(i)} />
-        ))}
-      </div>
+      {blocks.map((b, bi) =>
+        b.pano ? (
+          <div key={b.pano.p.id ?? b.pano.p.url} style={{ marginBottom: 18 }}>
+            <PhotoCard p={b.pano.p} acc={acc} index={b.pano.idx} onOpen={() => setLightbox(b.pano.idx)} />
+          </div>
+        ) : (
+          <div key={`run-${bi}`} className="r-grid-photos">
+            {b.run.map(({ p, idx }) => (
+              <PhotoCard key={p.id ?? p.url} p={p} acc={acc} index={idx} onOpen={() => setLightbox(idx)} />
+            ))}
+          </div>
+        ),
+      )}
 
       {lightbox >= 0 && vis[lightbox] && (
         <PhotoLightbox
