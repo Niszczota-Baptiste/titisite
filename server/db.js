@@ -83,6 +83,9 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON workspace_members(user_id);`);
+  // Last visit of each member per workspace — powers the "nouveautés" badges
+  // (features/comments/documents created or modified since this timestamp).
+  ensureColumn('workspace_members', 'last_seen_at', 'INTEGER');
 
   // ── Per-project workspace data ──
   db.exec(`

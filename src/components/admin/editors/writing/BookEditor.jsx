@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../../../api/client';
+import { clearDraft, restorableDraft, useDraftAutosave } from '../../../../hooks/useDraft';
 import { useConfirm } from '../../../../ui/ConfirmProvider';
 import { useToast } from '../../../../ui/ToastProvider';
 import { renderMarkdown } from '../../../writing/markdown';
-import { ACC, Button, Field, Input } from '../../ui';
+import { ACC, Button, DraftBanner, Field, Input } from '../../ui';
 import { MetaFields, emptyMeta, metaOf } from './MetaFields';
 import { MediaManager } from './MediaManager';
 import { DirtyBadge, MarkdownField, SelectField, addBtn, blockLabel, blockStyle, removeBtn } from './widgets';
@@ -287,7 +288,15 @@ function ChapterRow({ index, chapter, characters, glossary, trackOptions, accent
   const [draft, setDraft] = useState(chapter);
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
-  useEffect(() => { setDraft(chapter); }, [chapter.id]); // eslint-disable-line
+  const [localDraft, setLocalDraft] = useState(null); // restorable content draft
+  const draftKey = `titisite-draft:chapter:${chapter.id}`;
+  useEffect(() => {
+    setDraft(chapter);
+    setLocalDraft(restorableDraft(`titisite-draft:chapter:${chapter.id}`, chapter.content || '', chapter.updatedAt));
+  }, [chapter.id]); // eslint-disable-line
+
+  // Autosave the chapter text while it differs from the server copy.
+  useDraftAutosave(draftKey, draft.content, (draft.content ?? '') !== (chapter.content ?? ''));
 
   const dirty = ['number', 'title', 'titleKr', 'content', 'audioTrackId'].some((k) => (draft[k] ?? '') !== (chapter[k] ?? ''));
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
@@ -300,6 +309,8 @@ function ChapterRow({ index, chapter, characters, glossary, trackOptions, accent
         content: draft.content, audioTrackId: draft.audioTrackId || null,
       });
       onLocal({ number: draft.number, title: draft.title, titleKr: draft.titleKr, content: draft.content, audioTrackId: draft.audioTrackId || null });
+      clearDraft(draftKey);
+      setLocalDraft(null);
       toast.success('Chapitre enregistré');
     } catch (e) { toast.error(e.message); } finally { setSaving(false); }
   };
@@ -325,6 +336,11 @@ function ChapterRow({ index, chapter, characters, glossary, trackOptions, accent
         </label>
       </div>
 
+      <DraftBanner
+        draft={localDraft}
+        onRestore={() => { set({ content: localDraft.value }); setLocalDraft(null); }}
+        onDiscard={() => { clearDraft(draftKey); setLocalDraft(null); }}
+      />
       <div style={{ display: 'grid', gridTemplateColumns: showPreview ? '1fr 1fr' : '1fr', gap: 14 }}>
         <MarkdownField value={draft.content} onChange={(v) => set({ content: v })} characters={characters} glossary={glossary} rows={14} placeholder="Le texte du chapitre… (Markdown + tokens)" />
         {showPreview && (

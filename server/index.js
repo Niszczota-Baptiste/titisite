@@ -14,6 +14,7 @@ import { SqliteStore } from './rateLimitStore.js';
 import { COLLECTIONS, db } from './db.js';
 import { startDigestScheduler } from './digest.js';
 import { resolveWorkspace } from './middleware/scope.js';
+import { activityRouter } from './routes/activity.js';
 import { analyticsRouter, purgeOldAnalytics } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
 import { imagesRouter } from './routes/images.js';
@@ -271,6 +272,7 @@ scoped.use('/builds',    buildsRouter);
 scoped.use('/minecraft', minecraftRouter);
 scoped.use('/tags',      tagsRouter);
 scoped.use('/summary',   summaryRouter);
+scoped.use('/activity-count', activityRouter);
 app.use('/api/workspaces/:slug', scoped);
 
 if (IS_PROD) {

@@ -5,7 +5,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { ACC, ACC_RGB, Button } from '../admin/ui';
 import { CalendarExportButton } from './CalendarExport';
-import { HomeShell } from './ProjectLayout';
+import { ActivityBadge, HomeShell } from './ProjectLayout';
 import {
   Tag, card, formatDate, muted,
 } from './shared';
@@ -17,8 +17,21 @@ export function Home() {
   const [events, setEvents] = useState(null);
   const [err, setErr] = useState(null);
 
+  const [activity, setActivity] = useState({}); // slug -> total nouveautés
+
   useEffect(() => {
-    api.workspaces.list().then(setWorkspaces).catch((e) => setErr(e.message || 'Erreur'));
+    api.workspaces.list()
+      .then((list) => {
+        setWorkspaces(list);
+        // "Nouveautés" badge per card — fire-and-forget, one scoped call per
+        // active workspace (the list is small).
+        (list || []).filter((w) => w.status !== 'archived').forEach((w) => {
+          api.ws(w.slug).activityCount()
+            .then((a) => { if (a?.total) setActivity((m) => ({ ...m, [w.slug]: a.total })); })
+            .catch(() => {});
+        });
+      })
+      .catch((e) => setErr(e.message || 'Erreur'));
     const from = Math.floor(Date.now() / 1000);
     const to = from + 60 * 60 * 24 * 30; // next 30 days
     api.events({ from, to }).then(setEvents).catch(() => setEvents([]));
@@ -63,7 +76,7 @@ export function Home() {
           gridTemplateColumns: mobile ? '1fr' : '2fr 1fr',
           gap: mobile ? 20 : 24,
         }}>
-          <ProjectsGrid workspaces={workspaces} isAdmin={isAdmin} />
+          <ProjectsGrid workspaces={workspaces} isAdmin={isAdmin} activity={activity} />
           <UpcomingPanel events={events} />
         </div>
       </main>
@@ -71,7 +84,7 @@ export function Home() {
   );
 }
 
-function ProjectsGrid({ workspaces, isAdmin }) {
+function ProjectsGrid({ workspaces, isAdmin, activity = {} }) {
   if (workspaces === null) {
     return <section><p style={{ ...muted, fontSize: 13 }}>Chargement…</p></section>;
   }
@@ -115,7 +128,7 @@ function ProjectsGrid({ workspaces, isAdmin }) {
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 12,
         }}>
-          {active.map((w) => <ProjectCard key={w.id} w={w} />)}
+          {active.map((w) => <ProjectCard key={w.id} w={w} newCount={activity[w.slug] || 0} />)}
         </div>
       )}
 
@@ -140,7 +153,7 @@ function ProjectsGrid({ workspaces, isAdmin }) {
   );
 }
 
-function ProjectCard({ w, archived }) {
+function ProjectCard({ w, archived, newCount = 0 }) {
   return (
     <Link
       to={`/project/${w.slug}/overview`}
@@ -172,7 +185,10 @@ function ProjectCard({ w, archived }) {
               fontFamily: "'Space Grotesk',sans-serif", fontSize: 15, fontWeight: 600,
               color: '#ede8f8', letterSpacing: '-0.2px',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{w.name}</div>
+            }}>
+              {w.name}
+              <ActivityBadge count={newCount} style={{ marginLeft: 8 }} />
+            </div>
             <div style={{
               ...muted, fontSize: 10.5, fontFamily: 'monospace', marginTop: 2,
             }}>/{w.slug}</div>

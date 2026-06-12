@@ -73,6 +73,9 @@ export function mapChapter(r, { withMedia = false } = {}) {
   const out = {
     id: r.id, workId: r.work_id, number: r.number, title: r.title, titleKr: r.title_kr,
     content: r.content, audioTrackId: r.audio_track_id, track: mapTrack(r.audio_track_id), sortOrder: r.sort_order,
+    // Used by the admin editor's localStorage autosave to decide whether a
+    // local draft is newer than the server copy.
+    updatedAt: r.updated_at,
   };
   if (withMedia) {
     out.media = db.prepare('SELECT * FROM writing_media WHERE chapter_id = ? ORDER BY sort_order, id').all(r.id).map(mapMedia);

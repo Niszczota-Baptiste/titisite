@@ -152,3 +152,29 @@ export function CheckboxField({ label: lbl, value, onChange }) {
     </label>
   );
 }
+
+// Inline banner offering to restore a localStorage draft that is newer than
+// the server copy (see src/hooks/useDraft.js). `draft` is `{ value, ts }`.
+export function DraftBanner({ draft, onRestore, onDiscard }) {
+  if (!draft) return null;
+  const mins = Math.max(1, Math.round((Date.now() - draft.ts) / 60000));
+  const age = mins < 60 ? `il y a ${mins} min` : `il y a ${Math.round(mins / 60)} h`;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      background: `rgba(${ACC_RGB},0.08)`, border: `1px solid rgba(${ACC_RGB},0.32)`,
+      borderRadius: 8, padding: '8px 12px', marginBottom: 12,
+      fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: 'rgba(232,228,248,0.85)',
+    }}>
+      <span>📝 Brouillon non enregistré trouvé ({age}).</span>
+      <span style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+        <Button type="button" onClick={onRestore} style={{ padding: '5px 12px', fontSize: 12 }}>
+          Restaurer le brouillon
+        </Button>
+        <Button type="button" variant="ghost" onClick={onDiscard} style={{ padding: '5px 12px', fontSize: 12 }}>
+          Ignorer
+        </Button>
+      </span>
+    </div>
+  );
+}

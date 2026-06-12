@@ -31,11 +31,28 @@ export function ProjectLayout() {
   const { user, logout, isAdmin } = useAuth();
   const [workspace, setWorkspace] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
+  const [activity, setActivity] = useState(null);
   const [err, setErr] = useState(null);
 
   useEffect(() => {
     setWorkspace(null); setErr(null);
     api.workspaces.get(slug).then(setWorkspace).catch((e) => setErr(e));
+  }, [slug]);
+
+  // "Nouveautés" badges: fetch the counts accumulated since the last visit,
+  // keep them displayed for this session, then mark the workspace as seen so
+  // the next visit only counts newer activity.
+  useEffect(() => {
+    setActivity(null);
+    let alive = true;
+    api.ws(slug).activityCount()
+      .then((a) => {
+        if (!alive) return;
+        setActivity(a);
+        api.ws(slug).markSeen().catch(() => {});
+      })
+      .catch(() => {});
+    return () => { alive = false; };
   }, [slug]);
 
   useEffect(() => {
@@ -80,7 +97,7 @@ export function ProjectLayout() {
         </>
       }
     >
-      <TabsBar workspace={workspace} />
+      <TabsBar workspace={workspace} activity={activity} />
 
       <main style={{ maxWidth: 1180, margin: '0 auto', padding: '20px clamp(16px, 4vw, 32px) 60px' }}>
         <WorkspaceContext.Provider value={{ workspace }}>
@@ -91,7 +108,32 @@ export function ProjectLayout() {
   );
 }
 
-function TabsBar({ workspace }) {
+// Per-tab "nouveautés" counts (features modified + comments → Kanban,
+// new documents → Documents).
+function badgeFor(tab, activity) {
+  if (!activity) return 0;
+  if (tab === 'kanban') return (activity.features || 0) + (activity.comments || 0);
+  if (tab === 'documents') return activity.documents || 0;
+  return 0;
+}
+
+export function ActivityBadge({ count, style }) {
+  if (!count) return null;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999,
+      background: ACC, color: '#08051a',
+      fontFamily: "'Inter',sans-serif", fontSize: 10, fontWeight: 700,
+      lineHeight: 1, verticalAlign: 'middle',
+      ...style,
+    }}>
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+function TabsBar({ workspace, activity }) {
   const mobile = useIsMobile(720);
   const tabs = tabsFor(workspace);
   return (
@@ -121,6 +163,7 @@ function TabsBar({ workspace }) {
           })}
         >
           {t.label}
+          <ActivityBadge count={badgeFor(t.to, activity)} style={{ marginLeft: 6 }} />
         </NavLink>
       ))}
     </nav>

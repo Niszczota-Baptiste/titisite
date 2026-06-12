@@ -245,6 +245,9 @@ export const api = {
       remove: (name) => request('DELETE', `/workspaces/${slug}/tags/${encodeURIComponent(name)}`),
     },
     summary: () => request('GET', `/workspaces/${slug}/summary`),
+    // "Nouveautés" badges: counts since the member's last visit + mark-seen.
+    activityCount: () => request('GET', `/workspaces/${slug}/activity-count`),
+    markSeen:      () => request('POST', `/workspaces/${slug}/activity-count/seen`),
   }),
 
   // ── Writing space (RP / worldbuilding « Nostra ») ──

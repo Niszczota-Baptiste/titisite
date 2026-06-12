@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { clearDraft, restorableDraft, useDraftAutosave } from '../../hooks/useDraft';
 import { useConfirm } from '../../ui/ConfirmProvider';
 import { useToast } from '../../ui/ToastProvider';
 import { AttachmentsEditor } from './Attachments';
@@ -8,6 +9,7 @@ import {
   Button, ErrorBanner, Field, Input, Modal, Textarea,
   relativeDate, toLocalDatetimeInput,
 } from './shared';
+import { DraftBanner } from '../admin/ui';
 import { TagsInput } from './TagsInput';
 
 const STATUSES   = [['backlog', 'Backlog'], ['todo', 'À faire'], ['doing', 'En cours'], ['done', 'Terminé']];
@@ -28,9 +30,15 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
   const [newSub, setNewSub] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
+  const [draft, setDraft] = useState(null); // restorable description draft
 
   const isEdit = !!(feature && feature.id);
   const ws = workspaceSlug ? api.ws(workspaceSlug) : null;
+  const draftKey = `titisite-draft:feature:${workspaceSlug}:${feature?.id || 'new'}`;
+
+  // Autosave the description while it differs from the server copy; the draft
+  // is purged on successful save.
+  useDraftAutosave(draftKey, description, open && description !== (feature?.description || ''));
 
   useEffect(() => {
     if (!open) return;
@@ -53,7 +61,12 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
     }
     setNewSub('');
     setErr(null);
-  }, [open, feature]);
+    setDraft(open ? restorableDraft(
+      `titisite-draft:feature:${workspaceSlug}:${feature?.id || 'new'}`,
+      feature?.description || '',
+      feature?.updatedAt,
+    ) : null);
+  }, [open, feature, workspaceSlug]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -71,6 +84,7 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
       };
       if (isEdit) await ws.features.update(feature.id, payload);
       else await ws.features.create(payload);
+      clearDraft(draftKey);
       toast.success(isEdit ? 'Carte mise à jour' : 'Carte créée');
       onSaved?.();
     } catch (ex) {
@@ -113,6 +127,11 @@ export function FeatureModal({ open, feature, users = [], workspaceSlug, onClose
           <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus required />
         </Field>
         <Field label="Description">
+          <DraftBanner
+            draft={draft}
+            onRestore={() => { setDescription(draft.value); setDraft(null); }}
+            onDiscard={() => { clearDraft(draftKey); setDraft(null); }}
+          />
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} />
         </Field>
 
