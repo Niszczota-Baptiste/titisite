@@ -1,0 +1,19 @@
+# Sauvegarde quotidienne — DB SQLite + uploads → /var/backups/titisite/
+# Installation :
+#   sudo cp deploy/titisite-backup.service deploy/titisite-backup.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now titisite-backup.timer
+[Unit]
+Description=Sauvegarde titisite (base SQLite + uploads)
+Wants=titisite-backup.timer
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /var/www/titisite/deploy/backup.sh
+# Le backup lit la DB et les uploads, écrit dans /var/backups : root suffit
+# et évite les soucis de droits sur /var/backups.
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

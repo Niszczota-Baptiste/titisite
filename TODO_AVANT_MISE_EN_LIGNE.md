@@ -101,6 +101,26 @@ place-la dans `public/og-image.jpg`, puis ajoute dans `index.html` :
 
 ---
 
+## Étape 7 — Activer les sauvegardes automatiques
+
+La DB SQLite et les uploads sont sauvegardés chaque nuit vers
+`/var/backups/titisite/` (rétention 14 jours) par `deploy/backup.sh` :
+
+```bash
+# Sur le VPS (sqlite3 doit être installé : apt install sqlite3) :
+sudo cp /var/www/titisite/deploy/titisite-backup.service \
+        /var/www/titisite/deploy/titisite-backup.timer \
+        /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now titisite-backup.timer
+
+# Vérifier / lancer une sauvegarde manuelle :
+systemctl list-timers titisite-backup.timer
+sudo bash /var/www/titisite/deploy/backup.sh
+```
+
+---
+
 ## Mises à jour futures
 
 Pour chaque nouveau commit poussé sur `main` :

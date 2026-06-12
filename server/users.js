@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { db } from './db.js';
 
-const SALT_ROUNDS = 10;
+export const SALT_ROUNDS = 10;
 
 export const MIN_PASSWORD_LENGTH = 12;
 

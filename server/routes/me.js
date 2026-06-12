@@ -15,6 +15,7 @@ import {
   findById,
   PasswordPolicyError,
   rotateIcalToken,
+  SALT_ROUNDS,
   validatePassword,
 } from '../users.js';
 
@@ -78,7 +79,7 @@ meRouter.put('/password', requireAuth, requireRole('admin', 'member'), (req, res
     if (err instanceof PasswordPolicyError) return res.status(400).json({ error: err.code });
     throw err;
   }
-  const hash = bcrypt.hashSync(newPassword, 10);
+  const hash = bcrypt.hashSync(newPassword, SALT_ROUNDS);
   db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(hash, req.user.id);
   // Bump first so the *current* JWT becomes invalid, then revoke the cookie's
   // jti as belt-and-braces, then mint a fresh cookie tied to the new tv.

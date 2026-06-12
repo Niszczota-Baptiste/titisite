@@ -5,13 +5,33 @@ import { db } from '../db.js';
 
 export const analyticsRouter = Router();
 
-const SECRET = process.env.JWT_SECRET || 'analytics-fallback-salt';
+// The visitor-hash salt MUST be secret — with a public fallback anyone could
+// recompute hashes offline and de-anonymise visitors. Fail fast instead.
+const SECRET = process.env.JWT_SECRET;
+if (!SECRET) {
+  throw new Error('JWT_SECRET must be set (used as the analytics visitor-hash salt)');
+}
 const MAX_PATH = 512;
 const MAX_REFERRER = 255;
 // Hard cap on a single page-timing beacon. 30 minutes covers any realistic
 // long-read session and prevents a tampered client from skewing the averages
 // with multi-day values.
 const MAX_DWELL_MS = 30 * 60 * 1000;
+
+// Retention cap on raw analytics rows. 180 days is plenty for the dashboard
+// (which looks at most 365 days back but in practice 30) and keeps the
+// privacy promise: raw beacons don't accumulate forever. Called at boot from
+// server/index.js, after migrate() has created the tables.
+const RETENTION_DAYS = 180;
+export function purgeOldAnalytics() {
+  const cutoff = Math.floor(Date.now() / 1000) - RETENTION_DAYS * 86400;
+  let purged = 0;
+  for (const table of ['pageviews', 'events', 'page_timings', 'link_clicks']) {
+    purged += db.prepare(`DELETE FROM ${table} WHERE created_at < ?`).run(cutoff).changes;
+  }
+  if (purged > 0) console.log(`[analytics] purged ${purged} rows older than ${RETENTION_DAYS} days.`);
+  return purged;
+}
 
 // Coarse device bucket from the User-Agent. Good enough for a desktop/mobile
 // split without parsing a full UA database.

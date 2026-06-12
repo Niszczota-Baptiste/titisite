@@ -7,6 +7,7 @@ import {
   findByEmail,
   listUsers,
   PasswordPolicyError,
+  SALT_ROUNDS,
   validatePassword,
 } from '../users.js';
 
@@ -30,7 +31,7 @@ usersRouter.post('/', requireAuth, ADMIN, (req, res) => {
     throw err;
   }
   if (findByEmail(email)) return res.status(409).json({ error: 'email_taken' });
-  const hash = bcrypt.hashSync(password, 10);
+  const hash = bcrypt.hashSync(password, SALT_ROUNDS);
   const canViewStairs = req.body?.canViewStairs ? 1 : 0;
   const result = db
     .prepare(`INSERT INTO users (email, name, password_hash, role, can_view_stairs) VALUES (?, ?, ?, ?, ?)`)
@@ -74,7 +75,7 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
     }
   }
 
-  const newHash = wantsPasswordChange ? bcrypt.hashSync(password, 10) : existing.password_hash;
+  const newHash = wantsPasswordChange ? bcrypt.hashSync(password, SALT_ROUNDS) : existing.password_hash;
   const canViewStairs = req.body?.canViewStairs === undefined
     ? null
     : (req.body.canViewStairs ? 1 : 0);

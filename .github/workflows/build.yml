@@ -1,0 +1,44 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Cancel in-progress runs for the same branch/PR to save CI minutes.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Lint, build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: ESLint (security rules)
+        run: npm run lint:security
+
+      - name: Build front (vite)
+        run: npm run build
+
+      - name: Tests
+        run: npm test
+        env:
+          JWT_SECRET: ci-test-secret-not-for-prod
+          ADMIN_EMAIL: admin@ci.test
+          ADMIN_PASSWORD: CIadminPwd99!
+          MEMBER_EMAIL: member@ci.test
+          MEMBER_PASSWORD: CImemberPwd99!

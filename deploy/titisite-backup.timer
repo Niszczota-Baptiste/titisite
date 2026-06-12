@@ -1,0 +1,13 @@
+# Déclenche titisite-backup.service chaque nuit à 04h15 (heure creuse).
+# Persistent=true : si le VPS était éteint à l'heure prévue, la sauvegarde
+# part au prochain boot.
+[Unit]
+Description=Timer de sauvegarde quotidienne titisite
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

@@ -14,7 +14,7 @@ import { SqliteStore } from './rateLimitStore.js';
 import { COLLECTIONS, db } from './db.js';
 import { startDigestScheduler } from './digest.js';
 import { resolveWorkspace } from './middleware/scope.js';
-import { analyticsRouter } from './routes/analytics.js';
+import { analyticsRouter, purgeOldAnalytics } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
 import { imagesRouter } from './routes/images.js';
 import { tracksRouter } from './routes/tracks.js';
@@ -186,6 +186,8 @@ app.get('/api/audio/:filename', audioLimiter, (req, res) => {
   const { filename } = req.params;
   if (!/^[\w.-]+$/.test(filename)) return res.status(400).end();
   if (!trackByFilename(filename)) return res.status(404).end();
+  // Filenames are immutable UUIDs — replacing a file always changes the URL.
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   res.sendFile(filename, { root: UPLOADS_DIR }, (err) => {
     if (err && !res.headersSent) res.status(404).end();
   });
@@ -204,6 +206,8 @@ app.get('/api/images/:filename', (req, res) => {
   const { filename } = req.params;
   if (!/^[\w.-]+$/.test(filename)) return res.status(400).end();
   if (!imageByFilename(filename)) return res.status(404).end();
+  // Filenames are immutable UUIDs — replacing a file always changes the URL.
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   res.sendFile(filename, { root: UPLOADS_DIR }, (err) => {
     if (err && !res.headersSent) res.status(404).end();
   });
@@ -305,6 +309,9 @@ if (boot.workspaces) {
   console.log('[seed] workspace migration:', JSON.stringify(boot.workspaces));
 }
 
+// RGPD retention: drop raw analytics beacons older than 180 days.
+purgeOldAnalytics();
+
 const server = app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT} (${IS_PROD ? 'prod' : 'dev'})`);
 });
@@ -319,3 +326,25 @@ server.headersTimeout = 30 * 1000;
 // uploadBuild allows up to 1 GB and slow uplinks exist; still finite so an
 // abandoned upload can't pin a socket forever.
 server.requestTimeout = 30 * 60 * 1000;
+
+// Graceful shutdown: stop accepting connections, let in-flight requests
+// finish, then exit. PM2 sends SIGINT on reload — without this, a reload
+// kills mid-upload requests. The 30 s force-exit covers sockets that never
+// drain (e.g. an abandoned slow upload keeping the server open).
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[server] ${signal} received — closing (max 30 s)…`);
+  const force = setTimeout(() => {
+    console.warn('[server] forced exit after 30 s.');
+    process.exit(1);
+  }, 30_000);
+  force.unref();
+  server.close(() => {
+    console.log('[server] closed cleanly.');
+    process.exit(0);
+  });
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
