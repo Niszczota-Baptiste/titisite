@@ -17,6 +17,7 @@ export const i18n = {
     education: { title: 'Formation' },
     experience: { title: 'Expérience', current: 'Poste actuel' },
     contact: { title: 'Contact', subtitle: 'Une idée ? Un projet ? Dites-moi.', send: 'Envoyer', name: 'Nom', email: 'Email', message: 'Message', social: 'Retrouvez-moi sur', sending: 'Envoi…', sent: 'Message envoyé !', sentDesc: 'Merci, je vous répondrai rapidement.', error: "L'envoi a échoué.", errorMailto: 'Envoyer par email', again: 'Envoyer un autre message', tooShort: 'Message trop court (10 caractères minimum).' },
+    player: { play: 'Lecture', pause: 'Pause', close: 'Fermer le lecteur', clip: 'extrait 30s' },
     footer: { rights: 'Tous droits réservés' },
   },
   en: {
@@ -36,6 +37,7 @@ export const i18n = {
     education: { title: 'Education' },
     experience: { title: 'Experience', current: 'Current position' },
     contact: { title: 'Contact', subtitle: "An idea? A project? Let's talk.", send: 'Send', name: 'Name', email: 'Email', message: 'Message', social: 'Find me on', sending: 'Sending…', sent: 'Message sent!', sentDesc: "Thanks, I'll get back to you soon.", error: 'Sending failed.', errorMailto: 'Send by email', again: 'Send another message', tooShort: 'Message too short (10 characters minimum).' },
+    player: { play: 'Play', pause: 'Pause', close: 'Close player', clip: '30s clip' },
     footer: { rights: 'All rights reserved' },
   },
   ko: {
@@ -55,6 +57,7 @@ export const i18n = {
     education: { title: '학력' },
     experience: { title: '경력', current: '현재 직책' },
     contact: { title: '연락', subtitle: '아이디어나 프로젝트가 있으신가요?', send: '보내기', name: '이름', email: '이메일', message: '메시지', social: '소셜 미디어', sending: '전송 중…', sent: '메시지가 전송되었습니다!', sentDesc: '감사합니다. 곧 답변드리겠습니다.', error: '전송에 실패했습니다.', errorMailto: '이메일로 보내기', again: '다른 메시지 보내기', tooShort: '메시지가 너무 짧습니다 (최소 10자).' },
+    player: { play: '재생', pause: '일시정지', close: '플레이어 닫기', clip: '30초 미리듣기' },
     footer: { rights: '모든 권리 보유' },
   },
 };

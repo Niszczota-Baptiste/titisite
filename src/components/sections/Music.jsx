@@ -3,11 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { trackEvent } from '../../api/client';
 import { ACCENTS } from '../../data/constants';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { CLIP_SEC, useMusicPlayer } from '../../music/MusicPlayerContext';
 import { AmbientEffect } from '../writing/AmbientEffect';
 import { Section } from '../layout/Section';
 import { SectionHeader } from '../layout/SectionHeader';
-
-const CLIP_SEC = 30;
 
 function VolumeSlider({ value, onChange, accent }) {
   const acc = ACCENTS[accent] || ACCENTS.violet;
@@ -156,13 +155,13 @@ function TrackRow({ track, playing, progress, onToggle, onLore, accent, mobile }
 }
 
 export function Music({ t, accent, tracks = [] }) {
-  const [playing, setPlaying] = useState(null);
-  const [progress, setProgress] = useState({});   // 0-100 within clip/duration
-  const [elapsed, setElapsed] = useState({});      // seconds elapsed in current clip
-  const [volume, setVolume] = useState(0.72);
-  const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState(false);
-  const audioRef = useRef(null);
+  // Playback lives in MusicPlayerContext (mounted in App.jsx) so it survives
+  // route changes; this section is just the full-size UI over that state.
+  const {
+    playing, progress, elapsed, volume, shuffle, repeat,
+    setVolume, setShuffle, setRepeat,
+    toggle: ctxToggle, prev, next, seekTo,
+  } = useMusicPlayer();
   const acc = ACCENTS[accent] || ACCENTS.violet;
   const mobile = useIsMobile(860);
   const navigate = useNavigate();
@@ -172,123 +171,9 @@ export function Music({ t, accent, tracks = [] }) {
     navigate(`/projets/ecriture/${slug}${entry ? `/${entry}` : ''}`);
   };
 
-  useEffect(() => { window.__musicPlaying = playing !== null; }, [playing]);
-
   const hasAudio = (i) => Boolean(tracks[i]?.filename);
 
-  // ── Real audio playback ──────────────────────────────────────────────────
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (playing === null || !hasAudio(playing)) {
-      audio.pause();
-      audio.src = '';
-      return;
-    }
-
-    const tr = tracks[playing];
-    const clipStart = tr.clip_start ?? 0;
-
-    audio.volume = volume;
-    audio.src = `/api/audio/${tr.filename}`;
-    audio.load();
-
-    const onReady = () => {
-      audio.currentTime = clipStart;
-      audio.play().catch(() => {});
-    };
-
-    const onTimeUpdate = () => {
-      const rel = audio.currentTime - clipStart;
-      if (rel >= CLIP_SEC) {
-        audio.pause();
-        setProgress((p) => ({ ...p, [playing]: 100 }));
-        setElapsed((p) => ({ ...p, [playing]: CLIP_SEC }));
-        if (repeat) {
-          audio.currentTime = clipStart;
-          audio.play().catch(() => {});
-        } else {
-          handleNext(playing);
-        }
-        return;
-      }
-      const pct = Math.max(0, (rel / CLIP_SEC) * 100);
-      setProgress((p) => ({ ...p, [playing]: pct }));
-      setElapsed((p) => ({ ...p, [playing]: Math.max(0, rel) }));
-    };
-
-    audio.addEventListener('loadedmetadata', onReady);
-    audio.addEventListener('timeupdate', onTimeUpdate);
-
-    return () => {
-      audio.removeEventListener('loadedmetadata', onReady);
-      audio.removeEventListener('timeupdate', onTimeUpdate);
-      audio.pause();
-    };
-  }, [playing]); // eslint-disable-line
-
-  // Volume sync
-  useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
-  }, [volume]);
-
-  // ── Fake progress for tracks without audio ───────────────────────────────
-  useEffect(() => {
-    if (playing === null || hasAudio(playing)) return;
-    const iv = setInterval(() => {
-      setProgress((pr) => {
-        const cur = pr[playing] || 0;
-        if (cur >= 100) {
-          if (repeat) return { ...pr, [playing]: 0 };
-          setPlaying(null);
-          return pr;
-        }
-        return { ...pr, [playing]: cur + 0.38 };
-      });
-    }, 120);
-    return () => clearInterval(iv);
-  }, [playing, repeat, tracks]); // eslint-disable-line
-
-  const handleNext = (current) => {
-    const idx = shuffle
-      ? Math.floor(Math.random() * tracks.length)
-      : ((current ?? -1) + 1) % tracks.length;
-    setPlaying(idx);
-    setProgress((p) => ({ ...p, [idx]: 0 }));
-    setElapsed((p) => ({ ...p, [idx]: 0 }));
-  };
-
-  const toggle = (i) => {
-    if (playing === i) {
-      if (hasAudio(i)) audioRef.current?.pause();
-      setPlaying(null);
-    } else {
-      setPlaying(i);
-      setProgress((p) => ({ ...p, [i]: p[i] || 0 }));
-      setElapsed((p) => ({ ...p, [i]: p[i] ? (p[i] / 100) * CLIP_SEC : 0 }));
-      trackEvent('track_play', tracks[i]?.title || `track-${i}`);
-    }
-  };
-
-  const prev = () => {
-    const idx = (((playing ?? 0) - 1) + tracks.length) % tracks.length;
-    setPlaying(idx);
-    setProgress((p) => ({ ...p, [idx]: 0 }));
-    setElapsed((p) => ({ ...p, [idx]: 0 }));
-  };
-
-  const next = () => handleNext(playing);
-
-  const seekTo = (pct) => {
-    if (playing === null) return;
-    setProgress((p) => ({ ...p, [playing]: pct }));
-    if (hasAudio(playing) && audioRef.current) {
-      const tr = tracks[playing];
-      const clipStart = tr.clip_start ?? 0;
-      audioRef.current.currentTime = clipStart + (pct / 100) * CLIP_SEC;
-    }
-  };
+  const toggle = (i) => ctxToggle(i, tracks);
 
   // ── Time formatting ──────────────────────────────────────────────────────
   const fmtElapsed = (i) => {
@@ -332,7 +217,6 @@ export function Music({ t, accent, tracks = [] }) {
 
   return (
     <Section id="music" bg="var(--section-alt)">
-      <audio ref={audioRef} preload="none" />
       {/* Ambient effect over the whole page while a track is playing. */}
       {isPlaying && <AmbientEffect effect={cur?.effect || 'none'} accent={acc.hex} />}
       <SectionHeader title={t.music.title} subtitle={t.music.subtitle} accent={accent} />

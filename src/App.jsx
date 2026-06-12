@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { usePageTracking } from './hooks/usePageTracking';
+import { MiniPlayer } from './music/MiniPlayer';
+import { MusicPlayerProvider } from './music/MusicPlayerContext';
 
 const Public = lazy(() => import('./pages/Public'));
 const Admin = lazy(() => import('./pages/Admin'));
@@ -23,17 +25,20 @@ function RouteTracker() {
 
 export default function App() {
   return (
-    <Suspense fallback={<Loading />}>
-      <RouteTracker />
-      <Routes>
-        <Route path="/admin/*"        element={<Admin />} />
-        <Route path="/project/*"      element={<Project />} />
-        <Route path="/projects/:id"   element={<ProjectDetailPage />} />
-        <Route path="/projets/ecriture/*" element={<Ecriture />} />
-        <Route path="/photos"         element={<PhotosPage />} />
-        <Route path="/stairs"         element={<Stairs />} />
-        <Route path="*"               element={<Public />} />
-      </Routes>
-    </Suspense>
+    <MusicPlayerProvider>
+      <Suspense fallback={<Loading />}>
+        <RouteTracker />
+        <Routes>
+          <Route path="/admin/*"        element={<Admin />} />
+          <Route path="/project/*"      element={<Project />} />
+          <Route path="/projects/:id"   element={<ProjectDetailPage />} />
+          <Route path="/projets/ecriture/*" element={<Ecriture />} />
+          <Route path="/photos"         element={<PhotosPage />} />
+          <Route path="/stairs"         element={<Stairs />} />
+          <Route path="*"               element={<Public />} />
+        </Routes>
+        <MiniPlayer />
+      </Suspense>
+    </MusicPlayerProvider>
   );
 }
