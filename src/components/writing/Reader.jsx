@@ -8,6 +8,7 @@ import { Lightbox } from './Lightbox';
 import { WritingWorldMap } from './map/WorldMap';
 import { renderMarkdown } from './markdown';
 import { ReaderAudio } from './ReaderAudio';
+import { ReaderSettings, readerVars, useReaderPrefs } from './ReaderSettings';
 import { hexToRgb } from './tokens';
 import { ReaderNav, ReaderShell, NotFound } from './shell';
 
@@ -24,8 +25,14 @@ export function Reader() {
   const [progress, setProgress] = useState(0);
   const [tocOpen, setTocOpen] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const [resume, setResume] = useState(null); // saved position banner
+  const [prefs, setPrefs] = useReaderPrefs();
   const articleRef = useRef(null);
+  const activeIdRef = useRef(null);
   usePageMeta(work ? work.title : null, work ? (work.subtitle || work.description || '') : null);
+
+  // Resume-reading: position saved per work in localStorage.
+  const posKey = `titisite-reader-pos:${project}/${workSlug}`;
 
   useEffect(() => {
     let alive = true;
@@ -36,6 +43,43 @@ export function Reader() {
     );
     return () => { alive = false; };
   }, [project, workSlug]);
+
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+
+  // Offer to resume where the reader left off (only when meaningfully scrolled).
+  useEffect(() => {
+    if (!work?.chapters?.length) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(posKey) || 'null');
+      if (saved && saved.scrollY > 600 && work.chapters.some((c) => c.id === saved.chapterId)) {
+        setResume(saved);
+      }
+    } catch { /* corrupt entry — ignore */ }
+  }, [work]); // eslint-disable-line
+
+  // Persist the last chapter + scroll position (throttled via rAF).
+  useEffect(() => {
+    if (!work?.chapters?.length) return undefined;
+    let raf = 0;
+    const save = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        try {
+          localStorage.setItem(posKey, JSON.stringify({
+            chapterId: activeIdRef.current,
+            scrollY: window.scrollY,
+            ts: Date.now(),
+          }));
+        } catch { /* quota */ }
+      });
+    };
+    window.addEventListener('scroll', save, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', save);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [work, posKey]);
 
   const glossary = work?.glossary || [];
 
@@ -121,9 +165,14 @@ export function Reader() {
         crumb={`${work.project?.title || project} / ${work.title}`}
         accent={acc}
         onBack={() => goWriting(`/projets/ecriture/${project}`)}
-        right={mobile ? (
-          <button type="button" onClick={() => setTocOpen((o) => !o)} style={tocToggleStyle(rgb)}>Sommaire</button>
-        ) : null}
+        right={(
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ReaderSettings prefs={prefs} onChange={setPrefs} rgb={rgb} />
+            {mobile && (
+              <button type="button" onClick={() => setTocOpen((o) => !o)} style={tocToggleStyle(rgb)}>Sommaire</button>
+            )}
+          </span>
+        )}
       />
 
       <div style={{
@@ -145,7 +194,7 @@ export function Reader() {
         )}
 
         {/* Article */}
-        <article ref={articleRef}>
+        <article ref={articleRef} style={readerVars(prefs)}>
           <header style={{ marginBottom: 48 }}>
             <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: `rgba(${rgb},0.7)`, letterSpacing: '1.5px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               <button type="button" onClick={() => goWriting(`/projets/ecriture/${project}`)} style={{ background: 'none', border: 'none', color: `rgba(${rgb},0.7)`, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 'inherit' }}>{work.project?.title || project}</button>
@@ -197,14 +246,25 @@ export function Reader() {
           )}
 
           {work.content && (
-            <div style={{ fontFamily: "'Georgia','Times New Roman',serif", fontSize: 'clamp(16px,1.15vw,18px)', color: 'rgba(216,208,232,0.92)', maxWidth: 680, marginBottom: work.chapters.length ? 56 : 24 }}>
+            <div style={{ ...readerTextStyle, marginBottom: work.chapters.length ? 56 : 24 }}>
               {renderMarkdown(work.content, ctx)}
             </div>
           )}
 
-          {work.chapters.map((ch) => (
-            <ChapterBlock key={ch.id} chapter={ch} ctx={ctx} rgb={rgb} onOpenMedia={(id) => setLightbox(mediaIndex(id))} />
-          ))}
+          <div style={{ background: 'var(--reader-bg, transparent)', borderRadius: 14, padding: 'var(--reader-pad, 0px)' }}>
+            {work.chapters.map((ch) => (
+              <ChapterBlock key={ch.id} chapter={ch} ctx={ctx} rgb={rgb} onOpenMedia={(id) => setLightbox(mediaIndex(id))} />
+            ))}
+
+            {work.chapters.length > 0 && (
+              <ChapterFooterNav
+                chapters={work.chapters}
+                activeId={activeId}
+                onGo={goTo}
+                rgb={rgb}
+              />
+            )}
+          </div>
 
           {!!(work.children || []).length && (
             <section style={{ marginTop: work.chapters.length || work.content ? 40 : 0, paddingTop: 28, borderTop: `1px solid rgba(${rgb},0.18)` }}>
@@ -242,6 +302,18 @@ export function Reader() {
           )}
         </article>
       </div>
+
+      {resume && (
+        <ResumeBanner
+          chapter={work.chapters.find((c) => c.id === resume.chapterId)}
+          rgb={rgb}
+          onResume={() => {
+            window.scrollTo({ top: resume.scrollY, behavior: 'smooth' });
+            setResume(null);
+          }}
+          onDismiss={() => setResume(null)}
+        />
+      )}
 
       {hasAnyTrack && <ReaderAudio activeTrack={activeTrack} accent={acc} />}
       <Lightbox items={flatMedia} index={lightbox} onClose={() => setLightbox(null)} onNavigate={setLightbox} />
@@ -322,12 +394,12 @@ function ChapterBlock({ chapter, ctx, rgb, onOpenMedia }) {
         <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: `rgba(${rgb},0.75)`, letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 6 }}>
           {chapter.number}
         </p>
-        <h2 style={{ fontFamily: "'Georgia',serif", fontSize: 'clamp(24px,3.4vw,34px)', fontWeight: 700, color: '#ede8f8', letterSpacing: '-0.5px' }}>
+        <h2 style={{ fontFamily: "'Georgia',serif", fontSize: 'clamp(24px,3.4vw,34px)', fontWeight: 700, color: 'var(--reader-heading, #ede8f8)', letterSpacing: '-0.5px' }}>
           {chapter.title}
           {chapter.titleKr && <span style={{ marginLeft: 12, fontSize: '0.6em', color: `rgba(${rgb},0.7)`, fontFamily: "'Noto Sans KR','Inter',sans-serif", fontWeight: 600 }}>{chapter.titleKr}</span>}
         </h2>
       </div>
-      <div style={{ fontFamily: "'Georgia','Times New Roman',serif", fontSize: 'clamp(16px,1.15vw,18px)', color: 'rgba(216,208,232,0.92)', maxWidth: 680 }}>
+      <div style={readerTextStyle}>
         {body}
       </div>
       {!!(chapter.media || []).length && (
@@ -347,3 +419,90 @@ const tocToggleStyle = (rgb) => ({
   background: `rgba(${rgb},0.12)`, border: `1px solid rgba(${rgb},0.3)`, color: `rgb(${rgb})`,
   borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 12.5,
 });
+
+// Text blocks consume the reading preferences (size / width / theme) through
+// the CSS variables set on the <article> by readerVars().
+const readerTextStyle = {
+  fontFamily: "'Georgia','Times New Roman',serif",
+  fontSize: 'var(--reader-fs, clamp(16px,1.15vw,18px))',
+  color: 'var(--reader-text, rgba(216,208,232,0.92))',
+  maxWidth: 'var(--reader-maxw, 680px)',
+};
+
+// « chapitre X/N » + previous/next links, pinned after the last chapter and
+// driven by the chapter currently in view.
+function ChapterFooterNav({ chapters, activeId, onGo, rgb }) {
+  const idx = Math.max(0, chapters.findIndex((c) => c.id === activeId));
+  const prev = chapters[idx - 1];
+  const next = chapters[idx + 1];
+  const linkStyle = (disabled) => ({
+    background: 'none', border: `1px solid rgba(${rgb},${disabled ? 0.12 : 0.35})`,
+    color: disabled ? `rgba(${rgb},0.3)` : `rgb(${rgb})`,
+    borderRadius: 10, padding: '10px 16px', cursor: disabled ? 'default' : 'pointer',
+    fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600,
+    maxWidth: '40%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    transition: 'all 0.2s',
+  });
+  return (
+    <nav
+      aria-label="Navigation entre chapitres"
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        marginTop: 8, paddingTop: 24, borderTop: `1px solid rgba(${rgb},0.18)`,
+      }}
+    >
+      <button type="button" disabled={!prev} onClick={() => prev && onGo(prev.id)} style={linkStyle(!prev)}>
+        ← {prev ? (prev.title || prev.number || 'Chapitre précédent') : 'Début'}
+      </button>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: `rgba(${rgb},0.7)`, flexShrink: 0 }}>
+        chapitre {idx + 1}/{chapters.length}
+      </span>
+      <button type="button" disabled={!next} onClick={() => next && onGo(next.id)} style={linkStyle(!next)}>
+        {next ? (next.title || next.number || 'Chapitre suivant') : 'Fin'} →
+      </button>
+    </nav>
+  );
+}
+
+// Discreet « reprendre la lecture » banner shown when a saved position exists.
+function ResumeBanner({ chapter, rgb, onResume, onDismiss }) {
+  return (
+    <div style={{
+      position: 'fixed', bottom: 76, left: '50%', transform: 'translateX(-50%)', zIndex: 65,
+      display: 'flex', alignItems: 'center', gap: 12,
+      background: 'rgba(10,6,24,0.94)', backdropFilter: 'blur(14px)',
+      border: `1px solid rgba(${rgb},0.35)`, borderRadius: 999,
+      padding: '8px 10px 8px 18px', maxWidth: 'min(440px, calc(100vw - 32px))',
+      boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+    }}>
+      <span style={{
+        fontFamily: "'Inter',sans-serif", fontSize: 13, color: 'rgba(220,212,238,0.9)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        Reprendre au chapitre {chapter ? (chapter.number || chapter.title || '') : ''} ?
+      </span>
+      <button
+        type="button"
+        onClick={onResume}
+        style={{
+          background: `rgb(${rgb})`, color: '#08051a', border: 'none', borderRadius: 999,
+          padding: '7px 16px', cursor: 'pointer', flexShrink: 0,
+          fontFamily: "'Space Grotesk',sans-serif", fontSize: 12.5, fontWeight: 700,
+        }}
+      >
+        Reprendre
+      </button>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Ignorer"
+        style={{
+          background: 'none', border: 'none', color: 'rgba(180,170,200,0.6)',
+          cursor: 'pointer', fontSize: 17, lineHeight: 1, padding: '2px 6px', flexShrink: 0,
+        }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
