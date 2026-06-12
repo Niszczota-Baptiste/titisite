@@ -1,28 +1,52 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
+import sharp from 'sharp';
 import { requireAuth, requireRole } from '../auth.js';
 import { db } from '../db.js';
-import { safeUnlink, uploadImage } from '../uploads.js';
+import { safeUnlink, uploadImage, uploadPath } from '../uploads.js';
 
 export const imagesRouter = Router();
 
-// POST /api/images — admin only, upload a project image
+// POST /api/images — admin only, upload a project image.
+// L'image est recompressée en WebP (rotation EXIF appliquée, métadonnées
+// retirées, bord long limité à 3840 px) : un panorama iPhone de 40 Mo
+// ressort en fichier raisonnable pour le web. Les GIF sont gardés tels
+// quels pour préserver l'animation ; si sharp ne sait pas lire le fichier,
+// l'original est conservé.
 imagesRouter.post(
   '/',
   requireAuth, requireRole('admin'),
   uploadImage.single('file'),
-  (req, res) => {
+  async (req, res) => {
     const f = req.file;
     if (!f) return res.status(400).json({ error: 'missing_file' });
+
+    let { filename, mimetype, size } = f;
+    if (mimetype !== 'image/gif') {
+      try {
+        const out = `${crypto.randomUUID()}.webp`;
+        const info = await sharp(uploadPath(filename))
+          .rotate()
+          .resize({ width: 3840, height: 3840, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 82 })
+          .toFile(uploadPath(out));
+        safeUnlink(filename);
+        filename = out;
+        mimetype = 'image/webp';
+        size = info.size;
+      } catch { /* fichier illisible par sharp → original conservé */ }
+    }
+
     db.prepare(`
       INSERT INTO project_images (filename, original_name, mime_type, size)
       VALUES (?, ?, ?, ?)
-    `).run(f.filename, f.originalname, f.mimetype, f.size);
+    `).run(filename, f.originalname, mimetype, size);
     res.status(201).json({
-      filename: f.filename,
-      url: `/api/images/${f.filename}`,
+      filename,
+      url: `/api/images/${filename}`,
       originalName: f.originalname,
-      mimeType: f.mimetype,
-      size: f.size,
+      mimeType: mimetype,
+      size,
     });
   },
 );

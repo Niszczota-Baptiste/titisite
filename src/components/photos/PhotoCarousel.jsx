@@ -4,6 +4,15 @@ import { protectProps, protectedImgStyle, Signature } from './shared';
 const BASE_SPEED = 0.22; // rad/s — un tour complet en ~28s
 const DRAG_RATIO = 0.0036; // px → rad
 
+// Les cartes gardent une hauteur commune mais épousent le ratio de la photo,
+// borné entre portrait 3/4 et 16/9 : un panorama s'affiche en carte large au
+// lieu d'être rogné dans un cadre vertical (le format complet reste visible
+// dans la lightbox et sur la page /photos).
+function cardRatio(p) {
+  if (!(p.w > 0 && p.h > 0)) return 3 / 4;
+  return Math.min(Math.max(p.w / p.h, 3 / 4), 16 / 9);
+}
+
 // Manège de photos : les cartes tournent en rond, celle qui passe devant
 // grossit et s'éclaire. Le rendu est piloté par requestAnimationFrame et
 // écrit directement dans le DOM (aucun re-render par frame). Pause au
@@ -113,7 +122,7 @@ export function PhotoCarousel({ photos, acc, onOpen }) {
           onMouseLeave={() => setHovIdx(-1)}
           style={{
             position: 'absolute', top: '50%', left: '50%',
-            width: 'clamp(170px, 26vw, 270px)', aspectRatio: '3/4',
+            height: 'clamp(226px, 34vw, 360px)', aspectRatio: String(cardRatio(p)),
             borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
             border: `1px solid ${hovIdx === i ? acc.hex + '55' : 'var(--border)'}`,
             background: 'var(--surface)',
