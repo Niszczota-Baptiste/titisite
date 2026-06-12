@@ -358,6 +358,19 @@ export function migrate() {
     `);
   }
 
+  // ── Contact form messages (public POST /api/contact, admin dashboard) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS contact_messages (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL DEFAULT '',
+      email      TEXT NOT NULL,
+      message    TEXT NOT NULL,
+      read       INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_contact_messages_created ON contact_messages(created_at);`);
+
   // ── Project images (portfolio pages hero + screenshots) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS project_images (

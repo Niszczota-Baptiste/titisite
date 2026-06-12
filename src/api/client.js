@@ -161,6 +161,14 @@ export const api = {
     writingSummary: (days) => request('GET', `/analytics/summary/writing${days ? `?days=${days}` : ''}`),
   },
 
+  // Contact form: public send + admin inbox.
+  contact: {
+    send:     (body) => request('POST', '/contact', body),
+    list:     () => request('GET', '/contact'),
+    markRead: (id, read = true) => request('PATCH', `/contact/${id}/read`, { read }),
+    remove:   (id) => request('DELETE', `/contact/${id}`),
+  },
+
   // Public-site collections (admin-only writes)
   list:    (c) => request('GET', `/${c}`),
   create:  (c, body) => request('POST', `/${c}`, body),

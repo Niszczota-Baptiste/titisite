@@ -7,6 +7,7 @@ import { AnalyticsEditor } from './editors/AnalyticsEditor';
 import { CurrentlyEditor } from './editors/CurrentlyEditor';
 import { EducationEditor } from './editors/EducationEditor';
 import { ExperienceEditor } from './editors/ExperienceEditor';
+import { MessagesEditor } from './editors/MessagesEditor';
 import { PhotosEditor } from './editors/PhotosEditor';
 import { ProjectsEditor } from './editors/ProjectsEditor';
 import { PublicSectionsEditor } from './editors/PublicSectionsEditor';
@@ -25,6 +26,7 @@ const TABS = [
   { key: 'experience', label: 'Expérience',             Editor: ExperienceEditor },
   { key: 'education',  label: 'Formation',              Editor: EducationEditor },
   { key: 'currently',  label: 'En cours',               Editor: CurrentlyEditor },
+  { key: 'messages',   label: 'Messages',               Editor: MessagesEditor },
   { key: 'workspaces', label: 'Projets d\'équipe',      Editor: WorkspacesEditor },
   { key: 'users',      label: 'Utilisateurs',           Editor: UsersEditor },
 ];

@@ -22,6 +22,7 @@ import { buildsRouter } from './routes/builds.js';
 import { calendarRouter } from './routes/calendar.js';
 import { collectionRouter } from './routes/collection.js';
 import { commentsRouter } from './routes/comments.js';
+import { contactRouter } from './routes/contact.js';
 import { documentsRouter } from './routes/documents.js';
 import { featuresRouter } from './routes/features.js';
 import { meRouter } from './routes/me.js';
@@ -241,6 +242,9 @@ for (const name of COLLECTIONS.filter((n) => n !== 'tracks')) {
 // Images reuse /api/images; audio reuses /api/audio. No new upload surface.
 app.use('/api/ecriture', ecritureRouter);
 app.use('/api/writing', writingAdminRouter);
+
+// Contact form: public POST (honeypot + rate-limit dans le router) + admin CRUD
+app.use('/api/contact', contactRouter);
 
 // Comments (global polymorphic)
 app.use('/api/comments', commentsRouter);

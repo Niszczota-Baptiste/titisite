@@ -124,6 +124,7 @@ export function fetcher(base, jar = new Jar()) {
     get:    (p, opts) => call('GET',    p, opts),
     post:   (p, opts) => call('POST',   p, opts),
     put:    (p, opts) => call('PUT',    p, opts),
+    patch:  (p, opts) => call('PATCH',  p, opts),
     delete: (p, opts) => call('DELETE', p, opts),
   };
 }

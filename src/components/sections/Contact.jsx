@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { trackEvent } from '../../api/client';
+import { api, trackEvent } from '../../api/client';
 import { ACCENTS } from '../../data/constants';
 import { useMagnetic } from '../../hooks/useMagnetic';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -11,8 +11,11 @@ const LINKEDIN_URL = 'https://www.linkedin.com/in/baptiste-niszczota-01090820a/'
 const GITHUB_URL = 'https://github.com/Niszczota-Baptiste';
 
 export function Contact({ t, accent }) {
-  const [form, setForm] = useState({ name: '', email: '', message: '' });
-  const [sent, setSent] = useState(false);
+  // `website` is a honeypot: hidden from humans, filled by naive bots. The
+  // server answers 200 without storing anything when it's non-empty.
+  const [form, setForm] = useState({ name: '', email: '', message: '', website: '' });
+  const [status, setStatus] = useState('idle'); // idle | sending | sent | error
+  const [errorMsg, setErrorMsg] = useState('');
   const acc = ACCENTS[accent] || ACCENTS.violet;
   const submitBtn = useMagnetic(0.22);
   const mobile = useIsMobile(720);
@@ -46,14 +49,35 @@ export function Contact({ t, accent }) {
     { label: 'Email', href: `mailto:${CONTACT_EMAIL}`, icon: '@' },
   ];
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    trackEvent('contact_submit', 'form');
+  // Pre-filled mailto, kept as fallback when the API is unreachable.
+  const mailtoUrl = () => {
     const subject = `[Portfolio] Message de ${form.name || 'visiteur'}`;
     const body = `${form.message}\n\n— ${form.name}${form.email ? ` <${form.email}>` : ''}`;
-    const url = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = url;
-    setSent(true);
+    return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (form.message.trim().length < 10) {
+      setStatus('error');
+      setErrorMsg(t.contact.tooShort);
+      return;
+    }
+    setStatus('sending');
+    setErrorMsg('');
+    trackEvent('contact_submit', 'form');
+    try {
+      await api.contact.send({
+        name: form.name,
+        email: form.email,
+        message: form.message,
+        website: form.website,
+      });
+      setStatus('sent');
+    } catch (err) {
+      setStatus('error');
+      setErrorMsg(err?.body?.error === 'invalid_message' ? t.contact.tooShort : t.contact.error);
+    }
   };
 
   return (
@@ -65,7 +89,7 @@ export function Contact({ t, accent }) {
         gap: mobile ? 48 : 80,
       }}>
         <div className="reveal">
-          {sent ? (
+          {status === 'sent' ? (
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
               <div
                 style={{
@@ -79,24 +103,21 @@ export function Contact({ t, accent }) {
                 ✓
               </div>
               <p style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, color: acc.hex, marginBottom: 10 }}>
-                Votre client mail s'est ouvert
+                {t.contact.sent}
               </p>
               <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: 'var(--text-muted)', marginBottom: 18 }}>
-                Si rien ne s'est passé, écrivez-moi directement à{' '}
-                <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: acc.hex, textDecoration: 'none' }}>
-                  {CONTACT_EMAIL}
-                </a>
+                {t.contact.sentDesc}
               </p>
               <button
                 type="button"
-                onClick={() => setSent(false)}
+                onClick={() => { setStatus('idle'); setForm({ name: '', email: '', message: '', website: '' }); }}
                 style={{
                   background: 'none', border: '1px solid var(--border)',
                   color: 'var(--text-muted)', borderRadius: 10, padding: '10px 22px',
                   fontFamily: "'Inter',sans-serif", fontSize: 13, cursor: 'pointer',
                 }}
               >
-                Réécrire
+                {t.contact.again}
               </button>
             </div>
           ) : (
@@ -107,14 +128,47 @@ export function Contact({ t, accent }) {
               <input placeholder={t.contact.name} required {...fld('name')} />
               <input type="email" placeholder={t.contact.email} required {...fld('email')} />
               <textarea rows={5} placeholder={t.contact.message} required {...fld('message')} />
+              {/* Honeypot — hidden from humans (and from screen readers). */}
+              <input
+                type="text"
+                name="website"
+                value={form.website}
+                onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+              />
+              {status === 'error' && (
+                <div style={{
+                  background: 'rgba(255,100,120,0.08)', border: '1px solid rgba(255,100,120,0.3)',
+                  borderRadius: 10, padding: '10px 14px',
+                  fontFamily: "'Inter',sans-serif", fontSize: 13, color: '#ff8a9b',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  gap: 10, flexWrap: 'wrap',
+                }}>
+                  <span>{errorMsg || t.contact.error}</span>
+                  {errorMsg !== t.contact.tooShort && (
+                    <a
+                      href={mailtoUrl()}
+                      style={{ color: acc.hex, textDecoration: 'none', fontWeight: 600 }}
+                    >
+                      {t.contact.errorMailto} ↗
+                    </a>
+                  )}
+                </div>
+              )}
               <button
                 ref={submitBtn}
                 type="submit"
+                disabled={status === 'sending'}
                 style={{
                   background: acc.hex, color: '#08051a', border: 'none',
                   borderRadius: 10, padding: '13px',
                   fontFamily: "'Space Grotesk',sans-serif",
-                  fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                  fontSize: 14, fontWeight: 700,
+                  cursor: status === 'sending' ? 'wait' : 'pointer',
+                  opacity: status === 'sending' ? 0.7 : 1,
                   transition: 'box-shadow 0.2s,transform 0.18s',
                 }}
                 onMouseEnter={(e) =>
@@ -122,7 +176,7 @@ export function Contact({ t, accent }) {
                 }
                 onMouseLeave={(e) => (e.currentTarget.style.boxShadow = 'none')}
               >
-                {t.contact.send}
+                {status === 'sending' ? t.contact.sending : t.contact.send}
               </button>
             </form>
           )}
