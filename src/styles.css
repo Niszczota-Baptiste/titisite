@@ -433,6 +433,95 @@ textarea::placeholder {
   }
 }
 
+/* ── Photo gallery ── */
+/* Masonry: CSS columns keep each photo's natural ratio, whatever the orientation. */
+.r-grid-photos {
+  column-count: 3;
+  column-gap: 18px;
+}
+.r-grid-photos > * {
+  break-inside: avoid;
+  margin-bottom: 18px;
+}
+@media (max-width: 960px) {
+  .r-grid-photos {
+    column-count: 2;
+  }
+}
+@media (max-width: 600px) {
+  .r-grid-photos {
+    column-count: 1;
+    column-gap: 14px;
+  }
+  .r-grid-photos > * {
+    margin-bottom: 14px;
+  }
+}
+
+/* "Darkroom develop" reveal: the print resolves from a blurred monochrome
+   state to full color as it enters the viewport. Pairs with `.reveal`
+   (same IntersectionObserver), overriding its transition. */
+.photo-reveal {
+  opacity: 0;
+  transform: translateY(26px) scale(0.975);
+  filter: grayscale(1) blur(10px) brightness(1.12);
+  transition:
+    opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 1.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.photo-reveal.visible {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+/* Diagonal light sweep across a photo card on hover, like a glass pane. */
+.photo-card::after {
+  content: '';
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: -80%;
+  width: 45%;
+  background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.09), transparent);
+  transform: skewX(-18deg);
+  transition: left 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+.photo-card:hover::after {
+  left: 135%;
+}
+
+@keyframes photoLightboxIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes photoZoomIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes photoSlideL {
+  from { opacity: 0; transform: translateX(44px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes photoSlideR {
+  from { opacity: 0; transform: translateX(-44px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-reveal {
+    transform: none;
+    filter: none;
+    transition: opacity 0.4s ease;
+  }
+  .photo-card::after {
+    display: none;
+  }
+}
+
 /* Writing-space ambient effect: gentle bloom-in when the reading page opens. */
 @keyframes writingEffectIn {
   from { opacity: 0; }

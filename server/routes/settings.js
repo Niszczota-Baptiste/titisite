@@ -8,6 +8,7 @@ export const settingsRouter = Router();
 // rendered first; the rest is reorderable + can be hidden.
 export const DEFAULT_PUBLIC_SECTIONS = [
   { id: 'projects',   visible: true },
+  { id: 'photos',     visible: true },
   { id: 'music',      visible: true },
   { id: 'about',      visible: true },
   { id: 'education',  visible: true },

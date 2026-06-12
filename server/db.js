@@ -13,7 +13,7 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 // Public-site collections (kept as JSON-blob tables — schema-flexible)
-const PUBLIC_COLLECTIONS = ['projects', 'tracks', 'education', 'experience', 'currently'];
+const PUBLIC_COLLECTIONS = ['projects', 'photos', 'tracks', 'education', 'experience', 'currently'];
 
 export function migrate() {
   // ── Public collections ──

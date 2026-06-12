@@ -4,6 +4,7 @@ import { ACC, ACC_RGB, Button } from '../ui';
 
 const LABELS = {
   projects:   { name: 'Projets',     description: 'Cartes des projets du portfolio' },
+  photos:     { name: 'Photographies', description: 'Galerie photo (masonry + lightbox)' },
   music:      { name: 'Musique',     description: 'Lecteur des tracks' },
   about:      { name: 'À propos',    description: 'Bio + photo + vision' },
   education:  { name: 'Formation',   description: 'Timeline scolarité' },
