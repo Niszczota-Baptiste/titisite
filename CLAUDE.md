@@ -49,6 +49,26 @@ Single-process Node app:
 - Frontend API calls go through `src/api/client.js`. Use `api.ws(slug).x`
   helpers for scoped resources and `api.ecriture.*` / `api.writing.*` for the
   writing space, never hand-build URLs.
+- **Contact form**: `contact_messages` table, public `POST /api/contact`
+  (honeypot field `website`, 5/min/IP rate-limit, SMTP notify best-effort),
+  admin inbox under the same router (`server/routes/contact.js`,
+  `api.contact.*`), « Messages » tab in the dashboard.
+- **Workspace activity badges**: `workspace_members.last_seen_at` +
+  scoped `GET /api/workspaces/:slug/activity-count` (and `POST …/seen`),
+  consumed by `ProjectLayout` tabs and `Home` cards
+  (`api.ws(slug).activityCount()/markSeen()`).
+- **Music playback** is global: `src/music/MusicPlayerContext.jsx` owns the
+  single `<audio>` (30 s public clip cap) and `MiniPlayer.jsx` floats across
+  routes — hidden on /admin and in the reader, which pauses it (ReaderAudio
+  streams the full file there). `Music.jsx` is just a consumer.
+- **SEO**: `GET /sitemap.xml` is generated from the DB
+  (`server/routes/sitemap.js`); per-route meta via
+  `src/hooks/usePageMeta.js`. Reader prefs (font size/width/theme) live in
+  `src/components/writing/ReaderSettings.jsx` (CSS vars `--reader-*`).
+- **Autosave drafts**: `src/hooks/useDraft.js` (5 s debounce, localStorage)
+  + `DraftBanner` in `admin/ui.jsx` — used by the chapter editor and
+  FeatureModal; drafts are purged on successful save and only offered when
+  newer than the server `updatedAt`.
 - Components imports: prefer the existing primitives in
   `src/components/admin/ui.jsx` (Button, Field, Input, Textarea) and
   `src/components/project/shared.jsx` (Section, Modal, Tag, Avatar,
@@ -79,7 +99,13 @@ Single-process Node app:
 
 - `express-rate-limit` on `/api/auth/login` (10/min/IP, only counts failed
   attempts), `/api/audio/:filename` (60/min), `/api/calendar/:token.ics`
-  (30/min).
+  (30/min), `/api/contact` (5/min).
+- `/api/images/:f` and `/api/audio/:f` send
+  `Cache-Control: immutable` (filenames are UUIDs — replacing a file always
+  changes the URL).
+- Graceful shutdown: SIGTERM/SIGINT → `server.close()` with a 30 s force
+  exit. Analytics beacons older than 180 days are purged at boot;
+  `JWT_SECRET` is mandatory (also salts the analytics visitor hash).
 - Audio endpoint cross-checks the filename against the `tracks` table —
   uploaded documents/builds in `uploads/` cannot leak through it.
 - Three multer uploaders (`server/uploads.js`):

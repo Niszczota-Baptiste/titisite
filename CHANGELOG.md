@@ -5,7 +5,64 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — hierarchie-monde-cite
+## [Unreleased] — audit-corrections-nouvelles-fonctionnalites
+
+### Security / Ops (LOT 1)
+- `concurrently` passé en ^10 (CVE critique shell-quote) — `npm audit` à zéro.
+- Arrêt gracieux SIGTERM/SIGINT (`server.close()` + force-exit 30 s) — les
+  reloads PM2 ne coupent plus les requêtes en vol.
+- `deploy/deploy.sh` : health-check `/api/health` après reload et **rollback
+  automatique** vers le commit précédent (reset + rebuild + reload) en cas
+  d'échec.
+- Sauvegardes : `deploy/backup.sh` (`sqlite3 .backup` + tar.gz des uploads
+  vers `/var/backups/titisite/`, rétention 14 jours) + unité/timer systemd.
+- `Cache-Control: public, max-age=31536000, immutable` sur `/api/images/:f`
+  et `/api/audio/:f` (noms UUID immuables).
+- Analytics : fail-fast si `JWT_SECRET` absent (suppression du salt de repli
+  public) + purge au boot des beacons de plus de 180 jours.
+- `SALT_ROUNDS` centralisé dans `server/users.js`.
+- Nginx : logs d'erreur neutralisés sur `/api/calendar/`,
+  `client_max_body_size` 10M par défaut et relevé uniquement par location
+  d'upload (builds 1200M, audio 120M, documents 60M, images 50M).
+- CI : workflow `build.yml` (lint sécurité + build + tests sur PR et main).
+
+### Frontend / SEO (LOT 2)
+- `ErrorBoundary` au root avec fallback stylé.
+- `index.html` : canonical, `og:image`/`twitter:image` (placeholder généré
+  `public/og-image.jpg`), JSON-LD `Person`.
+- Sitemap dynamique `GET /sitemap.xml` (DB : projets portfolio + univers et
+  œuvres d'écriture publiés) — `public/sitemap.xml` supprimé.
+- Hook `usePageMeta` : titre/description/canonical par route (Public, Photos,
+  fiches projet, pages écriture).
+- Chunks Vite dédiés `three` (≈ 853 kB, chargé uniquement avec la carte 3D)
+  et `react` ; `dispose()` des géométries/textures du terrain voxel.
+- A11y : focus-trap dans la `Modal` partagée, `type="button"` sur 126 boutons
+  non-submit, `prefers-reduced-motion` + pause sur `visibilitychange` pour
+  `AmbientCanvas`/`CursorEffect`.
+
+### Added
+- **Formulaire de contact réel** (LOT 3) : table `contact_messages`,
+  `POST /api/contact` public (validation, honeypot, rate-limit 5/min/IP,
+  notification SMTP best-effort), onglet « Messages » dans l'admin, états
+  d'envoi côté section Contact avec mailto en secours, chaînes fr/en/ko.
+- **Player musique persistant** (LOT 4) : `MusicPlayerContext` global +
+  mini-player flottant qui survit aux changements de route (extrait 30 s
+  conservé) ; masqué sur /admin et dans le reader (qui met le clip en pause
+  au profit de `ReaderAudio`).
+- **Confort de lecture** (LOT 5) : reprise de lecture (position mémorisée par
+  œuvre + bandeau « Reprendre au chapitre X ? »), navigation chapitre
+  précédent/suivant avec indicateur « chapitre X/N », panneau de réglages
+  (taille de police S/M/L, largeur, thème sombre/sépia) persisté.
+- **Badges nouveautés workspace** (LOT 6) : `last_seen_at` par membre,
+  `GET /api/workspaces/:slug/activity-count`, badges sur les onglets et les
+  cartes projets.
+- **Autosave** (LOT 6) : brouillons localStorage (débounce 5 s) pour le texte
+  des chapitres et les descriptions de features, avec « Restaurer le
+  brouillon » si plus récent que la version serveur.
+
+---
+
+## [Précédent] — hierarchie-monde-cite
 
 ### Fixed
 - La molette sur la carte-monde publique ne fait plus défiler la page (React
