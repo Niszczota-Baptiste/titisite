@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { searchBlocks } from '../../data/minecraftBlocks';
+import {
+  buildIconIndex, loadMinefieldCatalog, normName, searchCatalog,
+} from '../../data/minefieldCatalog';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { useConfirm } from '../../ui/ConfirmProvider';
@@ -89,6 +92,26 @@ export function stacksInfo(qty) {
   };
 }
 
+// Icône d'un item : vraie texture Minefield (PNG pixel-art) si le nom correspond
+// à une entrée du codex, sinon repli sur l'emoji déduit du nom/de la catégorie.
+function ItemIcon({ name, category, iconIndex, size = 24 }) {
+  const url = iconIndex?.get(normName(name));
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt=""
+        width={size}
+        height={size}
+        loading="lazy"
+        draggable={false}
+        style={{ imageRendering: 'pixelated', objectFit: 'contain', display: 'block' }}
+      />
+    );
+  }
+  return <span style={{ fontSize: size }}>{getItemEmoji(name, category)}</span>;
+}
+
 // ── MinecraftTab — state + effects ────────────────────────────────────────────
 
 export function MinecraftTab() {
@@ -102,6 +125,10 @@ export function MinecraftTab() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
+
+  // Catalogue Minefield (items/blocs custom + icônes), chargé une fois.
+  const [catalog, setCatalog] = useState([]);
+  const iconIndex = useMemo(() => buildIconIndex(catalog), [catalog]);
 
   // Modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -125,6 +152,12 @@ export function MinecraftTab() {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
+
+  useEffect(() => {
+    let alive = true;
+    loadMinefieldCatalog().then((c) => { if (alive) setCatalog(c); });
+    return () => { alive = false; };
+  }, []);
 
   // Close sort dropdown on outside click
   useEffect(() => {
@@ -381,7 +414,7 @@ export function MinecraftTab() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {displayed.map((r) => (
                 <ItemCard
-                  key={r.id} r={r} busy={busyId === r.id}
+                  key={r.id} r={r} busy={busyId === r.id} iconIndex={iconIndex}
                   onAdjust={(d) => adjust(r.id, d)}
                   onEdit={() => { setEditing(r); setModalOpen(true); }}
                   onRemove={() => remove(r)}
@@ -393,7 +426,7 @@ export function MinecraftTab() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {displayed.map((r) => (
                 <ItemRow
-                  key={r.id} r={r} busy={busyId === r.id}
+                  key={r.id} r={r} busy={busyId === r.id} iconIndex={iconIndex}
                   onAdjust={(d) => adjust(r.id, d)}
                   onEdit={() => { setEditing(r); setModalOpen(true); }}
                   onRemove={() => remove(r)}
@@ -410,10 +443,18 @@ export function MinecraftTab() {
         onClose={() => setModalOpen(false)}
         editing={editing}
         ws={ws}
+        catalog={catalog}
         onSaved={handleSaved}
         onError={(e) => setErr(e.message)}
         toast={toast}
       />
+
+      <p style={{
+        ...muted, fontSize: 11, marginTop: 28, textAlign: 'center',
+        opacity: 0.65,
+      }}>
+        Objets et textures © serveur Minefield
+      </p>
     </Section>
   );
 }
@@ -499,8 +540,7 @@ function AdjBtn({ delta, label, busy, onAdjust, compact = false }) {
 
 // ── ItemCard (grid view) ──────────────────────────────────────────────────────
 
-function ItemCard({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
-  const emoji  = getItemEmoji(r.name, r.category);
+function ItemCard({ r, busy, iconIndex, onAdjust, onEdit, onRemove, onToggleFav }) {
   const cat    = CATEGORIES.find((c) => c.id === r.category);
   const rColor = rarityColor(r.rarity);
   const { s64, rem, s16 } = stacksInfo(r.quantity);
@@ -514,9 +554,8 @@ function ItemCard({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
           background: 'rgba(20,10,42,0.85)',
           border: '1px solid rgba(80,50,130,0.28)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 24,
         }}>
-          {emoji}
+          <ItemIcon name={r.name} category={r.category} iconIndex={iconIndex} size={32} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
@@ -627,8 +666,7 @@ function ItemCard({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
 
 // ── ItemRow (list view) ───────────────────────────────────────────────────────
 
-function ItemRow({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
-  const emoji = getItemEmoji(r.name, r.category);
+function ItemRow({ r, busy, iconIndex, onAdjust, onEdit, onRemove, onToggleFav }) {
   const cat   = CATEGORIES.find((c) => c.id === r.category);
 
   return (
@@ -640,11 +678,11 @@ function ItemRow({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
       {/* Icon + name + tags */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 160px', minWidth: 0 }}>
         <span style={{
-          fontSize: 18, width: 32, height: 32, flexShrink: 0,
+          width: 32, height: 32, flexShrink: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'rgba(20,10,42,0.85)', borderRadius: 6,
         }}>
-          {emoji}
+          <ItemIcon name={r.name} category={r.category} iconIndex={iconIndex} size={20} />
         </span>
         <div style={{ minWidth: 0 }}>
           <div style={{
@@ -729,7 +767,7 @@ function ItemRow({ r, busy, onAdjust, onEdit, onRemove, onToggleFav }) {
 
 // ── ResourceModal ─────────────────────────────────────────────────────────────
 
-function ResourceModal({ open, onClose, editing, ws, onSaved, onError, toast }) {
+function ResourceModal({ open, onClose, editing, ws, catalog, onSaved, onError, toast }) {
   const isEdit = !!editing;
   const [name,     setName]     = useState('');
   const [quantity, setQuantity] = useState(0);
@@ -782,7 +820,7 @@ function ResourceModal({ open, onClose, editing, ws, onSaved, onError, toast }) 
       <form onSubmit={submit}>
         {/* Name */}
         <Field label="NOM DE L'ITEM">
-          <BlockPicker value={name} onChange={setName} autoFocus />
+          <BlockPicker value={name} onChange={setName} catalog={catalog} autoFocus />
         </Field>
 
         {/* Quantity */}
@@ -888,12 +926,23 @@ function ResourceModal({ open, onClose, editing, ws, onSaved, onError, toast }) 
 
 // ── BlockPicker — combobox over the Minecraft 1.18.2 block catalogue ──────────
 
-function BlockPicker({ value, onChange, autoFocus }) {
+function BlockPicker({ value, onChange, catalog, autoFocus }) {
   const [open, setOpen]           = useState(false);
   const [highlight, setHighlight] = useState(0);
   const wrapperRef = useRef(null);
 
-  const suggestions = useMemo(() => searchBlocks(value, 60), [value]);
+  // Items custom Minefield (avec icône) d'abord, puis blocs vanilla (emoji),
+  // dédupliqués par nom.
+  const suggestions = useMemo(() => {
+    const mf = searchCatalog(catalog, value, 40).map((e) => ({
+      name: e.nomFr, category: e.categorie, icon: e.icon,
+    }));
+    const seen = new Set(mf.map((s) => normName(s.name)));
+    const vanilla = searchBlocks(value, 40)
+      .filter((b) => !seen.has(normName(b.name)))
+      .map((b) => ({ name: b.name, category: b.category, icon: null }));
+    return [...mf, ...vanilla].slice(0, 80);
+  }, [catalog, value]);
   useEffect(() => { setHighlight(0); }, [value]);
 
   useEffect(() => {
@@ -965,7 +1014,21 @@ function BlockPicker({ value, onChange, autoFocus }) {
                   fontFamily: "'Inter',sans-serif", fontSize: 13,
                 }}
               >
-                <span>{s.name}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  {s.icon ? (
+                    <img
+                      src={s.icon} alt="" width={18} height={18} loading="lazy" draggable={false}
+                      style={{ imageRendering: 'pixelated', objectFit: 'contain', flexShrink: 0 }}
+                    />
+                  ) : (
+                    <span style={{ fontSize: 15, width: 18, textAlign: 'center', flexShrink: 0 }}>
+                      {getItemEmoji(s.name, s.category)}
+                    </span>
+                  )}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.name}
+                  </span>
+                </span>
                 <span style={{
                   ...muted, fontSize: 11, flexShrink: 0,
                   letterSpacing: '0.3px', textTransform: 'uppercase',
