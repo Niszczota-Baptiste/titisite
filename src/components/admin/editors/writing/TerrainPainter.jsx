@@ -4,6 +4,7 @@ import { MAP_SHAPES, MAP_SIZES, normalizeTerrain } from '../../../writing/map/pr
 import { buildWorld, encodeGrid, MAX_H } from '../../../writing/map/terrain';
 import { ACC, ACC_RGB, Button } from '../../ui';
 import { DirtyBadge, SelectField } from './widgets';
+import { MapImageImport } from './MapImageImport';
 
 // Macro sizes for the giant 2D world maps (1 cell = 8/16/32 blocks).
 const WORLD_SIZES = [
@@ -85,6 +86,7 @@ export function TerrainPainter({ terrain, baseBiome, accent, onSave, saving, wor
   const [brush, setBrush] = useState(2);
   const [brushBiome, setBrushBiome] = useState(baseBiome);
   const [dirty, setDirty] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [W, setW] = useState(0);
   const [view, setView] = useState(null);
 
@@ -207,6 +209,15 @@ export function TerrainPainter({ terrain, baseBiome, accent, onSave, saving, wor
     }
   };
 
+  // Image import replaces the whole grid with sampled biomes/heights; the
+  // genVersion bump triggers a full offscreen repaint (same path as regenerate)
+  // so the user reviews and refines with the brush before « Enregistrer ».
+  const applyImport = useCallback((height, biome) => {
+    setGrids((g) => ({ ...g, height, biome }));
+    setGenVersion((v) => v + 1);
+    setDirty(true);
+  }, []);
+
   const regenerate = (nextShape = shape, nextSize = size) => {
     const { grid: _g, ...rest } = terrain && typeof terrain === 'object' ? terrain : {};
     setGrids(generate({ ...rest, shape: nextShape, size: nextSize }, baseBiome, world));
@@ -258,10 +269,22 @@ export function TerrainPainter({ terrain, baseBiome, accent, onSave, saving, wor
           Pinceau {brush}
         </span>
         <input type="range" min="1" max="4" step="1" value={brush} onChange={(e) => setBrush(Number(e.target.value))} style={{ width: 90, accentColor: ACC }} />
+        <Button variant="ghost" onClick={() => setImportOpen((o) => !o)} style={{ marginLeft: 8 }}>
+          {importOpen ? "✕ Fermer l'import" : '🖼 Importer une image'}
+        </Button>
         <span style={{ flex: 1 }} />
         <DirtyBadge dirty={dirty} />
         <Button onClick={save} disabled={!dirty || saving}>{saving ? '…' : 'Enregistrer le dessin'}</Button>
       </div>
+
+      {importOpen && (
+        <MapImageImport
+          size={grids.size}
+          waterLevel={grids.waterLevel}
+          biomeOptions={biomeOptions}
+          onImport={applyImport}
+        />
+      )}
 
       {tool === 'biome' && (
         <div style={{ maxWidth: 260, marginBottom: 4 }}>
