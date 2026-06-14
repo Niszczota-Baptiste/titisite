@@ -1,39 +1,56 @@
-// Lecture d'un screenshot de coffre Minecraft via l'API Claude (vision).
-// Optionnel : actif uniquement si ANTHROPIC_API_KEY est configurée — sinon le
-// front retombe sur la saisie manuelle (mode hybride). Le modèle est
-// surchargeable via MINECRAFT_VISION_MODEL (défaut : claude-opus-4-8).
+// Lecture d'un screenshot de coffre Minecraft. La vision (API Claude) ne fait
+// QUE repérer la géométrie de la grille + lire les quantités — elle ne nomme pas
+// les objets (elle ne connaît pas les textures custom Minefield). Les noms sont
+// déterminés par comparaison d'icônes (server/minecraftIconMatch.js).
+// Optionnel : actif seulement si ANTHROPIC_API_KEY est configurée. Modèle
+// surchargeable via MINECRAFT_VISION_MODEL (défaut : claude-sonnet-4-6).
 import Anthropic from '@anthropic-ai/sdk';
+import { matchChest } from './minecraftIconMatch.js';
 
 const MODEL = process.env.MINECRAFT_VISION_MODEL || 'claude-sonnet-4-6';
 
-// Sortie structurée : garantit un JSON exploitable { items: [{name, quantity}] }.
+// Sortie structurée : géométrie de la grille + cases pleines (sans nom d'objet).
 const FORMAT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    items: {
+    grid: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        x: { type: 'number' }, y: { type: 'number' },
+        w: { type: 'number' }, h: { type: 'number' },
+        rows: { type: 'integer' }, cols: { type: 'integer' },
+      },
+      required: ['x', 'y', 'w', 'h', 'rows', 'cols'],
+    },
+    slots: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          name: { type: 'string' },
-          quantity: { type: 'integer' },
+          row: { type: 'integer' }, col: { type: 'integer' }, count: { type: 'integer' },
         },
-        required: ['name', 'quantity'],
+        required: ['row', 'col', 'count'],
       },
     },
   },
-  required: ['items'],
+  required: ['grid', 'slots'],
 };
 
 const PROMPT = `Tu analyses une capture d'écran de l'interface d'un coffre Minecraft (serveur moddé « Minefield »).
-Identifie chaque emplacement contenant un objet dans la grille du conteneur (la partie HAUTE de l'écran).
-Pour chaque objet, lis le petit nombre blanc en bas à droite de l'icône : c'est la taille de la pile (pas de nombre = 1).
-Additionne les piles d'un même objet en une seule entrée (quantité totale).
-IGNORE l'inventaire et la barre d'action du joueur (les 4 rangées du bas, généralement séparées par un espace).
-Donne le nom de chaque objet en FRANÇAIS (ex. « Diamant », « Planches en chêne », « Lingot de fer »). Si un objet est custom/inconnu, donne ta meilleure estimation.
-Réponds UNIQUEMENT avec un objet JSON de la forme {"items":[{"name":"Diamant","quantity":64}]}, sans texte autour.`;
+Repère la GRILLE du conteneur (les cases d'objets, partie haute de l'écran). IGNORE l'inventaire et la barre d'action du joueur s'ils sont visibles (les 4 rangées du bas, souvent séparées par un espace).
+Tu ne dois PAS nommer les objets — uniquement la géométrie et les quantités.
+
+Renvoie en fractions de l'image (valeurs entre 0 et 1) :
+- grid.x, grid.y = coin HAUT-GAUCHE de la toute première case (en haut à gauche de la grille du conteneur) ;
+- grid.w, grid.h = largeur et hauteur de la zone, jusqu'au coin BAS-DROITE de la dernière case (en bas à droite) ;
+- grid.rows, grid.cols = nombre de rangées et de colonnes de cases du conteneur.
+
+Puis, pour CHAQUE case contenant un objet : row et col (indexés à partir de 0 depuis le coin haut-gauche) et count = le petit nombre blanc en bas à droite de l'icône (absence de nombre = 1).
+
+Réponds uniquement via le format structuré demandé.`;
 
 let _client = null;
 function client() {
@@ -46,36 +63,26 @@ export function visionAvailable() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-// Extrait un tableau d'items d'un texte de réponse — tente JSON.parse direct,
-// puis un repli sur le premier objet {...} trouvé (au cas où le format
-// structuré ne serait pas appliqué par la version du SDK/modèle).
-function parseItems(text) {
+function parseGeometry(text) {
   const tryParse = (s) => { try { return JSON.parse(s); } catch { return null; } };
   let parsed = tryParse(text);
   if (!parsed) {
     const m = text.match(/\{[\s\S]*\}/);
     if (m) parsed = tryParse(m[0]);
   }
-  const items = Array.isArray(parsed?.items) ? parsed.items : [];
-  return items
-    .map((it) => ({
-      name: String(it?.name || '').trim(),
-      quantity: Math.max(1, Math.floor(Number(it?.quantity) || 1)),
-    }))
-    .filter((it) => it.name);
+  if (!parsed || typeof parsed.grid !== 'object' || !Array.isArray(parsed.slots)) return null;
+  return parsed;
 }
 
 /**
- * Envoie l'image à Claude et renvoie [{name, quantity}]. Peut lever (clé
- * invalide, quota, réseau) — l'appelant renvoie alors une 502.
+ * Renvoie [{name, quantity}] : la vision donne la géométrie + les quantités,
+ * puis on identifie chaque item par comparaison d'icônes (name = '' si incertain).
+ * Peut lever (clé invalide, quota, réseau) — l'appelant renvoie alors une 502.
  */
 export async function scanChestScreenshot(buffer, mediaType) {
   const res = await client().messages.create({
     model: MODEL,
     max_tokens: 8000,
-    // Pas de thinking : la lecture d'une grille d'items n'en a pas besoin, et il
-    // consommait le budget max_tokens (réponse tronquée → 0 item) tout en
-    // augmentant le coût. La sortie structurée garantit le JSON.
     output_config: { format: { type: 'json_schema', schema: FORMAT_SCHEMA } },
     messages: [{
       role: 'user',
@@ -90,13 +97,12 @@ export async function scanChestScreenshot(buffer, mediaType) {
     .map((b) => b.text)
     .join('')
     .trim();
-  const items = parseItems(text);
-  // Trace de diagnostic (visible dans `pm2 logs titisite`) : stop_reason +
-  // nb d'items, et un extrait de la réponse quand rien n'est extrait.
-  if (items.length === 0) {
-    console.warn(`[minecraft] vision: 0 item (model=${MODEL}, stop=${res.stop_reason}, text="${text.slice(0, 200)}")`);
-  } else {
-    console.log(`[minecraft] vision: ${items.length} items (model=${MODEL}, stop=${res.stop_reason})`);
+  const geo = parseGeometry(text);
+  if (!geo) {
+    console.warn(`[minecraft] vision: géométrie illisible (stop=${res.stop_reason}, text="${text.slice(0, 200)}")`);
+    return [];
   }
-  return items;
+  console.log(`[minecraft] vision: grille ${geo.grid.rows}×${geo.grid.cols}, ${geo.slots.length} cases (stop=${res.stop_reason})`);
+  // Noms par comparaison d'icônes (déterministe).
+  return matchChest(buffer, geo.grid, geo.slots);
 }
