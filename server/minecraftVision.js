@@ -72,8 +72,10 @@ function parseItems(text) {
 export async function scanChestScreenshot(buffer, mediaType) {
   const res = await client().messages.create({
     model: MODEL,
-    max_tokens: 4096,
-    thinking: { type: 'adaptive' },
+    max_tokens: 8000,
+    // Pas de thinking : la lecture d'une grille d'items n'en a pas besoin, et il
+    // consommait le budget max_tokens (réponse tronquée → 0 item) tout en
+    // augmentant le coût. La sortie structurée garantit le JSON.
     output_config: { format: { type: 'json_schema', schema: FORMAT_SCHEMA } },
     messages: [{
       role: 'user',
@@ -88,5 +90,13 @@ export async function scanChestScreenshot(buffer, mediaType) {
     .map((b) => b.text)
     .join('')
     .trim();
-  return parseItems(text);
+  const items = parseItems(text);
+  // Trace de diagnostic (visible dans `pm2 logs titisite`) : stop_reason +
+  // nb d'items, et un extrait de la réponse quand rien n'est extrait.
+  if (items.length === 0) {
+    console.warn(`[minecraft] vision: 0 item (model=${MODEL}, stop=${res.stop_reason}, text="${text.slice(0, 200)}")`);
+  } else {
+    console.log(`[minecraft] vision: ${items.length} items (model=${MODEL}, stop=${res.stop_reason})`);
+  }
+  return items;
 }
