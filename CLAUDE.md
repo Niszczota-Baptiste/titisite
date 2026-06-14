@@ -57,6 +57,17 @@ Single-process Node app:
   scoped `GET /api/workspaces/:slug/activity-count` (and `POST …/seen`),
   consumed by `ProjectLayout` tabs and `Home` cards
   (`api.ws(slug).activityCount()/markSeen()`).
+- **Minecraft workspaces** (flag `is_minecraft`): the « ⛏️ Minecraft » tab is an
+  inventory tracker scoped by `workspace_id` (`minecraft_resources`),
+  organizable into `minecraft_chests` (`chest_id`, world + X/Y/Z + note;
+  delete = `SET NULL` → « Non rangé »). Item icons come from a **bundled codex**
+  (`public/codex/` Minefield ≈2000 + `public/codex/vanilla/` 1.18.2 778) loaded
+  by `src/data/minefieldCatalog.js` (fetched at runtime, not in the JS bundle).
+  A chest can be filled from a screenshot: `POST …/minecraft/scan-screenshot`
+  reads it with Claude vision (`server/minecraftVision.js`, **optional** — needs
+  `ANTHROPIC_API_KEY`, model `MINECRAFT_VISION_MODEL`), then the user validates a
+  draft and `POST …/minecraft/chests/:id/apply` (`replace`|`merge`). All under
+  `server/routes/minecraft.js` + `api.ws(slug).minecraft.*`.
 - **Music playback** is global: `src/music/MusicPlayerContext.jsx` owns the
   single `<audio>` (30 s public clip cap) and `MiniPlayer.jsx` floats across
   routes — hidden on /admin and in the reader, which pauses it (ReaderAudio
@@ -128,8 +139,10 @@ npm start            # NODE_ENV=production, single Express process
 ```
 
 `.env.example` lists every var. Required: `JWT_SECRET`, `ADMIN_EMAIL`,
-`ADMIN_PASSWORD`, `MEMBER_EMAIL`, `MEMBER_PASSWORD`. First boot creates the
-DB at `DB_PATH` (default `./data.sqlite`) and seeds:
+`ADMIN_PASSWORD`, `MEMBER_EMAIL`, `MEMBER_PASSWORD`. Optional:
+`ANTHROPIC_API_KEY` (+ `MINECRAFT_VISION_MODEL`) enables the Minecraft
+chest-screenshot reader — without it that flow falls back to manual entry.
+First boot creates the DB at `DB_PATH` (default `./data.sqlite`) and seeds:
 - the two users from env (bcrypt hashed),
 - public-site content from `src/data/*.js`,
 - a `Projet principal` workspace with both users as members.

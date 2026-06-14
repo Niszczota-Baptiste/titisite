@@ -7,6 +7,24 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] — audit-corrections-nouvelles-fonctionnalites
 
+### Espace projet — Minecraft (coffres + codex + lecture IA)
+- Onglet « ⛏️ Minecraft » par workspace (flag `is_minecraft`) : l'inventaire
+  (`minecraft_resources`) est désormais organisable en **coffres**
+  (`minecraft_chests` : nom, monde, X/Y/Z, note ; `chest_id` sur les ressources,
+  `ON DELETE SET NULL` → les items d'un coffre supprimé repassent en
+  « Non rangé »). Vue « Par coffre » (panneaux repliables) ou « Tout ».
+- **Codex d'icônes** bundlé dans `public/codex/` : items/blocs custom du serveur
+  Minefield (≈2000) + vanilla 1.18.2 (778), avec vraies textures
+  (`image-rendering: pixelated`) dans le picker et les cartes, repli emoji.
+  Crédit discret « Objets et textures © serveur Minefield ».
+- **Mise à jour d'un coffre depuis un screenshot** (hybride) :
+  `POST …/minecraft/scan-screenshot` envoie l'image à Claude
+  (`@anthropic-ai/sdk`, sortie structurée) → brouillon items + quantités à
+  valider, puis `POST …/minecraft/chests/:id/apply` (`replace`|`merge`). Actif si
+  `ANTHROPIC_API_KEY` est défini (modèle via `MINECRAFT_VISION_MODEL`, défaut
+  `claude-opus-4-8`) ; sinon repli sur la saisie manuelle, screenshot en
+  référence. Upload en mémoire (jamais persisté).
+
 ### Security / Ops (LOT 1)
 - `concurrently` passé en ^10 (CVE critique shell-quote) — `npm audit` à zéro.
 - Arrêt gracieux SIGTERM/SIGINT (`server.close()` + force-exit 30 s) — les
