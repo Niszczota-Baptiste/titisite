@@ -238,6 +238,19 @@ export const api = {
       adjust:       (id, delta) => request('POST', `/workspaces/${slug}/minecraft/${id}/adjust`, { delta }),
       toggleFav:    (id) => request('PATCH', `/workspaces/${slug}/minecraft/${id}/favorite`),
       remove:       (id) => request('DELETE', `/workspaces/${slug}/minecraft/${id}`),
+      // Coffres (containers) + flux screenshot → items.
+      chests: {
+        list:   () => request('GET',    `/workspaces/${slug}/minecraft/chests`),
+        create: (b) => request('POST',  `/workspaces/${slug}/minecraft/chests`, b),
+        update: (id, b) => request('PUT', `/workspaces/${slug}/minecraft/chests/${id}`, b),
+        remove: (id) => request('DELETE', `/workspaces/${slug}/minecraft/chests/${id}`),
+        apply:  (id, b) => request('POST', `/workspaces/${slug}/minecraft/chests/${id}/apply`, b),
+      },
+      scanScreenshot: (file) => {
+        const fd = new FormData();
+        fd.append('image', file);
+        return uploadFile(`/workspaces/${slug}/minecraft/scan-screenshot`, fd);
+      },
     },
     tags: {
       list:   () => request('GET',    `/workspaces/${slug}/tags`),

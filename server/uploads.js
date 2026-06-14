@@ -131,6 +131,19 @@ export const ALLOWED_IMAGE = {
 export const IMAGE_MAX_BYTES = Number(process.env.IMAGE_MAX_BYTES || 40 * 1024 * 1024); // 40 MB
 export const uploadImage = makeUploader(ALLOWED_IMAGE, IMAGE_MAX_BYTES);
 
+// In-memory uploader for transient images that are processed and discarded
+// (jamais persistées sur disque) — utilisé par le scan de screenshot Minecraft :
+// l'image part vers l'API vision puis est jetée.
+function makeMemoryUploader(allowed, maxBytes) {
+  return multer({
+    storage: multer.memoryStorage(),
+    fileFilter: makeFilter(allowed),
+    limits: { fileSize: maxBytes, files: 1, fields: 16 },
+  });
+}
+export const SCREENSHOT_MAX_BYTES = Number(process.env.SCREENSHOT_MAX_BYTES || 15 * 1024 * 1024); // 15 MB
+export const uploadScreenshotMemory = makeMemoryUploader(ALLOWED_IMAGE, SCREENSHOT_MAX_BYTES);
+
 export function uploadPath(filename) {
   return path.join(UPLOADS_DIR, filename);
 }

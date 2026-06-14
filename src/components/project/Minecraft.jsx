@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { searchBlocks } from '../../data/minecraftBlocks';
 import {
-  buildIconIndex, loadMinefieldCatalog, normName, searchCatalog,
+  buildIconIndex, loadMinefieldCatalog, matchCatalogName, normName, searchCatalog,
 } from '../../data/minefieldCatalog';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
@@ -35,6 +35,20 @@ export const RARITY_LIST = [
 ];
 
 const RARITY_ORDER = Object.fromEntries(RARITY_LIST.map((r, i) => [r.id, i]));
+
+// Mondes pour les coffres (liste + champ libre côté formulaire).
+export const WORLDS = [
+  { id: 'overworld', label: 'Overworld', emoji: '🌳' },
+  { id: 'nether',    label: 'Nether',    emoji: '🔥' },
+  { id: 'end',       label: 'End',       emoji: '🌌' },
+];
+function worldMeta(world) {
+  return WORLDS.find((w) => w.id === world) || { id: world, label: world || '—', emoji: '🗺️' };
+}
+function formatCoords(c) {
+  if (c?.x == null && c?.y == null && c?.z == null) return null;
+  return `${c.x ?? '?'} ${c.y ?? '?'} ${c.z ?? '?'}`;
+}
 
 const SORT_OPTIONS = [
   { id: 'name',     label: 'Trier par nom' },
@@ -130,9 +144,20 @@ export function MinecraftTab() {
   const [catalog, setCatalog] = useState([]);
   const iconIndex = useMemo(() => buildIconIndex(catalog), [catalog]);
 
-  // Modal
+  // Coffres (containers) + organisation de la vue
+  const [chests, setChests] = useState([]);
+  const [grouping, setGrouping] = useState('chest'); // 'chest' | 'all'
+  const [collapsed, setCollapsed] = useState(() => new Set());
+
+  // Item modal
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [addChestId, setAddChestId] = useState(null); // coffre présélectionné à l'ajout
+
+  // Chest modal + screenshot modal
+  const [chestModalOpen, setChestModalOpen] = useState(false);
+  const [editingChest, setEditingChest] = useState(null);
+  const [shotChest, setShotChest] = useState(null); // coffre cible du scan, ou null
 
   // Busy state for adjust buttons
   const [busyId, setBusyId] = useState(null);
@@ -147,8 +172,10 @@ export function MinecraftTab() {
   const sortRef = useRef(null);
 
   const load = async () => {
-    try { setItems(await ws.minecraft.list()); }
-    catch (e) { setErr(e.message); }
+    try {
+      const [its, chs] = await Promise.all([ws.minecraft.list(), ws.minecraft.chests.list()]);
+      setItems(its); setChests(chs);
+    } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [workspace.slug]);
@@ -253,28 +280,97 @@ export function MinecraftTab() {
     }
   };
 
+  const openAddItem = (chestId = null) => { setEditing(null); setAddChestId(chestId); setModalOpen(true); };
+  const openEditItem = (r) => { setEditing(r); setAddChestId(null); setModalOpen(true); };
+
+  // ── Chests ──────────────────────────────────────────────────────────────────
+  const handleChestSaved = (saved) => {
+    setChestModalOpen(false); setEditingChest(null);
+    setChests((prev) => (prev.some((c) => c.id === saved.id)
+      ? prev.map((c) => (c.id === saved.id ? saved : c))
+      : [...prev, saved]));
+  };
+
+  const removeChest = async (chest) => {
+    const ok = await confirm({
+      title: `Supprimer le coffre « ${chest.name} »`,
+      message: 'Ses items repasseront en « Non rangé » (ils ne sont pas supprimés).',
+      confirmLabel: 'Supprimer', danger: true,
+    });
+    if (!ok) return;
+    try {
+      await ws.minecraft.chests.remove(chest.id);
+      setChests((prev) => prev.filter((c) => c.id !== chest.id));
+      setItems((prev) => prev.map((r) => (r.chestId === chest.id ? { ...r, chestId: null } : r)));
+      toast.success('Coffre supprimé');
+    } catch (e) { toast.error(`Échec : ${e.message}`); }
+  };
+
+  const handleApplied = (updatedList) => {
+    setShotChest(null);
+    setItems(updatedList);
+    toast.success('Coffre mis à jour');
+  };
+
+  const toggleCollapse = (key) => setCollapsed((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
+  // Items (déjà filtrés/triés) regroupés par coffre. chestId null → « Non rangé ».
+  const itemsByChest = useMemo(() => {
+    const m = new Map();
+    for (const r of displayed) {
+      const key = r.chestId ?? 'none';
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push(r);
+    }
+    return m;
+  }, [displayed]);
+
+  const filtering = !!(search.trim() || activeCategory || showFavOnly);
+  // En mode « par coffre » : tous les coffres si pas de filtre, sinon seulement
+  // ceux qui ont des items correspondants.
+  const visibleChests = filtering
+    ? chests.filter((c) => (itemsByChest.get(c.id) || []).length > 0)
+    : chests;
+  const unsorted = itemsByChest.get('none') || [];
+
+  const itemHandlers = {
+    iconIndex, viewMode,
+    busyIdOf: (id) => busyId === id,
+    onAdjust: adjust,
+    onEdit: openEditItem,
+    onRemove: remove,
+    onToggleFav: toggleFav,
+  };
+
   // ── Render (see bottom of file) ───────────────────────────────────────────
-  const subtitle = `Inventaire personnel · ${items.length} item${items.length > 1 ? 's' : ''} · ${totalUnits} unité${totalUnits > 1 ? 's' : ''}`;
+  const subtitle = `${items.length} item${items.length > 1 ? 's' : ''} · ${totalUnits} unité${totalUnits > 1 ? 's' : ''} · ${chests.length} coffre${chests.length > 1 ? 's' : ''}`;
   const currentSortLabel = SORT_OPTIONS.find((o) => o.id === sortBy)?.label ?? 'Trier';
 
   return (
     <Section
       title="⛏️ Ressources Minecraft"
       actions={
-        <Button onClick={() => { setEditing(null); setModalOpen(true); }}>
-          + Ajouter un item
-        </Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="ghost" onClick={() => { setEditingChest(null); setChestModalOpen(true); }}>
+            + Coffre
+          </Button>
+          <Button onClick={() => openAddItem(null)}>+ Item</Button>
+        </div>
       }
     >
-      {items.length > 0 && (
+      {(items.length > 0 || chests.length > 0) && (
         <p style={{ ...muted, fontSize: 13, marginTop: -8, marginBottom: 16 }}>{subtitle}</p>
       )}
       <ErrorBanner error={err} onDismiss={() => setErr(null)} />
 
       {loading ? (
         <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>
-      ) : items.length === 0 ? (
-        <Empty>Aucune ressource. Ajoute-en une pour commencer (ex. Diamants, Obsidienne, Bois…).</Empty>
+      ) : items.length === 0 && chests.length === 0 ? (
+        <Empty>Aucune ressource. Crée un coffre ou ajoute un item pour commencer (ex. Diamants, Obsidienne, Bois…).</Empty>
       ) : (
         <>
           {/* ── Stats ── */}
@@ -282,6 +378,7 @@ export function MinecraftTab() {
             <StatCard label="ITEMS"      value={items.length} />
             <StatCard label="TOTAL"      value={totalUnits}    unit="unités" />
             <StatCard label="STACKS×64"  value={totalStacks64} accent="#4ade80" />
+            <StatCard label="COFFRES"    value={chests.length} accent="#c084fc" />
             <StatCard label="FAVORIS"    value={favCount}      accent="#fb923c" />
             <StatCard label="CATÉGORIES" value={catCount} />
           </div>
@@ -350,8 +447,29 @@ export function MinecraftTab() {
             </div>
           </div>
 
-          {/* ── Favoris toggle + view mode ── */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          {/* ── Grouping + Favoris toggle + view mode ── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div style={{
+              display: 'flex', borderRadius: 8, overflow: 'hidden',
+              border: '1px solid rgba(80,50,130,0.28)',
+            }}>
+              {[['chest', '📦 Par coffre'], ['all', '☰ Tout']].map(([mode, label], i) => (
+                <button type="button"
+                  key={mode}
+                  onClick={() => setGrouping(mode)}
+                  style={{
+                    padding: '7px 12px', border: 'none',
+                    borderLeft: i > 0 ? '1px solid rgba(80,50,130,0.28)' : 'none',
+                    background: grouping === mode ? `rgba(${ACC_RGB},0.22)` : 'transparent',
+                    cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap',
+                    color: grouping === mode ? ACC : 'rgba(180,170,200,0.55)',
+                    fontFamily: "'Inter',sans-serif",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <button type="button"
               onClick={() => setShowFavOnly((v) => !v)}
               style={{
@@ -407,32 +525,45 @@ export function MinecraftTab() {
             </div>
           )}
 
-          {/* ── Item list ── */}
-          {displayed.length === 0 ? (
-            <Empty>Aucun item ne correspond aux filtres.</Empty>
-          ) : viewMode === 'grid' ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {displayed.map((r) => (
-                <ItemCard
-                  key={r.id} r={r} busy={busyId === r.id} iconIndex={iconIndex}
-                  onAdjust={(d) => adjust(r.id, d)}
-                  onEdit={() => { setEditing(r); setModalOpen(true); }}
-                  onRemove={() => remove(r)}
-                  onToggleFav={() => toggleFav(r)}
-                />
-              ))}
-            </div>
+          {/* ── Items : par coffre ou liste plate ── */}
+          {grouping === 'all' ? (
+            displayed.length === 0 ? (
+              <Empty>Aucun item ne correspond aux filtres.</Empty>
+            ) : (
+              <ItemCollection items={displayed} {...itemHandlers} />
+            )
+          ) : (visibleChests.length === 0 && unsorted.length === 0) ? (
+            <Empty>
+              {filtering
+                ? 'Aucun item ne correspond aux filtres.'
+                : 'Aucun coffre. Clique « + Coffre » pour en créer un, ou « + Item » pour ajouter sans le ranger.'}
+            </Empty>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {displayed.map((r) => (
-                <ItemRow
-                  key={r.id} r={r} busy={busyId === r.id} iconIndex={iconIndex}
-                  onAdjust={(d) => adjust(r.id, d)}
-                  onEdit={() => { setEditing(r); setModalOpen(true); }}
-                  onRemove={() => remove(r)}
-                  onToggleFav={() => toggleFav(r)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {visibleChests.map((chest) => (
+                <ChestPanel
+                  key={chest.id}
+                  chest={chest}
+                  items={itemsByChest.get(chest.id) || []}
+                  collapsed={collapsed.has(chest.id)}
+                  onToggle={() => toggleCollapse(chest.id)}
+                  onAddItem={() => openAddItem(chest.id)}
+                  onEditChest={() => { setEditingChest(chest); setChestModalOpen(true); }}
+                  onDeleteChest={() => removeChest(chest)}
+                  onScan={() => setShotChest(chest)}
+                  itemHandlers={itemHandlers}
                 />
               ))}
+              {unsorted.length > 0 && (
+                <ChestPanel
+                  unsortedGroup
+                  items={unsorted}
+                  collapsed={collapsed.has('none')}
+                  onToggle={() => toggleCollapse('none')}
+                  onAddItem={() => openAddItem(null)}
+                  itemHandlers={itemHandlers}
+                />
+              )}
             </div>
           )}
         </>
@@ -444,8 +575,29 @@ export function MinecraftTab() {
         editing={editing}
         ws={ws}
         catalog={catalog}
+        chests={chests}
+        initialChestId={addChestId}
         onSaved={handleSaved}
         onError={(e) => setErr(e.message)}
+        toast={toast}
+      />
+
+      <ChestModal
+        open={chestModalOpen}
+        onClose={() => { setChestModalOpen(false); setEditingChest(null); }}
+        editing={editingChest}
+        ws={ws}
+        onSaved={handleChestSaved}
+        toast={toast}
+      />
+
+      <ScreenshotModal
+        chest={shotChest}
+        onClose={() => setShotChest(null)}
+        ws={ws}
+        catalog={catalog}
+        iconIndex={iconIndex}
+        onApplied={handleApplied}
         toast={toast}
       />
 
@@ -765,15 +917,122 @@ function ItemRow({ r, busy, iconIndex, onAdjust, onEdit, onRemove, onToggleFav }
   );
 }
 
+// ── ItemCollection (grid/list of items, reused flat + per chest) ──────────────
+
+function ItemCollection({ items, viewMode, iconIndex, busyIdOf, onAdjust, onEdit, onRemove, onToggleFav }) {
+  const Comp = viewMode === 'grid' ? ItemCard : ItemRow;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: viewMode === 'grid' ? 12 : 8 }}>
+      {items.map((r) => (
+        <Comp
+          key={r.id} r={r} busy={busyIdOf(r.id)} iconIndex={iconIndex}
+          onAdjust={(d) => onAdjust(r.id, d)}
+          onEdit={() => onEdit(r)}
+          onRemove={() => onRemove(r)}
+          onToggleFav={() => onToggleFav(r)}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── ChestPanel (un coffre repliable + ses items ; ou le groupe « Non rangé ») ──
+
+function PanelBtn({ onClick, title, danger, children }) {
+  return (
+    <button type="button" onClick={onClick} title={title}
+      style={{
+        background: danger ? 'rgba(200,50,50,0.1)' : 'rgba(80,50,130,0.16)',
+        border: `1px solid ${danger ? 'rgba(200,50,50,0.25)' : 'rgba(80,50,130,0.3)'}`,
+        color: danger ? '#f87171' : '#ede8f8',
+        borderRadius: 7, padding: '5px 9px', cursor: 'pointer', fontSize: 13, lineHeight: 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ChestPanel({
+  chest, unsortedGroup, items, collapsed, onToggle,
+  onAddItem, onEditChest, onDeleteChest, onScan, itemHandlers,
+}) {
+  const meta = unsortedGroup ? { emoji: '📦', label: 'Non rangé' } : worldMeta(chest.world);
+  const coords = unsortedGroup ? null : formatCoords(chest);
+  const total = items.reduce((s, r) => s + (r.quantity || 0), 0);
+
+  return (
+    <div style={{
+      border: '1px solid rgba(80,50,130,0.24)', borderRadius: 12,
+      background: 'rgba(14,9,28,0.45)', overflow: 'hidden',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', flexWrap: 'wrap' }}>
+        <button type="button" onClick={onToggle} title={collapsed ? 'Déplier' : 'Replier'}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            color: 'rgba(180,170,200,0.7)', fontSize: 12, width: 16,
+          }}
+        >
+          {collapsed ? '▸' : '▾'}
+        </button>
+        <span style={{ fontSize: 20 }}>{unsortedGroup ? '📦' : '🧰'}</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{
+              fontFamily: "'Space Grotesk',sans-serif", fontSize: 15, fontWeight: 700, color: '#ede8f8',
+            }}>
+              {unsortedGroup ? 'Non rangé' : chest.name}
+            </span>
+            {!unsortedGroup && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '1px 8px', borderRadius: 12, fontSize: 11,
+                background: 'rgba(120,80,180,0.18)', border: '1px solid rgba(120,80,180,0.35)',
+                color: 'rgba(200,180,240,0.85)', fontFamily: "'Inter',sans-serif",
+              }}>
+                {meta.emoji} {meta.label}
+              </span>
+            )}
+            {coords && (
+              <span style={{ ...muted, fontSize: 11, fontFamily: 'monospace' }}>⛏ {coords}</span>
+            )}
+          </div>
+          <div style={{ ...muted, fontSize: 11.5, marginTop: 2 }}>
+            {items.length} item{items.length > 1 ? 's' : ''} · {total} unité{total > 1 ? 's' : ''}
+            {!unsortedGroup && chest.note ? ` · ${chest.note}` : ''}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {!unsortedGroup && <PanelBtn onClick={onScan} title="Mettre à jour depuis un screenshot">📷</PanelBtn>}
+          <PanelBtn onClick={onAddItem} title="Ajouter un item">＋</PanelBtn>
+          {!unsortedGroup && <PanelBtn onClick={onEditChest} title="Éditer le coffre">✏️</PanelBtn>}
+          {!unsortedGroup && <PanelBtn onClick={onDeleteChest} title="Supprimer le coffre" danger>🗑️</PanelBtn>}
+        </div>
+      </div>
+
+      {!collapsed && (
+        <div style={{ padding: '0 14px 14px' }}>
+          {items.length === 0 ? (
+            <p style={{ ...muted, fontSize: 12.5, padding: '4px 0 2px' }}>Coffre vide.</p>
+          ) : (
+            <ItemCollection items={items} {...itemHandlers} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── ResourceModal ─────────────────────────────────────────────────────────────
 
-function ResourceModal({ open, onClose, editing, ws, catalog, onSaved, onError, toast }) {
+function ResourceModal({ open, onClose, editing, ws, catalog, chests = [], initialChestId = null, onSaved, onError, toast }) {
   const isEdit = !!editing;
   const [name,     setName]     = useState('');
   const [quantity, setQuantity] = useState(0);
   const [notes,    setNotes]    = useState('');
   const [category, setCategory] = useState('');
   const [rarity,   setRarity]   = useState('Commun');
+  const [chestId,  setChestId]  = useState('');
   const [saving,   setSaving]   = useState(false);
 
   useEffect(() => {
@@ -783,7 +1042,8 @@ function ResourceModal({ open, onClose, editing, ws, catalog, onSaved, onError, 
     setNotes(editing?.notes    ?? '');
     setCategory(editing?.category ?? '');
     setRarity(editing?.rarity   ?? 'Commun');
-  }, [open, editing]);
+    setChestId(editing?.chestId ?? initialChestId ?? '');
+  }, [open, editing, initialChestId]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -796,6 +1056,7 @@ function ResourceModal({ open, onClose, editing, ws, catalog, onSaved, onError, 
         notes: notes.trim(),
         category,
         rarity,
+        chestId: chestId === '' ? null : Number(chestId),
       };
       const updated = isEdit
         ? await ws.minecraft.update(editing.id, payload)
@@ -849,6 +1110,25 @@ function ResourceModal({ open, onClose, editing, ws, catalog, onSaved, onError, 
               </button>
             ))}
           </div>
+        </Field>
+
+        {/* Chest */}
+        <Field label="COFFRE">
+          <select
+            value={chestId}
+            onChange={(e) => setChestId(e.target.value === '' ? '' : Number(e.target.value))}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              background: 'rgba(14,9,28,0.6)', border: '1px solid rgba(80,50,130,0.28)',
+              borderRadius: 8, padding: '9px 12px', color: '#ede8f8',
+              fontFamily: "'Inter',sans-serif", fontSize: 14, outline: 'none',
+            }}
+          >
+            <option value="">📦 Non rangé</option>
+            {chests.map((c) => (
+              <option key={c.id} value={c.id}>{worldMeta(c.world).emoji} {c.name}</option>
+            ))}
+          </select>
         </Field>
 
         {/* Category chips */}
@@ -920,6 +1200,287 @@ function ResourceModal({ open, onClose, editing, ws, catalog, onSaved, onError, 
           </Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+// ── ChestModal (créer / éditer un coffre) ────────────────────────────────────
+
+function ChestModal({ open, onClose, editing, ws, onSaved, toast }) {
+  const isEdit = !!editing;
+  const [name, setName]   = useState('');
+  const [world, setWorld] = useState('overworld');
+  const [x, setX] = useState('');
+  const [y, setY] = useState('');
+  const [z, setZ] = useState('');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setName(editing?.name ?? '');
+    setWorld(editing?.world ?? 'overworld');
+    setX(editing?.x ?? ''); setY(editing?.y ?? ''); setZ(editing?.z ?? '');
+    setNote(editing?.note ?? '');
+  }, [open, editing]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      const payload = {
+        name: name.trim(),
+        world: (world || '').trim() || 'overworld',
+        x: x === '' ? null : Number(x),
+        y: y === '' ? null : Number(y),
+        z: z === '' ? null : Number(z),
+        note: note.trim(),
+      };
+      const saved = isEdit
+        ? await ws.minecraft.chests.update(editing.id, payload)
+        : await ws.minecraft.chests.create(payload);
+      toast.success(isEdit ? 'Coffre mis à jour' : 'Coffre créé');
+      onSaved(saved);
+    } catch (ex) {
+      toast.error(`Échec : ${ex.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isPresetWorld = WORLDS.some((w) => w.id === world);
+
+  return (
+    <Modal open={open} onClose={onClose} title={isEdit ? '✏️ Modifier le coffre' : '+ Nouveau coffre'} width={480}>
+      <form onSubmit={submit}>
+        <Field label="NOM DU COFFRE">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Réserve principale, Ferme à fer…" autoFocus required />
+        </Field>
+
+        <Field label="MONDE">
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {WORLDS.map((w) => {
+              const active = world === w.id;
+              return (
+                <button key={w.id} type="button" onClick={() => setWorld(w.id)}
+                  style={{
+                    padding: '6px 12px', borderRadius: 16,
+                    background: active ? `rgba(${ACC_RGB},0.2)` : 'rgba(20,12,40,0.6)',
+                    border: `1px solid ${active ? ACC : 'rgba(80,50,130,0.3)'}`,
+                    color: active ? ACC : 'rgba(180,170,200,0.7)',
+                    fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: active ? 600 : 400, cursor: 'pointer',
+                  }}
+                >
+                  {w.emoji} {w.label}
+                </button>
+              );
+            })}
+            <Input
+              value={isPresetWorld ? '' : world}
+              onChange={(e) => setWorld(e.target.value)}
+              placeholder="autre monde…"
+              style={{ flex: '1 1 120px', minWidth: 100 }}
+            />
+          </div>
+        </Field>
+
+        <Field label="COORDONNÉES (X / Y / Z)">
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Input type="number" value={x} onChange={(e) => setX(e.target.value)} placeholder="X" />
+            <Input type="number" value={y} onChange={(e) => setY(e.target.value)} placeholder="Y" />
+            <Input type="number" value={z} onChange={(e) => setZ(e.target.value)} placeholder="Z" />
+          </div>
+        </Field>
+
+        <Field label="NOTE (OPTIONNEL)">
+          <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Contenu, accès, repère…" />
+        </Field>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <Button type="submit" disabled={saving || !name.trim()} style={{ flex: 1 }}>
+            {saving ? '…' : 'Enregistrer'}
+          </Button>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Annuler</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ── ScreenshotModal (mise à jour d'un coffre depuis une capture d'écran) ──────
+// Hybride : tente la lecture IA (POST /scan-screenshot) ; si indisponible (pas
+// de clé) ou en échec, retombe sur la saisie manuelle avec le screenshot affiché
+// en référence. Dans tous les cas l'utilisateur valide avant d'appliquer.
+
+function ScreenshotModal({ chest, onClose, ws, catalog, iconIndex, onApplied, toast }) {
+  const open = !!chest;
+  const [preview, setPreview] = useState(null);  // object URL
+  const [phase, setPhase] = useState('pick');    // pick | loading | edit
+  const [rows, setRows] = useState([]);          // [{name, quantity}]
+  const [mode, setMode] = useState('replace');   // replace | merge
+  const [applying, setApplying] = useState(false);
+  const [aiNote, setAiNote] = useState('');
+  const fileRef = useRef(null);
+
+  const clearPreview = () => setPreview((p) => { if (p) URL.revokeObjectURL(p); return null; });
+
+  useEffect(() => {
+    if (!open) {
+      clearPreview();
+      setPhase('pick'); setRows([]); setMode('replace'); setApplying(false); setAiNote('');
+    }
+  }, [open]);
+  // Revoke any pending object URL on unmount.
+  useEffect(() => () => clearPreview(), []);
+
+  if (!open) return null;
+
+  const onPick = async (file) => {
+    if (!file) return;
+    setPreview((p) => { if (p) URL.revokeObjectURL(p); return URL.createObjectURL(file); });
+    setPhase('loading'); setAiNote('');
+    try {
+      const res = await ws.minecraft.scanScreenshot(file);
+      if (res?.available && Array.isArray(res.items) && res.items.length) {
+        setRows(res.items.map((it) => {
+          const hit = matchCatalogName(catalog, it.name);
+          return { name: hit ? hit.nomFr : it.name, quantity: Math.max(1, Number(it.quantity) || 1) };
+        }));
+        setAiNote('Lecture IA — vérifie et corrige avant d’appliquer.');
+      } else if (res?.available) {
+        setRows([{ name: '', quantity: 1 }]);
+        setAiNote('Aucun item détecté automatiquement — saisis-les manuellement.');
+      } else {
+        setRows([{ name: '', quantity: 1 }]);
+        setAiNote('Lecture IA indisponible (aucune clé configurée) — saisie manuelle, le screenshot reste affiché en référence.');
+      }
+    } catch (e) {
+      setRows([{ name: '', quantity: 1 }]);
+      setAiNote(`Lecture IA en échec (${e.message}) — saisie manuelle.`);
+    } finally {
+      setPhase('edit');
+    }
+  };
+
+  const setRow = (i, patch) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const addRow = () => setRows((prev) => [...prev, { name: '', quantity: 1 }]);
+  const delRow = (i) => setRows((prev) => prev.filter((_, j) => j !== i));
+
+  const apply = async () => {
+    const items = rows
+      .map((r) => ({ name: (r.name || '').trim(), quantity: Math.max(0, Math.floor(Number(r.quantity) || 0)) }))
+      .filter((r) => r.name);
+    setApplying(true);
+    try {
+      const list = await ws.minecraft.chests.apply(chest.id, { items, mode });
+      onApplied(list);
+    } catch (e) {
+      toast.error(`Échec : ${e.message}`);
+      setApplying(false);
+    }
+  };
+
+  const numStyle = {
+    width: 72, boxSizing: 'border-box', background: 'rgba(14,9,28,0.6)',
+    border: '1px solid rgba(80,50,130,0.28)', borderRadius: 8, padding: '8px 10px',
+    color: '#ede8f8', fontFamily: "'Inter',sans-serif", fontSize: 14, outline: 'none',
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title={`📷 Mettre à jour « ${chest.name} »`} width={620}>
+      {phase === 'pick' ? (
+        <div>
+          <p style={{ ...muted, fontSize: 13, marginBottom: 12 }}>
+            Choisis une capture d’écran de l’interface du coffre. Si une clé IA est configurée, les
+            items et quantités sont lus automatiquement (à valider) ; sinon, saisis-les à la main.
+          </p>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+            onChange={(e) => onPick(e.target.files?.[0])} />
+          <Button onClick={() => fileRef.current?.click()}>Choisir une image…</Button>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            {preview && (
+              <img src={preview} alt="capture du coffre"
+                style={{
+                  width: 200, maxWidth: '100%', borderRadius: 8,
+                  border: '1px solid rgba(80,50,130,0.3)', alignSelf: 'flex-start',
+                  imageRendering: 'pixelated',
+                }} />
+            )}
+            <div style={{ flex: '1 1 280px', minWidth: 240 }}>
+              {aiNote && <p style={{ ...muted, fontSize: 12, marginTop: 0, marginBottom: 10 }}>{aiNote}</p>}
+              {phase === 'loading' ? (
+                <p style={{ ...muted, fontSize: 13 }}>Lecture en cours…</p>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
+                    {rows.map((row, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ width: 22, height: 22, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <ItemIcon name={row.name} iconIndex={iconIndex} size={20} />
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <BlockPicker value={row.name} onChange={(v) => setRow(i, { name: v })} catalog={catalog} />
+                        </div>
+                        <input type="number" min="0" value={row.quantity}
+                          onChange={(e) => setRow(i, { quantity: e.target.value })} style={numStyle} />
+                        <button type="button" onClick={() => delRow(i)} title="Retirer"
+                          style={{
+                            background: 'rgba(200,50,50,0.1)', border: '1px solid rgba(200,50,50,0.25)',
+                            color: '#f87171', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', fontSize: 13,
+                          }}>
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={addRow}
+                    style={{
+                      marginTop: 8, background: 'none', border: '1px dashed rgba(80,50,130,0.4)',
+                      color: 'rgba(180,170,200,0.8)', borderRadius: 8, padding: '7px 12px', cursor: 'pointer',
+                      fontFamily: "'Inter',sans-serif", fontSize: 13,
+                    }}>
+                    + Ajouter une ligne
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {phase !== 'loading' && (
+            <>
+              <Field label="MODE">
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {[['replace', 'Remplacer le contenu'], ['merge', 'Ajouter au contenu']].map(([m, label]) => {
+                    const active = mode === m;
+                    return (
+                      <button key={m} type="button" onClick={() => setMode(m)}
+                        style={{
+                          padding: '7px 14px', borderRadius: 16,
+                          background: active ? `rgba(${ACC_RGB},0.2)` : 'rgba(20,12,40,0.6)',
+                          border: `1px solid ${active ? ACC : 'rgba(80,50,130,0.3)'}`,
+                          color: active ? ACC : 'rgba(180,170,200,0.7)',
+                          fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: active ? 600 : 400, cursor: 'pointer',
+                        }}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <Button onClick={apply} disabled={applying} style={{ flex: 1 }}>
+                  {applying ? '…' : (mode === 'replace' ? 'Remplacer le coffre' : 'Ajouter au coffre')}
+                </Button>
+                <Button variant="ghost" onClick={onClose} disabled={applying}>Annuler</Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }

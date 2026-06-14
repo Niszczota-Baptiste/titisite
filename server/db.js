@@ -185,6 +185,30 @@ export function migrate() {
   ensureColumn('minecraft_resources', 'rarity',   "TEXT NOT NULL DEFAULT 'Commun'");
   ensureColumn('minecraft_resources', 'favorite',  'INTEGER NOT NULL DEFAULT 0');
 
+  // Coffres (containers en jeu) : un coffre regroupe des ressources via
+  // minecraft_resources.chest_id. Un même item peut exister dans plusieurs
+  // coffres (une ligne par coffre). Supprimer un coffre repasse ses items en
+  // « non rangé » (chest_id NULL) — le handler DELETE le force aussi, au cas où
+  // les foreign_keys seraient désactivées.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_chests (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      world        TEXT NOT NULL DEFAULT 'overworld',
+      x            INTEGER,
+      y            INTEGER,
+      z            INTEGER,
+      note         TEXT NOT NULL DEFAULT '',
+      position     INTEGER NOT NULL DEFAULT 0,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_chests_workspace ON minecraft_chests(workspace_id, position);`);
+  ensureColumn('minecraft_resources', 'chest_id', 'INTEGER REFERENCES minecraft_chests(id) ON DELETE SET NULL');
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS comments (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,

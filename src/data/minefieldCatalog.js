@@ -17,29 +17,56 @@ export const normName = (s) => stripDiacritics(String(s || '').toLowerCase()).tr
 
 let _promise = null;
 
+// Un fichier codex (Minefield custom OU vanilla 1.18.2) → entrées enrichies.
+// `icon` est toujours préfixé par `/codex/` (les deux fichiers stockent un
+// chemin relatif : « icons/… » pour Minefield, « vanilla/icons/… » pour vanilla).
+function fetchCodex(url, source) {
+  return fetch(url)
+    .then((r) => (r.ok ? r.json() : []))
+    .then((arr) => (Array.isArray(arr) ? arr : []).map((e) => ({
+      type: e.type,
+      id: e.id,
+      nomFr: e.nomFr,
+      categorie: e.categorie,
+      source,
+      icon: e.icon ? `/codex/${e.icon}` : null,
+      _key: normName(e.nomFr),
+    })))
+    .catch(() => []);
+}
+
 /**
- * Charge (et met en cache) le codex Minefield. Renvoie toujours un tableau —
- * jamais d'erreur : si le fetch échoue, on dégrade silencieusement sur [] et
- * l'onglet retombe sur les emojis + la liste vanilla.
+ * Charge (et met en cache) le catalogue : items/blocs custom Minefield **puis**
+ * vanilla Minecraft 1.18.2. Renvoie toujours un tableau — jamais d'erreur : si
+ * un fetch échoue, on dégrade silencieusement (l'onglet retombe sur les emojis).
  *
- * Chaque entrée renvoyée est enrichie de `icon` (URL absolue ou null) et `_key`
- * (nom normalisé, pré-calculé pour la recherche).
+ * Minefield est placé en premier pour gagner sur vanilla en cas de collision de
+ * nom (index d'icônes + recherche). Chaque entrée porte `icon` (URL ou null),
+ * `source` ('minefield'|'minecraft') et `_key` (nom normalisé pré-calculé).
  */
 export function loadMinefieldCatalog() {
   if (!_promise) {
-    _promise = fetch('/codex/codex.json')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((arr) => (Array.isArray(arr) ? arr : []).map((e) => ({
-        type: e.type,
-        id: e.id,
-        nomFr: e.nomFr,
-        categorie: e.categorie,
-        icon: e.icon ? `/codex/${e.icon}` : null,
-        _key: normName(e.nomFr),
-      })))
-      .catch(() => []);
+    _promise = Promise.all([
+      fetchCodex('/codex/codex.json', 'minefield'),
+      fetchCodex('/codex/vanilla/codex.json', 'minecraft'),
+    ]).then(([mf, vanilla]) => [...mf, ...vanilla]);
   }
   return _promise;
+}
+
+/**
+ * Rapproche un nom libre (ex. sortie de la lecture IA d'un screenshot) d'une
+ * entrée du catalogue : essai exact sur le nom normalisé, puis inclusion lâche
+ * dans un sens ou l'autre. Renvoie l'entrée ou null.
+ */
+export function matchCatalogName(catalog, name) {
+  const key = normName(name);
+  if (!key || !Array.isArray(catalog)) return null;
+  return (
+    catalog.find((e) => e._key === key)
+    || catalog.find((e) => e._key && (e._key.includes(key) || key.includes(e._key)))
+    || null
+  );
 }
 
 /**
