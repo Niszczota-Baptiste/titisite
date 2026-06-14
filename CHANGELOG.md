@@ -22,7 +22,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (`@anthropic-ai/sdk`, sortie structurée) → brouillon items + quantités à
   valider, puis `POST …/minecraft/chests/:id/apply` (`replace`|`merge`). Actif si
   `ANTHROPIC_API_KEY` est défini (modèle via `MINECRAFT_VISION_MODEL`, défaut
-  `claude-opus-4-8`) ; sinon repli sur la saisie manuelle, screenshot en
+  `claude-sonnet-4-6`) ; sinon repli sur la saisie manuelle, screenshot en
   référence. Upload en mémoire (jamais persisté).
 
 ### Security / Ops (LOT 1)

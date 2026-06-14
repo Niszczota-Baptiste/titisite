@@ -4,7 +4,7 @@
 // surchargeable via MINECRAFT_VISION_MODEL (défaut : claude-opus-4-8).
 import Anthropic from '@anthropic-ai/sdk';
 
-const MODEL = process.env.MINECRAFT_VISION_MODEL || 'claude-opus-4-8';
+const MODEL = process.env.MINECRAFT_VISION_MODEL || 'claude-sonnet-4-6';
 
 // Sortie structurée : garantit un JSON exploitable { items: [{name, quantity}] }.
 const FORMAT_SCHEMA = {
