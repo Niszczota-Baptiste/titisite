@@ -4,6 +4,7 @@ import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useConfirm } from '../../../ui/ConfirmProvider';
 import { useToast } from '../../../ui/ToastProvider';
 import { Button, Empty, ErrorBanner, Field, Input, card, muted } from '../shared';
+import { BlueprintBom } from './BlueprintBom';
 
 const BlueprintScene = lazy(() => import('./BlueprintScene'));
 
@@ -26,7 +27,7 @@ const BOUNDS = [
 // Sous-onglet « Builds 3D » : import d'un monde solo (.mca/zip) borné par la
 // boîte F3, liste des builds, et visionneuse 3D + slider de couche. Le BOM et le
 // partage sont ajoutés par les phases suivantes (PlanView/Share).
-export function BuildsView({ ws }) {
+export function BuildsView({ ws, items = [], chests = [] }) {
   const isMobile = useIsMobile(720);
   const confirm = useConfirm();
   const toast = useToast();
@@ -78,7 +79,7 @@ export function BuildsView({ ws }) {
                 </Button>
                 <Button variant="ghost" onClick={() => remove(b)}>Supprimer</Button>
               </div>
-              {openId === b.id && <BlueprintViewer ws={ws} id={b.id} isMobile={isMobile} />}
+              {openId === b.id && <BlueprintViewer ws={ws} id={b.id} isMobile={isMobile} items={items} chests={chests} />}
             </div>
           ))}
         </div>
@@ -145,8 +146,9 @@ function UploadForm({ ws, toast, onDone, onCancel, onError }) {
   );
 }
 
-function BlueprintViewer({ ws, id, isMobile }) {
+function BlueprintViewer({ ws, id, isMobile, items, chests }) {
   const [data, setData] = useState(null);
+  const [detail, setDetail] = useState(null); // méta + bom
   const [codex, setCodex] = useState(null);
   const [err, setErr] = useState('');
   const [layer, setLayer] = useState(null);
@@ -159,6 +161,7 @@ function BlueprintViewer({ ws, id, isMobile }) {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('http'))))
       .then((d) => { if (alive) { setData(d); setLayer(d.size.y - 1); } })
       .catch(() => alive && setErr('Données du build illisibles.'));
+    ws.blueprints.get(id).then((d) => alive && setDetail(d)).catch(() => {});
     loadBlockCodex().then((c) => alive && setCodex(c));
     return () => { alive = false; };
   }, [ws, id]);
@@ -200,6 +203,9 @@ function BlueprintViewer({ ws, id, isMobile }) {
           </button>
         </div>
       </div>
+      {detail?.bom && (
+        <BlueprintBom bom={detail.bom} codex={codex} items={items} chests={chests} />
+      )}
     </div>
   );
 }

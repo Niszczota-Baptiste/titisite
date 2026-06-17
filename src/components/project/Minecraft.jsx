@@ -381,7 +381,7 @@ export function MinecraftTab() {
   if (view === 'builds') {
     return (
       <Section title="🏗️ Builds 3D importés" actions={subNav}>
-        <BuildsView ws={ws} />
+        <BuildsView ws={ws} items={items} chests={chests} />
       </Section>
     );
   }
