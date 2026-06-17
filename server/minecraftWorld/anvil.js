@@ -1,0 +1,113 @@
+import zlib from 'node:zlib';
+import nbt from 'prismarine-nbt';
+
+// Parsing Anvil 1.18 d'un fichier de région (.mca) :
+//  - header 8 Kio : 1024 offsets (3o secteur + 1o nb secteurs, secteurs de 4 Kio)
+//    puis 1024 timestamps (ignorés).
+//  - chaque chunk : longueur(4o BE) + compression(1o : 1 gzip / 2 zlib / 3 none)
+//    + NBT compressé.
+//  - 1.18 : données à la racine (plus de « Level ») ; blocs dans
+//    sections[].block_states { palette:[{Name,Properties}], data:[long] }.
+//  - data = indices paletteisés, bits = max(4, ceil(log2(len palette))),
+//    4096 blocs/section en ordre YZX, un index NE chevauche PAS deux longs.
+//    Palette de taille 1 sans « data » = section homogène.
+
+const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air']);
+const SECTOR = 4096;
+
+// prismarine-nbt représente un long selon la version : BigInt, [high,low], ou
+// number. On ramène tout à un BigInt 64 bits non signé.
+function toBig(el) {
+  if (typeof el === 'bigint') return el & 0xffffffffffffffffn;
+  if (Array.isArray(el)) {
+    const hi = BigInt(el[0] | 0);
+    const lo = BigInt(el[1] >>> 0);
+    return ((hi << 32n) | lo) & 0xffffffffffffffffn;
+  }
+  return BigInt(el) & 0xffffffffffffffffn;
+}
+
+async function decodeChunk(payload, compression) {
+  let raw;
+  if (compression === 1) raw = zlib.gunzipSync(payload);
+  else if (compression === 2) raw = zlib.inflateSync(payload);
+  else raw = payload; // 3 = non compressé
+  const { parsed } = await nbt.parse(raw);
+  return nbt.simplify(parsed);
+}
+
+// Parse une région et appelle emit(x, y, z, name) pour chaque bloc non-air
+// DANS la boîte. `bbox` = { minX, minY, minZ, maxX, maxY, maxZ } (inclusif).
+export async function parseRegion(buf, regionX, regionZ, bbox, emit) {
+  if (buf.length < 8192) return;
+  for (let ci = 0; ci < 1024; ci++) {
+    const loc = buf.readUInt32BE(ci * 4);
+    const sectorOff = loc >>> 8;
+    const sectorCount = loc & 0xff;
+    if (sectorOff === 0 || sectorCount === 0) continue;
+
+    const localX = ci % 32;
+    const localZ = (ci / 32) | 0;
+    const chunkX = regionX * 32 + localX;
+    const chunkZ = regionZ * 32 + localZ;
+    const baseX = chunkX * 16;
+    const baseZ = chunkZ * 16;
+    // Cull au niveau chunk (16×16 en X/Z).
+    if (baseX > bbox.maxX || baseX + 15 < bbox.minX) continue;
+    if (baseZ > bbox.maxZ || baseZ + 15 < bbox.minZ) continue;
+
+    const off = sectorOff * SECTOR;
+    if (off + 5 > buf.length) continue;
+    const length = buf.readUInt32BE(off);
+    if (length <= 1 || off + 4 + length > buf.length) continue;
+    const compression = buf.readUInt8(off + 4);
+    const payload = buf.subarray(off + 5, off + 4 + length);
+
+    let root;
+    try { root = await decodeChunk(payload, compression); } catch { continue; }
+    const sections = root.sections || root.Sections || [];
+    if (!Array.isArray(sections)) continue;
+
+    for (const sec of sections) {
+      const states = sec.block_states || sec.BlockStates;
+      if (!states || !Array.isArray(states.palette) || states.palette.length === 0) continue;
+      const baseY = (sec.Y | 0) * 16;
+      if (baseY > bbox.maxY || baseY + 15 < bbox.minY) continue;
+
+      const palette = states.palette;
+      const names = palette.map((p) => (typeof p === 'string' ? p : p.Name));
+
+      // Section homogène (1 entrée, pas de data).
+      if (palette.length === 1 || !states.data) {
+        const name = names[0];
+        if (AIR.has(name)) continue;
+        for (let n = 0; n < 4096; n++) {
+          const x = baseX + (n & 15);
+          const z = baseZ + ((n >> 4) & 15);
+          const y = baseY + ((n >> 8) & 15);
+          if (x < bbox.minX || x > bbox.maxX || y < bbox.minY || y > bbox.maxY || z < bbox.minZ || z > bbox.maxZ) continue;
+          emit(x, y, z, name);
+        }
+        continue;
+      }
+
+      const bits = Math.max(4, Math.ceil(Math.log2(palette.length)));
+      const mask = (1n << BigInt(bits)) - 1n;
+      const perLong = Math.floor(64 / bits);
+      const longs = states.data.map(toBig);
+
+      for (let n = 0; n < 4096; n++) {
+        const li = Math.floor(n / perLong);
+        const within = n % perLong;
+        const v = Number((longs[li] >> BigInt(within * bits)) & mask);
+        const name = names[v];
+        if (!name || AIR.has(name)) continue;
+        const x = baseX + (n & 15);
+        const z = baseZ + ((n >> 4) & 15);
+        const y = baseY + ((n >> 8) & 15);
+        if (x < bbox.minX || x > bbox.maxX || y < bbox.minY || y > bbox.maxY || z < bbox.minZ || z > bbox.maxZ) continue;
+        emit(x, y, z, name);
+      }
+    }
+  }
+}

@@ -29,6 +29,7 @@ import { featuresRouter } from './routes/features.js';
 import { meRouter } from './routes/me.js';
 import { meetingsRouter } from './routes/meetings.js';
 import { minecraftRouter } from './routes/minecraft.js';
+import { blueprintsRouter, blueprintsPublicRouter } from './routes/blueprints.js';
 import { minecraftAdminRouter } from './routes/minecraft-admin.js';
 import { recipesRouter } from './routes/recipes.js';
 import { settingsRouter } from './routes/settings.js';
@@ -268,6 +269,9 @@ app.use('/api/recipes', recipesRouter);
 // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.
 app.use('/api/minecraft-admin', minecraftAdminRouter);
 
+// Builds importés — partage public en lecture seule par token (sans cookie).
+app.use('/api/blueprints', blueprintsPublicRouter);
+
 // Workspace CRUD
 app.use('/api/workspaces', workspacesRouter);
 
@@ -279,6 +283,7 @@ scoped.use('/meetings',  meetingsRouter);
 scoped.use('/documents', documentsRouter);
 scoped.use('/builds',    buildsRouter);
 scoped.use('/minecraft', minecraftRouter);
+scoped.use('/blueprints', blueprintsRouter);
 scoped.use('/tags',      tagsRouter);
 scoped.use('/summary',   summaryRouter);
 scoped.use('/activity-count', activityRouter);

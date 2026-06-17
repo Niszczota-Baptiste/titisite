@@ -191,6 +191,12 @@ export const api = {
     regeocode: (id) => request('POST',   `/stairs/${id}/regeocode`),
   },
 
+  // Build importé partagé en lecture seule (public, par token).
+  blueprintShared: {
+    get:     (token) => request('GET', `/blueprints/shared/${token}`),
+    dataUrl: (token) => `/api/blueprints/shared/${token}/data`,
+  },
+
   // Custom Minecraft recipes (global; read for any auth user, write admin-only).
   recipes: {
     list:   () => request('GET',    '/recipes'),
@@ -276,6 +282,21 @@ export const api = {
         const fd = new FormData();
         fd.append('image', file);
         return uploadFile(`/workspaces/${slug}/minecraft/scan-screenshot`, fd);
+      },
+    },
+    // Builds importés (.mca) : upload+parse, méta+BOM, données sparse, partage.
+    blueprints: {
+      list:   () => request('GET',    `/workspaces/${slug}/blueprints`),
+      get:    (id) => request('GET',  `/workspaces/${slug}/blueprints/${id}`),
+      dataUrl: (id) => `/api/workspaces/${slug}/blueprints/${id}/data`,
+      remove: (id) => request('DELETE', `/workspaces/${slug}/blueprints/${id}`),
+      share:    (id) => request('POST', `/workspaces/${slug}/blueprints/${id}/share`),
+      unshare:  (id) => request('DELETE', `/workspaces/${slug}/blueprints/${id}/share`),
+      upload: (file, fields, onProgress) => {
+        const fd = new FormData();
+        fd.append('file', file);
+        for (const [k, v] of Object.entries(fields || {})) fd.append(k, v);
+        return uploadFile(`/workspaces/${slug}/blueprints`, fd, { onProgress });
       },
     },
     tags: {

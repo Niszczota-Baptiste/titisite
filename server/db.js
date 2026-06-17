@@ -265,6 +265,28 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_shop_items_shop ON shop_items(shop_id, position);`);
 
+  // Builds importés depuis un monde solo (.mca), scopés par workspace_id. Les
+  // blocs SPARSE volumineux vivent en artefact gzip sur disque (data_file) ;
+  // ici on garde les métadonnées + palette + BOM précalculé + token de partage.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_blueprints (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      min_x INTEGER NOT NULL, min_y INTEGER NOT NULL, min_z INTEGER NOT NULL,
+      size_x INTEGER NOT NULL, size_y INTEGER NOT NULL, size_z INTEGER NOT NULL,
+      block_count  INTEGER NOT NULL DEFAULT 0,
+      palette      TEXT NOT NULL DEFAULT '[]',
+      bom          TEXT NOT NULL DEFAULT '[]',
+      data_file    TEXT,
+      share_token  TEXT UNIQUE,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_blueprints_workspace ON minecraft_blueprints(workspace_id, id);`);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS comments (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,

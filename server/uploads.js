@@ -121,6 +121,18 @@ export const uploadDocument = makeUploader(ALLOWED_DOCUMENT, DOC_MAX_BYTES);
 export const uploadAudio    = makeUploader(ALLOWED_AUDIO,    AUDIO_MAX_BYTES);
 export const uploadBuild    = makeUploader(ALLOWED_BUILD,    BUILD_MAX_BYTES);
 
+// Mondes Minecraft à importer : un ZIP du dossier region/ ou un .mca isolé.
+// Gros fichiers ; le .mca n'a pas de MIME dédié → octet-stream toléré,
+// l'extension fait foi.
+export const ALLOWED_WORLD = {
+  mime: new Set([
+    'application/zip', 'application/x-zip-compressed', 'application/octet-stream',
+  ]),
+  ext: new Set(['.zip', '.mca']),
+};
+export const WORLD_MAX_BYTES = Number(process.env.WORLD_MAX_BYTES || 512 * 1024 * 1024);
+export const uploadWorld = makeUploader(ALLOWED_WORLD, WORLD_MAX_BYTES);
+
 export const ALLOWED_IMAGE = {
   mime: new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']),
   ext:  new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']),
