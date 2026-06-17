@@ -209,6 +209,62 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_chests_workspace ON minecraft_chests(workspace_id, position);`);
   ensureColumn('minecraft_resources', 'chest_id', 'INTEGER REFERENCES minecraft_chests(id) ON DELETE SET NULL');
 
+  // Recettes custom Minefield, GLOBALES (les recettes vanilla vivent côté client
+  // dans src/data/recipes_vanilla.json). Éditées en admin, lues par le
+  // calculateur de craft de chaque projet. `result_id`/`ingredients[].item`
+  // référencent des ids de codex ; `ingredients` est un JSON [{item, count}].
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS custom_recipes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      result_id    TEXT NOT NULL,
+      result_count INTEGER NOT NULL DEFAULT 1,
+      type         TEXT NOT NULL DEFAULT 'crafting',
+      ingredients  TEXT NOT NULL DEFAULT '[]',
+      note         TEXT NOT NULL DEFAULT '',
+      position     INTEGER NOT NULL DEFAULT 0,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_custom_recipes_result ON custom_recipes(result_id);`);
+
+  // Boutiques (shops) et items en vente, GLOBAUX et admin-only. `project_id`
+  // optionnel rattache une boutique à un workspace ; `chest_id` relie
+  // optionnellement un item en vente à un coffre (stock réel). `item_id` = id de
+  // codex, `price` en unité libre.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS shops (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL,
+      project_id  INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
+      description TEXT NOT NULL DEFAULT '',
+      currency    TEXT NOT NULL DEFAULT 'émeraudes',
+      position    INTEGER NOT NULL DEFAULT 0,
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS shop_items (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      shop_id   INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      item_id   TEXT NOT NULL,
+      item_name TEXT NOT NULL DEFAULT '',
+      category  TEXT NOT NULL DEFAULT '',
+      price     REAL NOT NULL DEFAULT 0,
+      unit      TEXT NOT NULL DEFAULT 'unité',
+      stock     INTEGER NOT NULL DEFAULT 0,
+      chest_id  INTEGER REFERENCES minecraft_chests(id) ON DELETE SET NULL,
+      note      TEXT NOT NULL DEFAULT '',
+      position  INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_shop_items_shop ON shop_items(shop_id, position);`);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS comments (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,

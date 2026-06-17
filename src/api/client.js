@@ -191,6 +191,31 @@ export const api = {
     regeocode: (id) => request('POST',   `/stairs/${id}/regeocode`),
   },
 
+  // Custom Minecraft recipes (global; read for any auth user, write admin-only).
+  recipes: {
+    list:   () => request('GET',    '/recipes'),
+    create: (b) => request('POST',  '/recipes', b),
+    update: (id, b) => request('PUT', `/recipes/${id}`, b),
+    remove: (id) => request('DELETE', `/recipes/${id}`),
+  },
+
+  // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.
+  minecraftAdmin: {
+    overview:    () => request('GET', '/minecraft-admin/overview'),
+    adjustItem:  (id, b) => request('POST', `/minecraft-admin/resources/${id}/adjust`, b),
+    shops: {
+      list:   () => request('GET',    '/minecraft-admin/shops'),
+      create: (b) => request('POST',  '/minecraft-admin/shops', b),
+      update: (id, b) => request('PUT', `/minecraft-admin/shops/${id}`, b),
+      remove: (id) => request('DELETE', `/minecraft-admin/shops/${id}`),
+      items: {
+        create: (shopId, b) => request('POST', `/minecraft-admin/shops/${shopId}/items`, b),
+        update: (id, b) => request('PUT', `/minecraft-admin/shop-items/${id}`, b),
+        remove: (id) => request('DELETE', `/minecraft-admin/shop-items/${id}`),
+      },
+    },
+  },
+
   // Workspaces (team projects)
   workspaces: {
     list:       () => request('GET', '/workspaces'),

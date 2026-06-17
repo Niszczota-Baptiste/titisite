@@ -29,6 +29,7 @@ import { featuresRouter } from './routes/features.js';
 import { meRouter } from './routes/me.js';
 import { meetingsRouter } from './routes/meetings.js';
 import { minecraftRouter } from './routes/minecraft.js';
+import { recipesRouter } from './routes/recipes.js';
 import { settingsRouter } from './routes/settings.js';
 import { sitemapRouter } from './routes/sitemap.js';
 import { stairsRouter } from './routes/stairs.js';
@@ -258,6 +259,10 @@ app.use('/api/stairs', stairsRouter);
 
 // Current-user helpers (e.g. /api/me/events for the cross-project calendar)
 app.use('/api/me', meRouter);
+
+// Custom Minecraft recipes (read: any auth user — used by the craft calculator;
+// write: admin). Vanilla recipes live client-side in src/data/recipes_vanilla.json.
+app.use('/api/recipes', recipesRouter);
 
 // Workspace CRUD
 app.use('/api/workspaces', workspacesRouter);

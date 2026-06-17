@@ -8,6 +8,7 @@ import { CurrentlyEditor } from './editors/CurrentlyEditor';
 import { EducationEditor } from './editors/EducationEditor';
 import { ExperienceEditor } from './editors/ExperienceEditor';
 import { MessagesEditor } from './editors/MessagesEditor';
+import { MinecraftAdminEditor } from './editors/minecraft/MinecraftAdminEditor';
 import { PhotosEditor } from './editors/PhotosEditor';
 import { ProjectsEditor } from './editors/ProjectsEditor';
 import { PublicSectionsEditor } from './editors/PublicSectionsEditor';
@@ -28,6 +29,7 @@ const TABS = [
   { key: 'currently',  label: 'En cours',               Editor: CurrentlyEditor },
   { key: 'messages',   label: 'Messages',               Editor: MessagesEditor },
   { key: 'workspaces', label: 'Projets d\'équipe',      Editor: WorkspacesEditor },
+  { key: 'minecraft',  label: '⛏️ Coffres & Shops',     Editor: MinecraftAdminEditor },
   { key: 'users',      label: 'Utilisateurs',           Editor: UsersEditor },
 ];
 
