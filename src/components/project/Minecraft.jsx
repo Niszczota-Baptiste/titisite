@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { searchBlocks } from '../../data/minecraftBlocks';
 import {
-  buildIconIndex, loadMinefieldCatalog, matchCatalogName, normName, searchCatalog,
+  buildIconIndex, buildIdIndex, loadMinefieldCatalog, matchCatalogName, normName, searchCatalog,
 } from '../../data/minefieldCatalog';
+import { Block3D } from './block3d/Block3D';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { useConfirm } from '../../ui/ConfirmProvider';
@@ -108,22 +109,41 @@ export function stacksInfo(qty) {
 
 // Icône d'un item : vraie texture Minefield (PNG pixel-art) si le nom correspond
 // à une entrée du codex, sinon repli sur l'emoji déduit du nom/de la catégorie.
-function ItemIcon({ name, category, iconIndex, size = 24 }) {
+function ItemIcon({ name, category, iconIndex, idIndex, block3d = false, size = 24 }) {
   const url = iconIndex?.get(normName(name));
-  if (url) {
-    return (
-      <img
-        src={url}
-        alt=""
-        width={size}
-        height={size}
-        loading="lazy"
-        draggable={false}
-        style={{ imageRendering: 'pixelated', objectFit: 'contain', display: 'block' }}
-      />
-    );
-  }
-  return <span style={{ fontSize: size }}>{getItemEmoji(name, category)}</span>;
+  const [hover, setHover] = useState(false);
+  const id = block3d ? idIndex?.get(normName(name)) : null;
+
+  const flat = url ? (
+    <img
+      src={url}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      draggable={false}
+      style={{ imageRendering: 'pixelated', objectFit: 'contain', display: 'block' }}
+    />
+  ) : (
+    <span style={{ fontSize: size }}>{getItemEmoji(name, category)}</span>
+  );
+
+  // Sans modèle possible (pas d'id, ou mode 3D off) → comportement d'origine.
+  if (!id) return flat;
+
+  // Le bloc 3D ne se monte qu'au survol (un contexte WebGL par item survolé), et
+  // retombe de lui-même sur l'icône plate si l'id n'a pas de modèle géométrique.
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title="Survol : aperçu 3D"
+      style={{ position: 'relative', width: size, height: size, borderRadius: 8 }}
+    >
+      {flat}
+      {hover && <Block3D id={id} size={size} />}
+    </div>
+  );
 }
 
 // ── MinecraftTab — state + effects ────────────────────────────────────────────
@@ -143,6 +163,8 @@ export function MinecraftTab() {
   // Catalogue Minefield (items/blocs custom + icônes), chargé une fois.
   const [catalog, setCatalog] = useState([]);
   const iconIndex = useMemo(() => buildIconIndex(catalog), [catalog]);
+  const idIndex = useMemo(() => buildIdIndex(catalog), [catalog]);
+  const [block3d, setBlock3d] = useState(false); // aperçu 3D des blocs au survol
 
   // Coffres (containers) + organisation de la vue
   const [chests, setChests] = useState([]);
@@ -338,7 +360,7 @@ export function MinecraftTab() {
   const unsorted = itemsByChest.get('none') || [];
 
   const itemHandlers = {
-    iconIndex, viewMode,
+    iconIndex, idIndex, block3d, viewMode,
     busyIdOf: (id) => busyId === id,
     onAdjust: adjust,
     onEdit: openEditItem,
@@ -482,6 +504,20 @@ export function MinecraftTab() {
               }}
             >
               ⭐ Favoris
+            </button>
+            <button type="button"
+              onClick={() => setBlock3d((v) => !v)}
+              title="Aperçu 3D des blocs au survol (l'icône plate reste par défaut)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 14px', borderRadius: 10,
+                background: block3d ? `rgba(${ACC_RGB},0.18)` : 'transparent',
+                border: `1px solid ${block3d ? ACC : 'rgba(80,50,130,0.28)'}`,
+                color: block3d ? ACC : '#ede8f8',
+                fontFamily: "'Inter',sans-serif", fontSize: 13, cursor: 'pointer',
+              }}
+            >
+              🧊 3D
             </button>
             <div style={{
               display: 'flex', borderRadius: 8, overflow: 'hidden',
@@ -692,7 +728,7 @@ function AdjBtn({ delta, label, busy, onAdjust, compact = false }) {
 
 // ── ItemCard (grid view) ──────────────────────────────────────────────────────
 
-function ItemCard({ r, busy, iconIndex, onAdjust, onEdit, onRemove, onToggleFav }) {
+function ItemCard({ r, busy, iconIndex, idIndex, block3d, onAdjust, onEdit, onRemove, onToggleFav }) {
   const cat    = CATEGORIES.find((c) => c.id === r.category);
   const rColor = rarityColor(r.rarity);
   const { s64, rem, s16 } = stacksInfo(r.quantity);
@@ -707,7 +743,7 @@ function ItemCard({ r, busy, iconIndex, onAdjust, onEdit, onRemove, onToggleFav 
           border: '1px solid rgba(80,50,130,0.28)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <ItemIcon name={r.name} category={r.category} iconIndex={iconIndex} size={32} />
+          <ItemIcon name={r.name} category={r.category} iconIndex={iconIndex} idIndex={idIndex} block3d={block3d} size={32} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
@@ -818,7 +854,7 @@ function ItemCard({ r, busy, iconIndex, onAdjust, onEdit, onRemove, onToggleFav 
 
 // ── ItemRow (list view) ───────────────────────────────────────────────────────
 
-function ItemRow({ r, busy, iconIndex, onAdjust, onEdit, onRemove, onToggleFav }) {
+function ItemRow({ r, busy, iconIndex, idIndex, block3d, onAdjust, onEdit, onRemove, onToggleFav }) {
   const cat   = CATEGORIES.find((c) => c.id === r.category);
 
   return (
@@ -834,7 +870,7 @@ function ItemRow({ r, busy, iconIndex, onAdjust, onEdit, onRemove, onToggleFav }
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'rgba(20,10,42,0.85)', borderRadius: 6,
         }}>
-          <ItemIcon name={r.name} category={r.category} iconIndex={iconIndex} size={20} />
+          <ItemIcon name={r.name} category={r.category} iconIndex={iconIndex} idIndex={idIndex} block3d={block3d} size={20} />
         </span>
         <div style={{ minWidth: 0 }}>
           <div style={{
@@ -919,13 +955,14 @@ function ItemRow({ r, busy, iconIndex, onAdjust, onEdit, onRemove, onToggleFav }
 
 // ── ItemCollection (grid/list of items, reused flat + per chest) ──────────────
 
-function ItemCollection({ items, viewMode, iconIndex, busyIdOf, onAdjust, onEdit, onRemove, onToggleFav }) {
+function ItemCollection({ items, viewMode, iconIndex, idIndex, block3d, busyIdOf, onAdjust, onEdit, onRemove, onToggleFav }) {
   const Comp = viewMode === 'grid' ? ItemCard : ItemRow;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: viewMode === 'grid' ? 12 : 8 }}>
       {items.map((r) => (
         <Comp
           key={r.id} r={r} busy={busyIdOf(r.id)} iconIndex={iconIndex}
+          idIndex={idIndex} block3d={block3d}
           onAdjust={(d) => onAdjust(r.id, d)}
           onEdit={() => onEdit(r)}
           onRemove={() => onRemove(r)}

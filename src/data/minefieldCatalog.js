@@ -100,3 +100,18 @@ export function buildIconIndex(catalog) {
   }
   return m;
 }
+
+/**
+ * Index Map<nom normalisé, id de codex> — permet de retrouver l'id technique
+ * d'une ressource (stockée par nom libre) pour charger son modèle 3D. En cas de
+ * doublon de nom, la première entrée gagne (Minefield avant vanilla).
+ */
+export function buildIdIndex(catalog) {
+  const m = new Map();
+  if (!Array.isArray(catalog)) return m;
+  for (const e of catalog) {
+    if (!e.id) continue;
+    if (!m.has(e._key)) m.set(e._key, e.id);
+  }
+  return m;
+}
