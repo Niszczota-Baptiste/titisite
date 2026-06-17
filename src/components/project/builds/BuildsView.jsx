@@ -1,12 +1,12 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { loadBlockCodex } from '../../../data/blockCodex';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useConfirm } from '../../../ui/ConfirmProvider';
 import { useToast } from '../../../ui/ToastProvider';
 import { Button, Empty, ErrorBanner, Field, Input, card, muted } from '../shared';
 import { BlueprintBom } from './BlueprintBom';
-
-const BlueprintScene = lazy(() => import('./BlueprintScene'));
+import { BlueprintCanvas } from './BlueprintCanvas';
+import { ShareControls } from './ShareControls';
 
 const PARSE_ERRORS = {
   box_too_big: 'Boîte trop grande (max 2048×384×2048).',
@@ -151,22 +151,19 @@ function BlueprintViewer({ ws, id, isMobile, items, chests }) {
   const [detail, setDetail] = useState(null); // méta + bom
   const [codex, setCodex] = useState(null);
   const [err, setErr] = useState('');
-  const [layer, setLayer] = useState(null);
-  const [mode, setMode] = useState('cumulative'); // 'cumulative' | 'single'
 
   useEffect(() => {
     let alive = true;
     setData(null); setErr('');
     fetch(ws.blueprints.dataUrl(id), { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('http'))))
-      .then((d) => { if (alive) { setData(d); setLayer(d.size.y - 1); } })
+      .then((d) => { if (alive) setData(d); })
       .catch(() => alive && setErr('Données du build illisibles.'));
     ws.blueprints.get(id).then((d) => alive && setDetail(d)).catch(() => {});
     loadBlockCodex().then((c) => alive && setCodex(c));
     return () => { alive = false; };
   }, [ws, id]);
 
-  const maxLayer = data ? data.size.y - 1 : 0;
   const height = isMobile ? 320 : 480;
 
   if (err) return <div style={{ ...card, padding: 16, marginTop: 8, color: '#fb923c' }}>{err}</div>;
@@ -174,35 +171,8 @@ function BlueprintViewer({ ws, id, isMobile, items, chests }) {
 
   return (
     <div style={{ ...card, padding: 0, marginTop: 8, overflow: 'hidden' }}>
-      <div style={{ position: 'relative', height, background: '#0d0a1c', borderRadius: 12, overflow: 'hidden' }}>
-        <Suspense fallback={<div style={{ ...muted, padding: 16 }}>Chargement du moteur 3D…</div>}>
-          <BlueprintScene data={data} codex={codex} layer={layer ?? maxLayer} layerMode={mode} />
-        </Suspense>
-      </div>
-      <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', padding: 14 }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[['cumulative', 'Jusqu\'à la couche'], ['single', 'Couche seule']].map(([m, lbl]) => (
-            <button key={m} type="button" onClick={() => setMode(m)}
-              style={{
-                padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
-                fontFamily: "'Inter',sans-serif",
-                background: mode === m ? 'rgba(201,168,232,0.2)' : 'transparent',
-                border: `1px solid ${mode === m ? '#c9a8e8' : 'rgba(80,50,130,0.28)'}`,
-                color: mode === m ? '#c9a8e8' : '#ede8f8',
-              }}>{lbl}</button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 200 }}>
-          <span style={{ ...muted, fontSize: 12, whiteSpace: 'nowrap' }}>Y = {layer ?? maxLayer}</span>
-          <input type="range" min={0} max={maxLayer} value={layer ?? maxLayer}
-            onChange={(e) => setLayer(Number(e.target.value))}
-            style={{ flex: 1, accentColor: '#c9a8e8' }} />
-          <button type="button" onClick={() => setLayer(maxLayer)}
-            style={{ padding: '4px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12, background: 'transparent', border: '1px solid rgba(80,50,130,0.28)', color: '#ede8f8' }}>
-            Tout
-          </button>
-        </div>
-      </div>
+      <BlueprintCanvas data={data} codex={codex} height={height} />
+      <ShareControls ws={ws} id={id} initialToken={detail?.shareToken || null} />
       {detail?.bom && (
         <BlueprintBom bom={detail.bom} codex={codex} items={items} chests={chests} />
       )}

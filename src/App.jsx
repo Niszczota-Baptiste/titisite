@@ -11,6 +11,7 @@ const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
 const Ecriture = lazy(() => import('./pages/Ecriture'));
 const PhotosPage = lazy(() => import('./pages/PhotosPage'));
 const Stairs = lazy(() => import('./pages/Stairs'));
+const BuildShare = lazy(() => import('./pages/BuildShare'));
 
 function Loading() {
   return <div style={{ minHeight: '100vh', background: '#050511' }} />;
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/projets/ecriture/*" element={<Ecriture />} />
           <Route path="/photos"         element={<PhotosPage />} />
           <Route path="/stairs"         element={<Stairs />} />
+          <Route path="/build/:token"   element={<BuildShare />} />
           <Route path="*"               element={<Public />} />
         </Routes>
         <MiniPlayer />

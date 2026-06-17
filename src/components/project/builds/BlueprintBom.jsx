@@ -12,7 +12,7 @@ const WORLD_EMOJI = { overworld: '🌳', nether: '🔥', end: '🌌' };
 // Liste de matériaux (BOM) d'un build, croisée avec les coffres : besoin /
 // possédé / manquant + dans quels coffres. Décomposition optionnelle du manquant
 // en matières premières via le moteur de craft (« 440 planches = 110 bûches »).
-export function BlueprintBom({ bom, codex, items, chests }) {
+export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = false }) {
   const { byId, idSet } = useCodex();
   const [decompose, setDecompose] = useState(false);
   const [rawIndex, setRawIndex] = useState(null);
@@ -71,12 +71,15 @@ export function BlueprintBom({ bom, codex, items, chests }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
         <strong style={{ color: '#ede8f8', fontSize: 15 }}>📋 Liste de matériaux</strong>
         <span style={{ ...muted, fontSize: 12 }}>
-          {rows.length} types · {totalNeeded.toLocaleString('fr-FR')} blocs · manque {totalMissing.toLocaleString('fr-FR')}
+          {rows.length} types · {totalNeeded.toLocaleString('fr-FR')} blocs
+          {!readOnly && ` · manque ${totalMissing.toLocaleString('fr-FR')}`}
         </span>
-        <button type="button" onClick={toggleDecompose}
-          style={{ marginLeft: 'auto', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontFamily: "'Inter',sans-serif", background: decompose ? 'rgba(201,168,232,0.2)' : 'transparent', border: `1px solid ${decompose ? '#c9a8e8' : 'rgba(80,50,130,0.28)'}`, color: decompose ? '#c9a8e8' : '#ede8f8' }}>
-          🛠️ Décomposer le manquant
-        </button>
+        {!readOnly && (
+          <button type="button" onClick={toggleDecompose}
+            style={{ marginLeft: 'auto', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontFamily: "'Inter',sans-serif", background: decompose ? 'rgba(201,168,232,0.2)' : 'transparent', border: `1px solid ${decompose ? '#c9a8e8' : 'rgba(80,50,130,0.28)'}`, color: decompose ? '#c9a8e8' : '#ede8f8' }}>
+            🛠️ Décomposer le manquant
+          </button>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 360, overflowY: 'auto' }}>
@@ -85,18 +88,22 @@ export function BlueprintBom({ bom, codex, items, chests }) {
             <Icon icon={r.entry.icon} />
             <span style={{ color: '#ede8f8', fontSize: 13, flex: '1 1 150px', minWidth: 120 }}>{r.entry.nomFr}</span>
             <span style={{ fontSize: 13, color: '#ede8f8', whiteSpace: 'nowrap' }}>×{r.count.toLocaleString('fr-FR')}</span>
-            <span style={{ fontSize: 12, whiteSpace: 'nowrap', color: r.owned >= r.count ? '#4ade80' : 'rgba(180,170,200,0.7)' }}>
-              possédé {r.owned}
-            </span>
-            {r.missing > 0
+            {!readOnly && (
+              <span style={{ fontSize: 12, whiteSpace: 'nowrap', color: r.owned >= r.count ? '#4ade80' : 'rgba(180,170,200,0.7)' }}>
+                possédé {r.owned}
+              </span>
+            )}
+            {!readOnly && (r.missing > 0
               ? <span style={{ fontSize: 12, color: '#fb923c', whiteSpace: 'nowrap' }}>manque {r.missing}</span>
-              : <span style={{ fontSize: 12, color: '#4ade80', whiteSpace: 'nowrap' }}>✓</span>}
-            <span style={{ ...muted, fontSize: 11, flexBasis: '100%' }}>
-              {r.chests.length === 0 ? 'aucun coffre' : r.chests.map((c, i) => {
-                const ch = c.chestId != null ? chestById.get(c.chestId) : null;
-                return <span key={i} style={{ marginRight: 10 }}>{ch ? `${WORLD_EMOJI[ch.world] || '📦'} ${ch.name}` : '📦 Non rangé'} : {c.qty}</span>;
-              })}
-            </span>
+              : <span style={{ fontSize: 12, color: '#4ade80', whiteSpace: 'nowrap' }}>✓</span>)}
+            {!readOnly && (
+              <span style={{ ...muted, fontSize: 11, flexBasis: '100%' }}>
+                {r.chests.length === 0 ? 'aucun coffre' : r.chests.map((c, i) => {
+                  const ch = c.chestId != null ? chestById.get(c.chestId) : null;
+                  return <span key={i} style={{ marginRight: 10 }}>{ch ? `${WORLD_EMOJI[ch.world] || '📦'} ${ch.name}` : '📦 Non rangé'} : {c.qty}</span>;
+                })}
+              </span>
+            )}
           </div>
         ))}
       </div>
