@@ -263,6 +263,7 @@ export const api = {
       adjust:       (id, delta) => request('POST', `/workspaces/${slug}/minecraft/${id}/adjust`, { delta }),
       toggleFav:    (id) => request('PATCH', `/workspaces/${slug}/minecraft/${id}/favorite`),
       remove:       (id) => request('DELETE', `/workspaces/${slug}/minecraft/${id}`),
+      craftApply:   (b) => request('POST', `/workspaces/${slug}/minecraft/craft/apply`, b),
       // Coffres (containers) + flux screenshot → items.
       chests: {
         list:   () => request('GET',    `/workspaces/${slug}/minecraft/chests`),

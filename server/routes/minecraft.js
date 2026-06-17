@@ -351,6 +351,60 @@ minecraftRouter.post('/chests/:id/apply', (req, res) => {
   res.json(listResources(req.workspace.id));
 });
 
+// Applique un craft validé en une transaction : décrémente les lignes
+// consommées (par id de ligne, FIFO/répartition décidée côté client) et
+// incrémente/insère les produits (cible + éventuels surplus). Renvoie la liste
+// complète des ressources à jour.
+minecraftRouter.post('/craft/apply', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const wsId = req.workspace.id;
+  const body = req.body || {};
+  const consume = Array.isArray(body.consume) ? body.consume : [];
+  const produce = Array.isArray(body.produce) ? body.produce : [];
+
+  const tx = db.transaction(() => {
+    // Décrémentations : chaque entrée vise une ligne de ce workspace.
+    for (const c of consume) {
+      const rowId = Number(c?.id);
+      const delta = Math.floor(Number(c?.delta) || 0);
+      if (!Number.isFinite(rowId) || delta === 0) continue;
+      const row = db.prepare('SELECT quantity FROM minecraft_resources WHERE id = ? AND workspace_id = ?')
+        .get(rowId, wsId);
+      if (!row) continue;
+      const next = Math.max(0, row.quantity + delta);
+      db.prepare("UPDATE minecraft_resources SET quantity = ?, updated_at = strftime('%s','now') WHERE id = ?")
+        .run(next, rowId);
+    }
+
+    // Productions : fusion par (nom, coffre) sinon insertion.
+    let pos = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM minecraft_resources WHERE workspace_id = ?')
+      .get(wsId).n;
+    for (const p of produce) {
+      const name = String(p?.name || '').trim();
+      const quantity = Math.max(0, Math.floor(Number(p?.quantity) || 0));
+      if (!name || quantity === 0) continue;
+      const chest = resolveChestId(wsId, p?.chestId);
+      const rar = VALID_RARITIES.includes(p?.rarity) ? p.rarity : 'Commun';
+      const cat = String(p?.category || '').trim();
+      const existing = chest === null
+        ? db.prepare('SELECT id, quantity FROM minecraft_resources WHERE workspace_id = ? AND name = ? AND chest_id IS NULL').get(wsId, name)
+        : db.prepare('SELECT id, quantity FROM minecraft_resources WHERE workspace_id = ? AND name = ? AND chest_id = ?').get(wsId, name, chest);
+      if (existing) {
+        db.prepare("UPDATE minecraft_resources SET quantity = ?, updated_at = strftime('%s','now') WHERE id = ?")
+          .run(existing.quantity + quantity, existing.id);
+      } else {
+        db.prepare(`
+          INSERT INTO minecraft_resources
+            (workspace_id, chest_id, name, quantity, notes, category, rarity, favorite, position, created_by)
+          VALUES (?, ?, ?, ?, '', ?, ?, 0, ?, ?)
+        `).run(wsId, chest, name, quantity, cat, rar, pos++, req.user.id);
+      }
+    }
+  });
+  tx();
+  res.json(listResources(wsId));
+});
+
 // ── Screenshot → items (vision IA, hybride : 200 {available:false} sans clé) ──
 
 minecraftRouter.post('/scan-screenshot', uploadScreenshotMemory.single('image'), async (req, res) => {

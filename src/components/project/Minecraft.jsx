@@ -7,6 +7,7 @@ import {
 import { Block3D } from './block3d/Block3D';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
+import { CraftCalculator } from './CraftCalculator';
 import { useConfirm } from '../../ui/ConfirmProvider';
 import { useToast } from '../../ui/ToastProvider';
 import {
@@ -165,6 +166,7 @@ export function MinecraftTab() {
   const iconIndex = useMemo(() => buildIconIndex(catalog), [catalog]);
   const idIndex = useMemo(() => buildIdIndex(catalog), [catalog]);
   const [block3d, setBlock3d] = useState(false); // aperçu 3D des blocs au survol
+  const [calcOpen, setCalcOpen] = useState(false); // calculateur de craft
 
   // Coffres (containers) + organisation de la vue
   const [chests, setChests] = useState([]);
@@ -377,6 +379,7 @@ export function MinecraftTab() {
       title="⛏️ Ressources Minecraft"
       actions={
         <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="ghost" onClick={() => setCalcOpen(true)}>🧮 Calculateur</Button>
           <Button variant="ghost" onClick={() => { setEditingChest(null); setChestModalOpen(true); }}>
             + Coffre
           </Button>
@@ -626,6 +629,16 @@ export function MinecraftTab() {
         onSaved={handleChestSaved}
         toast={toast}
       />
+
+      <Modal open={calcOpen} onClose={() => setCalcOpen(false)} title="🧮 Calculateur de craft" width={760}>
+        <CraftCalculator
+          items={items}
+          chests={chests}
+          ws={ws}
+          toast={toast}
+          onApplied={(updated) => { setItems(updated); }}
+        />
+      </Modal>
 
       <ScreenshotModal
         chest={shotChest}
