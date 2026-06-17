@@ -9,7 +9,6 @@ import { defaultFaceUV } from '../block3d/buildBlock';
 //
 // Réutilise le format de modèle de buildBlock.js (elements 0–16, faces #role).
 
-const FOLIAGE_TINT = 0x6a9a3b;
 const _texCache = new Map();
 
 export function blockTexture(url) {
@@ -25,7 +24,8 @@ export function blockTexture(url) {
   return t;
 }
 
-export function standardMaterial(url, tinted) {
+// `color` = couleur de teinte (nombre hex) ou null/0xffffff = texture inchangée.
+export function standardMaterial(url, color) {
   return new THREE.MeshStandardMaterial({
     map: blockTexture(url),
     transparent: true,
@@ -33,7 +33,7 @@ export function standardMaterial(url, tinted) {
     roughness: 1,
     metalness: 0,
     side: THREE.DoubleSide,
-    color: tinted ? FOLIAGE_TINT : 0xffffff,
+    color: color || 0xffffff,
   });
 }
 
@@ -68,9 +68,9 @@ function faceCorners(dir, x1, y1, z1, x2, y2, z2) {
 // `opts.rotY` = rotation blockstate (degrés, multiples de 90) bakée dans les
 // sommets (sens Minecraft = horaire → angle three négatif).
 export function buildModelParts(model, opts = {}) {
-  const { rotX = 0, rotY = 0 } = opts;
+  const { rotX = 0, rotY = 0, tint = null } = opts;
   const textures = model.textures || {};
-  const groups = new Map(); // key (file|tint) -> { file, tinted, pos:[], uv:[] }
+  const groups = new Map(); // key (file|color) -> { file, color, pos:[], uv:[] }
   const toUnit = (n) => n / 16 - 0.5;
   const tmp = new THREE.Vector3();
 
@@ -110,10 +110,10 @@ export function buildModelParts(model, opts = {}) {
       if (!file) continue;
       const corners = faceCorners(dir, x1, y1, z1, x2, y2, z2);
       if (!corners) continue;
-      const tinted = 'tintindex' in face;
-      const key = `${file}|${tinted ? 1 : 0}`;
+      const color = ('tintindex' in face) && tint ? tint : 0xffffff;
+      const key = `${file}|${color}`;
       let g = groups.get(key);
-      if (!g) { g = { file, tinted, pos: [], uv: [] }; groups.set(key, g); }
+      if (!g) { g = { file, color, pos: [], uv: [] }; groups.set(key, g); }
 
       const pts = corners.map(([cx, cy, cz]) => {
         if (!mat) return [cx, cy, cz];
@@ -135,7 +135,7 @@ export function buildModelParts(model, opts = {}) {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(g.pos, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
     geo.computeVertexNormals();
-    parts.push({ geometry: geo, textureFile: g.file, tinted: g.tinted });
+    parts.push({ geometry: geo, textureFile: g.file, color: g.color });
   }
   return parts;
 }

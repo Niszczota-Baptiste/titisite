@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { loadModel } from '../../../data/minecraftModels';
+import { tintColor } from '../../../data/blockTint';
 
 // three.js + le builder de géométrie vivent dans ce chunk uniquement, chargé à
 // la première utilisation réelle (survol d'un item en mode 3D).
@@ -29,7 +30,7 @@ export function Block3D({ id, size = 64, spin = true, background = 'rgba(20,10,4
       overflow: 'hidden', background,
     }}>
       <Suspense fallback={null}>
-        <Scene model={model} size={size} spin={spin} />
+        <Scene model={model} size={size} spin={spin} tint={tintColor(id)} />
       </Suspense>
     </div>
   );

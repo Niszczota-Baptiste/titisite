@@ -11,8 +11,6 @@ import { MODEL_TEXTURE_BASE } from '../../../data/minecraftModels';
 // et JAMAIS disposées (16px, partagées entre instances) ; seules les géométries
 // le sont.
 
-const FOLIAGE_TINT = 0x6a9a3b; // teinte herbe/feuillage pour les faces tintindex
-
 const _texCache = new Map(); // url -> THREE.Texture
 
 function texture(url) {
@@ -109,14 +107,16 @@ export function defaultFaceUV(dir, fx, fy, fz, tx, ty, tz) {
   }
 }
 
-export function buildBlockGroup(model) {
+// `tint` = couleur de teinte du bloc (nombre hex) si le bloc est dans la liste
+// blanche, sinon null. Seules les faces avec « tintindex » la reçoivent.
+export function buildBlockGroup(model, tint = null) {
   const root = new THREE.Group();
   const geometries = [];
-  const materials = new Map(); // key (url|tint) -> material
+  const materials = new Map(); // key (url|color) -> material
   const textures = model.textures || {};
 
-  const material = (url, tinted) => {
-    const key = `${url}|${tinted ? 1 : 0}`;
+  const material = (url, color) => {
+    const key = `${url}|${color}`;
     let m = materials.get(key);
     if (!m) {
       m = new THREE.MeshStandardMaterial({
@@ -126,7 +126,7 @@ export function buildBlockGroup(model) {
         roughness: 1,
         metalness: 0,
         side: THREE.DoubleSide,
-        color: tinted ? FOLIAGE_TINT : 0xffffff,
+        color,
       });
       materials.set(key, m);
     }
@@ -149,7 +149,8 @@ export function buildBlockGroup(model) {
       if (!corners) continue;
       const geo = quadGeometry(corners, face.uv || defaultFaceUV(dir, fx, fy, fz, tx, ty, tz));
       geometries.push(geo);
-      elGroup.add(new THREE.Mesh(geo, material(MODEL_TEXTURE_BASE + file, 'tintindex' in face)));
+      const color = ('tintindex' in face) && tint ? tint : 0xffffff;
+      elGroup.add(new THREE.Mesh(geo, material(MODEL_TEXTURE_BASE + file, color)));
     }
 
     // Rotation d'élément autour d'un pivot (origin en 0–16 → centré).

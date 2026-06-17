@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { loadModel, loadModelsManifest } from '../../../data/minecraftModels';
 import { resolveBlock } from '../../../data/blockCodex';
 import { loadBlockstates, loadRenderModel, resolveBlockstate, RENDER_TEXTURE_URL } from '../../../data/blockstates';
+import { tintColor } from '../../../data/blockTint';
 import {
   MODEL_TEXTURE_URL, blockTexture, buildModelParts, standardMaterial, unitCube,
 } from './blueprintGeometry';
@@ -139,6 +140,7 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
         const props = isNew ? pe.props : null;
         const legacyRot = (pe && pe.rot) || [0, 0, 0];
         const entry = resolveBlock(codex, blockId);
+        const tint = tintColor(blockId); // null sauf liste blanche
         let specs = [];
         let baked = false;
 
@@ -150,10 +152,10 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
             for (const part of resolved) {
               const model = await loadRenderModel(part.model);
               if (model && Array.isArray(model.elements)) {
-                for (const mp of buildModelParts(model, { rotX: part.x, rotY: part.y })) {
+                for (const mp of buildModelParts(model, { rotX: part.x, rotY: part.y, tint })) {
                   specs.push({
                     geometry: mp.geometry,
-                    material: standardMaterial(RENDER_TEXTURE_URL(mp.textureFile), mp.tinted),
+                    material: standardMaterial(RENDER_TEXTURE_URL(mp.textureFile), mp.color),
                   });
                 }
               }
@@ -166,9 +168,9 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
         if (specs.length === 0 && blockId.startsWith('minefield:')) {
           const model = await loadModel(entry.id);
           if (model && model.render === 'model') {
-            specs = buildModelParts(model).map((part) => ({
+            specs = buildModelParts(model, { tint }).map((part) => ({
               geometry: part.geometry,
-              material: standardMaterial(MODEL_TEXTURE_URL(part.textureFile), part.tinted),
+              material: standardMaterial(MODEL_TEXTURE_URL(part.textureFile), part.color),
             }));
           }
         }

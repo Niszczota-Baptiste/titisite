@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { loadModel } from './minecraftModels';
+import { tintColor } from './blockTint';
 import { buildBlockGroup, preloadModelTextures } from '../components/project/block3d/buildBlock';
 
 // Vignette 3D statique d'un bloc (dataURL PNG), rendue par UN renderer WebGL
@@ -36,7 +37,7 @@ export function blockThumbnail(id, size = 96) {
     const d = new THREE.DirectionalLight(0xffffff, 1.1);
     d.position.set(0.6, 1.2, 0.8);
     scene.add(d);
-    const { group, dispose } = buildBlockGroup(model);
+    const { group, dispose } = buildBlockGroup(model, tintColor(id));
     group.rotation.x = 0.52;
     group.rotation.y = 0.7;
     scene.add(group);

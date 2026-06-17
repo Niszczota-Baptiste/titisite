@@ -9,7 +9,7 @@ import { buildBlockGroup } from './buildBlock';
 //
 // Export par défaut → consommé via React.lazy depuis Block3D (garde three hors
 // du bundle principal).
-export default function Block3DScene({ model, size = 64, spin = true }) {
+export default function Block3DScene({ model, size = 64, spin = true, tint = null }) {
   const mountRef = useRef(null);
   const spinRef = useRef(spin);
   spinRef.current = spin;
@@ -38,7 +38,7 @@ export default function Block3DScene({ model, size = 64, spin = true }) {
     dir.position.set(0.6, 1.2, 0.8);
     scene.add(dir);
 
-    const { group, dispose } = buildBlockGroup(model);
+    const { group, dispose } = buildBlockGroup(model, tint);
     group.rotation.x = 0.52; // ~30° de plongée
     group.rotation.y = 0.7;
     scene.add(group);
@@ -61,7 +61,7 @@ export default function Block3DScene({ model, size = 64, spin = true }) {
       renderer.forceContextLoss?.();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
     };
-  }, [model, size]);
+  }, [model, size, tint]);
 
   return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />;
 }
