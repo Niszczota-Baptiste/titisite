@@ -64,12 +64,23 @@ function faceCorners(dir, x1, y1, z1, x2, y2, z2) {
 }
 
 // Modèle (render "model") → [{ geometry, textureFile, tinted }] : une géométrie
-// fusionnée non-indexée par texture, prête pour un InstancedMesh.
-export function buildModelParts(model) {
+// fusionnée non-indexée par texture, prête pour un InstancedMesh. `opts.rotX` /
+// `opts.rotY` = rotation blockstate (degrés, multiples de 90) bakée dans les
+// sommets (sens Minecraft = horaire → angle three négatif).
+export function buildModelParts(model, opts = {}) {
+  const { rotX = 0, rotY = 0 } = opts;
   const textures = model.textures || {};
   const groups = new Map(); // key (file|tint) -> { file, tinted, pos:[], uv:[] }
   const toUnit = (n) => n / 16 - 0.5;
   const tmp = new THREE.Vector3();
+
+  // Rotation au niveau du bloc (autour du centre, modèle déjà centré en 0).
+  let blockMat = null;
+  if (rotX || rotY) {
+    blockMat = new THREE.Matrix4()
+      .makeRotationY(-(rotY * Math.PI) / 180)
+      .multiply(new THREE.Matrix4().makeRotationX(-(rotX * Math.PI) / 180));
+  }
 
   for (const el of model.elements || []) {
     const [fx, fy, fz] = el.from;
@@ -77,7 +88,7 @@ export function buildModelParts(model) {
     const x1 = toUnit(fx), y1 = toUnit(fy), z1 = toUnit(fz);
     const x2 = toUnit(tx), y2 = toUnit(ty), z2 = toUnit(tz);
 
-    // Matrice de rotation d'élément (bakée dans les sommets).
+    // Matrice de rotation d'élément (bakée), pré-multipliée par la rotation bloc.
     let mat = null;
     if (el.rotation && el.rotation.axis) {
       const { origin = [8, 8, 8], axis, angle = 0 } = el.rotation;
@@ -92,6 +103,7 @@ export function buildModelParts(model) {
         .multiply(rot)
         .multiply(new THREE.Matrix4().makeTranslation(-o.x, -o.y, -o.z));
     }
+    if (blockMat) mat = mat ? blockMat.clone().multiply(mat) : blockMat;
 
     for (const [dir, face] of Object.entries(el.faces || {})) {
       const file = resolveTexture(face.texture, textures);

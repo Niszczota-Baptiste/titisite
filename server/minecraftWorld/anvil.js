@@ -17,14 +17,14 @@ const SECTOR = 4096;
 
 // Orientation déduite des Properties de la palette → rotation [x,y,z] en degrés
 // à appliquer au modèle. On gère l'`axis` (bûches/piliers couchés), fiable sans
-// les blockstates ; le `facing` fin (escaliers…) nécessiterait les variantes de
-// blockstate, non disponibles ici.
-function orientationOf(entry) {
-  if (!entry || typeof entry === 'string') return [0, 0, 0];
-  const axis = entry.Properties?.axis;
-  if (axis === 'x') return [0, 0, 90];
-  if (axis === 'z') return [90, 0, 0];
-  return [0, 0, 0];
+// Properties NBT d'une entrée de palette → objet plat { prop: "val" } (ou null).
+// On garde l'état complet du bloc : la résolution blockstate (variants/multipart,
+// orientation, connexions) se fait côté client à partir de ces propriétés.
+function propsOf(entry) {
+  if (!entry || typeof entry === 'string' || !entry.Properties) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(entry.Properties)) out[k] = String(v);
+  return Object.keys(out).length ? out : null;
 }
 
 // prismarine-nbt représente un long selon la version : BigInt, [high,low], ou
@@ -88,7 +88,7 @@ export async function parseRegion(buf, regionX, regionZ, bbox, emit) {
 
       const palette = states.palette;
       const names = palette.map((p) => (typeof p === 'string' ? p : p.Name));
-      const rots = palette.map(orientationOf);
+      const props = palette.map(propsOf);
 
       // Section homogène (1 entrée, pas de data).
       if (palette.length === 1 || !states.data) {
@@ -99,7 +99,7 @@ export async function parseRegion(buf, regionX, regionZ, bbox, emit) {
           const z = baseZ + ((n >> 4) & 15);
           const y = baseY + ((n >> 8) & 15);
           if (x < bbox.minX || x > bbox.maxX || y < bbox.minY || y > bbox.maxY || z < bbox.minZ || z > bbox.maxZ) continue;
-          emit(x, y, z, name, rots[0]);
+          emit(x, y, z, name, props[0]);
         }
         continue;
       }
@@ -119,7 +119,7 @@ export async function parseRegion(buf, regionX, regionZ, bbox, emit) {
         const z = baseZ + ((n >> 4) & 15);
         const y = baseY + ((n >> 8) & 15);
         if (x < bbox.minX || x > bbox.maxX || y < bbox.minY || y > bbox.maxY || z < bbox.minZ || z > bbox.maxZ) continue;
-        emit(x, y, z, name, rots[v]);
+        emit(x, y, z, name, props[v]);
       }
     }
   }

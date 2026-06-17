@@ -1,0 +1,1 @@
+{"render": "model", "textures": {"particle": "block_acacia_planks.png", "side": "block_acacia_planks.png"}, "elements": [{"from": [3, 6.5, 0], "to": [13, 8, 16], "faces": {"up": {"texture": "#side"}, "down": {"texture": "#side"}, "west": {"texture": "#side"}, "east": {"texture": "#side"}, "north": {"texture": "#side"}, "south": {"texture": "#side"}}}]}

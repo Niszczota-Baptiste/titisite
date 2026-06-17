@@ -1,0 +1,1 @@
+{"render": "model", "textures": {"particle": "blocks_fallenyellow_leaves_3.png", "face": "blocks_fallenyellow_leaves_3.png"}, "elements": [{"from": [0, 0, 0], "to": [16, 0.5, 16], "faces": {"up": {"texture": "#face"}}}]}

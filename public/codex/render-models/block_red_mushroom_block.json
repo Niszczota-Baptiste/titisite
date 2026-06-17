@@ -1,0 +1,1 @@
+{"render": "model", "textures": {"particle": "block_red_mushroom_block.png", "texture": "block_red_mushroom_block.png"}, "elements": [{"from": [0, 0, 0], "to": [16, 16, 0], "faces": {"north": {"texture": "#texture", "cullface": "north"}}}]}

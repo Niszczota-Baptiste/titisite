@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { loadModel, loadModelsManifest } from '../../../data/minecraftModels';
 import { resolveBlock } from '../../../data/blockCodex';
+import { loadBlockstates, loadRenderModel, resolveBlockstate, RENDER_TEXTURE_URL } from '../../../data/blockstates';
 import {
   MODEL_TEXTURE_URL, blockTexture, buildModelParts, standardMaterial, unitCube,
 } from './blueprintGeometry';
@@ -125,19 +126,44 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       types.push({ meshes, ys, mats, n, layout: 'sorted' });
     };
 
-    // Construit les specs (async pour charger les modèles custom).
+    // Construit les specs : résolution blockstate (variants/multipart) → modèles
+    // orientés ; repli sur le modèle codex custom puis le cube texturé.
     const build = async () => {
-      await loadModelsManifest();
+      const [states] = await Promise.all([loadBlockstates(), loadModelsManifest()]);
       for (let p = 0; p < palette.length && !cancelled; p++) {
         const positions = byType[p];
         if (positions.length === 0) { types.push(null); continue; }
         const pe = palette[p];
-        const blockId = typeof pe === 'string' ? pe : pe.name; // rétro-compat
-        const rot = (pe && pe.rot) || [0, 0, 0];
+        const isNew = pe && typeof pe === 'object' && 'props' in pe;
+        const blockId = typeof pe === 'string' ? pe : pe.name;
+        const props = isNew ? pe.props : null;
+        const legacyRot = (pe && pe.rot) || [0, 0, 0];
         const entry = resolveBlock(codex, blockId);
-        let specs = null;
+        let specs = [];
+        let baked = false;
 
-        if (blockId.startsWith('minefield:')) {
+        // 1) Rendu orienté via blockstate (uniquement pour les builds récents qui
+        //    portent l'état complet — `props` présent).
+        if (isNew) {
+          const resolved = resolveBlockstate(states, blockId, props);
+          if (resolved) {
+            for (const part of resolved) {
+              const model = await loadRenderModel(part.model);
+              if (model && Array.isArray(model.elements)) {
+                for (const mp of buildModelParts(model, { rotX: part.x, rotY: part.y })) {
+                  specs.push({
+                    geometry: mp.geometry,
+                    material: standardMaterial(RENDER_TEXTURE_URL(mp.textureFile), mp.tinted),
+                  });
+                }
+              }
+            }
+            if (specs.length) baked = true; // rotation déjà dans la géométrie
+          }
+        }
+
+        // 2) Repli : modèle codex custom (Minefield) à orientation par défaut.
+        if (specs.length === 0 && blockId.startsWith('minefield:')) {
           const model = await loadModel(entry.id);
           if (model && model.render === 'model') {
             specs = buildModelParts(model).map((part) => ({
@@ -146,15 +172,17 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
             }));
           }
         }
-        if (!specs || specs.length === 0) {
-          // Cube : texturé par l'icône si dispo, sinon couleur de repli.
+
+        // 3) Repli ultime : cube texturé (icône) ou couleur de hash.
+        if (specs.length === 0) {
           const mat = entry.icon
             ? new THREE.MeshStandardMaterial({ map: tex(entry.icon), roughness: 1, metalness: 0, transparent: true, alphaTest: 0.5 })
             : new THREE.MeshStandardMaterial({ color: fallbackColor(blockId), roughness: 1, metalness: 0 });
           specs = [{ geometry: unitCube(), material: mat }];
         }
+
         if (cancelled) break;
-        makeType(positions, specs, rot);
+        makeType(positions, specs, baked ? [0, 0, 0] : legacyRot);
         onProgress?.((p + 1) / palette.length);
       }
       if (!cancelled) applyLayer();

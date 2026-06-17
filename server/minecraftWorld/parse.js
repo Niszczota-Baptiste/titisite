@@ -19,23 +19,28 @@ export async function parseWorld({ filePath, originalName, bbox, maxBlocks }) {
   }
   if (regions.length === 0) throw new Error('no_region');
 
-  const palette = []; // [{ name, rot:[x,y,z] }] — unique par (nom + orientation)
+  const palette = []; // [{ name, props }] — unique par (nom + état complet)
   const paletteIndex = new Map();
   const counts = new Map();
   const blocks = []; // interleavé [x,y,z,pi, …] en coords relatives à min
   let count = 0;
   let overflow = false;
 
-  const idxOf = (name, rot) => {
-    const key = `${name}|${rot.join(',')}`;
+  // Clé stable pour les props (ordre des clés trié).
+  const propsKey = (props) => {
+    if (!props) return '';
+    return Object.keys(props).sort().map((k) => `${k}=${props[k]}`).join(',');
+  };
+  const idxOf = (name, props) => {
+    const key = `${name}|${propsKey(props)}`;
     let i = paletteIndex.get(key);
-    if (i === undefined) { i = palette.length; palette.push({ name, rot }); paletteIndex.set(key, i); }
+    if (i === undefined) { i = palette.length; palette.push({ name, props: props || null }); paletteIndex.set(key, i); }
     return i;
   };
-  const emit = (x, y, z, name, rot = [0, 0, 0]) => {
+  const emit = (x, y, z, name, props = null) => {
     if (overflow) return;
     if (count >= maxBlocks) { overflow = true; return; }
-    blocks.push(x - bbox.minX, y - bbox.minY, z - bbox.minZ, idxOf(name, rot));
+    blocks.push(x - bbox.minX, y - bbox.minY, z - bbox.minZ, idxOf(name, props));
     counts.set(name, (counts.get(name) || 0) + 1); // BOM regroupé par nom
     count++;
   };

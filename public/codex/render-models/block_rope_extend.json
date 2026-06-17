@@ -1,0 +1,1 @@
+{"render": "model", "textures": {"particle": "blocks_rope.png", "side": "blocks_rope.png"}, "elements": [{"from": [1, 7, 7], "to": [8, 9, 9], "faces": {"up": {"texture": "#side"}, "down": {"texture": "#side"}, "west": {"texture": "#side"}, "east": {"texture": "#side"}, "north": {"texture": "#side"}, "south": {"texture": "#side"}}}]}

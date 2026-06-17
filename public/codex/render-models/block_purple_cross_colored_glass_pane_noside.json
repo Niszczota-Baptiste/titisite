@@ -1,0 +1,1 @@
+{"render": "model", "textures": {"particle": "blocks_glass_cerc_purple.png", "pane": "blocks_glass_cerc_purple.png"}, "elements": [{"from": [7, 0, 7], "to": [9, 16, 9], "faces": {"north": {"uv": [9, 0, 7, 16], "texture": "#pane"}}}]}
