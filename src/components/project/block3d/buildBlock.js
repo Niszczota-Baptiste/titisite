@@ -37,6 +37,32 @@ function resolveTexture(ref, textures) {
   return typeof v === 'string' && v ? v : null;
 }
 
+// Précharge (et attend) toutes les textures d'un modèle dans le cache partagé —
+// nécessaire avant un rendu one-shot (snapshot), sinon les faces sont vides
+// (matériau transparent + alphaTest) tant que les PNG ne sont pas chargés.
+export function preloadModelTextures(model, base = MODEL_TEXTURE_BASE) {
+  const textures = model.textures || {};
+  const urls = new Set();
+  for (const el of model.elements || []) {
+    for (const f of Object.values(el.faces || {})) {
+      const file = resolveTexture(f.texture, textures);
+      if (file) urls.add(base + file);
+    }
+  }
+  return Promise.all([...urls].map((url) => new Promise((res) => {
+    const ex = _texCache.get(url);
+    if (ex && ex.image && ex.image.width) { res(); return; }
+    new THREE.TextureLoader().load(url, (t) => {
+      t.magFilter = THREE.NearestFilter;
+      t.minFilter = THREE.NearestFilter;
+      t.generateMipmaps = false;
+      t.colorSpace = THREE.SRGBColorSpace;
+      _texCache.set(url, t);
+      res();
+    }, undefined, () => res());
+  })));
+}
+
 // Quad : corners = [bl, br, tr, tl] (Vector3-like), uv = [u1,v1,u2,v2] en 0–16.
 function quadGeometry(corners, uv) {
   const [bl, br, tr, tl] = corners;

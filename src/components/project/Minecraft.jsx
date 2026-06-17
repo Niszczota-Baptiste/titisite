@@ -5,6 +5,7 @@ import {
   buildIconIndex, buildIdIndex, loadMinefieldCatalog, matchCatalogName, normName, searchCatalog,
 } from '../../data/minefieldCatalog';
 import { Block3D } from './block3d/Block3D';
+import { useBlockThumbnail } from '../../hooks/useBlockThumbnail';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { CraftCalculator } from './CraftCalculator';
@@ -114,19 +115,10 @@ export function stacksInfo(qty) {
 function ItemIcon({ name, category, iconIndex, idIndex, block3d = false, size = 24 }) {
   const url = iconIndex?.get(normName(name));
   const [hover, setHover] = useState(false);
-  const [thumb, setThumb] = useState(null);
   const id = block3d ? idIndex?.get(normName(name)) : null;
-
-  // Vignette 3D statique (rendue par un renderer partagé, mise en cache) —
-  // permet d'afficher l'item en 3D en permanence, sans un contexte WebGL/item.
-  useEffect(() => {
-    if (!id) { setThumb(null); return undefined; }
-    let alive = true;
-    import('../../data/blockThumbnail')
-      .then((m) => m.blockThumbnail(id, Math.max(64, size * 2)))
-      .then((u) => { if (alive) setThumb(u); });
-    return () => { alive = false; };
-  }, [id, size]);
+  // Vignette 3D statique permanente (renderer partagé, cache) — pas un contexte
+  // WebGL par item.
+  const thumb = useBlockThumbnail(id);
 
   const flat = url ? (
     <img

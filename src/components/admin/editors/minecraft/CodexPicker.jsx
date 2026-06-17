@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { searchCatalog } from '../../../../data/minefieldCatalog';
+import { useBlockThumbnail } from '../../../../hooks/useBlockThumbnail';
 import { ACC, inputStyle } from '../../ui';
 
-// Affiche un item du codex (icône + nom FR) à partir de son id. Repli discret si
-// l'id est inconnu du codex.
+// Affiche un item du codex (vignette 3D si le bloc a un modèle, sinon icône
+// plate) à partir de son id. Repli discret si l'id est inconnu du codex.
 export function CodexItem({ byId, id, size = 22, showName = true }) {
   const e = byId?.get(id);
-  const icon = e?.icon;
+  const thumb = useBlockThumbnail(id);
+  const src = thumb || e?.icon;
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-      {icon ? (
+      {src ? (
         <img
-          src={icon} alt="" width={size} height={size} loading="lazy" draggable={false}
+          src={src} alt="" width={size} height={size} loading="lazy" draggable={false}
           style={{ imageRendering: 'pixelated', objectFit: 'contain', flexShrink: 0 }}
         />
       ) : (

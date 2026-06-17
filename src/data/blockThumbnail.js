@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { loadModel } from './minecraftModels';
-import { buildBlockGroup } from '../components/project/block3d/buildBlock';
+import { buildBlockGroup, preloadModelTextures } from '../components/project/block3d/buildBlock';
 
 // Vignette 3D statique d'un bloc (dataURL PNG), rendue par UN renderer WebGL
 // partagé puis mise en cache par id : permet d'afficher TOUS les items de
@@ -23,8 +23,9 @@ function getRenderer(size) {
 export function blockThumbnail(id, size = 96) {
   const key = `${id}@${size}`;
   if (_cache.has(key)) return _cache.get(key);
-  const p = loadModel(id).then((model) => {
+  const p = loadModel(id).then(async (model) => {
     if (!model || model.render !== 'model') return null; // cube/flat → icône plate
+    await preloadModelTextures(model); // sinon snapshot vide (textures pas prêtes)
     const r = getRenderer(size);
     const scene = new THREE.Scene();
     const h = 0.92;
