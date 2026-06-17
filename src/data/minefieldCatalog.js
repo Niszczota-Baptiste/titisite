@@ -44,12 +44,36 @@ function fetchCodex(url, source) {
  * nom (index d'icônes + recherche). Chaque entrée porte `icon` (URL ou null),
  * `source` ('minefield'|'minecraft') et `_key` (nom normalisé pré-calculé).
  */
+// Vanilla : codex_vanilla.json (src/data, import dynamique → chunk à part),
+// icônes servies depuis public/codex/vanilla-icons/.
+function loadVanilla() {
+  return import('./codex_vanilla.json')
+    .then((m) => (m.default || m).map((e) => ({
+      type: e.type,
+      id: e.id,
+      nomFr: e.nomFr,
+      categorie: '',
+      source: 'minecraft',
+      icon: e.icon ? `/codex/vanilla-icons/${e.icon.replace(/^icons\//, '')}` : null,
+      _key: normName(e.nomFr),
+    })))
+    .catch(() => []);
+}
+
+/**
+ * Charge (et met en cache) le catalogue : items/blocs custom Minefield + vanilla
+ * Minecraft 1.18. Renvoie toujours un tableau — jamais d'erreur. Trié par nom FR
+ * pour que MF et MC soient entrelacés (sinon les ~2000 MF masquent le vanilla
+ * dans les menus). Minefield reste prioritaire en cas de collision de nom
+ * (placé avant le tri stable).
+ */
 export function loadMinefieldCatalog() {
   if (!_promise) {
     _promise = Promise.all([
       fetchCodex('/codex/codex.json', 'minefield'),
-      fetchCodex('/codex/vanilla/codex.json', 'minecraft'),
-    ]).then(([mf, vanilla]) => [...mf, ...vanilla]);
+      loadVanilla(),
+    ]).then(([mf, vanilla]) => [...mf, ...vanilla]
+      .sort((a, b) => (a._key < b._key ? -1 : a._key > b._key ? 1 : 0)));
   }
   return _promise;
 }

@@ -90,13 +90,19 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     const dummy = new THREE.Object3D();
 
     // Crée les InstancedMesh d'un type à partir d'une liste de specs {geometry, material}.
-    const makeType = (positions, specs) => {
+    const makeType = (positions, specs, rot = [0, 0, 0]) => {
       // tri des instances par Y croissant (pour le slider)
       const n = positions.length / 3;
       const order = Array.from({ length: n }, (_, k) => k)
         .sort((a, b) => positions[a * 3 + 1] - positions[b * 3 + 1]);
       const ys = new Int32Array(n);
       const mats = new Float32Array(n * 16); // matrices en ordre trié
+      // Orientation du bloc (axis) appliquée à toutes les instances du type.
+      dummy.rotation.set(
+        THREE.MathUtils.degToRad(rot[0] || 0),
+        THREE.MathUtils.degToRad(rot[1] || 0),
+        THREE.MathUtils.degToRad(rot[2] || 0),
+      );
       for (let k = 0; k < n; k++) {
         const src = order[k];
         const px = positions[src * 3] + 0.5 - cx;
@@ -107,6 +113,7 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
         dummy.updateMatrix();
         dummy.matrix.toArray(mats, k * 16);
       }
+      dummy.rotation.set(0, 0, 0);
       const meshes = specs.map(({ geometry, material }) => {
         const im = new THREE.InstancedMesh(geometry, material, n);
         im.instanceMatrix.array.set(mats);
@@ -124,7 +131,9 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       for (let p = 0; p < palette.length && !cancelled; p++) {
         const positions = byType[p];
         if (positions.length === 0) { types.push(null); continue; }
-        const blockId = palette[p];
+        const pe = palette[p];
+        const blockId = typeof pe === 'string' ? pe : pe.name; // rétro-compat
+        const rot = (pe && pe.rot) || [0, 0, 0];
         const entry = resolveBlock(codex, blockId);
         let specs = null;
 
@@ -145,7 +154,7 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
           specs = [{ geometry: unitCube(), material: mat }];
         }
         if (cancelled) break;
-        makeType(positions, specs);
+        makeType(positions, specs, rot);
         onProgress?.((p + 1) / palette.length);
       }
       if (!cancelled) applyLayer();

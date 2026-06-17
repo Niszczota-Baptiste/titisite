@@ -114,7 +114,19 @@ export function stacksInfo(qty) {
 function ItemIcon({ name, category, iconIndex, idIndex, block3d = false, size = 24 }) {
   const url = iconIndex?.get(normName(name));
   const [hover, setHover] = useState(false);
+  const [thumb, setThumb] = useState(null);
   const id = block3d ? idIndex?.get(normName(name)) : null;
+
+  // Vignette 3D statique (rendue par un renderer partagé, mise en cache) —
+  // permet d'afficher l'item en 3D en permanence, sans un contexte WebGL/item.
+  useEffect(() => {
+    if (!id) { setThumb(null); return undefined; }
+    let alive = true;
+    import('../../data/blockThumbnail')
+      .then((m) => m.blockThumbnail(id, Math.max(64, size * 2)))
+      .then((u) => { if (alive) setThumb(u); });
+    return () => { alive = false; };
+  }, [id, size]);
 
   const flat = url ? (
     <img
@@ -133,16 +145,21 @@ function ItemIcon({ name, category, iconIndex, idIndex, block3d = false, size = 
   // Sans modèle possible (pas d'id, ou mode 3D off) → comportement d'origine.
   if (!id) return flat;
 
-  // Le bloc 3D ne se monte qu'au survol (un contexte WebGL par item survolé), et
-  // retombe de lui-même sur l'icône plate si l'id n'a pas de modèle géométrique.
+  // Vignette 3D permanente (ou icône plate le temps du rendu), + rotation live au
+  // survol. Retombe sur l'icône plate si l'id n'a pas de modèle géométrique.
+  const base = thumb ? (
+    <img src={thumb} alt="" width={size} height={size} draggable={false}
+      style={{ imageRendering: 'pixelated', objectFit: 'contain', display: 'block' }} />
+  ) : flat;
+
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      title="Survol : aperçu 3D"
+      title="Survol : rotation 3D"
       style={{ position: 'relative', width: size, height: size, borderRadius: 8 }}
     >
-      {flat}
+      {base}
       {hover && <Block3D id={id} size={size} />}
     </div>
   );
@@ -166,7 +183,7 @@ export function MinecraftTab() {
   const [catalog, setCatalog] = useState([]);
   const iconIndex = useMemo(() => buildIconIndex(catalog), [catalog]);
   const idIndex = useMemo(() => buildIdIndex(catalog), [catalog]);
-  const [block3d, setBlock3d] = useState(false); // aperçu 3D des blocs au survol
+  const [block3d, setBlock3d] = useState(true); // rendu 3D des blocs (défaut activé)
   const [calcOpen, setCalcOpen] = useState(false); // calculateur de craft
   const [view, setView] = useState('chests'); // 'chests' | 'builds'
 

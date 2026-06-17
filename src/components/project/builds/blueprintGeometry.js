@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_TEXTURE_BASE } from '../../../data/minecraftModels';
+import { defaultFaceUV } from '../block3d/buildBlock';
 
 // Géométries pour le rendu instancié d'un build : un cube unité texturé pour le
 // vanilla, et — pour les blocs custom Minefield à modèle — la géométrie du
@@ -109,7 +110,7 @@ export function buildModelParts(model) {
       });
       const [bl, br, tr, tl] = pts;
       g.pos.push(...bl, ...br, ...tr, ...bl, ...tr, ...tl);
-      const [u1, v1, u2, v2] = (face.uv || [0, 0, 16, 16]).map((n) => n / 16);
+      const [u1, v1, u2, v2] = (face.uv || defaultFaceUV(dir, fx, fy, fz, tx, ty, tz)).map((n) => n / 16);
       const a = [u1, 1 - v2], b = [u2, 1 - v2], c = [u2, 1 - v1], d = [u1, 1 - v1];
       g.uv.push(...a, ...b, ...c, ...a, ...c, ...d);
     }

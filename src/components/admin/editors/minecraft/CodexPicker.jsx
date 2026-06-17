@@ -95,7 +95,7 @@ export function CodexPicker({ catalog, byId, value, onChange, placeholder = 'Rec
           position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 300,
           background: '#0f0a24', border: '1px solid rgba(80,50,130,0.35)',
           borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.55)',
-          padding: 5, maxHeight: 280, overflowY: 'auto',
+          padding: 5, maxHeight: 230, overflowY: 'auto',
         }}>
           {results.map((e, i) => (
             <button type="button"

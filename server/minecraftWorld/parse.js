@@ -19,23 +19,24 @@ export async function parseWorld({ filePath, originalName, bbox, maxBlocks }) {
   }
   if (regions.length === 0) throw new Error('no_region');
 
-  const palette = [];
+  const palette = []; // [{ name, rot:[x,y,z] }] — unique par (nom + orientation)
   const paletteIndex = new Map();
   const counts = new Map();
   const blocks = []; // interleavé [x,y,z,pi, …] en coords relatives à min
   let count = 0;
   let overflow = false;
 
-  const idxOf = (name) => {
-    let i = paletteIndex.get(name);
-    if (i === undefined) { i = palette.length; palette.push(name); paletteIndex.set(name, i); }
+  const idxOf = (name, rot) => {
+    const key = `${name}|${rot.join(',')}`;
+    let i = paletteIndex.get(key);
+    if (i === undefined) { i = palette.length; palette.push({ name, rot }); paletteIndex.set(key, i); }
     return i;
   };
-  const emit = (x, y, z, name) => {
+  const emit = (x, y, z, name, rot = [0, 0, 0]) => {
     if (overflow) return;
     if (count >= maxBlocks) { overflow = true; return; }
-    blocks.push(x - bbox.minX, y - bbox.minY, z - bbox.minZ, idxOf(name));
-    counts.set(name, (counts.get(name) || 0) + 1);
+    blocks.push(x - bbox.minX, y - bbox.minY, z - bbox.minZ, idxOf(name, rot));
+    counts.set(name, (counts.get(name) || 0) + 1); // BOM regroupé par nom
     count++;
   };
 

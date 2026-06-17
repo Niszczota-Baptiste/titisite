@@ -68,6 +68,21 @@ function faceCorners(dir, x1, y1, z1, x2, y2, z2) {
   }
 }
 
+// UV par défaut (Minecraft) dérivée des dimensions de l'élément quand face.uv est
+// absent — sinon un slab/quart de bloc étirerait la texture entière. fx..tz en
+// coords 0–16 (el.from/el.to bruts).
+export function defaultFaceUV(dir, fx, fy, fz, tx, ty, tz) {
+  switch (dir) {
+    case 'down':  return [fx, fz, tx, tz];
+    case 'up':    return [fx, fz, tx, tz];
+    case 'north': return [16 - tx, 16 - ty, 16 - fx, 16 - fy];
+    case 'south': return [fx, 16 - ty, tx, 16 - fy];
+    case 'west':  return [fz, 16 - ty, tz, 16 - fy];
+    case 'east':  return [16 - tz, 16 - ty, 16 - fz, 16 - fy];
+    default:      return [0, 0, 16, 16];
+  }
+}
+
 export function buildBlockGroup(model) {
   const root = new THREE.Group();
   const geometries = [];
@@ -106,7 +121,7 @@ export function buildBlockGroup(model) {
       if (!file) continue;
       const corners = faceCorners(dir, x1, y1, z1, x2, y2, z2);
       if (!corners) continue;
-      const geo = quadGeometry(corners, face.uv);
+      const geo = quadGeometry(corners, face.uv || defaultFaceUV(dir, fx, fy, fz, tx, ty, tz));
       geometries.push(geo);
       elGroup.add(new THREE.Mesh(geo, material(MODEL_TEXTURE_BASE + file, 'tintindex' in face)));
     }
