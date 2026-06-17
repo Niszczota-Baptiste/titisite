@@ -8,6 +8,7 @@ import { Block3D } from './block3d/Block3D';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { CraftCalculator } from './CraftCalculator';
+import { BuildsView } from './builds/BuildsView';
 import { useConfirm } from '../../ui/ConfirmProvider';
 import { useToast } from '../../ui/ToastProvider';
 import {
@@ -167,6 +168,7 @@ export function MinecraftTab() {
   const idIndex = useMemo(() => buildIdIndex(catalog), [catalog]);
   const [block3d, setBlock3d] = useState(false); // aperçu 3D des blocs au survol
   const [calcOpen, setCalcOpen] = useState(false); // calculateur de craft
+  const [view, setView] = useState('chests'); // 'chests' | 'builds'
 
   // Coffres (containers) + organisation de la vue
   const [chests, setChests] = useState([]);
@@ -374,11 +376,22 @@ export function MinecraftTab() {
   const subtitle = `${items.length} item${items.length > 1 ? 's' : ''} · ${totalUnits} unité${totalUnits > 1 ? 's' : ''} · ${chests.length} coffre${chests.length > 1 ? 's' : ''}`;
   const currentSortLabel = SORT_OPTIONS.find((o) => o.id === sortBy)?.label ?? 'Trier';
 
+  const subNav = <MinecraftSubNav view={view} setView={setView} />;
+
+  if (view === 'builds') {
+    return (
+      <Section title="🏗️ Builds 3D importés" actions={subNav}>
+        <BuildsView ws={ws} />
+      </Section>
+    );
+  }
+
   return (
     <Section
       title="⛏️ Ressources Minecraft"
       actions={
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {subNav}
           <Button variant="ghost" onClick={() => setCalcOpen(true)}>🧮 Calculateur</Button>
           <Button variant="ghost" onClick={() => { setEditingChest(null); setChestModalOpen(true); }}>
             + Coffre
@@ -657,6 +670,28 @@ export function MinecraftTab() {
         Objets et textures © serveur Minefield
       </p>
     </Section>
+  );
+}
+
+// ── Sous-navigation Coffres / Builds 3D ───────────────────────────────────────
+
+function MinecraftSubNav({ view, setView }) {
+  return (
+    <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(80,50,130,0.28)' }}>
+      {[['chests', '📦 Coffres'], ['builds', '🏗️ Builds 3D']].map(([k, label], i) => (
+        <button type="button" key={k} onClick={() => setView(k)}
+          style={{
+            padding: '7px 12px', border: 'none',
+            borderLeft: i > 0 ? '1px solid rgba(80,50,130,0.28)' : 'none',
+            background: view === k ? `rgba(${ACC_RGB},0.22)` : 'transparent',
+            cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap',
+            color: view === k ? ACC : 'rgba(180,170,200,0.6)',
+            fontFamily: "'Inter',sans-serif",
+          }}>
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
