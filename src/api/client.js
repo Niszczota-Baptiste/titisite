@@ -290,6 +290,7 @@ export const api = {
       get:    (id) => request('GET',  `/workspaces/${slug}/blueprints/${id}`),
       dataUrl: (id) => `/api/workspaces/${slug}/blueprints/${id}/data`,
       remove: (id) => request('DELETE', `/workspaces/${slug}/blueprints/${id}`),
+      duplicate: (id, b) => request('POST', `/workspaces/${slug}/blueprints/${id}/duplicate`, b),
       share:    (id) => request('POST', `/workspaces/${slug}/blueprints/${id}/share`),
       unshare:  (id) => request('DELETE', `/workspaces/${slug}/blueprints/${id}/share`),
       upload: (file, fields, onProgress) => {

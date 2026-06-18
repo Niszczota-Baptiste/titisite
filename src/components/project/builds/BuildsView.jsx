@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
-import { loadBlockCodex } from '../../../data/blockCodex';
+import { useEffect, useMemo, useState } from 'react';
+import { loadBlockCodex, resolveBlock } from '../../../data/blockCodex';
+import { useCodex } from '../../../hooks/useCodex';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useConfirm } from '../../../ui/ConfirmProvider';
 import { useToast } from '../../../ui/ToastProvider';
-import { Button, Empty, ErrorBanner, Field, Input, card, muted } from '../shared';
+import { Button, Empty, ErrorBanner, Field, Input, Modal, card, muted } from '../shared';
+import { CodexPicker } from '../../admin/editors/minecraft/CodexPicker';
 import { BlueprintBom } from './BlueprintBom';
 import { BlueprintCanvas } from './BlueprintCanvas';
 import { ShareControls } from './ShareControls';
@@ -34,6 +36,7 @@ export function BuildsView({ ws, items = [], chests = [] }) {
 
   const [list, setList] = useState(null);
   const [openId, setOpenId] = useState(null);
+  const [dupId, setDupId] = useState(null);
   const [err, setErr] = useState('');
   const [showForm, setShowForm] = useState(false);
 
@@ -77,6 +80,7 @@ export function BuildsView({ ws, items = [], chests = [] }) {
                 <Button variant="ghost" onClick={() => setOpenId(openId === b.id ? null : b.id)}>
                   {openId === b.id ? 'Fermer' : 'Ouvrir'}
                 </Button>
+                <Button variant="ghost" onClick={() => setDupId(b.id)}>Dupliquer</Button>
                 <Button variant="ghost" onClick={() => remove(b)}>Supprimer</Button>
               </div>
               {openId === b.id && <BlueprintViewer ws={ws} id={b.id} isMobile={isMobile} items={items} chests={chests} />}
@@ -84,7 +88,89 @@ export function BuildsView({ ws, items = [], chests = [] }) {
           ))}
         </div>
       )}
+
+      {dupId != null && (
+        <DuplicateModal ws={ws} id={dupId} toast={toast}
+          onClose={() => setDupId(null)}
+          onDone={() => { setDupId(null); load(); }} onError={setErr} />
+      )}
     </div>
+  );
+}
+
+// Dupliquer un build en remplaçant un/plusieurs types de blocs (même structure,
+// autres matériaux). `from` = type présent dans le build, `to` = bloc du codex.
+function DuplicateModal({ ws, id, toast, onClose, onDone, onError }) {
+  const { catalog, byId } = useCodex();
+  const [detail, setDetail] = useState(null);
+  const [codex, setCodex] = useState(null);
+  const [name, setName] = useState('');
+  const [swaps, setSwaps] = useState([{ from: '', toId: '', toName: '' }]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    ws.blueprints.get(id).then((d) => { if (alive) { setDetail(d); setName(`${d.name} (variante)`); } }).catch(() => onError?.('Build introuvable.'));
+    loadBlockCodex().then((c) => alive && setCodex(c));
+    return () => { alive = false; };
+  }, [ws, id]);
+
+  // Types de blocs présents dans le build (depuis le BOM).
+  const blockTypes = useMemo(() => (detail?.bom || []).map((b) => b.blockId), [detail]);
+  const setSwap = (i, patch) => setSwaps((s) => s.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  const submit = async () => {
+    const clean = swaps
+      .filter((s) => s.from && s.toName)
+      .map((s) => ({ from: s.from, to: s.toName }));
+    setBusy(true);
+    try {
+      await ws.blueprints.duplicate(id, { name, swaps: clean });
+      toast?.success?.(clean.length ? 'Variante créée' : 'Build dupliqué');
+      onDone();
+    } catch (e) { onError?.(e.message || 'Duplication impossible.'); }
+    finally { setBusy(false); }
+  };
+
+  const label = (blockId) => (codex ? resolveBlock(codex, blockId).nomFr : blockId);
+
+  return (
+    <Modal open onClose={onClose} title="📑 Dupliquer le build" width={680}>
+      <Field label="Nom de la copie"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+      <div style={{ fontSize: 12, letterSpacing: '0.4px', textTransform: 'uppercase', color: 'rgba(180,170,200,0.55)', margin: '14px 0 8px' }}>
+        Remplacements de blocs (optionnel)
+      </div>
+      <p style={{ ...muted, fontSize: 12, marginTop: 0 }}>
+        Garde la même structure et change le matériau (ex. chêne → sapin). Laisse vide pour une copie identique.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {swaps.map((row, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={row.from} onChange={(e) => setSwap(i, { from: e.target.value })}
+              style={{ flex: '1 1 200px', background: 'rgba(14,9,28,0.6)', border: '1px solid rgba(80,50,130,0.28)', borderRadius: 10, padding: '9px 12px', color: '#ede8f8', fontSize: 14 }}>
+              <option value="">— bloc à remplacer —</option>
+              {blockTypes.map((bid) => <option key={bid} value={bid}>{label(bid)}</option>)}
+            </select>
+            <span style={{ color: 'rgba(180,170,200,0.5)' }}>→</span>
+            <div style={{ flex: '1 1 200px', minWidth: 160 }}>
+              <CodexPicker catalog={catalog} byId={byId} value={row.toId}
+                onChange={(id2, entry) => setSwap(i, { toId: id2, toName: `${entry?.source === 'minefield' ? 'minefield' : 'minecraft'}:${id2}` })}
+                placeholder="Nouveau bloc…" />
+            </div>
+            <button type="button" onClick={() => setSwaps((s) => s.filter((_, j) => j !== i))}
+              style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 8, cursor: 'pointer', background: 'rgba(220,60,60,0.12)', border: '1px solid rgba(220,60,60,0.3)', color: '#f87171', fontSize: 16 }}>×</button>
+          </div>
+        ))}
+      </div>
+      <button type="button" onClick={() => setSwaps((s) => [...s, { from: '', toId: '', toName: '' }])}
+        style={{ marginTop: 10, padding: '6px 12px', borderRadius: 8, cursor: 'pointer', background: 'transparent', border: '1px dashed rgba(80,50,130,0.4)', color: 'rgba(200,180,240,0.8)', fontSize: 13, fontFamily: "'Inter',sans-serif" }}>
+        + Remplacement
+      </button>
+      <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+        <Button onClick={submit} disabled={busy || !detail}>{busy ? 'Duplication…' : 'Dupliquer'}</Button>
+        <Button variant="ghost" onClick={onClose}>Annuler</Button>
+      </div>
+    </Modal>
   );
 }
 

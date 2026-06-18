@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import { Router } from 'express';
 import { db } from '../db.js';
 import { safeUnlink, uploadPath, uploadWorld } from '../uploads.js';
@@ -112,6 +113,59 @@ blueprintsRouter.post('/', uploadWorld.single('file'), async (req, res) => {
     console.error('[blueprints] parse failed:', e?.message || e);
     res.status(422).json({ error: code });
   }
+});
+
+// Duplique un build en remplaçant un ou plusieurs types de blocs (même structure,
+// autres matériaux). Les swaps portent sur les NOMS de palette (ex.
+// « minecraft:oak_planks » → « minecraft:spruce_planks ») : on renomme la palette
+// (indices des blocs inchangés) et on recalcule le BOM.
+blueprintsRouter.post('/:id/duplicate', (req, res) => {
+  const src = db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ? AND workspace_id = ?')
+    .get(Number(req.params.id), req.workspace.id);
+  if (!src) return res.status(404).json({ error: 'not_found' });
+  if (!src.data_file) return res.status(422).json({ error: 'no_data' });
+
+  let sparse;
+  try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- data_file is a UUID from DB
+    sparse = JSON.parse(zlib.gunzipSync(fs.readFileSync(uploadPath(src.data_file))));
+  } catch { return res.status(422).json({ error: 'data_unreadable' }); }
+
+  const map = new Map();
+  for (const s of Array.isArray(req.body?.swaps) ? req.body.swaps : []) {
+    const from = String(s?.from || '').trim();
+    const to = String(s?.to || '').trim();
+    if (from && to && from !== to) map.set(from, to);
+  }
+  const palette = (sparse.palette || []).map((e) => {
+    const name = typeof e === 'string' ? e : e.name;
+    const props = typeof e === 'string' ? null : (e.props || null);
+    return { name: map.get(name) || name, props };
+  });
+
+  const blocks = sparse.blocks || [];
+  const counts = new Map();
+  for (let i = 0; i < blocks.length; i += 4) {
+    const name = palette[blocks[i + 3]]?.name;
+    if (name) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const bom = [...counts.entries()].map(([blockId, count]) => ({ blockId, count })).sort((a, b) => b.count - a.count);
+
+  const newSparse = { palette, min: sparse.min, size: sparse.size, count: sparse.count, blocks };
+  const dataFile = `${crypto.randomUUID()}.json.gz`;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- dataFile is a UUID
+  fs.writeFileSync(uploadPath(dataFile), zlib.gzipSync(Buffer.from(JSON.stringify(newSparse))));
+
+  const name = String(req.body?.name || '').trim().slice(0, 120) || `${src.name} (copie)`;
+  const r = db.prepare(`
+    INSERT INTO minecraft_blueprints
+      (workspace_id, name, min_x, min_y, min_z, size_x, size_y, size_z, block_count, palette, bom, data_file, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.workspace.id, name, src.min_x, src.min_y, src.min_z, src.size_x, src.size_y, src.size_z,
+    src.block_count, JSON.stringify(palette), JSON.stringify(bom), dataFile, req.user.id,
+  );
+  res.status(201).json(detail(db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ?').get(r.lastInsertRowid)));
 });
 
 blueprintsRouter.post('/:id/share', (req, res) => {
