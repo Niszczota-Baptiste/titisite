@@ -28,9 +28,11 @@ function normIngredient(ingredient, count) {
 // pour développer un arbre de craft.
 export function loadVanillaRecipes() {
   if (!_vanilla) {
-    _vanilla = import('./recipes_vanilla.json')
-      .then((m) => m.default || m)
-      .then((data) => {
+    _vanilla = Promise.all([
+      import('./recipes_vanilla.json').then((m) => m.default || m),
+      import('./recipes_grids.json').then((m) => m.default || m).catch(() => ({})),
+    ])
+      .then(([data, grids]) => {
         const byResult = new Map();
         const put = (recipe) => {
           if (!byResult.has(recipe.resultId)) byResult.set(recipe.resultId, recipe);
@@ -43,11 +45,13 @@ export function loadVanillaRecipes() {
           return ab - bb;
         });
         for (const r of crafting) {
+          const resultId = strip(r.result);
           put({
-            resultId: strip(r.result),
+            resultId,
             resultCount: Math.max(1, Number(r.count) || 1),
             type: 'crafting',
             source: 'vanilla',
+            grid: grids[resultId] || [],
             ingredients: (r.ingredients || []).map((i) => normIngredient(i.ingredient, i.count)),
           });
         }
