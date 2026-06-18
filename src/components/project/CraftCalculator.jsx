@@ -5,6 +5,7 @@ import { buildRecipeIndex } from '../../data/minecraftRecipes';
 import { planCraft } from '../../data/craftPlan';
 import { useCodex } from '../../hooks/useCodex';
 import { CodexItem, CodexPicker } from '../admin/editors/minecraft/CodexPicker';
+import { CraftGrid } from '../admin/editors/minecraft/CraftGrid';
 import { Button, ErrorBanner, Field, card, muted } from './shared';
 import { WORLDS } from './Minecraft';
 
@@ -120,7 +121,7 @@ export function CraftCalculator({ items, chests, ws, onApplied, toast }) {
       ) : plan && (
         <PlanView
           plan={plan} byId={byId} chestById={chestById} distribute={distribute}
-          targetId={targetId} qty={qty}
+          targetId={targetId} qty={qty} index={index}
         />
       )}
 
@@ -149,7 +150,7 @@ export function CraftCalculator({ items, chests, ws, onApplied, toast }) {
   );
 }
 
-function PlanView({ plan, byId, chestById, distribute, targetId, qty }) {
+function PlanView({ plan, byId, chestById, distribute, targetId, qty, index }) {
   const target = byId.get(targetId);
   const targetSurplus = (() => {
     // rab dû à l'arrondi sur la cible (info seulement)
@@ -199,15 +200,23 @@ function PlanView({ plan, byId, chestById, distribute, targetId, qty }) {
       {plan.steps.length > 0 && (
         <SectionCard title="🛠️ Étapes de craft (dans l'ordre)">
           <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {plan.steps.map((s, i) => (
-              <li key={i} style={{ color: '#ede8f8', fontSize: 14 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {s.type === 'smelting' ? '🔥' : s.type === 'stonecutting' ? '🪚' : '🛠️'}
-                  Crafter {s.times}× <CodexItem byId={byId} id={s.id} size={18} />
-                  <span style={muted}>(produit {s.produced})</span>
-                </span>
-              </li>
-            ))}
+            {plan.steps.map((s, i) => {
+              const grid = index?.get(s.id)?.grid;
+              return (
+                <li key={i} style={{ color: '#ede8f8', fontSize: 14 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    {s.type === 'smelting' ? '🔥' : s.type === 'stonecutting' ? '🪚' : '🛠️'}
+                    Crafter {s.times}× <CodexItem byId={byId} id={s.id} size={18} />
+                    <span style={muted}>(produit {s.produced})</span>
+                  </span>
+                  {Array.isArray(grid) && grid.some((c) => c) && (
+                    <div style={{ marginTop: 6 }}>
+                      <CraftGrid grid={grid} byId={byId} cell={26} />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </SectionCard>
       )}

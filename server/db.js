@@ -228,6 +228,8 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_custom_recipes_result ON custom_recipes(result_id);`);
+  // Disposition 3×3 (recette « shaped ») : JSON de 9 cases (id de codex ou '').
+  ensureColumn('custom_recipes', 'grid', "TEXT NOT NULL DEFAULT '[]'");
 
   // Boutiques (shops) et items en vente, GLOBAUX et admin-only. `project_id`
   // optionnel rattache une boutique à un workspace ; `chest_id` relie

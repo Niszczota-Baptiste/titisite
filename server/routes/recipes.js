@@ -12,17 +12,34 @@ function rowToRecipe(r) {
   if (!r) return null;
   let ingredients = [];
   try { ingredients = JSON.parse(r.ingredients) || []; } catch { ingredients = []; }
+  let grid = [];
+  try { grid = JSON.parse(r.grid) || []; } catch { grid = []; }
   return {
     id: r.id,
     resultId: r.result_id,
     resultCount: r.result_count,
     type: r.type,
     ingredients,
+    grid,
     note: r.note || '',
     position: r.position,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+// Grille 3×3 → tableau normalisé de 9 cases ('' = vide). Renvoie [] si vide.
+function cleanGrid(input) {
+  if (!Array.isArray(input)) return [];
+  const cells = Array.from({ length: 9 }, (_, i) => String(input[i] || '').trim());
+  return cells.some((c) => c) ? cells : [];
+}
+
+// Ingrédients agrégés depuis une grille (1 item consommé par case remplie).
+function ingredientsFromGrid(grid) {
+  const m = new Map();
+  for (const c of grid) if (c) m.set(c, (m.get(c) || 0) + 1);
+  return [...m.entries()].map(([item, count]) => ({ item, count }));
 }
 
 // Normalise/valide les ingrédients : [{ item:<id codex>, count:int>=1 }].
@@ -47,17 +64,20 @@ recipesRouter.get('/', requireAuth, (_req, res) => {
 recipesRouter.post('/', requireAuth, requireRole('admin'), (req, res) => {
   const { resultId, resultCount, type, ingredients, note } = req.body || {};
   if (!resultId || !String(resultId).trim()) return res.status(400).json({ error: 'missing_result' });
-  const ing = cleanIngredients(ingredients);
+  // Grille prioritaire : si fournie, les ingrédients en sont dérivés.
+  const grid = cleanGrid(req.body?.grid);
+  const ing = grid.length ? ingredientsFromGrid(grid) : cleanIngredients(ingredients);
   if (ing.length === 0) return res.status(400).json({ error: 'missing_ingredients' });
   const pos = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM custom_recipes').get().n;
   const result = db.prepare(`
-    INSERT INTO custom_recipes (result_id, result_count, type, ingredients, note, position, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO custom_recipes (result_id, result_count, type, ingredients, grid, note, position, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     String(resultId).trim(),
     Math.max(1, Math.floor(Number(resultCount) || 1)),
     TYPES.has(type) ? type : 'crafting',
     JSON.stringify(ing),
+    JSON.stringify(grid),
     String(note || '').trim(),
     pos,
     req.user.id,
@@ -70,7 +90,11 @@ recipesRouter.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
   const existing = db.prepare('SELECT * FROM custom_recipes WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'not_found' });
   const body = req.body || {};
-  const ing = 'ingredients' in body ? cleanIngredients(body.ingredients) : JSON.parse(existing.ingredients);
+  const grid = 'grid' in body ? cleanGrid(body.grid) : (JSON.parse(existing.grid || '[]') || []);
+  let ing;
+  if (grid.length) ing = ingredientsFromGrid(grid);
+  else if ('ingredients' in body) ing = cleanIngredients(body.ingredients);
+  else ing = JSON.parse(existing.ingredients);
   if (ing.length === 0) return res.status(400).json({ error: 'missing_ingredients' });
   db.prepare(`
     UPDATE custom_recipes SET
@@ -78,6 +102,7 @@ recipesRouter.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
       result_count = ?,
       type         = ?,
       ingredients  = ?,
+      grid         = ?,
       note         = COALESCE(?, note),
       updated_at   = strftime('%s','now')
     WHERE id = ?
@@ -86,6 +111,7 @@ recipesRouter.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
     body.resultCount === undefined ? existing.result_count : Math.max(1, Math.floor(Number(body.resultCount) || 1)),
     TYPES.has(body.type) ? body.type : existing.type,
     JSON.stringify(ing),
+    JSON.stringify(grid),
     body.note === undefined ? null : String(body.note).trim(),
     id,
   );

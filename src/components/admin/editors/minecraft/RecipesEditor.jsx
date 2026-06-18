@@ -4,28 +4,39 @@ import { useCodex } from '../../../../hooks/useCodex';
 import { useConfirm } from '../../../../ui/ConfirmProvider';
 import { useToast } from '../../../../ui/ToastProvider';
 import { Empty, ErrorBanner } from '../../../project/shared';
-import { ACC, ACC_RGB, Button, Field, Input, inputStyle } from '../../ui';
+import { ACC, ACC_RGB, Button, Field, Input } from '../../ui';
 import { CodexItem, CodexPicker } from './CodexPicker';
+import { CraftGrid } from './CraftGrid';
 
 const TYPES = [
   { id: 'crafting', label: '🛠️ Établi' },
   { id: 'smelting', label: '🔥 Fourneau' },
 ];
 
+const emptyGrid = () => Array(9).fill('');
 const emptyForm = () => ({
-  id: null, resultId: '', resultCount: 1, type: 'crafting',
-  ingredients: [{ item: '', count: 1 }], note: '',
+  id: null, resultId: '', resultCount: 1, type: 'crafting', grid: emptyGrid(), note: '',
 });
 
-// Éditeur des recettes custom Minefield (globales). Les recettes vanilla restent
-// en lecture seule côté client ; ici on ne saisit que ce qui manque, avec
-// autocomplétion sur le codex.
+// Convertit une liste d'ingrédients (recettes anciennes sans grille) en cases,
+// en répétant chaque item selon son count, jusqu'à 9 cases.
+function gridFromIngredients(ingredients) {
+  const cells = [];
+  for (const it of ingredients || []) {
+    for (let i = 0; i < it.count && cells.length < 9; i++) cells.push(it.item);
+  }
+  while (cells.length < 9) cells.push('');
+  return cells.slice(0, 9);
+}
+
+// Éditeur des recettes custom Minefield (globales), avec placement sur une grille
+// d'établi 3×3. Les recettes vanilla restent en lecture seule côté client.
 export function RecipesEditor() {
   const { catalog, byId } = useCodex();
   const confirm = useConfirm();
   const toast = useToast();
   const [recipes, setRecipes] = useState(null);
-  const [form, setForm] = useState(null); // null = pas d'édition en cours
+  const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
@@ -33,27 +44,19 @@ export function RecipesEditor() {
   useEffect(() => { load(); }, []);
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const setIng = (i, patch) => setForm((f) => ({
-    ...f, ingredients: f.ingredients.map((it, j) => (j === i ? { ...it, ...patch } : it)),
-  }));
-  const addIng = () => setForm((f) => ({ ...f, ingredients: [...f.ingredients, { item: '', count: 1 }] }));
-  const removeIng = (i) => setForm((f) => ({
-    ...f, ingredients: f.ingredients.filter((_, j) => j !== i),
-  }));
 
   const save = async () => {
-    const ingredients = form.ingredients.filter((it) => it.item);
     if (!form.resultId) { setErr('Choisis l\'item produit.'); return; }
-    if (ingredients.length === 0) { setErr('Ajoute au moins un ingrédient.'); return; }
+    if (form.grid.every((c) => !c)) { setErr('Pose au moins un ingrédient dans la grille.'); return; }
     setSaving(true); setErr('');
-    const payload = {
-      resultId: form.resultId,
-      resultCount: form.resultCount,
-      type: form.type,
-      ingredients,
-      note: form.note,
-    };
     try {
+      const payload = {
+        resultId: form.resultId,
+        resultCount: form.resultCount,
+        type: form.type,
+        grid: form.grid,
+        note: form.note,
+      };
       if (form.id) await api.recipes.update(form.id, payload);
       else await api.recipes.create(payload);
       toast?.success?.('Recette enregistrée.');
@@ -67,7 +70,7 @@ export function RecipesEditor() {
     setErr('');
     setForm({
       id: r.id, resultId: r.resultId, resultCount: r.resultCount, type: r.type,
-      ingredients: r.ingredients.length ? r.ingredients.map((i) => ({ ...i })) : [{ item: '', count: 1 }],
+      grid: r.grid?.length ? Array.from({ length: 9 }, (_, i) => r.grid[i] || '') : gridFromIngredients(r.ingredients),
       note: r.note || '',
     });
   };
@@ -86,10 +89,7 @@ export function RecipesEditor() {
   return (
     <div>
       <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 6, flexWrap: 'wrap' }}>
-        <h2 style={{
-          fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 700,
-          color: '#ede8f8', letterSpacing: '-0.3px', margin: 0,
-        }}>
+        <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 700, color: '#ede8f8', margin: 0 }}>
           Recettes custom
         </h2>
         {recipes && (
@@ -104,18 +104,15 @@ export function RecipesEditor() {
         )}
       </header>
       <p style={{ fontSize: 13, color: 'rgba(180,170,200,0.55)', marginTop: 0, marginBottom: 18 }}>
-        Les recettes vanilla sont déjà connues du calculateur. Ajoute ici uniquement
-        les recettes Minefield (meubles, blocs custom…).
+        Les recettes vanilla sont déjà connues du calculateur. Place ici les recettes
+        Minefield sur la grille d'établi (clic sur une case pour poser un item).
       </p>
 
       <ErrorBanner error={err} onDismiss={() => setErr('')} />
 
       {form && (
-        <RecipeForm
-          form={form} catalog={catalog} byId={byId} saving={saving}
-          setField={setField} setIng={setIng} addIng={addIng} removeIng={removeIng}
-          onSave={save} onCancel={() => { setForm(null); setErr(''); }}
-        />
+        <RecipeForm form={form} catalog={catalog} byId={byId} saving={saving}
+          setField={setField} onSave={save} onCancel={() => { setForm(null); setErr(''); }} />
       )}
 
       {recipes == null ? (
@@ -133,85 +130,59 @@ export function RecipesEditor() {
   );
 }
 
-function RecipeForm({ form, catalog, byId, saving, setField, setIng, addIng, removeIng, onSave, onCancel }) {
+function RecipeForm({ form, catalog, byId, saving, setField, onSave, onCancel }) {
   return (
     <div style={{
       background: 'rgba(20,10,42,0.6)', border: `1px solid rgba(${ACC_RGB},0.3)`,
       borderRadius: 14, padding: 18, marginBottom: 18,
     }}>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
-        <div style={{ flex: '2 1 240px', minWidth: 220 }}>
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+        {/* Grille d'établi */}
+        <div>
+          <div style={{ fontSize: 12, letterSpacing: '0.4px', textTransform: 'uppercase', color: 'rgba(180,170,200,0.55)', marginBottom: 8 }}>
+            Grille d'établi
+          </div>
+          <CraftGrid editable grid={form.grid} byId={byId} catalog={catalog}
+            onChange={(g) => setField('grid', g)} />
+        </div>
+
+        {/* Paramètres */}
+        <div style={{ flex: '1 1 240px', minWidth: 220, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Item produit">
             <CodexPicker catalog={catalog} byId={byId} value={form.resultId}
               onChange={(id) => setField('resultId', id)} />
           </Field>
-        </div>
-        <div style={{ flex: '0 1 110px', minWidth: 90 }}>
-          <Field label="Quantité produite">
-            <Input type="number" min={1} value={form.resultCount}
-              onChange={(e) => setField('resultCount', Math.max(1, Number(e.target.value) || 1))} />
-          </Field>
-        </div>
-        <div style={{ flex: '1 1 160px', minWidth: 140 }}>
-          <Field label="Type">
-            <div style={{ display: 'flex', gap: 6 }}>
-              {TYPES.map((t) => (
-                <button type="button" key={t.id}
-                  onClick={() => setField('type', t.id)}
-                  style={{
-                    flex: 1, padding: '8px 6px', borderRadius: 8, cursor: 'pointer',
-                    fontSize: 12, fontFamily: "'Inter',sans-serif",
-                    background: form.type === t.id ? `rgba(${ACC_RGB},0.2)` : 'transparent',
-                    border: `1px solid ${form.type === t.id ? ACC : 'rgba(80,50,130,0.28)'}`,
-                    color: form.type === t.id ? ACC : '#ede8f8',
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: '0 1 120px' }}>
+              <Field label="Quantité produite">
+                <Input type="number" min={1} value={form.resultCount}
+                  onChange={(e) => setField('resultCount', Math.max(1, Number(e.target.value) || 1))} />
+              </Field>
             </div>
-          </Field>
-        </div>
-      </div>
-
-      <div style={{ fontSize: 12, letterSpacing: '0.4px', textTransform: 'uppercase',
-        color: 'rgba(180,170,200,0.55)', marginBottom: 8 }}>
-        Ingrédients
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {form.ingredients.map((ing, i) => (
-          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <CodexPicker catalog={catalog} byId={byId} value={ing.item}
-                onChange={(id) => setIng(i, { item: id })} placeholder="Ingrédient…" />
+            <div style={{ flex: '1 1 160px' }}>
+              <Field label="Type">
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {TYPES.map((t) => (
+                    <button type="button" key={t.id} onClick={() => setField('type', t.id)}
+                      style={{
+                        flex: 1, padding: '8px 6px', borderRadius: 8, cursor: 'pointer',
+                        fontSize: 12, fontFamily: "'Inter',sans-serif",
+                        background: form.type === t.id ? `rgba(${ACC_RGB},0.2)` : 'transparent',
+                        border: `1px solid ${form.type === t.id ? ACC : 'rgba(80,50,130,0.28)'}`,
+                        color: form.type === t.id ? ACC : '#ede8f8',
+                      }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
             </div>
-            <input type="number" min={1} value={ing.count}
-              onChange={(e) => setIng(i, { count: Math.max(1, Number(e.target.value) || 1) })}
-              style={{ ...inputStyle, width: 72, flexShrink: 0 }} />
-            <button type="button" onClick={() => removeIng(i)}
-              title="Retirer"
-              style={{
-                flexShrink: 0, width: 34, height: 34, borderRadius: 8, cursor: 'pointer',
-                background: 'rgba(220,60,60,0.12)', border: '1px solid rgba(220,60,60,0.3)',
-                color: '#f87171', fontSize: 16,
-              }}
-            >×</button>
           </div>
-        ))}
-      </div>
-      <button type="button" onClick={addIng}
-        style={{
-          marginTop: 10, padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
-          background: 'transparent', border: '1px dashed rgba(80,50,130,0.4)',
-          color: 'rgba(200,180,240,0.8)', fontSize: 13, fontFamily: "'Inter',sans-serif",
-        }}
-      >+ Ingrédient</button>
-
-      <div style={{ marginTop: 14 }}>
-        <Field label="Note (optionnel)">
-          <Input value={form.note} onChange={(e) => setField('note', e.target.value)}
-            placeholder="ex. établi de menuiserie" />
-        </Field>
+          <Field label="Note (optionnel)">
+            <Input value={form.note} onChange={(e) => setField('note', e.target.value)}
+              placeholder="ex. établi de menuiserie" />
+          </Field>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
@@ -223,17 +194,18 @@ function RecipeForm({ form, catalog, byId, saving, setField, setIng, addIng, rem
 }
 
 function RecipeRow({ r, byId, onEdit, onRemove }) {
+  const hasGrid = Array.isArray(r.grid) && r.grid.some((c) => c);
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+      display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
       background: 'rgba(20,10,42,0.5)', border: '1px solid rgba(80,50,130,0.28)',
       borderRadius: 12, padding: '12px 14px',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 180 }}>
+      {hasGrid && <CraftGrid grid={r.grid} byId={byId} cell={26} />}
+      <span style={{ color: 'rgba(180,170,200,0.45)', fontSize: 16 }}>→</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <CodexItem byId={byId} id={r.resultId} size={28} />
-        {r.resultCount > 1 && (
-          <span style={{ fontSize: 12, color: '#4dd9ac', fontWeight: 700 }}>×{r.resultCount}</span>
-        )}
+        {r.resultCount > 1 && <span style={{ fontSize: 12, color: '#4dd9ac', fontWeight: 700 }}>×{r.resultCount}</span>}
       </div>
       <span style={{
         fontSize: 11, padding: '2px 8px', borderRadius: 10,
@@ -242,22 +214,19 @@ function RecipeRow({ r, byId, onEdit, onRemove }) {
       }}>
         {r.type === 'smelting' ? '🔥 Fourneau' : '🛠️ Établi'}
       </span>
-      <span style={{ color: 'rgba(180,170,200,0.45)', fontSize: 13 }}>←</span>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
-        {r.ingredients.map((ing, i) => (
-          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
-            <CodexItem byId={byId} id={ing.item} size={20} showName={false} />
-            <span style={{ color: 'rgba(220,210,240,0.85)' }}>
-              {byId.get(ing.item)?.nomFr || ing.item} ×{ing.count}
+      {!hasGrid && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+          {r.ingredients.map((ing, i) => (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
+              <CodexItem byId={byId} id={ing.item} size={20} showName={false} />
+              <span style={{ color: 'rgba(220,210,240,0.85)' }}>{byId.get(ing.item)?.nomFr || ing.item} ×{ing.count}</span>
             </span>
-          </span>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-        <button type="button" onClick={onEdit}
-          style={ghostBtn}>Modifier</button>
-        <button type="button" onClick={onRemove}
-          style={{ ...ghostBtn, color: '#f87171', borderColor: 'rgba(220,60,60,0.3)' }}>Supprimer</button>
+        <button type="button" onClick={onEdit} style={ghostBtn}>Modifier</button>
+        <button type="button" onClick={onRemove} style={{ ...ghostBtn, color: '#f87171', borderColor: 'rgba(220,60,60,0.3)' }}>Supprimer</button>
       </div>
     </div>
   );
