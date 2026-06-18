@@ -21,6 +21,7 @@ function rowToRecipe(r) {
     type: r.type,
     ingredients,
     grid,
+    station: r.station || '',
     note: r.note || '',
     position: r.position,
     createdAt: r.created_at,
@@ -70,14 +71,15 @@ recipesRouter.post('/', requireAuth, requireRole('admin'), (req, res) => {
   if (ing.length === 0) return res.status(400).json({ error: 'missing_ingredients' });
   const pos = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM custom_recipes').get().n;
   const result = db.prepare(`
-    INSERT INTO custom_recipes (result_id, result_count, type, ingredients, grid, note, position, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO custom_recipes (result_id, result_count, type, ingredients, grid, station, note, position, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     String(resultId).trim(),
     Math.max(1, Math.floor(Number(resultCount) || 1)),
     TYPES.has(type) ? type : 'crafting',
     JSON.stringify(ing),
     JSON.stringify(grid),
+    String(req.body?.station || '').trim(),
     String(note || '').trim(),
     pos,
     req.user.id,
@@ -103,6 +105,7 @@ recipesRouter.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
       type         = ?,
       ingredients  = ?,
       grid         = ?,
+      station      = ?,
       note         = COALESCE(?, note),
       updated_at   = strftime('%s','now')
     WHERE id = ?
@@ -112,6 +115,7 @@ recipesRouter.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
     TYPES.has(body.type) ? body.type : existing.type,
     JSON.stringify(ing),
     JSON.stringify(grid),
+    body.station === undefined ? existing.station : String(body.station).trim(),
     body.note === undefined ? null : String(body.note).trim(),
     id,
   );

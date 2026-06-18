@@ -15,7 +15,7 @@ const TYPES = [
 
 const emptyGrid = () => Array(9).fill('');
 const emptyForm = () => ({
-  id: null, resultId: '', resultCount: 1, type: 'crafting', grid: emptyGrid(), note: '',
+  id: null, resultId: '', resultCount: 1, type: 'crafting', grid: emptyGrid(), note: '', station: '',
   variants: { enabled: false, cell: null, rows: [{ item: '', result: '' }] },
 });
 
@@ -49,7 +49,7 @@ export function RecipesEditor() {
   const save = async () => {
     if (!form.resultId) { setErr('Choisis l\'item produit.'); return; }
     if (form.grid.every((c) => !c)) { setErr('Pose au moins un ingrédient dans la grille.'); return; }
-    const base = { resultCount: form.resultCount, type: form.type, note: form.note };
+    const base = { resultCount: form.resultCount, type: form.type, note: form.note, station: form.station };
     setSaving(true); setErr('');
     try {
       const v = form.variants;
@@ -82,7 +82,8 @@ export function RecipesEditor() {
     setForm({
       id: r.id, resultId: r.resultId, resultCount: r.resultCount, type: r.type,
       grid: r.grid?.length ? Array.from({ length: 9 }, (_, i) => r.grid[i] || '') : gridFromIngredients(r.ingredients),
-      note: r.note || '',
+      note: r.note || '', station: r.station || '',
+      variants: { enabled: false, cell: null, rows: [{ item: '', result: '' }] },
     });
   };
 
@@ -196,6 +197,12 @@ function RecipeForm({ form, catalog, byId, saving, setField, onSave, onCancel })
               </Field>
             </div>
           </div>
+          {form.type === 'smelting' && (
+            <Field label="Fourneau utilisé (MC ou MF)">
+              <CodexPicker catalog={catalog} byId={byId} value={form.station}
+                onChange={(id) => setField('station', id)} placeholder="ex. Fourneau, Haut fourneau, Fumoir…" />
+            </Field>
+          )}
           <Field label="Note (optionnel)">
             <Input value={form.note} onChange={(e) => setField('note', e.target.value)}
               placeholder="ex. établi de menuiserie" />
@@ -296,11 +303,16 @@ function RecipeRow({ r, byId, onEdit, onRemove }) {
         {r.resultCount > 1 && <span style={{ fontSize: 12, color: '#4dd9ac', fontWeight: 700 }}>×{r.resultCount}</span>}
       </div>
       <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
         fontSize: 11, padding: '2px 8px', borderRadius: 10,
         background: 'rgba(120,80,180,0.18)', border: '1px solid rgba(120,80,180,0.35)',
         color: 'rgba(200,180,240,0.85)',
       }}>
-        {r.type === 'smelting' ? '🔥 Fourneau' : '🛠️ Établi'}
+        {r.type === 'smelting'
+          ? (r.station
+            ? <><CodexItem byId={byId} id={r.station} size={14} showName={false} /> {byId.get(r.station)?.nomFr || 'Fourneau'}</>
+            : '🔥 Fourneau')
+          : '🛠️ Établi'}
       </span>
       {!hasGrid && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>

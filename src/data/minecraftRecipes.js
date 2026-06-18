@@ -97,6 +97,7 @@ export async function buildRecipeIndex(customRecipes = []) {
       type: r.type || 'crafting',
       source: 'custom',
       grid: Array.isArray(r.grid) ? r.grid : [],
+      station: r.station || '',
       ingredients: (r.ingredients || []).map((i) => normIngredient(i.item, i.count)),
     });
   }

@@ -201,11 +201,15 @@ function PlanView({ plan, byId, chestById, distribute, targetId, qty, index }) {
         <SectionCard title="🛠️ Étapes de craft (dans l'ordre)">
           <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {plan.steps.map((s, i) => {
-              const grid = index?.get(s.id)?.grid;
+              const rec = index?.get(s.id);
+              const grid = rec?.grid;
+              const station = rec?.station;
               return (
                 <li key={i} style={{ color: '#ede8f8', fontSize: 14 }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    {s.type === 'smelting' ? '🔥' : s.type === 'stonecutting' ? '🪚' : '🛠️'}
+                    {station
+                      ? <CodexItem byId={byId} id={station} size={16} showName={false} />
+                      : (s.type === 'smelting' ? '🔥' : s.type === 'stonecutting' ? '🪚' : '🛠️')}
                     Crafter {s.times}× <CodexItem byId={byId} id={s.id} size={18} />
                     <span style={muted}>(produit {s.produced})</span>
                   </span>
