@@ -157,7 +157,7 @@ export function AnalyticsEditor() {
       }}>
         Statistiques anonymes des pages publiques : aucun cookie, aucune IP
         stockée. Les visiteurs uniques sont comptés via une empreinte qui change
-        chaque jour.
+        chaque jour, et les données brutes sont conservées une semaine au maximum.
       </p>
 
       {err && (

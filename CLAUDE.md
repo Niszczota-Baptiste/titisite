@@ -115,7 +115,7 @@ Single-process Node app:
   `Cache-Control: immutable` (filenames are UUIDs — replacing a file always
   changes the URL).
 - Graceful shutdown: SIGTERM/SIGINT → `server.close()` with a 30 s force
-  exit. Analytics beacons older than 180 days are purged at boot;
+  exit. Analytics beacons older than 7 days are purged at boot;
   `JWT_SECRET` is mandatory (also salts the analytics visitor hash).
 - Audio endpoint cross-checks the filename against the `tracks` table —
   uploaded documents/builds in `uploads/` cannot leak through it.

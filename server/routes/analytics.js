@@ -18,11 +18,11 @@ const MAX_REFERRER = 255;
 // with multi-day values.
 const MAX_DWELL_MS = 30 * 60 * 1000;
 
-// Retention cap on raw analytics rows. 180 days is plenty for the dashboard
-// (which looks at most 365 days back but in practice 30) and keeps the
-// privacy promise: raw beacons don't accumulate forever. Called at boot from
-// server/index.js, after migrate() has created the tables.
-const RETENTION_DAYS = 180;
+// Retention cap on raw analytics rows. One week is enough for the dashboard's
+// day-to-day reading and keeps the privacy promise tight: raw beacons are kept
+// at most 7 days, never longer. Called at boot from server/index.js, after
+// migrate() has created the tables.
+const RETENTION_DAYS = 7;
 export function purgeOldAnalytics() {
   const cutoff = Math.floor(Date.now() / 1000) - RETENTION_DAYS * 86400;
   let purged = 0;
@@ -55,6 +55,20 @@ function browserFromUA(ua = '') {
   if (/Chrome\/|Chromium\//i.test(ua)) return 'Chrome';
   if (/Safari\//i.test(ua) && /Version\//i.test(ua)) return 'Safari';
   return 'Autre';
+}
+
+// Country is read ONLY from a header the reverse proxy is trusted to overwrite
+// on every request (Cloudflare's CF-IPCountry, an Nginx GeoIP module, …).
+// Behind plain Nginx with no geo module the header would be raw client input —
+// trivially spoofable to poison the country stats — so it stays DISABLED by
+// default: set GEO_COUNTRY_HEADER (e.g. "cf-ipcountry") only once such a proxy
+// is actually in front and overwriting it.
+const GEO_HEADER = (process.env.GEO_COUNTRY_HEADER || '').trim().toLowerCase();
+function countryFromReq(req) {
+  if (!GEO_HEADER) return '';
+  // eslint-disable-next-line security/detect-object-injection -- GEO_HEADER is an env constant, not user input
+  const c = String(req.headers[GEO_HEADER] || '').slice(0, 2).toUpperCase();
+  return /^[A-Z]{2}$/.test(c) && c !== 'XX' ? c : '';
 }
 
 // Daily-rotating, irreversible visitor fingerprint. The date component means
@@ -125,13 +139,12 @@ analyticsRouter.post('/hit', (req, res) => {
        VALUES (?, strftime('%s','now'))`,
     );
   }
-  const country = String(req.headers['cf-ipcountry'] || '').slice(0, 2).toUpperCase();
   _insertHit.run(
     path,
     referrerHost(req.body?.referrer, req.hostname),
     deviceFromUA(req.headers['user-agent']),
     browserFromUA(req.headers['user-agent']),
-    /^[A-Z]{2}$/.test(country) && country !== 'XX' ? country : '',
+    countryFromReq(req),
     visitorHash(req),
   );
   _upsertFirstSeen.run(path);
