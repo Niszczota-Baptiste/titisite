@@ -108,7 +108,7 @@ blueprintsRouter.post('/', uploadWorld.single('file'), async (req, res) => {
     res.status(201).json(detail(db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ?').get(r.lastInsertRowid)));
   } catch (e) {
     safeUnlink(req.file.filename); safeUnlink(dataFile);
-    const code = ['too_many_blocks', 'region_coords_unknown', 'no_region', 'zip_invalid', 'zip64_unsupported'].includes(e.message)
+    const code = ['too_many_blocks', 'region_coords_unknown', 'no_region', 'zip_invalid', 'zip64_unsupported', 'world_too_big'].includes(e.message)
       ? e.message : 'parse_failed';
     console.error('[blueprints] parse failed:', e?.message || e);
     res.status(422).json({ error: code });

@@ -14,6 +14,14 @@ export function parseWorldFile(opts) {
       // N'hérite pas de flags parents incompatibles avec un worker fichier
       // (ex. --input-type) ; garde les options mémoire éventuelles.
       execArgv: process.execArgv.filter((a) => !a.startsWith('--input-type')),
+      // Plafond mémoire du worker : un parsing pathologique (zip-bomb, monde
+      // énorme) tue le worker — pas le processus parent (rejet propre via
+      // l'event 'error'/'exit'). Le tas porte la palette + le tableau de blocs
+      // (déjà borné par maxBlocks) ; les buffers déflatés sont off-heap et
+      // bornés en amont par les maxOutputLength de zip.js/anvil.js.
+      resourceLimits: {
+        maxOldGenerationSizeMb: Number(process.env.WORLD_WORKER_HEAP_MB || 1024),
+      },
     });
     let settled = false;
     worker.once('message', (m) => {

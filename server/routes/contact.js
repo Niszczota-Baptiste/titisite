@@ -43,7 +43,13 @@ contactRouter.post('/', contactLimiter, (req, res) => {
   if (msg.length < MIN_MESSAGE || msg.length > MAX_MESSAGE) {
     return res.status(400).json({ error: 'invalid_message' });
   }
-  const cleanName = (typeof name === 'string' ? name : '').trim().slice(0, MAX_NAME);
+  // Strip control chars (incl. CR/LF) before the name ever reaches a mail
+  // header (Subject) — defence in depth against header injection on top of the
+  // nodemailer upgrade.
+  const cleanName = (typeof name === 'string' ? name : '')
+    .replace(/[\x00-\x1f\x7f]/g, ' ')
+    .trim()
+    .slice(0, MAX_NAME);
   const cleanEmail = email.trim();
 
   if (!_insertMessage) {

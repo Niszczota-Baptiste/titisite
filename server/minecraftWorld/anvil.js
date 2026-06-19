@@ -15,6 +15,11 @@ import nbt from 'prismarine-nbt';
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air']);
 const SECTOR = 4096;
 
+// Plafond de décompression d'un chunk NBT (anti zip-bomb). Un chunk inflaté
+// dépasse rarement quelques Mo ; au-delà de cette borne zlib lève, et l'appelant
+// (parseRegion) ignore simplement le chunk au lieu d'allouer plusieurs Go.
+const MAX_CHUNK_INFLATED = Number(process.env.WORLD_MAX_CHUNK_BYTES || 32 * 1024 * 1024); // 32 Mo
+
 // Orientation déduite des Properties de la palette → rotation [x,y,z] en degrés
 // à appliquer au modèle. On gère l'`axis` (bûches/piliers couchés), fiable sans
 // Properties NBT d'une entrée de palette → objet plat { prop: "val" } (ou null).
@@ -41,8 +46,8 @@ function toBig(el) {
 
 async function decodeChunk(payload, compression) {
   let raw;
-  if (compression === 1) raw = zlib.gunzipSync(payload);
-  else if (compression === 2) raw = zlib.inflateSync(payload);
+  if (compression === 1) raw = zlib.gunzipSync(payload, { maxOutputLength: MAX_CHUNK_INFLATED });
+  else if (compression === 2) raw = zlib.inflateSync(payload, { maxOutputLength: MAX_CHUNK_INFLATED });
   else raw = payload; // 3 = non compressé
   const { parsed } = await nbt.parse(raw);
   return nbt.simplify(parsed);

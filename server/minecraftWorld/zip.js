@@ -10,6 +10,16 @@ const LOC_SIG = 0x04034b50;
 
 const MCA_RE = /(?:^|\/)r\.(-?\d+)\.(-?\d+)\.mca$/;
 
+// Garde-fous anti zip-bomb : un .mca déflaté ne dépasse jamais ~quelques dizaines
+// de Mo en pratique, et un dossier region/ raisonnable tient en quelques milliers
+// d'entrées. On plafonne la sortie de chaque inflate ET le total cumulé (les
+// buffers sont accumulés en mémoire), sinon un ZIP de zéros peut décompresser
+// vers plusieurs Go et faire tomber le processus (parsing en worker, mais les
+// buffers sont off-heap).
+const MAX_MCA_ENTRIES = Number(process.env.WORLD_MAX_REGIONS || 4096);
+const MAX_ENTRY_INFLATED = Number(process.env.WORLD_MAX_REGION_BYTES || 96 * 1024 * 1024); // 96 Mo / .mca
+const MAX_TOTAL_INFLATED = Number(process.env.WORLD_MAX_INFLATED_BYTES || 512 * 1024 * 1024); // 512 Mo cumulés
+
 function findEocd(buf) {
   // L'EOCD fait ≥ 22 octets et peut être suivi d'un commentaire (≤ 65535).
   const min = Math.max(0, buf.length - (22 + 0xffff));
@@ -28,6 +38,7 @@ export function extractMcaEntries(buf) {
   if (ptr === 0xffffffff) throw new Error('zip64_unsupported');
 
   const out = [];
+  let totalInflated = 0;
   for (let n = 0; n < total; n++) {
     if (buf.readUInt32LE(ptr) !== CEN_SIG) break;
     const method = buf.readUInt16LE(ptr + 10);
@@ -42,6 +53,7 @@ export function extractMcaEntries(buf) {
     const m = name.match(MCA_RE);
     if (!m) continue;
     if (localOff === 0xffffffff || compSize === 0xffffffff) throw new Error('zip64_unsupported');
+    if (out.length >= MAX_MCA_ENTRIES) throw new Error('world_too_big');
 
     // Saut au local header pour trouver le début réel des données.
     if (buf.readUInt32LE(localOff) !== LOC_SIG) continue;
@@ -49,7 +61,15 @@ export function extractMcaEntries(buf) {
     const lExtraLen = buf.readUInt16LE(localOff + 28);
     const dataStart = localOff + 30 + lNameLen + lExtraLen;
     const raw = buf.subarray(dataStart, dataStart + compSize);
-    const data = method === 0 ? Buffer.from(raw) : zlib.inflateRawSync(raw);
+    // maxOutputLength borne la sortie de l'inflate : au-delà, zlib lève au lieu
+    // d'allouer plusieurs Go (anti zip-bomb). Stored (method 0) est déjà borné
+    // par compSize, lui-même ≤ taille du fichier uploadé.
+    const data = method === 0
+      ? Buffer.from(raw)
+      : zlib.inflateRawSync(raw, { maxOutputLength: MAX_ENTRY_INFLATED });
+
+    totalInflated += data.length;
+    if (totalInflated > MAX_TOTAL_INFLATED) throw new Error('world_too_big');
 
     out.push({ name, regionX: Number(m[1]), regionZ: Number(m[2]), data });
   }
