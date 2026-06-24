@@ -117,9 +117,11 @@ test('WorldEdit API : transform / preview / undo / export + accès par token', a
   });
   assert.equal(teTr.status, 200, teTr.text);
 
-  // Token view : voit l'état mais NE PEUT PAS transformer (403).
+  // Token view : voit l'état + la géométrie mais NE PEUT PAS transformer (403).
   const tvState = await anon.get(`/api/worldedit/shared/${sView.json.token}/state`);
   assert.equal(tvState.json.role, 'viewer');
+  const tvData = await anon.get(`/api/worldedit/shared/${sView.json.token}/data`, { raw: true });
+  assert.equal(tvData.status, 200); // données d'origine servies au lecteur
   const tvTr = await anon.post(`/api/worldedit/shared/${sView.json.token}/transform`, {
     body: { operation: 'set', params: { block: { name: 'minecraft:stone' } }, selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } } },
   });

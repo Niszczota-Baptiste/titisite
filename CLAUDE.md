@@ -68,6 +68,20 @@ Single-process Node app:
   `ANTHROPIC_API_KEY`, model `MINECRAFT_VISION_MODEL`), then the user validates a
   draft and `POST …/minecraft/chests/:id/apply` (`replace`|`merge`). All under
   `server/routes/minecraft.js` + `api.ws(slug).minecraft.*`.
+- **Imported builds + WorldEdit** (`minecraft_blueprints`, workspace-scoped):
+  `.mca`/`region.zip` imported → parsed to a **sparse artifact** (`data_file`)
+  for the 3D viewer; the **source file is kept** (`source_file`) so the server
+  can transform the real region files. The **WorldEdit engine** (`server/anvil/`
+  read+write, `server/worldedit/`) applies mirror/rotate/translate/replace/set/
+  copy-paste with correct **block-state** rewrites on a **non-destructive
+  staging copy** under `uploads/worldedit/<id>/` (per-op undo snapshots,
+  `worldedit_audit` log, `.mca`/`.zip` export). API under both
+  `…/blueprints/:id/worldedit/*` (JWT) and `/api/worldedit/shared/:token/*`
+  (scoped share link). Roles **owner/editor/viewer**; scoped links in
+  `blueprint_shares` (`view`/`edit` + expiry + revoke), managed by the owner,
+  opened at `/we/:token`. UI in `src/components/project/builds/` (`WorldEditPanel`,
+  `SharesPanel`). Block-state table + invariants are in `docs/worldedit.md`. The
+  Anvil round-trip is **lossless** (unmodified chunks re-emitted byte-for-byte).
 - **Music playback** is global: `src/music/MusicPlayerContext.jsx` owns the
   single `<audio>` (30 s public clip cap) and `MiniPlayer.jsx` floats across
   routes — hidden on /admin and in the reader, which pauses it (ReaderAudio

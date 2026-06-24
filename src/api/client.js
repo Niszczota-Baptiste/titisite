@@ -192,6 +192,20 @@ export const api = {
   },
 
   // Build importé partagé en lecture seule (public, par token).
+  // Accès WorldEdit par lien de partage scopé (view/edit) — pas de cookie.
+  worldeditShared: (token) => {
+    const root = `/worldedit/shared/${token}`;
+    return {
+      state:      () => request('GET',  `${root}/state`),
+      operations: () => request('GET',  `${root}/operations`),
+      dataUrl:    () => `/api${root}/data`,
+      previewUrl: () => `/api${root}/preview`,
+      exportUrl:  () => `/api${root}/export`,
+      transform:  (b) => request('POST', `${root}/transform`, b),
+      undo:       () => request('POST', `${root}/undo`),
+      reset:      () => request('POST', `${root}/reset`),
+    };
+  },
   blueprintShared: {
     get:     (token) => request('GET', `/blueprints/shared/${token}`),
     dataUrl: (token) => `/api/blueprints/shared/${token}/data`,
@@ -298,6 +312,26 @@ export const api = {
         fd.append('file', file);
         for (const [k, v] of Object.entries(fields || {})) fd.append(k, v);
         return uploadFile(`/workspaces/${slug}/blueprints`, fd, { onProgress });
+      },
+      // Liens de partage scopés (view/edit) — gestion réservée au propriétaire.
+      shares: {
+        list:   (id) => request('GET',    `/workspaces/${slug}/blueprints/${id}/shares`),
+        create: (id, b) => request('POST', `/workspaces/${slug}/blueprints/${id}/shares`, b),
+        revoke: (id, shareId) => request('DELETE', `/workspaces/${slug}/blueprints/${id}/shares/${shareId}`),
+      },
+      // Moteur WorldEdit (transform sur copie de staging, undo, export).
+      worldedit: (id) => {
+        const root = `/workspaces/${slug}/blueprints/${id}/worldedit`;
+        return {
+          state:      () => request('GET',  `${root}/state`),
+          operations: () => request('GET',  `${root}/operations`),
+          previewUrl: () => `/api${root}/preview`,
+          exportUrl:  () => `/api${root}/export`,
+          transform:  (b) => request('POST', `${root}/transform`, b),
+          undo:       () => request('POST', `${root}/undo`),
+          reset:      () => request('POST', `${root}/reset`),
+          audit:      () => request('GET',  `${root}/audit`),
+        };
       },
     },
     tags: {

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db.js';
+import { uploadPath } from '../uploads.js';
 import { OPERATIONS, normalizeParams } from '../worldedit/operations.js';
 import {
   buildBBox, applyOperation, undoLast, resetStaging, exportBuild,
@@ -66,6 +67,20 @@ function getPreview(req, res) {
   res.setHeader('Content-Encoding', 'gzip');
   res.setHeader('Cache-Control', 'no-store');
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- p vient de previewFilePath (chemin staging contrôlé)
+  return fs.createReadStream(p).pipe(res);
+}
+
+// Géométrie à afficher : aperçu du staging si présent, sinon l'artefact sparse
+// d'origine du build. Accessible aux viewers (lecture) comme aux editors.
+function getData(req, res) {
+  const bp = req.we.bp;
+  const p = previewFilePath(bp.id) || (bp.data_file ? uploadPath(bp.data_file) : null);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- p = chemin staging contrôlé ou data_file (UUID en base)
+  if (!p || !fs.existsSync(p)) return res.status(404).json({ error: 'no_data' });
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Encoding', 'gzip');
+  res.setHeader('Cache-Control', 'no-store');
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- idem
   return fs.createReadStream(p).pipe(res);
 }
 
@@ -136,6 +151,7 @@ function attachRoutes(router) {
   router.get('/operations', getOperations);
   router.get('/state', getState);
   router.get('/preview', getPreview);
+  router.get('/data', getData);
   router.get('/audit', requireEdit, getAudit);
   router.post('/transform', worldeditLimiter, requireEdit, postTransform);
   router.post('/undo', worldeditLimiter, requireEdit, postUndo);

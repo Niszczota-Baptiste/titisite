@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadBlockCodex, resolveBlock } from '../../../data/blockCodex';
 import { useCodex } from '../../../hooks/useCodex';
 import { useIsMobile } from '../../../hooks/useIsMobile';
@@ -9,6 +9,8 @@ import { CodexPicker } from '../../admin/editors/minecraft/CodexPicker';
 import { BlueprintBom } from './BlueprintBom';
 import { BlueprintCanvas } from './BlueprintCanvas';
 import { ShareControls } from './ShareControls';
+import { WorldEditPanel } from './WorldEditPanel';
+import { SharesPanel } from './SharesPanel';
 
 const PARSE_ERRORS = {
   box_too_big: 'Boîte trop grande (max 2048×384×2048).',
@@ -238,17 +240,25 @@ function BlueprintViewer({ ws, id, isMobile, items, chests }) {
   const [codex, setCodex] = useState(null);
   const [err, setErr] = useState('');
 
+  // Charge le rendu : aperçu du staging WorldEdit en priorité (modifications en
+  // cours), sinon l'artefact d'origine du build.
+  const we = useMemo(() => ws.blueprints.worldedit(id), [ws, id]);
+  const reload = useCallback(() => {
+    return fetch(we.previewUrl(), { credentials: 'include' })
+      .then((r) => (r.ok ? r : fetch(ws.blueprints.dataUrl(id), { credentials: 'include' })))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('http'))))
+      .then(setData)
+      .catch(() => setErr('Données du build illisibles.'));
+  }, [we, ws, id]);
+
   useEffect(() => {
     let alive = true;
     setData(null); setErr('');
-    fetch(ws.blueprints.dataUrl(id), { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('http'))))
-      .then((d) => { if (alive) setData(d); })
-      .catch(() => alive && setErr('Données du build illisibles.'));
+    reload();
     ws.blueprints.get(id).then((d) => alive && setDetail(d)).catch(() => {});
     loadBlockCodex().then((c) => alive && setCodex(c));
     return () => { alive = false; };
-  }, [ws, id]);
+  }, [ws, id, reload]);
 
   const height = isMobile ? 320 : 480;
 
@@ -257,8 +267,10 @@ function BlueprintViewer({ ws, id, isMobile, items, chests }) {
 
   return (
     <div style={{ ...card, padding: 0, marginTop: 8, overflow: 'hidden' }}>
-      <BlueprintCanvas data={data} codex={codex} height={height} />
+      <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`} data={data} codex={codex} height={height} />
       <ShareControls ws={ws} id={id} initialToken={detail?.shareToken || null} />
+      <WorldEditPanel we={we} onChanged={reload} />
+      <SharesPanel ws={ws} id={id} />
       {detail?.bom && (
         <BlueprintBom bom={detail.bom} codex={codex} items={items} chests={chests} />
       )}
