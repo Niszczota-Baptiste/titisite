@@ -179,6 +179,7 @@ function DuplicateModal({ ws, id, toast, onClose, onDone, onError }) {
 function UploadForm({ ws, toast, onDone, onCancel, onError }) {
   const [file, setFile] = useState(null);
   const [name, setName] = useState('');
+  const [full, setFull] = useState(true); // par défaut : import complet (sans coordonnées)
   const [bounds, setBounds] = useState({ minX: '', minY: '', minZ: '', maxX: '', maxY: '', maxZ: '' });
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -187,12 +188,13 @@ function UploadForm({ ws, toast, onDone, onCancel, onError }) {
 
   const submit = async () => {
     if (!file) { onError('Choisis un fichier (.zip de region/ ou .mca).'); return; }
-    if (BOUNDS.some(([k]) => bounds[k] === '' || Number.isNaN(Number(bounds[k])))) {
-      onError('Renseigne les 6 coordonnées de la boîte (F3).'); return;
+    if (!full && BOUNDS.some(([k]) => bounds[k] === '' || Number.isNaN(Number(bounds[k])))) {
+      onError('Renseigne les 6 coordonnées de la boîte (F3), ou coche « charger en entier ».'); return;
     }
     setBusy(true); setProgress(0);
     try {
-      await ws.blueprints.upload(file, { name, ...bounds }, setProgress);
+      const fields = full ? { name, full: 'true' } : { name, ...bounds };
+      await ws.blueprints.upload(file, fields, setProgress);
       toast?.success?.('Build importé');
       onDone();
     } catch (e) {
@@ -213,18 +215,26 @@ function UploadForm({ ws, toast, onDone, onCancel, onError }) {
           </Field>
         </div>
       </div>
-      <p style={{ ...muted, fontSize: 12, margin: '8px 0' }}>
-        Coordonnées de la boîte englobante (lues au <strong>F3</strong> en jeu) — seuls ces blocs seront extraits.
-      </p>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {BOUNDS.map(([k, lbl]) => (
-          <div key={k} style={{ flex: '1 1 80px', minWidth: 70 }}>
-            <Field label={lbl}>
-              <Input type="number" value={bounds[k]} onChange={(e) => setB(k, e.target.value)} />
-            </Field>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0', cursor: 'pointer', color: '#ede8f8', fontSize: 13 }}>
+        <input type="checkbox" checked={full} onChange={(e) => setFull(e.target.checked)} style={{ accentColor: '#c9a8e8' }} />
+        Charger le fichier en entier (détecter les limites automatiquement)
+      </label>
+      {!full && (
+        <>
+          <p style={{ ...muted, fontSize: 12, margin: '8px 0' }}>
+            Coordonnées de la boîte englobante (lues au <strong>F3</strong> en jeu) — seuls ces blocs seront extraits.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {BOUNDS.map(([k, lbl]) => (
+              <div key={k} style={{ flex: '1 1 80px', minWidth: 70 }}>
+                <Field label={lbl}>
+                  <Input type="number" value={bounds[k]} onChange={(e) => setB(k, e.target.value)} />
+                </Field>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14 }}>
         <Button onClick={submit} disabled={busy}>{busy ? `Import… ${Math.round(progress * 100)}%` : 'Importer'}</Button>
         <Button variant="ghost" onClick={onCancel} disabled={busy}>Annuler</Button>
@@ -239,6 +249,8 @@ function BlueprintViewer({ ws, id, isMobile, items, chests }) {
   const [detail, setDetail] = useState(null); // méta + bom
   const [codex, setCodex] = useState(null);
   const [err, setErr] = useState('');
+  const [weState, setWeState] = useState(null); // state WorldEdit (bbox, rôle, undo…)
+  const [selection, setSelection] = useState(null); // { min, max } en coords monde
 
   // Charge le rendu : aperçu du staging WorldEdit en priorité (modifications en
   // cours), sinon l'artefact d'origine du build.
@@ -251,25 +263,43 @@ function BlueprintViewer({ ws, id, isMobile, items, chests }) {
       .catch(() => setErr('Données du build illisibles.'));
   }, [we, ws, id]);
 
+  const refreshState = useCallback(() => we.state().then((s) => {
+    setWeState(s);
+    setSelection((cur) => cur || (s.bbox ? { min: { ...s.bbox.min }, max: { ...s.bbox.max } } : null));
+  }).catch(() => {}), [we]);
+
   useEffect(() => {
     let alive = true;
-    setData(null); setErr('');
+    setData(null); setErr(''); setSelection(null); setWeState(null);
     reload();
+    refreshState();
     ws.blueprints.get(id).then((d) => alive && setDetail(d)).catch(() => {});
     loadBlockCodex().then((c) => alive && setCodex(c));
     return () => { alive = false; };
-  }, [ws, id, reload]);
+  }, [ws, id, reload, refreshState]);
+
+  // Clic 3D : droit = coin A (min), gauche = coin B (max).
+  const onPick = useCallback((corner, coord) => {
+    setSelection((cur) => {
+      const base = cur || { min: coord, max: coord };
+      return corner === 'A' ? { ...base, min: coord } : { ...base, max: coord };
+    });
+  }, []);
 
   const height = isMobile ? 320 : 480;
+  const pickEnabled = !!(weState?.canEdit && weState?.editable);
 
   if (err) return <div style={{ ...card, padding: 16, marginTop: 8, color: '#fb923c' }}>{err}</div>;
   if (!data || !codex) return <div style={{ ...card, padding: 16, marginTop: 8, ...muted }}>Chargement du build…</div>;
 
   return (
     <div style={{ ...card, padding: 0, marginTop: 8, overflow: 'hidden' }}>
-      <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`} data={data} codex={codex} height={height} />
+      <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`}
+        data={data} codex={codex} height={height}
+        selection={selection} onPick={onPick} pickEnabled={pickEnabled} />
       <ShareControls ws={ws} id={id} initialToken={detail?.shareToken || null} />
-      <WorldEditPanel we={we} onChanged={reload} />
+      <WorldEditPanel we={we} state={weState} selection={selection} setSelection={setSelection}
+        onChanged={reload} refreshState={refreshState} />
       <SharesPanel ws={ws} id={id} />
       {detail?.bom && (
         <BlueprintBom bom={detail.bom} codex={codex} items={items} chests={chests} />

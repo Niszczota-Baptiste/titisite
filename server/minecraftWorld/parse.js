@@ -4,7 +4,39 @@ import { parseRegion } from './anvil.js';
 
 // Lit un fichier uploadé (ZIP de region/ ou .mca isolé), extrait les blocs DANS
 // la boîte, et renvoie une liste sparse + palette + BOM (comptes par blockId).
-// Tourne dans un worker (cf. parseWorker.js).
+// Si `bbox` est absent (null/undefined), on détecte automatiquement l'emprise
+// réelle des blocs non-air (import « complet », sans coordonnées). Tourne dans
+// un worker (cf. parseWorker.js).
+const FULL_MAX_SPAN = Number(process.env.BLUEPRINT_MAX_SPAN || 2048);
+const FULL_MAX_HEIGHT = Number(process.env.BLUEPRINT_MAX_HEIGHT || 384);
+
+// Scanne toutes les régions et renvoie l'emprise (inclusive) des blocs non-air,
+// ou lève « empty_box » si le fichier ne contient aucun bloc.
+async function autoBounds(regions) {
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let any = false;
+  for (const r of regions) {
+    const scan = {
+      minX: r.regionX * 512, maxX: r.regionX * 512 + 511,
+      minZ: r.regionZ * 512, maxZ: r.regionZ * 512 + 511,
+      minY: -2048, maxY: 2048,
+    };
+    // eslint-disable-next-line no-await-in-loop -- régions traitées en série (mémoire bornée)
+    await parseRegion(r.data, r.regionX, r.regionZ, scan, (x, y, z) => {
+      any = true;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    });
+  }
+  if (!any) throw new Error('empty_box');
+  if (maxX - minX + 1 > FULL_MAX_SPAN || maxZ - minZ + 1 > FULL_MAX_SPAN || maxY - minY + 1 > FULL_MAX_HEIGHT) {
+    throw new Error('box_too_big');
+  }
+  return { minX, minY, minZ, maxX, maxY, maxZ };
+}
+
 export async function parseWorld({ filePath, originalName, bbox, maxBlocks }) {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath is a UUID under uploads/, not user-controlled
   const buf = fs.readFileSync(filePath);
@@ -18,6 +50,9 @@ export async function parseWorld({ filePath, originalName, bbox, maxBlocks }) {
     regions = [{ regionX: rc.regionX, regionZ: rc.regionZ, data: buf }];
   }
   if (regions.length === 0) throw new Error('no_region');
+
+  // Import complet : détection automatique de l'emprise.
+  if (!bbox) bbox = await autoBounds(regions);
 
   const palette = []; // [{ name, props }] — unique par (nom + état complet)
   const paletteIndex = new Map();

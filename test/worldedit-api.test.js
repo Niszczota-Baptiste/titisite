@@ -136,6 +136,29 @@ test('WorldEdit API : transform / preview / undo / export + accès par token', a
   assert.equal((await anon.get(`/api/worldedit/shared/${sEdit.json.token}/state`)).status, 404);
 });
 
+test('Import complet (full=true) : emprise détectée automatiquement', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+
+  // Blocs aux extrêmes (2,1,3) → (10,6,12) : emprise attendue 9×6×10.
+  const buf = mcaBuffer([
+    { x: 2, y: 1, z: 3, Name: 'minecraft:stone' },
+    { x: 10, y: 6, z: 12, Name: 'minecraft:gold_block' },
+  ]);
+  const fd = new FormData();
+  fd.append('file', new Blob([buf]), 'r.0.0.mca');
+  fd.append('name', 'Auto');
+  fd.append('full', 'true'); // aucune coordonnée
+  const r = await admin.post(`/api/workspaces/${slug}/blueprints`, { body: fd });
+  assert.equal(r.status, 201, r.text);
+  assert.deepEqual(r.json.min, { x: 2, y: 1, z: 3 });
+  assert.deepEqual(r.json.size, { x: 9, y: 6, z: 10 });
+  assert.equal(r.json.hasSource, true);
+});
+
 test('WorldEdit API : sélection hors bornes refusée', async (t) => {
   const srv = await bootServer();
   t.after(() => srv.stop());

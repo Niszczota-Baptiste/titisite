@@ -74,26 +74,19 @@ function defaultParams(op) {
   return out;
 }
 
-export function WorldEditPanel({ we, onChanged }) {
+// Composant CONTRÔLÉ : `state` (we.state()), `selection` et `setSelection` sont
+// fournis par le parent (qui les partage avec la vue 3D pour le picking).
+export function WorldEditPanel({ we, state, selection, setSelection, onChanged, refreshState }) {
   const toast = useToast();
   const confirm = useConfirm();
 
-  const [state, setState] = useState(null);
   const [ops, setOps] = useState([]);
   const [opId, setOpId] = useState('mirror');
   const [params, setParams] = useState({});
-  const [sel, setSel] = useState(null);
   const [busy, setBusy] = useState(false);
-
-  const refreshState = () => we.state().then(setState).catch(() => {});
 
   useEffect(() => {
     let alive = true;
-    we.state().then((s) => {
-      if (!alive) return;
-      setState(s);
-      if (s.bbox) setSel({ min: { ...s.bbox.min }, max: { ...s.bbox.max } });
-    }).catch(() => {});
     we.operations().then((r) => { if (alive) setOps(r.operations || []); }).catch(() => {});
     return () => { alive = false; };
   }, [we]);
@@ -111,10 +104,11 @@ export function WorldEditPanel({ we, onChanged }) {
       </div>
     );
   }
-  if (!state || !sel || !op) return <div style={{ ...wrap, ...muted, fontSize: 12 }}>Chargement de l’éditeur…</div>;
+  if (!state || !selection || !op) return <div style={{ ...wrap, ...muted, fontSize: 12 }}>Chargement de l’éditeur…</div>;
   if (!state.canEdit) return null; // viewer : sélection/aperçu seulement (pas d’écriture)
 
-  const setFull = () => setSel({ min: { ...state.bbox.min }, max: { ...state.bbox.max } });
+  const sel = selection;
+  const setFull = () => setSelection({ min: { ...state.bbox.min }, max: { ...state.bbox.max } });
 
   const buildParams = () => {
     const out = {};
@@ -173,8 +167,8 @@ export function WorldEditPanel({ we, onChanged }) {
       </div>
 
       <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
-        <CoordRow label="Coin A" value={sel.min} onChange={(v) => setSel({ ...sel, min: v })} />
-        <CoordRow label="Coin B" value={sel.max} onChange={(v) => setSel({ ...sel, max: v })} />
+        <CoordRow label="Coin A" value={sel.min} onChange={(v) => setSelection({ ...sel, min: v })} />
+        <CoordRow label="Coin B" value={sel.max} onChange={(v) => setSelection({ ...sel, max: v })} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <Button variant="ghost" onClick={setFull} style={{ padding: '4px 10px', fontSize: 12 }}>Tout le build</Button>
           <span style={{ ...muted, fontSize: 11 }}>{volume(sel).toLocaleString('fr')} blocs · max {state.maxSelectionVolume.toLocaleString('fr')}</span>

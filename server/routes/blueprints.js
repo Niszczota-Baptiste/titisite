@@ -80,9 +80,14 @@ blueprintsRouter.get('/:id/data', (req, res) => {
 
 blueprintsRouter.post('/', uploadWorld.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'missing_file' });
-  const bounds = parseBounds(req.body);
-  if (!bounds) { safeUnlink(req.file.filename); return res.status(400).json({ error: 'invalid_bounds' }); }
-  if (bounds === 'too_big') { safeUnlink(req.file.filename); return res.status(413).json({ error: 'box_too_big' }); }
+  // Import « complet » : aucune coordonnée → l'emprise est détectée côté worker.
+  const wantFull = String(req.body?.full) === 'true';
+  let bounds = null;
+  if (!wantFull) {
+    bounds = parseBounds(req.body);
+    if (!bounds) { safeUnlink(req.file.filename); return res.status(400).json({ error: 'invalid_bounds' }); }
+    if (bounds === 'too_big') { safeUnlink(req.file.filename); return res.status(413).json({ error: 'box_too_big' }); }
+  }
 
   const name = String(req.body?.name || req.file.originalname || 'Build').trim().slice(0, 120) || 'Build';
   const dataFile = `${crypto.randomUUID()}.json.gz`;
@@ -91,7 +96,7 @@ blueprintsRouter.post('/', uploadWorld.single('file'), async (req, res) => {
     const meta = await parseWorldFile({
       filePath: req.file.path,
       originalName: req.file.originalname,
-      bbox: bounds,
+      bbox: bounds, // null en mode complet → autoBounds()
       maxBlocks: MAX_BLOCKS,
       dataFilePath: uploadPath(dataFile),
     });
@@ -113,10 +118,10 @@ blueprintsRouter.post('/', uploadWorld.single('file'), async (req, res) => {
     res.status(201).json(detail(db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ?').get(r.lastInsertRowid)));
   } catch (e) {
     safeUnlink(req.file.filename); safeUnlink(dataFile);
-    const code = ['too_many_blocks', 'region_coords_unknown', 'no_region', 'zip_invalid', 'zip64_unsupported', 'world_too_big'].includes(e.message)
+    const code = ['too_many_blocks', 'region_coords_unknown', 'no_region', 'zip_invalid', 'zip64_unsupported', 'world_too_big', 'empty_box', 'box_too_big'].includes(e.message)
       ? e.message : 'parse_failed';
-    console.error('[blueprints] parse failed:', e?.message || e);
-    res.status(422).json({ error: code });
+    if (code === 'parse_failed') console.error('[blueprints] parse failed:', e?.message || e);
+    res.status(code === 'box_too_big' ? 413 : 422).json({ error: code });
   }
 });
 

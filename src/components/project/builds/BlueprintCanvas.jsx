@@ -6,7 +6,7 @@ const BlueprintScene = lazy(() => import('./BlueprintScene'));
 // Visionneuse 3D réutilisable (membres + page partagée) : canvas lazy + slider de
 // couche Y (cumulatif / couche seule). `data` = sparse {palette,min,size,blocks},
 // `codex` = map blockCodex.
-export function BlueprintCanvas({ data, codex, height = 480 }) {
+export function BlueprintCanvas({ data, codex, height = 480, selection, onPick, pickEnabled }) {
   const maxLayer = data.size.y - 1;
   const [layer, setLayer] = useState(maxLayer);
   const [mode, setMode] = useState('cumulative');
@@ -15,9 +15,15 @@ export function BlueprintCanvas({ data, codex, height = 480 }) {
     <div>
       <div style={{ position: 'relative', height, background: '#0d0a1c', borderRadius: 12, overflow: 'hidden' }}>
         <Suspense fallback={<div style={{ ...muted, padding: 16 }}>Chargement du moteur 3D…</div>}>
-          {codex && <BlueprintScene data={data} codex={codex} layer={layer} layerMode={mode} />}
+          {codex && <BlueprintScene data={data} codex={codex} layer={layer} layerMode={mode}
+            selection={selection} onPick={onPick} pickEnabled={pickEnabled} />}
         </Suspense>
       </div>
+      {pickEnabled && (
+        <div style={{ ...muted, fontSize: 12, padding: '8px 14px 0' }}>
+          🖱️ <strong style={{ color: '#ffd24a' }}>Clic droit</strong> = coin A · <strong style={{ color: '#ffd24a' }}>clic gauche</strong> = coin B · glisser = pivoter
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', padding: 14 }}>
         <div style={{ display: 'flex', gap: 6 }}>
           {[['cumulative', 'Jusqu\'à la couche'], ['single', 'Couche seule']].map(([m, lbl]) => (

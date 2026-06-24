@@ -32,9 +32,14 @@ function fallbackColor(id) {
   return new THREE.Color().setHSL((h % 360) / 360, 0.42, 0.55);
 }
 
-export default function BlueprintScene({ data, codex, layer, layerMode, onProgress }) {
+export default function BlueprintScene({ data, codex, layer, layerMode, onProgress, selection, onPick, pickEnabled }) {
   const mountRef = useRef(null);
   const apiRef = useRef(null); // { types:[{meshes, ys, mats, n, layout}] }
+  // Refs synchronisées à chaque rendu : les écouteurs three.js (stables) lisent
+  // toujours la dernière valeur sans recréer la scène.
+  const onPickRef = useRef(onPick); onPickRef.current = onPick;
+  const selRef = useRef(selection); selRef.current = selection;
+  const pickEnabledRef = useRef(pickEnabled); pickEnabledRef.current = pickEnabled;
 
   // ── Construction de la scène (une fois par data) ──
   useEffect(() => {
@@ -79,6 +84,72 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.maxDistance = span * 6 + 40;
+    // En mode sélection, le clic droit sert au picking (coin A) → on le retire
+    // d'OrbitControls. Le clic gauche reste la rotation (mais un clic SANS glisser
+    // pose le coin B, cf. plus bas).
+    if (pickEnabled) controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: null };
+
+    // ── Sélection : picking (clic droit = coin A, clic gauche = coin B) + boîte ──
+    const dataMin = data.min || { x: 0, y: 0, z: 0 };
+    const raycaster = new THREE.Raycaster();
+    let selBox = null, selEdges = null;
+    const disposeSel = () => {
+      for (const o of [selBox, selEdges]) { if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); } }
+      selBox = selEdges = null;
+    };
+    const updateSelection = () => {
+      disposeSel();
+      const sel = selRef.current;
+      if (!sel || !sel.min || !sel.max) return;
+      const lo = { x: Math.min(sel.min.x, sel.max.x), y: Math.min(sel.min.y, sel.max.y), z: Math.min(sel.min.z, sel.max.z) };
+      const hi = { x: Math.max(sel.min.x, sel.max.x), y: Math.max(sel.min.y, sel.max.y), z: Math.max(sel.min.z, sel.max.z) };
+      // coords monde → coords scène (un bloc occupe [rel-half, rel+1-half]).
+      const min = new THREE.Vector3(lo.x - dataMin.x - cx, lo.y - dataMin.y - cy, lo.z - dataMin.z - cz);
+      const max = new THREE.Vector3(hi.x - dataMin.x + 1 - cx, hi.y - dataMin.y + 1 - cy, hi.z - dataMin.z + 1 - cz);
+      const size = new THREE.Vector3().subVectors(max, min);
+      const center = new THREE.Vector3().addVectors(min, max).multiplyScalar(0.5);
+      const geo = new THREE.BoxGeometry(size.x, size.y, size.z).translate(center.x, center.y, center.z);
+      selBox = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.1, depthWrite: false }));
+      selEdges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffd24a }));
+      scene.add(selBox); scene.add(selEdges);
+    };
+
+    const pickAt = (ev) => {
+      const cb = onPickRef.current;
+      if (!cb) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+        -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(ndc, camera);
+      const meshes = [];
+      for (const t of (apiRef.current?.types || [])) if (t) for (const im of t.meshes) meshes.push(im);
+      const hits = raycaster.intersectObjects(meshes, false);
+      if (!hits.length) return;
+      // On entre d'un cheveu dans le bloc le long du rayon pour tomber sur la
+      // bonne cellule, puis on repasse en coords monde absolues.
+      const p = hits[0].point.clone().addScaledVector(raycaster.ray.direction, 0.02);
+      const clamp = (v, hiB) => Math.max(0, Math.min(hiB - 1, v));
+      const abs = {
+        x: clamp(Math.floor(p.x + cx), sx) + dataMin.x,
+        y: clamp(Math.floor(p.y + cy), sy) + dataMin.y,
+        z: clamp(Math.floor(p.z + cz), sz) + dataMin.z,
+      };
+      cb(ev.button === 2 ? 'A' : 'B', abs);
+    };
+
+    let downX = 0, downY = 0, downBtn = -1;
+    const onPointerDown = (e) => { downX = e.clientX; downY = e.clientY; downBtn = e.button; };
+    const onPointerUp = (e) => {
+      if (!pickEnabledRef.current || !onPickRef.current || e.button !== downBtn) return;
+      if (Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4) return; // glissé → rotation, pas un clic
+      if (e.button === 0 || e.button === 2) pickAt(e);
+    };
+    const onContext = (e) => { if (pickEnabledRef.current) e.preventDefault(); };
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    renderer.domElement.addEventListener('pointerup', onPointerUp);
+    renderer.domElement.addEventListener('contextmenu', onContext);
 
     // Regroupe les positions par index de palette.
     const { palette, blocks } = data;
@@ -88,7 +159,8 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     }
 
     const types = [];
-    apiRef.current = { types, span };
+    apiRef.current = { types, span, updateSelection };
+    updateSelection(); // boîte de sélection initiale (avant le rendu des blocs)
     const dummy = new THREE.Object3D();
 
     // Crée les InstancedMesh d'un type à partir d'une liste de specs {geometry, material}.
@@ -235,6 +307,10 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       cancelled = true;
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+      renderer.domElement.removeEventListener('pointerup', onPointerUp);
+      renderer.domElement.removeEventListener('contextmenu', onContext);
+      disposeSel();
       controls.dispose();
       scene.traverse((o) => {
         if (o.isInstancedMesh) { o.geometry.dispose?.(); o.material.dispose?.(); }
@@ -255,6 +331,9 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     st.modeRef = layerMode;
     st.applyLayer?.();
   }, [layer, layerMode]);
+
+  // ── Mise à jour de la boîte de sélection ──
+  useEffect(() => { apiRef.current?.updateSelection?.(); }, [selection]);
 
   return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />;
 }

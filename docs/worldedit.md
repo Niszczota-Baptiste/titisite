@@ -93,6 +93,20 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
 - `test/regionstore.test.js` — pont volume↔.mca.
 - `test/worldedit-api.test.js` — bout-en-bout (serveur réel) : transform/undo/export, partage edit vs view, hors-bornes.
 
+## Import & sélection (UI)
+
+- **Import complet sans coordonnées** : à l'import, la case « Charger le fichier
+  en entier » (cochée par défaut) envoie `full=true` ; le serveur détecte
+  l'emprise réelle des blocs non-air (`autoBounds` dans
+  `server/minecraftWorld/parse.js`, bornée par `BLUEPRINT_MAX_SPAN`/`_HEIGHT`).
+  Sinon on saisit la boîte F3 comme avant.
+- **Sélection à la souris** dans la vue 3D (`BlueprintScene`) : **clic droit =
+  coin A**, **clic gauche = coin B** (un glissé reste une rotation). Une **boîte
+  de sélection** dorée est rendue en temps réel ; les coordonnées sont éditables
+  aussi à la main dans le panneau. La sélection est un état partagé par le
+  parent (`BlueprintViewer` / page `/we/:token`) entre la vue 3D et le
+  `WorldEditPanel`.
+
 ## Variables d'environnement
 
 `WORLDEDIT_MAX_SELECTION`, `WORLDEDIT_RATE_MAX`, `WORLDEDIT_MAX_UNDO`,

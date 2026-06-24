@@ -19,6 +19,7 @@ export default function WorldEditShare() {
   const [state, setState] = useState(undefined); // undefined=chargement, null=invalide
   const [data, setData] = useState(null);
   const [codex, setCodex] = useState(null);
+  const [selection, setSelection] = useState(null);
 
   usePageMeta(state?.name ? `${state.name} — WorldEdit` : 'Build partagé');
 
@@ -27,13 +28,26 @@ export default function WorldEditShare() {
     .then(setData)
     .catch(() => {}), [we]);
 
+  const refreshState = useCallback(() => we.state().then((s) => {
+    setState(s);
+    setSelection((cur) => cur || (s?.bbox ? { min: { ...s.bbox.min }, max: { ...s.bbox.max } } : null));
+  }).catch(() => setState(null)), [we]);
+
   useEffect(() => {
-    let alive = true;
-    we.state().then((s) => { if (alive) setState(s); }).catch(() => alive && setState(null));
+    refreshState();
     reload();
+    let alive = true;
     loadBlockCodex().then((c) => alive && setCodex(c));
     return () => { alive = false; };
-  }, [we, reload]);
+  }, [we, reload, refreshState]);
+
+  const onPick = useCallback((corner, coord) => {
+    setSelection((cur) => {
+      const base = cur || { min: coord, max: coord };
+      return corner === 'A' ? { ...base, min: coord } : { ...base, max: coord };
+    });
+  }, []);
+  const pickEnabled = !!(state?.canEdit && state?.editable);
 
   return (
     <div style={{ minHeight: '100vh', background: '#050511', color: '#ede8f8', fontFamily: "'Inter',sans-serif" }}>
@@ -54,9 +68,12 @@ export default function WorldEditShare() {
               </p>
               <div style={{ background: 'rgba(20,10,42,0.5)', border: '1px solid rgba(80,50,130,0.28)', borderRadius: 14, overflow: 'hidden' }}>
                 {data
-                  ? <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`} data={data} codex={codex} height={isMobile ? 340 : 520} />
+                  ? <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`}
+                      data={data} codex={codex} height={isMobile ? 340 : 520}
+                      selection={selection} onPick={onPick} pickEnabled={pickEnabled} />
                   : <div style={{ padding: 20, color: 'rgba(180,170,200,0.7)' }}>Chargement du build…</div>}
-                {state.canEdit && <WorldEditPanel we={we} onChanged={reload} />}
+                {state.canEdit && <WorldEditPanel we={we} state={state} selection={selection}
+                  setSelection={setSelection} onChanged={reload} refreshState={refreshState} />}
               </div>
             </ConfirmProvider>
           </ToastProvider>
