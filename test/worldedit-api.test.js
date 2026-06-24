@@ -159,6 +159,37 @@ test('Import complet (full=true) : emprise détectée automatiquement', async (t
   assert.equal(r.json.hasSource, true);
 });
 
+test('Extraction de zone → nouveau build léger et éditable', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug); // emprise 0..15
+
+  // Extrait une petite zone autour de (0,0,0)..(5,0,5).
+  const r = await admin.post(`/api/workspaces/${slug}/blueprints/${id}/extract`, {
+    body: { selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 5, y: 0, z: 5 } }, name: 'Zone test' },
+  });
+  assert.equal(r.status, 201, r.text);
+  assert.equal(r.json.name, 'Zone test');
+  assert.deepEqual(r.json.min, { x: 0, y: 0, z: 0 });
+  assert.deepEqual(r.json.size, { x: 6, y: 1, z: 6 });
+  assert.equal(r.json.hasSource, true); // le nouveau build est éditable
+
+  // Le nouveau build expose bien WorldEdit (emprise réduite).
+  const st = await admin.get(`/api/workspaces/${slug}/blueprints/${r.json.id}/worldedit/state`);
+  assert.equal(st.status, 200);
+  assert.equal(st.json.editable, true);
+  assert.deepEqual(st.json.bbox.max, { x: 5, y: 0, z: 5 });
+
+  // Une sélection hors de la zone extraite est refusée.
+  const bad = await admin.post(`/api/workspaces/${slug}/blueprints/${r.json.id}/worldedit/transform`, {
+    body: { operation: 'set', params: { block: { name: 'minecraft:stone' } }, selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 0, z: 0 } } },
+  });
+  assert.equal(bad.json.error, 'out_of_bounds');
+});
+
 test('WorldEdit API : sélection hors bornes refusée', async (t) => {
   const srv = await bootServer();
   t.after(() => srv.stop());

@@ -114,9 +114,8 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       scene.add(selBox); scene.add(selEdges);
     };
 
-    const pickAt = (ev) => {
-      const cb = onPickRef.current;
-      if (!cb) return;
+    // Renvoie la coordonnée MONDE du bloc visé par le curseur, ou null.
+    const pickCoord = (ev) => {
       const rect = renderer.domElement.getBoundingClientRect();
       const ndc = new THREE.Vector2(
         ((ev.clientX - rect.left) / rect.width) * 2 - 1,
@@ -126,28 +125,44 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       const meshes = [];
       for (const t of (apiRef.current?.types || [])) if (t) for (const im of t.meshes) meshes.push(im);
       const hits = raycaster.intersectObjects(meshes, false);
-      if (!hits.length) return;
+      if (!hits.length) return null;
       // On entre d'un cheveu dans le bloc le long du rayon pour tomber sur la
       // bonne cellule, puis on repasse en coords monde absolues.
       const p = hits[0].point.clone().addScaledVector(raycaster.ray.direction, 0.02);
-      const clamp = (v, hiB) => Math.max(0, Math.min(hiB - 1, v));
-      const abs = {
-        x: clamp(Math.floor(p.x + cx), sx) + dataMin.x,
-        y: clamp(Math.floor(p.y + cy), sy) + dataMin.y,
-        z: clamp(Math.floor(p.z + cz), sz) + dataMin.z,
+      const cl = (v, hiB) => Math.max(0, Math.min(hiB - 1, v));
+      return {
+        x: cl(Math.floor(p.x + cx), sx) + dataMin.x,
+        y: cl(Math.floor(p.y + cy), sy) + dataMin.y,
+        z: cl(Math.floor(p.z + cz), sz) + dataMin.z,
       };
-      cb(ev.button === 2 ? 'A' : 'B', abs);
     };
 
     let downX = 0, downY = 0, downBtn = -1;
-    const onPointerDown = (e) => { downX = e.clientX; downY = e.clientY; downBtn = e.button; };
+    let yDrag = null; // { corner, x, z, y0, downY } pendant un shift+glissé vertical
+    const clampY = (y) => Math.max(dataMin.y, Math.min(dataMin.y + sy - 1, y));
+    const onPointerDown = (e) => {
+      downX = e.clientX; downY = e.clientY; downBtn = e.button;
+      // Shift + clic = on fixe X/Z au bloc visé puis le glissé vertical règle Y
+      // (permet de placer un coin AU-DESSUS de la surface, hors de portée du clic).
+      if (pickEnabledRef.current && e.shiftKey && (e.button === 0 || e.button === 2)) {
+        const c = pickCoord(e);
+        if (c) { yDrag = { corner: e.button === 2 ? 'A' : 'B', x: c.x, z: c.z, y0: c.y, downY: e.clientY }; controls.enabled = false; }
+      }
+    };
+    const onPointerMove = (e) => {
+      if (!yDrag || !onPickRef.current) return;
+      const y = clampY(yDrag.y0 + Math.round((yDrag.downY - e.clientY) / 6)); // vers le haut = +Y
+      onPickRef.current(yDrag.corner, { x: yDrag.x, y, z: yDrag.z });
+    };
     const onPointerUp = (e) => {
+      if (yDrag) { yDrag = null; controls.enabled = true; return; }
       if (!pickEnabledRef.current || !onPickRef.current || e.button !== downBtn) return;
       if (Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4) return; // glissé → rotation, pas un clic
-      if (e.button === 0 || e.button === 2) pickAt(e);
+      if (e.button === 0 || e.button === 2) { const c = pickCoord(e); if (c) onPickRef.current(e.button === 2 ? 'A' : 'B', c); }
     };
     const onContext = (e) => { if (pickEnabledRef.current) e.preventDefault(); };
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    renderer.domElement.addEventListener('pointermove', onPointerMove);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
     renderer.domElement.addEventListener('contextmenu', onContext);
 
@@ -308,6 +323,7 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+      renderer.domElement.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
       renderer.domElement.removeEventListener('contextmenu', onContext);
       disposeSel();

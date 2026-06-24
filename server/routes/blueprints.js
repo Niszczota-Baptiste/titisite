@@ -5,7 +5,9 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { safeUnlink, uploadPath, uploadWorld } from '../uploads.js';
 import { parseWorldFile } from '../minecraftWorld/index.js';
-import { removeStaging } from '../worldedit/staging.js';
+import { removeStaging, cropBuild, buildBBox, validateSelection } from '../worldedit/staging.js';
+import { makeZip } from '../worldedit/zipWriter.js';
+import { regionFileName } from '../anvil/index.js';
 import { worldeditScopedRouter } from './worldedit.js';
 
 // Builds importés (.mca) — scopé par workspace (resolveWorkspace en amont).
@@ -174,6 +176,57 @@ blueprintsRouter.post('/:id/duplicate', (req, res) => {
   `).run(
     req.workspace.id, name, src.min_x, src.min_y, src.min_z, src.size_x, src.size_y, src.size_z,
     src.block_count, JSON.stringify(palette), JSON.stringify(bom), dataFile, req.user.id,
+  );
+  res.status(201).json(detail(db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ?').get(r.lastInsertRowid)));
+});
+
+// Extrait une zone (sélection) en un NOUVEAU build, éditable et léger (régions
+// réduites aux chunks de la zone). Renvoie le build créé → ouverture séparée.
+blueprintsRouter.post('/:id/extract', async (req, res) => {
+  const src = db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ? AND workspace_id = ?')
+    .get(Number(req.params.id), req.workspace.id);
+  if (!src) return res.status(404).json({ error: 'not_found' });
+  if (!src.source_file) return res.status(422).json({ error: 'not_editable' });
+
+  const sel = validateSelection(req.body?.selection, buildBBox(src));
+  if (typeof sel === 'string') return res.status(400).json({ error: sel });
+
+  let crop;
+  try { crop = await cropBuild(src, sel); }
+  catch (e) {
+    const code = ['empty_box', 'too_many_blocks'].includes(e.message) ? e.message : 'extract_failed';
+    if (code === 'extract_failed') console.error('[blueprints] extract failed:', e?.message || e);
+    return res.status(code === 'extract_failed' ? 500 : 422).json({ error: code });
+  }
+
+  // Source réduite : un .mca isolé si une seule région, sinon un zip region/.
+  let sourceFile, sourceName;
+  if (crop.regions.length === 1) {
+    const r = crop.regions[0];
+    sourceName = regionFileName(r.regionX, r.regionZ);
+    sourceFile = `${crypto.randomUUID()}.mca`;
+    fs.writeFileSync(uploadPath(sourceFile), r.buffer);
+  } else {
+    const entries = crop.regions.map((r) => ({ name: `region/${regionFileName(r.regionX, r.regionZ)}`, data: r.buffer }));
+    sourceName = `zone-${Date.now()}.zip`;
+    sourceFile = `${crypto.randomUUID()}.zip`;
+    fs.writeFileSync(uploadPath(sourceFile), makeZip(entries));
+  }
+
+  const dataFile = `${crypto.randomUUID()}.json.gz`;
+  fs.writeFileSync(uploadPath(dataFile), zlib.gzipSync(Buffer.from(JSON.stringify(crop.sparse))));
+
+  const meta = crop.sparse;
+  const name = String(req.body?.name || `${src.name} — zone`).trim().slice(0, 120) || 'Zone';
+  const r = db.prepare(`
+    INSERT INTO minecraft_blueprints
+      (workspace_id, name, min_x, min_y, min_z, size_x, size_y, size_z,
+       block_count, palette, bom, data_file, source_file, source_name, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.workspace.id, name,
+    meta.min.x, meta.min.y, meta.min.z, meta.size.x, meta.size.y, meta.size.z,
+    meta.count, JSON.stringify(meta.palette), JSON.stringify(meta.bom), dataFile, sourceFile, sourceName, req.user.id,
   );
   res.status(201).json(detail(db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ?').get(r.lastInsertRowid)));
 });

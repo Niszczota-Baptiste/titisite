@@ -8,6 +8,7 @@ import { ToastProvider } from '../ui/ToastProvider';
 import { ConfirmProvider } from '../ui/ConfirmProvider';
 import { BlueprintCanvas } from '../components/project/builds/BlueprintCanvas';
 import { WorldEditPanel } from '../components/project/builds/WorldEditPanel';
+import { useBlueprintSelection } from '../components/project/builds/useBlueprintSelection';
 
 // Page d'accès à un build par lien de partage scopé (sans cookie).
 //  - scope `view`  → vue 3D + aperçu, aucune écriture
@@ -19,7 +20,9 @@ export default function WorldEditShare() {
   const [state, setState] = useState(undefined); // undefined=chargement, null=invalide
   const [data, setData] = useState(null);
   const [codex, setCodex] = useState(null);
-  const [selection, setSelection] = useState(null);
+  const { selection, setSelection, onPick, active, setActive } = useBlueprintSelection(
+    state && state.bbox ? state.bbox : null,
+  );
 
   usePageMeta(state?.name ? `${state.name} — WorldEdit` : 'Build partagé');
 
@@ -28,10 +31,7 @@ export default function WorldEditShare() {
     .then(setData)
     .catch(() => {}), [we]);
 
-  const refreshState = useCallback(() => we.state().then((s) => {
-    setState(s);
-    setSelection((cur) => cur || (s?.bbox ? { min: { ...s.bbox.min }, max: { ...s.bbox.max } } : null));
-  }).catch(() => setState(null)), [we]);
+  const refreshState = useCallback(() => we.state().then(setState).catch(() => setState(null)), [we]);
 
   useEffect(() => {
     refreshState();
@@ -41,12 +41,6 @@ export default function WorldEditShare() {
     return () => { alive = false; };
   }, [we, reload, refreshState]);
 
-  const onPick = useCallback((corner, coord) => {
-    setSelection((cur) => {
-      const base = cur || { min: coord, max: coord };
-      return corner === 'A' ? { ...base, min: coord } : { ...base, max: coord };
-    });
-  }, []);
   const pickEnabled = !!(state?.canEdit && state?.editable);
 
   return (
@@ -73,7 +67,8 @@ export default function WorldEditShare() {
                       selection={selection} onPick={onPick} pickEnabled={pickEnabled} />
                   : <div style={{ padding: 20, color: 'rgba(180,170,200,0.7)' }}>Chargement du build…</div>}
                 {state.canEdit && <WorldEditPanel we={we} state={state} selection={selection}
-                  setSelection={setSelection} onChanged={reload} refreshState={refreshState} />}
+                  setSelection={setSelection} active={active} setActive={setActive}
+                  onChanged={reload} refreshState={refreshState} />}
               </div>
             </ConfirmProvider>
           </ToastProvider>

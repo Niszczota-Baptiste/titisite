@@ -10,10 +10,15 @@ import { useConfirm } from '../../../ui/ConfirmProvider';
 
 const AXES = ['x', 'y', 'z'];
 
-function CoordRow({ label, value, onChange }) {
+function CoordRow({ label, value, onChange, active, onActivate }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ ...muted, fontSize: 12, width: 60 }}>{label}</span>
+      <button type="button" onClick={onActivate} title="Coin déplacé par les flèches du clavier"
+        style={{ width: 66, textAlign: 'left', fontSize: 12, cursor: 'pointer', background: 'transparent', border: 'none',
+          padding: 0, fontFamily: "'Inter',sans-serif", fontWeight: active ? 700 : 400,
+          color: active ? '#ffd24a' : 'rgba(180,170,200,0.55)' }}>
+        {active ? '▸ ' : ''}{label}
+      </button>
       {AXES.map((a) => (
         <Input key={a} type="number" value={value[a]} aria-label={`${label} ${a}`}
           onChange={(e) => onChange({ ...value, [a]: Math.round(Number(e.target.value)) })}
@@ -76,7 +81,7 @@ function defaultParams(op) {
 
 // Composant CONTRÔLÉ : `state` (we.state()), `selection` et `setSelection` sont
 // fournis par le parent (qui les partage avec la vue 3D pour le picking).
-export function WorldEditPanel({ we, state, selection, setSelection, onChanged, refreshState }) {
+export function WorldEditPanel({ we, state, selection, setSelection, active, setActive, onChanged, refreshState, onExtract }) {
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -166,12 +171,22 @@ export function WorldEditPanel({ we, state, selection, setSelection, onChanged, 
         </span>
       </div>
 
-      <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
-        <CoordRow label="Coin A" value={sel.min} onChange={(v) => setSelection({ ...sel, min: v })} />
-        <CoordRow label="Coin B" value={sel.max} onChange={(v) => setSelection({ ...sel, max: v })} />
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+        <CoordRow label="Coin A" value={sel.min} onChange={(v) => setSelection({ ...sel, min: v })}
+          active={active === 'A'} onActivate={() => setActive?.('A')} />
+        <CoordRow label="Coin B" value={sel.max} onChange={(v) => setSelection({ ...sel, max: v })}
+          active={active === 'B'} onActivate={() => setActive?.('B')} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <Button variant="ghost" onClick={setFull} style={{ padding: '4px 10px', fontSize: 12 }}>Tout le build</Button>
+          {onExtract && (
+            <Button variant="ghost" onClick={() => onExtract()} disabled={busy} style={{ padding: '4px 10px', fontSize: 12 }}>
+              ✂️ Extraire la zone → nouveau build
+            </Button>
+          )}
           <span style={{ ...muted, fontSize: 11 }}>{volume(sel).toLocaleString('fr')} blocs · max {state.maxSelectionVolume.toLocaleString('fr')}</span>
+        </div>
+        <div style={{ ...muted, fontSize: 11 }}>
+          Coin actif (★ <span style={{ color: '#ffd24a' }}>{active === 'A' ? 'A' : 'B'}</span>) : <strong>flèches</strong> = X/Z au bloc près, <strong>PgUp/PgDn</strong> = Y · <strong>Shift+clic glissé</strong> = régler Y dans la vue
         </div>
       </div>
 

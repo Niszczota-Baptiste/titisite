@@ -103,9 +103,18 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
 - **Sélection à la souris** dans la vue 3D (`BlueprintScene`) : **clic droit =
   coin A**, **clic gauche = coin B** (un glissé reste une rotation). Une **boîte
   de sélection** dorée est rendue en temps réel ; les coordonnées sont éditables
-  aussi à la main dans le panneau. La sélection est un état partagé par le
-  parent (`BlueprintViewer` / page `/we/:token`) entre la vue 3D et le
-  `WorldEditPanel`.
+  aussi à la main dans le panneau. État partagé via le hook
+  `useBlueprintSelection` entre la vue 3D et le `WorldEditPanel`
+  (`BlueprintViewer` / page `/we/:token`).
+- **Réglage fin** : les **flèches** déplacent le coin actif d'un bloc en X/Z,
+  **PgUp/PgDn** en Y ; **Shift + clic glissé vertical** dans la vue 3D règle le Y
+  d'un coin (pour le placer au-dessus de la surface, hors de portée d'un clic).
+  Le coin actif (A/B) se choisit en cliquant son libellé dans le panneau.
+- **Extraire une zone** : `POST …/blueprints/:id/extract` (`staging.cropBuild`)
+  crée un **nouveau build léger** à partir de la sélection — les fichiers de
+  région sont réduits aux seuls chunks intersectés (lossless, coords monde
+  conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
+  dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
 ## Variables d'environnement
 

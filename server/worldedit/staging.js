@@ -7,7 +7,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { db } from '../db.js';
 import { uploadPath } from '../uploads.js';
-import { regionFileName, regionCoordsFromName } from '../anvil/index.js';
+import { regionFileName, regionCoordsFromName, writeRegion } from '../anvil/index.js';
 import { extractMcaEntries } from '../minecraftWorld/zip.js';
 import { RegionStore } from './regionStore.js';
 import {
@@ -237,6 +237,28 @@ export function exportBuild(bp) {
   const entries = files.map(({ file }) => ({ name: `region/${file}`, data: fs.readFileSync(path.join(rdir, file)) }));
   const safe = String(bp.name || 'build').replace(/[^\w.-]+/g, '_').slice(0, 60) || 'build';
   return { buffer: makeZip(entries), filename: `${safe}-region.zip`, mime: 'application/zip' };
+}
+
+// Extrait une zone : renvoie l'artefact sparse de la sélection + des fichiers de
+// région RÉDUITS aux seuls chunks qui l'intersectent (lossless, payloads
+// recopiés). Sert à créer un nouveau build léger « comme un import » — bien plus
+// rapide à charger/éditer que le .mca complet. Coordonnées monde conservées.
+export async function cropBuild(bp, bbox) {
+  const store = loadStore(bp);
+  await store.warmup(bbox);
+  const sparse = store.deriveSparse(bbox);
+  if (!sparse.count) throw new Error('empty_box');
+  const cMinX = fdiv(bbox.min.x, 16), cMaxX = fdiv(bbox.max.x, 16);
+  const cMinZ = fdiv(bbox.min.z, 16), cMaxZ = fdiv(bbox.max.z, 16);
+  const regions = [];
+  for (const r of store.regions.values()) {
+    const chunks = r.region.chunks.filter(
+      (c) => c.chunkX >= cMinX && c.chunkX <= cMaxX && c.chunkZ >= cMinZ && c.chunkZ <= cMaxZ,
+    );
+    if (!chunks.length) continue;
+    regions.push({ regionX: r.regionX, regionZ: r.regionZ, buffer: writeRegion({ regionX: r.regionX, regionZ: r.regionZ, chunks }) });
+  }
+  return { sparse, regions };
 }
 
 export function listAudit(id, limit = 100) {

@@ -11,6 +11,7 @@ import { BlueprintCanvas } from './BlueprintCanvas';
 import { ShareControls } from './ShareControls';
 import { WorldEditPanel } from './WorldEditPanel';
 import { SharesPanel } from './SharesPanel';
+import { useBlueprintSelection } from './useBlueprintSelection';
 
 const PARSE_ERRORS = {
   box_too_big: 'Boîte trop grande (max 2048×384×2048).',
@@ -31,7 +32,7 @@ const BOUNDS = [
 // Sous-onglet « Builds 3D » : import d'un monde solo (.mca/zip) borné par la
 // boîte F3, liste des builds, et visionneuse 3D + slider de couche. Le BOM et le
 // partage sont ajoutés par les phases suivantes (PlanView/Share).
-export function BuildsView({ ws, items = [], chests = [] }) {
+export function BuildsView({ ws, slug, items = [], chests = [], initialOpenId = null }) {
   const isMobile = useIsMobile(720);
   const confirm = useConfirm();
   const toast = useToast();
@@ -44,6 +45,10 @@ export function BuildsView({ ws, items = [], chests = [] }) {
 
   const load = () => ws.blueprints.list().then(setList).catch(() => setErr('Chargement impossible.'));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  // Deep-link (?build=<id>) : ouvre directement le build une fois la liste chargée.
+  useEffect(() => {
+    if (initialOpenId && Array.isArray(list) && list.some((b) => b.id === initialOpenId)) setOpenId(initialOpenId);
+  }, [initialOpenId, list]);
 
   const remove = async (b) => {
     const ok = await confirm({ title: 'Supprimer le build', message: `« ${b.name} » sera supprimé.`, confirmLabel: 'Supprimer', danger: true });
@@ -85,7 +90,7 @@ export function BuildsView({ ws, items = [], chests = [] }) {
                 <Button variant="ghost" onClick={() => setDupId(b.id)}>Dupliquer</Button>
                 <Button variant="ghost" onClick={() => remove(b)}>Supprimer</Button>
               </div>
-              {openId === b.id && <BlueprintViewer ws={ws} id={b.id} isMobile={isMobile} items={items} chests={chests} />}
+              {openId === b.id && <BlueprintViewer ws={ws} slug={slug} id={b.id} isMobile={isMobile} items={items} chests={chests} onExtracted={load} />}
             </div>
           ))}
         </div>
@@ -244,17 +249,18 @@ function UploadForm({ ws, toast, onDone, onCancel, onError }) {
   );
 }
 
-function BlueprintViewer({ ws, id, isMobile, items, chests }) {
+function BlueprintViewer({ ws, slug, id, isMobile, items, chests, onExtracted }) {
   const [data, setData] = useState(null);
   const [detail, setDetail] = useState(null); // méta + bom
   const [codex, setCodex] = useState(null);
   const [err, setErr] = useState('');
   const [weState, setWeState] = useState(null); // state WorldEdit (bbox, rôle, undo…)
-  const [selection, setSelection] = useState(null); // { min, max } en coords monde
+  const toast = useToast();
 
-  // Charge le rendu : aperçu du staging WorldEdit en priorité (modifications en
-  // cours), sinon l'artefact d'origine du build.
   const we = useMemo(() => ws.blueprints.worldedit(id), [ws, id]);
+  const { selection, setSelection, onPick, active, setActive } = useBlueprintSelection(weState?.bbox || null);
+
+  // Charge le rendu : aperçu du staging WorldEdit en priorité, sinon l'artefact d'origine.
   const reload = useCallback(() => {
     return fetch(we.previewUrl(), { credentials: 'include' })
       .then((r) => (r.ok ? r : fetch(ws.blueprints.dataUrl(id), { credentials: 'include' })))
@@ -263,14 +269,11 @@ function BlueprintViewer({ ws, id, isMobile, items, chests }) {
       .catch(() => setErr('Données du build illisibles.'));
   }, [we, ws, id]);
 
-  const refreshState = useCallback(() => we.state().then((s) => {
-    setWeState(s);
-    setSelection((cur) => cur || (s.bbox ? { min: { ...s.bbox.min }, max: { ...s.bbox.max } } : null));
-  }).catch(() => {}), [we]);
+  const refreshState = useCallback(() => we.state().then(setWeState).catch(() => {}), [we]);
 
   useEffect(() => {
     let alive = true;
-    setData(null); setErr(''); setSelection(null); setWeState(null);
+    setData(null); setErr(''); setWeState(null);
     reload();
     refreshState();
     ws.blueprints.get(id).then((d) => alive && setDetail(d)).catch(() => {});
@@ -278,13 +281,18 @@ function BlueprintViewer({ ws, id, isMobile, items, chests }) {
     return () => { alive = false; };
   }, [ws, id, reload, refreshState]);
 
-  // Clic 3D : droit = coin A (min), gauche = coin B (max).
-  const onPick = useCallback((corner, coord) => {
-    setSelection((cur) => {
-      const base = cur || { min: coord, max: coord };
-      return corner === 'A' ? { ...base, min: coord } : { ...base, max: coord };
-    });
-  }, []);
+  // Extraction d'une zone → nouveau build léger, ouvert dans un nouvel onglet.
+  const onExtract = useCallback(async (name) => {
+    if (!selection) return;
+    try {
+      const created = await ws.blueprints.extract(id, { selection, name });
+      toast?.success?.(`Zone extraite : « ${created.name} »`);
+      onExtracted?.();
+      if (slug) window.open(`/project/${slug}/minecraft?view=builds&build=${created.id}`, '_blank', 'noopener');
+    } catch (e) {
+      toast?.error?.(e?.message === 'empty_box' ? 'Aucun bloc dans la zone' : 'Extraction impossible');
+    }
+  }, [ws, id, slug, selection, toast, onExtracted]);
 
   const height = isMobile ? 320 : 480;
   const pickEnabled = !!(weState?.canEdit && weState?.editable);
@@ -299,7 +307,7 @@ function BlueprintViewer({ ws, id, isMobile, items, chests }) {
         selection={selection} onPick={onPick} pickEnabled={pickEnabled} />
       <ShareControls ws={ws} id={id} initialToken={detail?.shareToken || null} />
       <WorldEditPanel we={we} state={weState} selection={selection} setSelection={setSelection}
-        onChanged={reload} refreshState={refreshState} />
+        active={active} setActive={setActive} onChanged={reload} refreshState={refreshState} onExtract={onExtract} />
       <SharesPanel ws={ws} id={id} />
       {detail?.bom && (
         <BlueprintBom bom={detail.bom} codex={codex} items={items} chests={chests} />

@@ -177,7 +177,10 @@ export function MinecraftTab() {
   const idIndex = useMemo(() => buildIdIndex(catalog), [catalog]);
   const [block3d, setBlock3d] = useState(true); // rendu 3D des blocs (défaut activé)
   const [calcOpen, setCalcOpen] = useState(false); // calculateur de craft
-  const [view, setView] = useState('chests'); // 'chests' | 'builds'
+  // Deep-link : ?view=builds&build=<id> (ouvert depuis « Extraire la zone »).
+  const initialQuery = useMemo(() => new URLSearchParams(window.location.search), []);
+  const [view, setView] = useState(() => (initialQuery.get('view') === 'builds' ? 'builds' : 'chests')); // 'chests' | 'builds'
+  const initialBuildId = Number(initialQuery.get('build')) || null;
 
   // Coffres (containers) + organisation de la vue
   const [chests, setChests] = useState([]);
@@ -390,7 +393,7 @@ export function MinecraftTab() {
   if (view === 'builds') {
     return (
       <Section title="🏗️ Builds 3D importés" actions={subNav}>
-        <BuildsView ws={ws} items={items} chests={chests} />
+        <BuildsView ws={ws} slug={workspace.slug} items={items} chests={chests} initialOpenId={initialBuildId} />
       </Section>
     );
   }
