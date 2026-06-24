@@ -166,6 +166,41 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     renderer.domElement.addEventListener('pointerup', onPointerUp);
     renderer.domElement.addEventListener('contextmenu', onContext);
 
+    // ── Déplacement libre de la caméra au clavier (ZQSD/WASD) ──
+    // Translate caméra + cible sur le plan horizontal, relatif à la vue. R/F =
+    // monter/descendre. Ignoré quand on tape dans un champ.
+    const moveKeys = new Set();
+    const MOVE = new Set(['z', 'w', 's', 'q', 'a', 'd', 'r', 'f']);
+    const onKeyDown = (e) => {
+      const el = document.activeElement;
+      if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+      const k = e.key.toLowerCase();
+      if (MOVE.has(k)) moveKeys.add(k);
+    };
+    const onKeyUp = (e) => moveKeys.delete(e.key.toLowerCase());
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    const fwdV = new THREE.Vector3();
+    const rightV = new THREE.Vector3();
+    const moveV = new THREE.Vector3();
+    const applyMove = () => {
+      if (!moveKeys.size) return;
+      fwdV.subVectors(controls.target, camera.position); fwdV.y = 0;
+      if (fwdV.lengthSq() > 1e-6) fwdV.normalize();
+      rightV.crossVectors(fwdV, camera.up).normalize();
+      moveV.set(0, 0, 0);
+      if (moveKeys.has('z') || moveKeys.has('w')) moveV.add(fwdV);
+      if (moveKeys.has('s')) moveV.sub(fwdV);
+      if (moveKeys.has('d')) moveV.add(rightV);
+      if (moveKeys.has('q') || moveKeys.has('a')) moveV.sub(rightV);
+      if (moveKeys.has('r')) moveV.y += 1;
+      if (moveKeys.has('f')) moveV.y -= 1;
+      if (moveV.lengthSq() === 0) return;
+      moveV.normalize().multiplyScalar(Math.max(0.8, span * 0.02));
+      camera.position.add(moveV);
+      controls.target.add(moveV);
+    };
+
     // Regroupe les positions par index de palette.
     const { palette, blocks } = data;
     const byType = palette.map(() => []);
@@ -283,7 +318,7 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     };
 
     let raf = 0;
-    const tick = () => { raf = requestAnimationFrame(tick); controls.update(); renderer.render(scene, camera); };
+    const tick = () => { raf = requestAnimationFrame(tick); applyMove(); controls.update(); renderer.render(scene, camera); };
     raf = requestAnimationFrame(tick);
     window.addEventListener('resize', resize);
     build();
@@ -326,6 +361,8 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       renderer.domElement.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
       renderer.domElement.removeEventListener('contextmenu', onContext);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       disposeSel();
       controls.dispose();
       scene.traverse((o) => {

@@ -110,6 +110,10 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   **PgUp/PgDn** en Y ; **Shift + clic glissé vertical** dans la vue 3D règle le Y
   d'un coin (pour le placer au-dessus de la surface, hors de portée d'un clic).
   Le coin actif (A/B) se choisit en cliquant son libellé dans le panneau.
+- **Navigation caméra** : **ZQSD/WASD** déplacent librement la caméra dans le
+  build (translation sur le plan horizontal relative à la vue), **R/F** = monter/
+  descendre ; la molette zoome et le glissé pivote (OrbitControls). Pratique pour
+  s'approcher et viser un bloc précis.
 - **Extraire une zone** : `POST …/blueprints/:id/extract` (`staging.cropBuild`)
   crée un **nouveau build léger** à partir de la sélection — les fichiers de
   région sont réduits aux seuls chunks intersectés (lossless, coords monde

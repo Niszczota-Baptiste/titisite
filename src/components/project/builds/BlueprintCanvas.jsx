@@ -19,11 +19,10 @@ export function BlueprintCanvas({ data, codex, height = 480, selection, onPick, 
             selection={selection} onPick={onPick} pickEnabled={pickEnabled} />}
         </Suspense>
       </div>
-      {pickEnabled && (
-        <div style={{ ...muted, fontSize: 12, padding: '8px 14px 0' }}>
-          🖱️ <strong style={{ color: '#ffd24a' }}>Clic droit</strong> = coin A · <strong style={{ color: '#ffd24a' }}>clic gauche</strong> = coin B · glisser = pivoter
-        </div>
-      )}
+      <div style={{ ...muted, fontSize: 12, padding: '8px 14px 0' }}>
+        {pickEnabled && <><strong style={{ color: '#ffd24a' }}>Clic droit</strong> = coin A · <strong style={{ color: '#ffd24a' }}>clic gauche</strong> = coin B · </>}
+        <strong>ZQSD/WASD</strong> = déplacer la caméra (R/F = haut/bas) · glisser = pivoter · molette = zoom
+      </div>
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', padding: 14 }}>
         <div style={{ display: 'flex', gap: 6 }}>
           {[['cumulative', 'Jusqu\'à la couche'], ['single', 'Couche seule']].map(([m, lbl]) => (
