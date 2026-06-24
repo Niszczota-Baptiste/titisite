@@ -30,6 +30,7 @@ import { meRouter } from './routes/me.js';
 import { meetingsRouter } from './routes/meetings.js';
 import { minecraftRouter } from './routes/minecraft.js';
 import { blueprintsRouter, blueprintsPublicRouter } from './routes/blueprints.js';
+import { worldeditTokenRouter } from './routes/worldedit.js';
 import { minecraftAdminRouter } from './routes/minecraft-admin.js';
 import { recipesRouter } from './routes/recipes.js';
 import { settingsRouter } from './routes/settings.js';
@@ -271,6 +272,9 @@ app.use('/api/minecraft-admin', minecraftAdminRouter);
 
 // Builds importés — partage public en lecture seule par token (sans cookie).
 app.use('/api/blueprints', blueprintsPublicRouter);
+
+// WorldEdit par lien de partage scopé (view/edit) — auth par token dans l'URL.
+app.use('/api/worldedit', worldeditTokenRouter);
 
 // Workspace CRUD
 app.use('/api/workspaces', workspacesRouter);

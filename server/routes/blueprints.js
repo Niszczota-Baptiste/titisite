@@ -5,6 +5,8 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { safeUnlink, uploadPath, uploadWorld } from '../uploads.js';
 import { parseWorldFile } from '../minecraftWorld/index.js';
+import { removeStaging } from '../worldedit/staging.js';
+import { worldeditScopedRouter } from './worldedit.js';
 
 // Builds importés (.mca) — scopé par workspace (resolveWorkspace en amont).
 export const blueprintsRouter = Router({ mergeParams: true });
@@ -27,6 +29,7 @@ function rowToMeta(r) {
     paletteCount: safeLen(r.palette),
     hasShare: !!r.share_token,
     shareToken: r.share_token || null,
+    hasSource: !!r.source_file, // éditable via WorldEdit (régions réelles conservées)
     createdAt: r.created_at,
   };
 }
@@ -97,14 +100,16 @@ blueprintsRouter.post('/', uploadWorld.single('file'), async (req, res) => {
     const r = db.prepare(`
       INSERT INTO minecraft_blueprints
         (workspace_id, name, min_x, min_y, min_z, size_x, size_y, size_z,
-         block_count, palette, bom, data_file, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         block_count, palette, bom, data_file, source_file, source_name, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.workspace.id, name,
       meta.min.x, meta.min.y, meta.min.z, meta.size.x, meta.size.y, meta.size.z,
-      meta.count, JSON.stringify(meta.palette), JSON.stringify(meta.bom), dataFile, req.user.id,
+      meta.count, JSON.stringify(meta.palette), JSON.stringify(meta.bom), dataFile,
+      // On CONSERVE le fichier source (zip region/ ou .mca) pour WorldEdit : il
+      // permet de transformer les régions réelles et d'exporter un .mca lossless.
+      req.file.filename, req.file.originalname || null, req.user.id,
     );
-    safeUnlink(req.file.filename); // on ne garde que l'artefact sparse
     res.status(201).json(detail(db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ?').get(r.lastInsertRowid)));
   } catch (e) {
     safeUnlink(req.file.filename); safeUnlink(dataFile);
@@ -187,13 +192,72 @@ blueprintsRouter.delete('/:id/share', (req, res) => {
 });
 
 blueprintsRouter.delete('/:id', (req, res) => {
-  const r = db.prepare('SELECT data_file FROM minecraft_blueprints WHERE id = ? AND workspace_id = ?')
-    .get(Number(req.params.id), req.workspace.id);
+  const id = Number(req.params.id);
+  const r = db.prepare('SELECT data_file, source_file FROM minecraft_blueprints WHERE id = ? AND workspace_id = ?')
+    .get(id, req.workspace.id);
   if (!r) return res.status(404).json({ error: 'not_found' });
-  db.prepare('DELETE FROM minecraft_blueprints WHERE id = ? AND workspace_id = ?').run(Number(req.params.id), req.workspace.id);
+  db.prepare('DELETE FROM minecraft_blueprints WHERE id = ? AND workspace_id = ?').run(id, req.workspace.id);
   if (r.data_file) safeUnlink(r.data_file);
+  if (r.source_file) safeUnlink(r.source_file);
+  removeStaging(id); // efface le staging WorldEdit + la pile d'undo
   res.status(204).end();
 });
+
+// ── Liens de partage scopés (view / edit) — gestion réservée au propriétaire ───
+// « Gérer les accès » = propriétaire (admin du workspace) uniquement.
+function requireOwner(req, res, next) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'owner_only' });
+  next();
+}
+
+function shareRow(r) {
+  return {
+    id: r.id, scope: r.scope, label: r.label || '',
+    expiresAt: r.expires_at || null, revokedAt: r.revoked_at || null,
+    createdAt: r.created_at,
+    active: !r.revoked_at && (!r.expires_at || r.expires_at * 1000 >= Date.now()),
+  };
+}
+
+blueprintsRouter.get('/:id/shares', requireOwner, (req, res) => {
+  const bp = db.prepare('SELECT id FROM minecraft_blueprints WHERE id = ? AND workspace_id = ?')
+    .get(Number(req.params.id), req.workspace.id);
+  if (!bp) return res.status(404).json({ error: 'not_found' });
+  const rows = db.prepare('SELECT * FROM blueprint_shares WHERE blueprint_id = ? ORDER BY id DESC').all(bp.id);
+  res.json(rows.map(shareRow));
+});
+
+blueprintsRouter.post('/:id/shares', requireOwner, (req, res) => {
+  const bp = db.prepare('SELECT id FROM minecraft_blueprints WHERE id = ? AND workspace_id = ?')
+    .get(Number(req.params.id), req.workspace.id);
+  if (!bp) return res.status(404).json({ error: 'not_found' });
+  const scope = req.body?.scope === 'edit' ? 'edit' : 'view';
+  const days = Number(req.body?.expiresInDays);
+  const expiresAt = Number.isFinite(days) && days > 0
+    ? Math.floor(Date.now() / 1000) + Math.min(365, days) * 86400 : null;
+  const label = String(req.body?.label || '').trim().slice(0, 80);
+  const token = crypto.randomBytes(18).toString('hex');
+  const r = db.prepare(`
+    INSERT INTO blueprint_shares (blueprint_id, token, scope, label, expires_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(bp.id, token, scope, label, expiresAt, req.user.id);
+  const row = db.prepare('SELECT * FROM blueprint_shares WHERE id = ?').get(r.lastInsertRowid);
+  res.status(201).json({ ...shareRow(row), token });
+});
+
+blueprintsRouter.delete('/:id/shares/:shareId', requireOwner, (req, res) => {
+  const bp = db.prepare('SELECT id FROM minecraft_blueprints WHERE id = ? AND workspace_id = ?')
+    .get(Number(req.params.id), req.workspace.id);
+  if (!bp) return res.status(404).json({ error: 'not_found' });
+  const r = db.prepare("UPDATE blueprint_shares SET revoked_at = strftime('%s','now') WHERE id = ? AND blueprint_id = ? AND revoked_at IS NULL")
+    .run(Number(req.params.shareId), bp.id);
+  if (!r.changes) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// Sous-routeur WorldEdit (transform/undo/export/preview) — JWT + workspace déjà
+// résolus par le routeur scoped en amont.
+blueprintsRouter.use('/:id/worldedit', worldeditScopedRouter);
 
 // ── Partage public (lecture seule par token) ──────────────────────────────────
 

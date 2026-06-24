@@ -290,6 +290,43 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_blueprints_workspace ON minecraft_blueprints(workspace_id, id);`);
+  // WorldEdit : on conserve le fichier source uploadé (zip region/ ou .mca isolé)
+  // pour pouvoir transformer les régions réelles et exporter un .mca lossless.
+  // L'artefact sparse historique (data_file) reste l'import d'origine ; le
+  // staging WorldEdit vit sous uploads/worldedit/<id>/ (jamais la save source).
+  ensureColumn('minecraft_blueprints', 'source_file', 'TEXT');
+  ensureColumn('minecraft_blueprints', 'source_name', 'TEXT');
+
+  // Journal d'audit WorldEdit : qui / quoi / combien / quand.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS worldedit_audit (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      blueprint_id   INTEGER NOT NULL REFERENCES minecraft_blueprints(id) ON DELETE CASCADE,
+      actor          TEXT NOT NULL,         -- "user:<id>" ou "token:<id>"
+      operation      TEXT NOT NULL,
+      params_json    TEXT NOT NULL DEFAULT '{}',
+      blocks_changed INTEGER NOT NULL DEFAULT 0,
+      created_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_we_audit_bp ON worldedit_audit(blueprint_id, id);`);
+
+  // Liens de partage scopés (view / edit) avec expiration + révocation. Plusieurs
+  // liens par build possibles ; l'ancien share_token reste géré à part (legacy).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS blueprint_shares (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      blueprint_id INTEGER NOT NULL REFERENCES minecraft_blueprints(id) ON DELETE CASCADE,
+      token        TEXT NOT NULL UNIQUE,
+      scope        TEXT NOT NULL DEFAULT 'view' CHECK (scope IN ('view','edit')),
+      label        TEXT NOT NULL DEFAULT '',
+      expires_at   INTEGER,
+      revoked_at   INTEGER,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_bp_shares_bp ON blueprint_shares(blueprint_id, id);`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS comments (
