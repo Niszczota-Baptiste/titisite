@@ -159,6 +159,34 @@ test('Import complet (full=true) : emprise détectée automatiquement', async (t
   assert.equal(r.json.hasSource, true);
 });
 
+test('Commande cut : vide la sélection (→ air) et remplit le presse-papier', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug); // oak_stairs@(0,0,0), minefield@(5,0,0)
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 5, y: 0, z: 5 } };
+
+  const cut = await admin.post(`${root}/transform`, { body: { operation: 'cut', params: {}, selection: sel } });
+  assert.equal(cut.status, 200, cut.text);
+  assert.ok(cut.json.blocksChanged >= 1);
+
+  // La zone est vidée : plus aucun oak_stairs à remplacer.
+  const rep = await admin.post(`${root}/transform`, {
+    body: { operation: 'replace', params: { from: { name: 'minecraft:oak_stairs' }, to: { name: 'minecraft:gold_block' } }, selection: sel },
+  });
+  assert.equal(rep.json.blocksChanged, 0);
+
+  // Le presse-papier a été rempli par le cut : on peut coller ailleurs.
+  const paste = await admin.post(`${root}/transform`, {
+    body: { operation: 'paste', params: { mode: 'overlay' }, selection: { min: { x: 8, y: 0, z: 8 }, max: { x: 8, y: 0, z: 8 } } },
+  });
+  assert.equal(paste.status, 200, paste.text);
+  assert.ok(paste.json.blocksChanged >= 1);
+});
+
 test('Extraction de zone → nouveau build léger et éditable', async (t) => {
   const srv = await bootServer();
   t.after(() => srv.stop());

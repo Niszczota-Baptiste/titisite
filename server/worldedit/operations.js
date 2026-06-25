@@ -37,6 +37,11 @@ export const OPERATIONS = [
     params: [{ name: 'block', type: 'block', label: 'Bloc' }],
   },
   {
+    id: 'cut', label: 'Couper (→ air)', minRole: 'editor',
+    description: 'Vide la sélection (tous les blocs → air) et la copie dans le presse-papier.',
+    params: [],
+  },
+  {
     id: 'copy', label: 'Copier', minRole: 'editor',
     description: 'Copie la sélection dans le presse-papier serveur (lié à la session).',
     params: [],
@@ -79,6 +84,7 @@ export function normalizeParams(operation, raw = {}) {
       return block?.name ? { block } : 'bad_block';
     }
     case 'copy': return {};
+    case 'cut': return {};
     case 'paste': return { mode: raw.mode === 'overwrite' ? 'overwrite' : 'overlay' };
     default: return 'unknown_operation';
   }

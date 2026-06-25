@@ -32,7 +32,7 @@ function fallbackColor(id) {
   return new THREE.Color().setHSL((h % 360) / 360, 0.42, 0.55);
 }
 
-export default function BlueprintScene({ data, codex, layer, layerMode, onProgress, selection, onPick, pickEnabled }) {
+export default function BlueprintScene({ data, codex, layer, layerMode, onProgress, selection, onPick, pickEnabled, moveSpeed = 0.5 }) {
   const mountRef = useRef(null);
   const apiRef = useRef(null); // { types:[{meshes, ys, mats, n, layout}] }
   // Refs synchronisées à chaque rendu : les écouteurs three.js (stables) lisent
@@ -40,6 +40,7 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
   const onPickRef = useRef(onPick); onPickRef.current = onPick;
   const selRef = useRef(selection); selRef.current = selection;
   const pickEnabledRef = useRef(pickEnabled); pickEnabledRef.current = pickEnabled;
+  const moveSpeedRef = useRef(moveSpeed); moveSpeedRef.current = moveSpeed;
 
   // ── Construction de la scène (une fois par data) ──
   useEffect(() => {
@@ -196,7 +197,8 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       if (moveKeys.has('r')) moveV.y += 1;
       if (moveKeys.has('f')) moveV.y -= 1;
       if (moveV.lengthSq() === 0) return;
-      moveV.normalize().multiplyScalar(Math.max(0.8, span * 0.02));
+      // Vitesse réglable (moveSpeed) ; base proportionnelle à la taille du build.
+      moveV.normalize().multiplyScalar(Math.max(0.4, span * 0.03) * (moveSpeedRef.current || 0.5));
       camera.position.add(moveV);
       controls.target.add(moveV);
     };
@@ -321,6 +323,9 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     const tick = () => { raf = requestAnimationFrame(tick); applyMove(); controls.update(); renderer.render(scene, camera); };
     raf = requestAnimationFrame(tick);
     window.addEventListener('resize', resize);
+    // Suit aussi les changements de taille du conteneur (passage plein écran…).
+    const ro = new ResizeObserver(() => resize());
+    ro.observe(mount);
     build();
 
     // expose applyLayer via ref for the layer effect
@@ -357,6 +362,7 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       cancelled = true;
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
+      ro.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);

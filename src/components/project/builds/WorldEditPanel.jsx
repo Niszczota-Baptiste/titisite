@@ -153,7 +153,7 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
     finally { setBusy(false); }
   };
 
-  const needsConfirm = (opId === 'set' || opId === 'replace') && volume(sel) > 50_000;
+  const needsConfirm = opId === 'cut' || ((opId === 'set' || opId === 'replace') && volume(sel) > 50_000);
   const onApply = async () => {
     if (needsConfirm) {
       const ok = await confirm({ title: `${op.label} sur ${volume(sel).toLocaleString('fr')} blocs`, message: 'Opération large sur la sélection. Continuer ?', confirmLabel: 'Appliquer' });

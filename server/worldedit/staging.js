@@ -11,7 +11,7 @@ import { regionFileName, regionCoordsFromName, writeRegion } from '../anvil/inde
 import { extractMcaEntries } from '../minecraftWorld/zip.js';
 import { RegionStore } from './regionStore.js';
 import {
-  opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste,
+  opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, opCut,
 } from './transform.js';
 import { makeZip } from './zipWriter.js';
 
@@ -147,6 +147,7 @@ const OPS = {
   translate: (store, sel, p) => opTranslate(store, sel, p),
   replace: (store, sel, p) => opReplace(store, sel, p),
   set: (store, sel, p) => opSet(store, sel, p),
+  cut: (store, sel) => opCut(store, sel), // copie + vide la sélection
 };
 
 // Applique une opération sur le staging (non destructif) et renvoie le diff.
@@ -193,7 +194,8 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
     VALUES (?, ?, ?, ?, ?)
   `).run(bp.id, actor, operation, JSON.stringify({ selection: sel, params: params || {} }), result.blocksChanged || 0);
 
-  return { blocksChanged: result.blocksChanged || 0, bounds: result.bounds || sel };
+  // `clipboard` n'est présent que pour `cut` (presse-papier rempli au passage).
+  return { blocksChanged: result.blocksChanged || 0, bounds: result.bounds || sel, clipboard: result.clipboard };
 }
 
 // Annule la dernière opération : restaure les régions du dernier snapshot.

@@ -102,6 +102,7 @@ async function postTransform(req, res) {
     const clipboardStore = operation === 'paste' ? clipboards.get(clipKey) : undefined;
     if (operation === 'paste' && !clipboardStore) return res.status(400).json({ error: 'empty_clipboard' });
     const out = await applyOperation({ bp, operation, params, selection, actor: req.we.actor, clipboardStore });
+    if (out.clipboard) setClip(clipKey, out.clipboard); // cut remplit le presse-papier
     return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id) });
   } catch (e) {
     const known = ['invalid_selection', 'out_of_bounds', 'selection_too_large', 'unknown_operation',

@@ -13,6 +13,15 @@ import { WorldEditPanel } from './WorldEditPanel';
 import { SharesPanel } from './SharesPanel';
 import { useBlueprintSelection } from './useBlueprintSelection';
 
+// Plein écran : la vue 3D occupe tout l'écran, le panneau WorldEdit flotte dessus.
+const FS_CANVAS = { position: 'fixed', inset: 0, zIndex: 10000, background: '#0d0a1c' };
+const FS_PANEL = {
+  position: 'fixed', top: 12, left: 12, width: 360, maxWidth: 'calc(100vw - 24px)',
+  maxHeight: 'calc(100vh - 24px)', overflowY: 'auto', zIndex: 10001,
+  background: 'rgba(13,10,28,0.92)', border: '1px solid rgba(120,90,180,0.45)',
+  borderRadius: 12, boxShadow: '0 12px 48px rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+};
+
 const EXTRACT_ERRORS = {
   empty_box: 'Aucun bloc dans la zone sélectionnée.',
   too_many_blocks: 'Zone trop dense (plus de 3 M de blocs) — réduis-la.',
@@ -263,10 +272,21 @@ function BlueprintViewer({ ws, slug, id, isMobile, items, chests, onExtracted })
   const [codex, setCodex] = useState(null);
   const [err, setErr] = useState('');
   const [weState, setWeState] = useState(null); // state WorldEdit (bbox, rôle, undo…)
+  const [fullscreen, setFullscreen] = useState(false);
   const toast = useToast();
 
   const we = useMemo(() => ws.blueprints.worldedit(id), [ws, id]);
   const { selection, setSelection, onPick, active, setActive } = useBlueprintSelection(weState?.bbox || null);
+
+  // Plein écran : bloque le scroll du corps + sortie à Échap.
+  useEffect(() => {
+    if (!fullscreen) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => { if (e.key === 'Escape') setFullscreen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
+  }, [fullscreen]);
 
   // Charge le rendu : aperçu du staging WorldEdit en priorité, sinon l'artefact d'origine.
   const reload = useCallback(() => {
@@ -310,15 +330,25 @@ function BlueprintViewer({ ws, slug, id, isMobile, items, chests, onExtracted })
 
   return (
     <div style={{ ...card, padding: 0, marginTop: 8, overflow: 'hidden' }}>
-      <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`}
-        data={data} codex={codex} height={height}
-        selection={selection} onPick={onPick} pickEnabled={pickEnabled} />
-      <ShareControls ws={ws} id={id} initialToken={detail?.shareToken || null} />
-      <WorldEditPanel we={we} state={weState} selection={selection} setSelection={setSelection}
-        active={active} setActive={setActive} onChanged={reload} refreshState={refreshState} onExtract={onExtract} />
-      <SharesPanel ws={ws} id={id} />
-      {detail?.bom && (
-        <BlueprintBom bom={detail.bom} codex={codex} items={items} chests={chests} />
+      <div style={fullscreen ? FS_CANVAS : undefined}>
+        <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`}
+          data={data} codex={codex} height={height}
+          selection={selection} onPick={onPick} pickEnabled={pickEnabled}
+          fillHeight={fullscreen} fullscreen={fullscreen}
+          onToggleFullscreen={() => setFullscreen((v) => !v)} />
+      </div>
+      <div style={fullscreen ? FS_PANEL : undefined}>
+        <WorldEditPanel we={we} state={weState} selection={selection} setSelection={setSelection}
+          active={active} setActive={setActive} onChanged={reload} refreshState={refreshState} onExtract={onExtract} />
+      </div>
+      {!fullscreen && (
+        <>
+          <ShareControls ws={ws} id={id} initialToken={detail?.shareToken || null} />
+          <SharesPanel ws={ws} id={id} />
+          {detail?.bom && (
+            <BlueprintBom bom={detail.bom} codex={codex} items={items} chests={chests} />
+          )}
+        </>
       )}
     </div>
   );

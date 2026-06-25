@@ -218,6 +218,13 @@ export function opCopy(vol, sel) {
   return { clipboard: readSelection(vol, sel) };
 }
 
+// cut → copie la sélection dans le presse-papier PUIS la vide (tout → air).
+export function opCut(vol, sel) {
+  const clipboard = readSelection(vol, sel);
+  const blocksChanged = fillSelection(vol, sel, null); // null = air
+  return { clipboard, blocksChanged, bounds: sel };
+}
+
 // paste → pose le presse-papier à `at` (coin min). mode overlay par défaut
 // (l'air du presse-papier ne détruit pas l'existant).
 export function opPaste(vol, clipboard, { at, mode = 'overlay' }) {

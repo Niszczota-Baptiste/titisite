@@ -51,6 +51,7 @@ Toutes les routes existent sous **deux préfixes** :
 | GET | `/data` | viewer | Géométrie sparse (aperçu staging sinon import d'origine). |
 | GET | `/preview` | viewer | Aperçu sparse du staging (404 si rien en cours). |
 | POST | `/transform` | **editor** | Applique `{operation, params, selection}` sur le staging. |
+|  |  |  | Opérations : mirror, rotate, translate, replace, set, **cut** (vide la sélection → air + remplit le presse-papier), copy, paste. |
 | POST | `/undo` | **editor** | Restaure le dernier snapshot. |
 | POST | `/reset` | **editor** | Jette le staging (retour à la source). |
 | GET | `/export` | **editor** | Télécharge le `.mca` (ou `.zip` du dossier region/). |
@@ -112,8 +113,11 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   Le coin actif (A/B) se choisit en cliquant son libellé dans le panneau.
 - **Navigation caméra** : **ZQSD/WASD** déplacent librement la caméra dans le
   build (translation sur le plan horizontal relative à la vue), **R/F** = monter/
-  descendre ; la molette zoome et le glissé pivote (OrbitControls). Pratique pour
-  s'approcher et viser un bloc précis.
+  descendre ; la molette zoome et le glissé pivote (OrbitControls). La
+  **sensibilité** est réglable (slider « 🎮 Vitesse », persistée en localStorage).
+- **Plein écran** : bouton « ⛶ Plein écran » → la vue 3D occupe tout l'écran et le
+  panneau WorldEdit **flotte par-dessus** (translucide, scrollable). Échap pour
+  sortir. La scène se redimensionne via `ResizeObserver` (pas de rechargement).
 - **Extraire une zone** : `POST …/blueprints/:id/extract` (`staging.cropBuild`)
   crée un **nouveau build léger** à partir de la sélection — les fichiers de
   région sont réduits aux seuls chunks intersectés (lossless, coords monde

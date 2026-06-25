@@ -10,6 +10,14 @@ import { BlueprintCanvas } from '../components/project/builds/BlueprintCanvas';
 import { WorldEditPanel } from '../components/project/builds/WorldEditPanel';
 import { useBlueprintSelection } from '../components/project/builds/useBlueprintSelection';
 
+const FS_CANVAS = { position: 'fixed', inset: 0, zIndex: 10000, background: '#0d0a1c' };
+const FS_PANEL = {
+  position: 'fixed', top: 12, left: 12, width: 360, maxWidth: 'calc(100vw - 24px)',
+  maxHeight: 'calc(100vh - 24px)', overflowY: 'auto', zIndex: 10001,
+  background: 'rgba(13,10,28,0.92)', border: '1px solid rgba(120,90,180,0.45)',
+  borderRadius: 12, boxShadow: '0 12px 48px rgba(0,0,0,0.55)',
+};
+
 // Page d'accès à un build par lien de partage scopé (sans cookie).
 //  - scope `view`  → vue 3D + aperçu, aucune écriture
 //  - scope `edit`  → éditeur WorldEdit complet (transform/undo/export)
@@ -42,6 +50,15 @@ export default function WorldEditShare() {
   }, [we, reload, refreshState]);
 
   const pickEnabled = !!(state?.canEdit && state?.editable);
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    if (!fullscreen) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => { if (e.key === 'Escape') setFullscreen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
+  }, [fullscreen]);
 
   return (
     <div style={{ minHeight: '100vh', background: '#050511', color: '#ede8f8', fontFamily: "'Inter',sans-serif" }}>
@@ -61,14 +78,22 @@ export default function WorldEditShare() {
                 {' · '}accès {state.canEdit ? 'éditeur' : 'lecteur'}
               </p>
               <div style={{ background: 'rgba(20,10,42,0.5)', border: '1px solid rgba(80,50,130,0.28)', borderRadius: 14, overflow: 'hidden' }}>
-                {data
-                  ? <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`}
-                      data={data} codex={codex} height={isMobile ? 340 : 520}
-                      selection={selection} onPick={onPick} pickEnabled={pickEnabled} />
-                  : <div style={{ padding: 20, color: 'rgba(180,170,200,0.7)' }}>Chargement du build…</div>}
-                {state.canEdit && <WorldEditPanel we={we} state={state} selection={selection}
-                  setSelection={setSelection} active={active} setActive={setActive}
-                  onChanged={reload} refreshState={refreshState} />}
+                <div style={fullscreen ? FS_CANVAS : undefined}>
+                  {data
+                    ? <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`}
+                        data={data} codex={codex} height={isMobile ? 340 : 520}
+                        selection={selection} onPick={onPick} pickEnabled={pickEnabled}
+                        fillHeight={fullscreen} fullscreen={fullscreen}
+                        onToggleFullscreen={() => setFullscreen((v) => !v)} />
+                    : <div style={{ padding: 20, color: 'rgba(180,170,200,0.7)' }}>Chargement du build…</div>}
+                </div>
+                {state.canEdit && (
+                  <div style={fullscreen ? FS_PANEL : undefined}>
+                    <WorldEditPanel we={we} state={state} selection={selection}
+                      setSelection={setSelection} active={active} setActive={setActive}
+                      onChanged={reload} refreshState={refreshState} />
+                  </div>
+                )}
               </div>
             </ConfirmProvider>
           </ToastProvider>
