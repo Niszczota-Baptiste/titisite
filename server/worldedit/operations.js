@@ -3,19 +3,21 @@
 // Toutes les opérations d'écriture exigent le rôle « editor » (owner inclus) ;
 // la sélection et l'aperçu sont accessibles au « viewer ».
 
+const DIRECTIONS = ['east', 'west', 'up', 'down', 'south', 'north'];
+
 export const OPERATIONS = [
   {
-    id: 'mirror', label: 'Miroir', minRole: 'editor',
+    id: 'mirror', label: 'Miroir', minRole: 'editor', group: 'Transformer',
     description: 'Réfléchit la sélection (états retournés : escaliers, portes, panneaux…).',
     params: [{ name: 'axis', type: 'enum', values: ['x', 'y', 'z'], default: 'x', label: 'Axe' }],
   },
   {
-    id: 'rotate', label: 'Rotation', minRole: 'editor',
+    id: 'rotate', label: 'Rotation', minRole: 'editor', group: 'Transformer',
     description: 'Tourne la sélection autour de Y (et ses états).',
     params: [{ name: 'degrees', type: 'enum', values: [90, 180, 270], default: 90, label: 'Angle' }],
   },
   {
-    id: 'translate', label: 'Translation', minRole: 'editor',
+    id: 'translate', label: 'Translation', minRole: 'editor', group: 'Transformer',
     description: 'Déplace la sélection ; l’origine est vidée.',
     params: [
       { name: 'dx', type: 'int', default: 0, label: 'ΔX (Est)' },
@@ -24,7 +26,15 @@ export const OPERATIONS = [
     ],
   },
   {
-    id: 'replace', label: 'Remplacer', minRole: 'editor',
+    id: 'stack', label: 'Répéter (stack)', minRole: 'editor', group: 'Transformer',
+    description: 'Répète la sélection plusieurs fois dans une direction.',
+    params: [
+      { name: 'count', type: 'int', default: 1, label: 'Nombre' },
+      { name: 'direction', type: 'enum', values: DIRECTIONS, default: 'up', label: 'Direction' },
+    ],
+  },
+  {
+    id: 'replace', label: 'Remplacer', minRole: 'editor', group: 'Blocs',
     description: 'Remplace un type de bloc par un autre dans la sélection.',
     params: [
       { name: 'from', type: 'block', label: 'Bloc source' },
@@ -32,22 +42,68 @@ export const OPERATIONS = [
     ],
   },
   {
-    id: 'set', label: 'Remplir', minRole: 'editor',
+    id: 'set', label: 'Remplir', minRole: 'editor', group: 'Blocs',
     description: 'Remplit toute la sélection d’un bloc.',
     params: [{ name: 'block', type: 'block', label: 'Bloc' }],
   },
   {
-    id: 'cut', label: 'Couper (→ air)', minRole: 'editor',
+    id: 'walls', label: 'Murs', minRole: 'editor', group: 'Blocs',
+    description: 'Pose un bloc sur les 4 côtés verticaux de la sélection.',
+    params: [{ name: 'block', type: 'block', label: 'Bloc' }],
+  },
+  {
+    id: 'faces', label: 'Faces (boîte)', minRole: 'editor', group: 'Blocs',
+    description: 'Pose un bloc sur les 6 faces (murs + sol + plafond).',
+    params: [{ name: 'block', type: 'block', label: 'Bloc' }],
+  },
+  {
+    id: 'hollow', label: 'Creuser', minRole: 'editor', group: 'Blocs',
+    description: 'Vide l’intérieur plein de la sélection (garde une coque de 1).',
+    params: [],
+  },
+  {
+    id: 'overlay', label: 'Recouvrir', minRole: 'editor', group: 'Blocs',
+    description: 'Pose un bloc juste au-dessus de la surface de chaque colonne.',
+    params: [{ name: 'block', type: 'block', label: 'Bloc' }],
+  },
+  {
+    id: 'naturalize', label: 'Naturaliser', minRole: 'editor', group: 'Blocs',
+    description: '1 herbe / 3 terre / reste pierre sous chaque surface (terrain naturel).',
+    params: [],
+  },
+  {
+    id: 'cut', label: 'Couper (→ air)', minRole: 'editor', group: 'Blocs',
     description: 'Vide la sélection (tous les blocs → air) et la copie dans le presse-papier.',
     params: [],
   },
   {
-    id: 'copy', label: 'Copier', minRole: 'editor',
+    id: 'sphere', label: 'Sphère', minRole: 'editor', group: 'Formes',
+    description: 'Remplit une boule centrée sur la sélection (pinceau).',
+    params: [
+      { name: 'block', type: 'block', label: 'Bloc' },
+      { name: 'radius', type: 'int', default: 4, label: 'Rayon' },
+    ],
+  },
+  {
+    id: 'cyl', label: 'Cylindre', minRole: 'editor', group: 'Formes',
+    description: 'Remplit un cylindre vertical centré sur la sélection (pinceau).',
+    params: [
+      { name: 'block', type: 'block', label: 'Bloc' },
+      { name: 'radius', type: 'int', default: 4, label: 'Rayon' },
+    ],
+  },
+  {
+    id: 'smooth', label: 'Lisser (terrain)', minRole: 'editor', group: 'Formes',
+    description: 'Adoucit la hauteur de la surface (type GoBrush).',
+    params: [{ name: 'iterations', type: 'int', default: 2, label: 'Passes' }],
+  },
+  {
+    id: 'copy', label: 'Copier', minRole: 'editor', group: 'Presse-papier',
     description: 'Copie la sélection dans le presse-papier serveur (lié à la session).',
     params: [],
   },
   {
-    id: 'paste', label: 'Coller', minRole: 'editor',
+    id: 'paste', label: 'Coller', minRole: 'editor', group: 'Presse-papier',
     description: 'Colle le presse-papier au coin min de la sélection.',
     params: [{ name: 'mode', type: 'enum', values: ['overlay', 'overwrite'], default: 'overlay', label: 'Mode' }],
   },
@@ -79,12 +135,24 @@ export function normalizeParams(operation, raw = {}) {
       if (!from?.name || !to?.name) return 'bad_block';
       return { from, to };
     }
-    case 'set': {
+    case 'set': case 'walls': case 'faces': case 'overlay': {
       const block = normBlock(raw.block);
       return block?.name ? { block } : 'bad_block';
     }
-    case 'copy': return {};
-    case 'cut': return {};
+    case 'sphere': case 'cyl': {
+      const block = normBlock(raw.block);
+      if (!block?.name) return 'bad_block';
+      const radius = Math.max(1, Math.min(256, num(raw.radius) || 1));
+      return { block, radius };
+    }
+    case 'stack': {
+      const direction = String(raw.direction || '').toLowerCase();
+      if (!['east', 'west', 'up', 'down', 'south', 'north'].includes(direction)) return 'bad_direction';
+      const count = Math.max(1, Math.min(64, num(raw.count) || 1));
+      return { count, direction };
+    }
+    case 'smooth': return { iterations: Math.max(1, Math.min(8, num(raw.iterations) || 2)) };
+    case 'hollow': case 'naturalize': case 'copy': case 'cut': return {};
     case 'paste': return { mode: raw.mode === 'overwrite' ? 'overwrite' : 'overlay' };
     default: return 'unknown_operation';
   }

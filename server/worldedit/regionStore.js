@@ -101,7 +101,10 @@ export class RegionStore {
   setBlock(x, y, z, block) {
     const cx = fdiv(x, 16), cz = fdiv(z, 16);
     const rec = this._chunkRec(cx, cz);
-    if (!rec || !rec.sections) throw new Error('out_of_bounds');
+    // Hors des chunks chargés (= hors du build) : on ignore l'écriture (clamp).
+    // Le warmup couvre tout le build, donc seuls les débordements stack/sphère
+    // au-delà des régions existantes sont concernés.
+    if (!rec || !rec.sections) return;
     const sec = this._section(cx, cz, fdiv(y, 16), true);
     const entry = isAir(block) ? AIR : { Name: block.Name, Properties: block.Properties || null };
     const key = `${entry.Name}|${propsKey(entry.Properties)}`;

@@ -22,7 +22,6 @@ async function autoBounds(regions) {
       minZ: r.regionZ * 512, maxZ: r.regionZ * 512 + 511,
       minY: -2048, maxY: 2048,
     };
-    // eslint-disable-next-line no-await-in-loop -- régions traitées en série (mémoire bornée)
     await parseRegion(r.data, r.regionX, r.regionZ, scan, (x, y, z) => {
       any = true;
       if (x < minX) minX = x; if (x > maxX) maxX = x;

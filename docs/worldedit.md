@@ -51,7 +51,8 @@ Toutes les routes existent sous **deux préfixes** :
 | GET | `/data` | viewer | Géométrie sparse (aperçu staging sinon import d'origine). |
 | GET | `/preview` | viewer | Aperçu sparse du staging (404 si rien en cours). |
 | POST | `/transform` | **editor** | Applique `{operation, params, selection}` sur le staging. |
-|  |  |  | Opérations : mirror, rotate, translate, replace, set, **cut** (vide la sélection → air + remplit le presse-papier), copy, paste. |
+|  |  |  | Opérations (groupées dans l'UI) — **Transformer** : mirror, rotate, translate, **stack** (répétition). **Blocs** : replace, set, **walls**, **faces**, **hollow**, **overlay**, **naturalize**, **cut**. **Formes/pinceaux (type GoBrush)** : **sphere**, **cyl**, **smooth** (lissage de terrain). **Presse-papier** : copy, paste. |
+|  |  |  | Les commandes type pinceau (sphere/cyl) et hollow/overlay/smooth/walls/faces sont **bornées par la sélection** ; stack peut déborder dans la limite du build (écritures hors build ignorées). |
 | POST | `/undo` | **editor** | Restaure le dernier snapshot. |
 | POST | `/reset` | **editor** | Jette le staging (retour à la source). |
 | GET | `/export` | **editor** | Télécharge le `.mca` (ou `.zip` du dossier region/). |

@@ -225,6 +225,179 @@ export function opCut(vol, sel) {
   return { clipboard, blocksChanged, bounds: sel };
 }
 
+// ── Commandes type WorldEdit / GoBrush (toutes bornées par la sélection) ─────
+const toBlock = (p) => (p && p.name ? { Name: p.name, Properties: p.states || null } : null);
+
+// Murs : les 4 côtés verticaux de la sélection.
+export function opWalls(vol, sel, { block }) {
+  const b = toBlock(block); if (!b) throw new Error('bad_block');
+  let c = 0;
+  for (let y = sel.min.y; y <= sel.max.y; y++)
+    for (let z = sel.min.z; z <= sel.max.z; z++)
+      for (let x = sel.min.x; x <= sel.max.x; x++)
+        if (x === sel.min.x || x === sel.max.x || z === sel.min.z || z === sel.max.z) {
+          if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); c++; }
+        }
+  return { blocksChanged: c, bounds: sel };
+}
+
+// Faces : les 6 faces (murs + plafond + plancher).
+export function opFaces(vol, sel, { block }) {
+  const b = toBlock(block); if (!b) throw new Error('bad_block');
+  let c = 0;
+  for (let y = sel.min.y; y <= sel.max.y; y++)
+    for (let z = sel.min.z; z <= sel.max.z; z++)
+      for (let x = sel.min.x; x <= sel.max.x; x++)
+        if (x === sel.min.x || x === sel.max.x || z === sel.min.z || z === sel.max.z || y === sel.min.y || y === sel.max.y) {
+          if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); c++; }
+        }
+  return { blocksChanged: c, bounds: sel };
+}
+
+// Creuser : vide les blocs pleins entièrement entourés (garde une coque de 1).
+export function opHollow(vol, sel) {
+  const clear = [];
+  for (let y = sel.min.y + 1; y < sel.max.y; y++)
+    for (let z = sel.min.z + 1; z < sel.max.z; z++)
+      for (let x = sel.min.x + 1; x < sel.max.x; x++) {
+        if (isAir(vol.getBlock(x, y, z))) continue;
+        const enclosed = !isAir(vol.getBlock(x + 1, y, z)) && !isAir(vol.getBlock(x - 1, y, z))
+          && !isAir(vol.getBlock(x, y + 1, z)) && !isAir(vol.getBlock(x, y - 1, z))
+          && !isAir(vol.getBlock(x, y, z + 1)) && !isAir(vol.getBlock(x, y, z - 1));
+        if (enclosed) clear.push([x, y, z]);
+      }
+  for (const [x, y, z] of clear) vol.setBlock(x, y, z, null);
+  return { blocksChanged: clear.length, bounds: sel };
+}
+
+// Overlay : pose un bloc juste au-dessus de la surface de chaque colonne.
+export function opOverlay(vol, sel, { block }) {
+  const b = toBlock(block); if (!b) throw new Error('bad_block');
+  let c = 0;
+  for (let z = sel.min.z; z <= sel.max.z; z++)
+    for (let x = sel.min.x; x <= sel.max.x; x++) {
+      let top = null;
+      for (let y = sel.max.y; y >= sel.min.y; y--) { if (!isAir(vol.getBlock(x, y, z))) { top = y; break; } }
+      if (top === null || top >= sel.max.y) continue;
+      if (isAir(vol.getBlock(x, top + 1, z))) { vol.setBlock(x, top + 1, z, clone(b)); c++; }
+    }
+  return { blocksChanged: c, bounds: sel };
+}
+
+// Naturaliser : 1 herbe / 3 terre / reste pierre sous chaque surface exposée.
+export function opNaturalize(vol, sel, params = {}) {
+  const grass = toBlock({ name: params.surface || 'minecraft:grass_block' });
+  const dirt = toBlock({ name: params.soil || 'minecraft:dirt' });
+  const stone = toBlock({ name: params.filler || 'minecraft:stone' });
+  let c = 0;
+  for (let z = sel.min.z; z <= sel.max.z; z++)
+    for (let x = sel.min.x; x <= sel.max.x; x++) {
+      let depth = 0;
+      for (let y = sel.max.y; y >= sel.min.y; y--) {
+        if (isAir(vol.getBlock(x, y, z))) { depth = 0; continue; }
+        const target = depth === 0 ? grass : depth <= 3 ? dirt : stone;
+        if (!sameBlock(vol.getBlock(x, y, z), target)) { vol.setBlock(x, y, z, clone(target)); c++; }
+        depth++;
+      }
+    }
+  return { blocksChanged: c, bounds: sel };
+}
+
+const STACK_DIR = { east: [1, 0, 0], west: [-1, 0, 0], up: [0, 1, 0], down: [0, -1, 0], south: [0, 0, 1], north: [0, 0, -1] };
+
+// Stack : répète la sélection `count` fois dans une direction.
+export function opStack(vol, sel, { count, direction }) {
+  const dir = STACK_DIR[direction]; if (!dir) throw new Error('bad_direction');
+  const n = Math.max(1, Math.min(64, Math.round(count) || 1));
+  const schem = readSelection(vol, sel);
+  const size = selectionSize(sel);
+  let changed = 0;
+  let lo = { ...sel.min }, hi = { ...sel.max };
+  for (let i = 1; i <= n; i++) {
+    const origin = { x: sel.min.x + dir[0] * size.x * i, y: sel.min.y + dir[1] * size.y * i, z: sel.min.z + dir[2] * size.z * i };
+    changed += stampSchematic(vol, schem, origin, 'overlay'); // l'air ne détruit pas l'existant
+    lo = { x: Math.min(lo.x, origin.x), y: Math.min(lo.y, origin.y), z: Math.min(lo.z, origin.z) };
+    hi = { x: Math.max(hi.x, origin.x + size.x - 1), y: Math.max(hi.y, origin.y + size.y - 1), z: Math.max(hi.z, origin.z + size.z - 1) };
+  }
+  return { blocksChanged: changed, bounds: { min: lo, max: hi } };
+}
+
+// Sphère (pinceau) : remplit une boule centrée sur la sélection, rayon `radius`.
+export function opSphere(vol, sel, { block, radius }) {
+  const b = toBlock(block); if (!b) throw new Error('bad_block');
+  const cx = (sel.min.x + sel.max.x) / 2, cy = (sel.min.y + sel.max.y) / 2, cz = (sel.min.z + sel.max.z) / 2;
+  const r = Math.max(1, Math.round(radius) || 1), r2 = (r + 0.5) * (r + 0.5);
+  let c = 0;
+  for (let y = sel.min.y; y <= sel.max.y; y++)
+    for (let z = sel.min.z; z <= sel.max.z; z++)
+      for (let x = sel.min.x; x <= sel.max.x; x++) {
+        if ((x - cx) ** 2 + (y - cy) ** 2 + (z - cz) ** 2 > r2) continue;
+        if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); c++; }
+      }
+  return { blocksChanged: c, bounds: sel };
+}
+
+// Cylindre vertical (pinceau) : disque de rayon `radius` sur toute la hauteur.
+export function opCyl(vol, sel, { block, radius }) {
+  const b = toBlock(block); if (!b) throw new Error('bad_block');
+  const cx = (sel.min.x + sel.max.x) / 2, cz = (sel.min.z + sel.max.z) / 2;
+  const r = Math.max(1, Math.round(radius) || 1), r2 = (r + 0.5) * (r + 0.5);
+  let c = 0;
+  for (let y = sel.min.y; y <= sel.max.y; y++)
+    for (let z = sel.min.z; z <= sel.max.z; z++)
+      for (let x = sel.min.x; x <= sel.max.x; x++) {
+        if ((x - cx) ** 2 + (z - cz) ** 2 > r2) continue;
+        if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); c++; }
+      }
+  return { blocksChanged: c, bounds: sel };
+}
+
+// Lisser (GoBrush) : adoucit la hauteur de la surface (moyenne de voisinage).
+export function opSmooth(vol, sel, { iterations } = {}) {
+  const w = sel.max.x - sel.min.x + 1, d = sel.max.z - sel.min.z + 1;
+  const at = (x, z) => x * d + z;
+  const height = new Float64Array(w * d).fill(-Infinity); // y de surface (absolu)
+  const surf = new Array(w * d).fill(null);              // bloc de surface
+  for (let xi = 0; xi < w; xi++) for (let zi = 0; zi < d; zi++) {
+    const x = sel.min.x + xi, z = sel.min.z + zi;
+    for (let y = sel.max.y; y >= sel.min.y; y--) {
+      const blk = vol.getBlock(x, y, z);
+      if (!isAir(blk)) { height[at(xi, zi)] = y; surf[at(xi, zi)] = blk; break; }
+    }
+  }
+  const iters = Math.max(1, Math.min(8, Math.round(iterations) || 2));
+  let h = height;
+  for (let it = 0; it < iters; it++) {
+    const nh = h.slice();
+    for (let xi = 0; xi < w; xi++) for (let zi = 0; zi < d; zi++) {
+      if (h[at(xi, zi)] === -Infinity) continue;
+      let sum = 0, cnt = 0;
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        const nx = xi + dx, nz = zi + dz;
+        if (nx < 0 || nx >= w || nz < 0 || nz >= d) continue;
+        const v = h[at(nx, nz)]; if (v === -Infinity) continue;
+        sum += v; cnt++;
+      }
+      if (cnt) nh[at(xi, zi)] = sum / cnt;
+    }
+    h = nh;
+  }
+  let changed = 0;
+  for (let xi = 0; xi < w; xi++) for (let zi = 0; zi < d; zi++) {
+    const old = height[at(xi, zi)];
+    if (old === -Infinity) continue;
+    const target = Math.max(sel.min.y, Math.min(sel.max.y, Math.round(h[at(xi, zi)])));
+    const x = sel.min.x + xi, z = sel.min.z + zi;
+    if (target < old) {
+      for (let y = old; y > target; y--) if (!isAir(vol.getBlock(x, y, z))) { vol.setBlock(x, y, z, null); changed++; }
+    } else if (target > old) {
+      const fill = surf[at(xi, zi)];
+      for (let y = old + 1; y <= target; y++) if (isAir(vol.getBlock(x, y, z))) { vol.setBlock(x, y, z, clone(fill)); changed++; }
+    }
+  }
+  return { blocksChanged: changed, bounds: sel };
+}
+
 // paste → pose le presse-papier à `at` (coin min). mode overlay par défaut
 // (l'air du presse-papier ne détruit pas l'existant).
 export function opPaste(vol, clipboard, { at, mode = 'overlay' }) {

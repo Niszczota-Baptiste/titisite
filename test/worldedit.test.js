@@ -4,6 +4,7 @@ import { transformProperties, isYMirrorSafe, __test } from '../server/worldedit/
 import {
   MemoryVolume, readSelection, mirrorSchematic, rotateSchematic, stampSchematic,
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, sameBlock, selectionSize,
+  opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth,
 } from '../server/worldedit/transform.js';
 
 const ROT90 = { kind: 'rotate', quarts: 1 };
@@ -192,6 +193,82 @@ test('copy / paste (overlay préserve l’existant sous l’air)', () => {
   opPaste(vol, clipboard, { at: { x: 10, y: 0, z: 0 }, mode: 'overlay' });
   assert.equal(vol.getBlock(10, 0, 0).Name, 'minecraft:diamond_block');
   assert.equal(vol.getBlock(11, 0, 0).Name, 'minecraft:bedrock'); // air du presse-papier → intact
+});
+
+// ── Commandes WorldEdit / GoBrush additionnelles ─────────────────────────────
+
+const STONE = { name: 'minecraft:stone' };
+test('walls : 4 côtés ; faces : 6 faces', () => {
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 2, z: 2 } };
+  const w = new MemoryVolume();
+  opWalls(w, sel, { block: STONE });
+  assert.equal(w.getBlock(0, 1, 0).Name, 'minecraft:stone'); // côté
+  assert.equal(w.getBlock(1, 1, 1), null); // intérieur
+  assert.equal(w.getBlock(1, 2, 1), null); // plafond non touché par walls
+  const f = new MemoryVolume();
+  opFaces(f, sel, { block: STONE });
+  assert.equal(f.getBlock(1, 2, 1).Name, 'minecraft:stone'); // plafond
+  assert.equal(f.getBlock(1, 0, 1).Name, 'minecraft:stone'); // sol
+  assert.equal(f.getBlock(1, 1, 1), null); // intérieur
+});
+
+test('hollow : vide l’intérieur plein', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 2, z: 2 } };
+  opSet(vol, sel, { block: STONE });
+  const r = opHollow(vol, sel);
+  assert.equal(r.blocksChanged, 1);
+  assert.equal(vol.getBlock(1, 1, 1), null);
+  assert.equal(vol.getBlock(0, 0, 0).Name, 'minecraft:stone');
+});
+
+test('overlay : pose au-dessus de la surface', () => {
+  const vol = new MemoryVolume();
+  vol.setBlock(0, 0, 0, { Name: 'minecraft:stone', Properties: null });
+  opOverlay(vol, { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 3, z: 0 } }, { block: { name: 'minecraft:grass_block' } });
+  assert.equal(vol.getBlock(0, 1, 0).Name, 'minecraft:grass_block');
+});
+
+test('naturalize : herbe / terre / pierre', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 9, z: 0 } };
+  for (let y = 0; y <= 9; y++) vol.setBlock(0, y, 0, { Name: 'minecraft:cobblestone', Properties: null });
+  opNaturalize(vol, sel, {});
+  assert.equal(vol.getBlock(0, 9, 0).Name, 'minecraft:grass_block');
+  assert.equal(vol.getBlock(0, 8, 0).Name, 'minecraft:dirt');
+  assert.equal(vol.getBlock(0, 6, 0).Name, 'minecraft:dirt');
+  assert.equal(vol.getBlock(0, 5, 0).Name, 'minecraft:stone');
+});
+
+test('stack : répète la sélection', () => {
+  const vol = new MemoryVolume();
+  vol.setBlock(0, 0, 0, { Name: 'minecraft:gold_block', Properties: null });
+  const { bounds } = opStack(vol, { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } }, { count: 2, direction: 'east' });
+  assert.equal(vol.getBlock(1, 0, 0).Name, 'minecraft:gold_block');
+  assert.equal(vol.getBlock(2, 0, 0).Name, 'minecraft:gold_block');
+  assert.equal(bounds.max.x, 2);
+});
+
+test('sphere / cyl : pinceaux centrés sur la sélection', () => {
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 6, y: 6, z: 6 } };
+  const s = new MemoryVolume();
+  opSphere(s, sel, { block: STONE, radius: 3 });
+  assert.equal(s.getBlock(3, 3, 3).Name, 'minecraft:stone'); // centre
+  assert.equal(s.getBlock(0, 0, 0), null); // coin hors boule
+  const c = new MemoryVolume();
+  opCyl(c, sel, { block: { name: 'minecraft:dirt' }, radius: 3 });
+  assert.equal(c.getBlock(3, 0, 3).Name, 'minecraft:dirt'); // centre bas
+  assert.equal(c.getBlock(3, 6, 3).Name, 'minecraft:dirt'); // centre haut (toute la hauteur)
+  assert.equal(c.getBlock(0, 0, 0), null);
+});
+
+test('smooth : abaisse un pic isolé vers ses voisins', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 5, z: 4 } };
+  for (let x = 0; x <= 4; x++) for (let z = 0; z <= 4; z++) vol.setBlock(x, 0, z, { Name: 'minecraft:grass_block', Properties: null });
+  for (let y = 1; y <= 4; y++) vol.setBlock(2, y, 2, { Name: 'minecraft:grass_block', Properties: null });
+  opSmooth(vol, sel, { iterations: 4 });
+  assert.equal(vol.getBlock(2, 4, 2), null); // sommet du pic aplani
 });
 
 test('blocs minefield:* : géométrie déplacée, namespace préservé', () => {

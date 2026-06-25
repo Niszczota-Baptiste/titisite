@@ -15,6 +15,7 @@ const nsName = (entry, id) => `${entry?.source === 'minefield' ? 'minefield' : '
 // Réinitialiser / Exporter. Le rendu 3D au-dessus est rechargé via onChanged().
 
 const AXES = ['x', 'y', 'z'];
+const CONFIRM_OPS = new Set(['set', 'replace', 'cut', 'walls', 'faces', 'hollow', 'overlay', 'naturalize', 'sphere', 'cyl', 'smooth', 'stack']);
 
 function CoordRow({ label, value, onChange, active, onActivate }) {
   return (
@@ -108,6 +109,8 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
   }, [we]);
 
   const op = ops.find((o) => o.id === opId);
+  const groupOrder = [];
+  for (const o of ops) { const g = o.group || 'Autres'; if (!groupOrder.includes(g)) groupOrder.push(g); }
   useEffect(() => { if (op) setParams(defaultParams(op)); }, [opId, ops.length]);
 
   if (state && state.editable === false) {
@@ -164,7 +167,7 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
     finally { setBusy(false); }
   };
 
-  const needsConfirm = opId === 'cut' || ((opId === 'set' || opId === 'replace') && volume(sel) > 50_000);
+  const needsConfirm = opId === 'cut' || (CONFIRM_OPS.has(opId) && volume(sel) > 50_000);
   const onApply = async () => {
     if (needsConfirm) {
       const ok = await confirm({ title: `${op.label} sur ${volume(sel).toLocaleString('fr')} blocs`, message: 'Opération large sur la sélection. Continuer ?', confirmLabel: 'Appliquer' });
@@ -201,11 +204,16 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-        {ops.filter((o) => o.id !== 'copy' && o.id !== 'paste').map((o) => (
-          <button key={o.id} type="button" onClick={() => setOpId(o.id)} style={chip(o.id === opId)}>{o.label}</button>
-        ))}
-      </div>
+      {groupOrder.map((g) => (
+        <div key={g} style={{ marginBottom: 8 }}>
+          <div style={{ ...muted, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 4 }}>{g}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {ops.filter((o) => (o.group || 'Autres') === g).map((o) => (
+              <button key={o.id} type="button" onClick={() => setOpId(o.id)} style={chip(o.id === opId)}>{o.label}</button>
+            ))}
+          </div>
+        </div>
+      ))}
 
       <div style={{ ...muted, fontSize: 12, marginBottom: 8 }}>{op.description}</div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>

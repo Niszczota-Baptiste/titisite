@@ -82,9 +82,10 @@ test('RegionStore : opMirror + deriveSparse', async () => {
   assert.equal(sparse.bom[0].blockId, 'minecraft:oak_stairs');
 });
 
-test('RegionStore : setBlock hors chunk chargé lève out_of_bounds', async () => {
+test('RegionStore : setBlock hors chunk chargé est ignoré (clamp)', async () => {
   const buf = buildRegion([{ x: 0, y: 0, z: 0, Name: 'minecraft:stone' }]);
   const store = new RegionStore([{ regionX: 0, regionZ: 0, buffer: buf }]);
   await store.warmup({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } });
-  assert.throws(() => store.setBlock(5000, 0, 5000, { Name: 'minecraft:stone' }), /out_of_bounds/);
+  assert.doesNotThrow(() => store.setBlock(5000, 0, 5000, { Name: 'minecraft:stone' }));
+  assert.equal(store.getBlock(5000, 0, 5000), null); // non écrit
 });
