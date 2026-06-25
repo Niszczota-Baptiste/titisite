@@ -6,7 +6,7 @@ import path from 'node:path';
 // Spawns a real server in a temp workdir and returns helpers to talk to it.
 // One server per test file: cheap (~200 ms boot) and gives us full isolation
 // (fresh DB, fresh rate-limiter counters, fresh in-memory state).
-export async function bootServer({ port } = {}) {
+export async function bootServer({ port, env: extraEnv } = {}) {
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'titisite-test-'));
   const dbPath = path.join(workdir, 'data.sqlite');
   const uploadsDir = path.join(workdir, 'uploads');
@@ -28,6 +28,7 @@ export async function bootServer({ port } = {}) {
     MEMBER_EMAIL: 'member@test.local',
     MEMBER_PASSWORD: 'memberpw1-strong',
     NODE_ENV: 'development',
+    ...extraEnv,
   };
 
   const child = spawn(process.execPath, ['server/index.js'], {

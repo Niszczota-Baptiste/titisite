@@ -83,8 +83,12 @@ function loadStore(bp) {
 
 // ── Validation de sélection ──────────────────────────────────────────────────
 const MAX_SELECTION_VOLUME = Number(process.env.WORLDEDIT_MAX_SELECTION || 2_000_000);
+const CROP_MAX_BLOCKS = Number(process.env.BLUEPRINT_MAX_BLOCKS || 3_000_000);
 
-export function validateSelection(sel, bbox) {
+// `maxVolume` borne le volume de la boîte (transformations, qui itèrent chaque
+// case). Pour l'extraction on passe Infinity : le coût réel y est le nombre de
+// blocs NON-air (borné par cropBuild → deriveSparse → too_many_blocks).
+export function validateSelection(sel, bbox, { maxVolume = MAX_SELECTION_VOLUME } = {}) {
   for (const c of ['min', 'max']) for (const a of ['x', 'y', 'z']) {
     if (!Number.isFinite(sel?.[c]?.[a])) return 'invalid_selection';
   }
@@ -96,7 +100,7 @@ export function validateSelection(sel, bbox) {
     if (norm.min[a] < bbox.min[a] || norm.max[a] > bbox.max[a]) return 'out_of_bounds';
   }
   const vol = (norm.max.x - norm.min.x + 1) * (norm.max.y - norm.min.y + 1) * (norm.max.z - norm.min.z + 1);
-  if (vol > MAX_SELECTION_VOLUME) return 'selection_too_large';
+  if (vol > maxVolume) return 'selection_too_large';
   return norm;
 }
 
@@ -246,7 +250,7 @@ export function exportBuild(bp) {
 export async function cropBuild(bp, bbox) {
   const store = loadStore(bp);
   await store.warmup(bbox);
-  const sparse = store.deriveSparse(bbox);
+  const sparse = store.deriveSparse(bbox, CROP_MAX_BLOCKS); // lève too_many_blocks au-delà
   if (!sparse.count) throw new Error('empty_box');
   const cMinX = fdiv(bbox.min.x, 16), cMaxX = fdiv(bbox.max.x, 16);
   const cMinZ = fdiv(bbox.min.z, 16), cMaxZ = fdiv(bbox.max.z, 16);

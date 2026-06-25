@@ -13,6 +13,14 @@ import { WorldEditPanel } from './WorldEditPanel';
 import { SharesPanel } from './SharesPanel';
 import { useBlueprintSelection } from './useBlueprintSelection';
 
+const EXTRACT_ERRORS = {
+  empty_box: 'Aucun bloc dans la zone sélectionnée.',
+  too_many_blocks: 'Zone trop dense (plus de 3 M de blocs) — réduis-la.',
+  out_of_bounds: 'La sélection dépasse les limites du build.',
+  invalid_selection: 'Sélection invalide.',
+  not_editable: 'Build importé sans sa source — non extractible.',
+};
+
 const PARSE_ERRORS = {
   box_too_big: 'Boîte trop grande (max 2048×384×2048).',
   too_many_blocks: 'Trop de blocs dans la boîte — réduis la sélection.',
@@ -290,7 +298,7 @@ function BlueprintViewer({ ws, slug, id, isMobile, items, chests, onExtracted })
       onExtracted?.();
       if (slug) window.open(`/project/${slug}/minecraft?view=builds&build=${created.id}`, '_blank', 'noopener');
     } catch (e) {
-      toast?.error?.(e?.message === 'empty_box' ? 'Aucun bloc dans la zone' : 'Extraction impossible');
+      toast?.error?.(EXTRACT_ERRORS[e?.message] || 'Extraction impossible');
     }
   }, [ws, id, slug, selection, toast, onExtracted]);
 

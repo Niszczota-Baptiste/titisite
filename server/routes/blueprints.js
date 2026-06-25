@@ -188,7 +188,9 @@ blueprintsRouter.post('/:id/extract', async (req, res) => {
   if (!src) return res.status(404).json({ error: 'not_found' });
   if (!src.source_file) return res.status(422).json({ error: 'not_editable' });
 
-  const sel = validateSelection(req.body?.selection, buildBBox(src));
+  // Extraction : pas de plafond de volume de boîte (c'est le NOMBRE de blocs
+  // réels qui borne, via cropBuild → too_many_blocks).
+  const sel = validateSelection(req.body?.selection, buildBBox(src), { maxVolume: Infinity });
   if (typeof sel === 'string') return res.status(400).json({ error: sel });
 
   let crop;

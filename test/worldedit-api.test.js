@@ -190,6 +190,26 @@ test('Extraction de zone → nouveau build léger et éditable', async (t) => {
   assert.equal(bad.json.error, 'out_of_bounds');
 });
 
+test('Extraction ignore le plafond de volume (borne = nb de blocs réels)', async (t) => {
+  // Plafond de sélection minuscule : la transformation est bloquée, mais
+  // l'extraction d'une zone plus grande passe quand même (peu de blocs réels).
+  const srv = await bootServer({ env: { WORLDEDIT_MAX_SELECTION: '10' } });
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug);
+  const selection = { min: { x: 0, y: 0, z: 0 }, max: { x: 5, y: 0, z: 5 } }; // 36 cases > 10
+
+  const tr = await admin.post(`/api/workspaces/${slug}/blueprints/${id}/worldedit/transform`, {
+    body: { operation: 'set', params: { block: { name: 'minecraft:stone' } }, selection },
+  });
+  assert.equal(tr.json.error, 'selection_too_large'); // le plafond s'applique aux transformations
+
+  const ex = await admin.post(`/api/workspaces/${slug}/blueprints/${id}/extract`, { body: { selection } });
+  assert.equal(ex.status, 201, ex.text); // mais pas à l'extraction
+});
+
 test('WorldEdit API : sélection hors bornes refusée', async (t) => {
   const srv = await bootServer();
   t.after(() => srv.stop());
