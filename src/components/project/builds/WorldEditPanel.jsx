@@ -3,6 +3,12 @@ import { Button, Field, Input } from '../../admin/ui';
 import { muted } from '../shared';
 import { useToast } from '../../../ui/ToastProvider';
 import { useConfirm } from '../../../ui/ConfirmProvider';
+import { useCodex } from '../../../hooks/useCodex';
+import { CodexPicker } from '../../admin/editors/minecraft/CodexPicker';
+
+// id de bloc « minecraft:oak_stairs » → id codex « oak_stairs » et inverse.
+const bareId = (name) => (name && name.includes(':') ? name.split(':').slice(1).join(':') : (name || ''));
+const nsName = (entry, id) => `${entry?.source === 'minefield' ? 'minefield' : 'minecraft'}:${id}`;
 
 // Panneau « WorldEdit » : sélection (saisie X/Y/Z) + opérations générées depuis
 // /operations, appliquées sur une copie de staging (non destructif). Annuler /
@@ -38,7 +44,7 @@ function parseStates(str) {
   return Object.keys(out).length ? out : undefined;
 }
 
-function ParamField({ param, value, onChange }) {
+function ParamField({ param, value, onChange, catalog, byId }) {
   if (param.type === 'enum') {
     return (
       <Field label={param.label}>
@@ -59,8 +65,12 @@ function ParamField({ param, value, onChange }) {
     const v = value || { name: '', statesStr: '' };
     return (
       <Field label={param.label}>
-        <div style={{ display: 'grid', gap: 6 }}>
-          <Input placeholder="minecraft:oak_stairs" value={v.name}
+        <div style={{ display: 'grid', gap: 6, minWidth: 220 }}>
+          {/* Autocomplétion blocs + items (vanilla & Minefield), filtrée à la saisie */}
+          <CodexPicker catalog={catalog} byId={byId} value={bareId(v.name)}
+            onChange={(id, entry) => onChange({ ...v, name: nsName(entry, id) })}
+            placeholder="Rechercher un bloc / item…" />
+          <Input placeholder="ou nom exact (minecraft:oak_stairs)" value={v.name}
             onChange={(e) => onChange({ ...v, name: e.target.value.trim().toLowerCase() })} />
           <Input placeholder="états (facing=east, half=top) — optionnel" value={v.statesStr}
             onChange={(e) => onChange({ ...v, statesStr: e.target.value })} />
@@ -84,6 +94,7 @@ function defaultParams(op) {
 export function WorldEditPanel({ we, state, selection, setSelection, active, setActive, onChanged, refreshState, onExtract }) {
   const toast = useToast();
   const confirm = useConfirm();
+  const { catalog, byId } = useCodex(); // pour l'autocomplétion blocs/items
 
   const [ops, setOps] = useState([]);
   const [opId, setOpId] = useState('mirror');
@@ -199,7 +210,8 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
       <div style={{ ...muted, fontSize: 12, marginBottom: 8 }}>{op.description}</div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         {op.params.map((p) => (
-          <ParamField key={p.name} param={p} value={params[p.name]} onChange={(v) => setParams((prev) => ({ ...prev, [p.name]: v }))} />
+          <ParamField key={p.name} param={p} value={params[p.name]} catalog={catalog} byId={byId}
+            onChange={(v) => setParams((prev) => ({ ...prev, [p.name]: v }))} />
         ))}
       </div>
 

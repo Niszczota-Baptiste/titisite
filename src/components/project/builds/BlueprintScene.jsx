@@ -41,6 +41,9 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
   const selRef = useRef(selection); selRef.current = selection;
   const pickEnabledRef = useRef(pickEnabled); pickEnabledRef.current = pickEnabled;
   const moveSpeedRef = useRef(moveSpeed); moveSpeedRef.current = moveSpeed;
+  // Conserve la pose caméra entre deux reconstructions de scène (ex. aperçu
+  // rechargé après une commande WorldEdit) → pas de reset à l'angle par défaut.
+  const poseRef = useRef(null);
 
   // ── Construction de la scène (une fois par data) ──
   useEffect(() => {
@@ -89,6 +92,11 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     // d'OrbitControls. Le clic gauche reste la rotation (mais un clic SANS glisser
     // pose le coin B, cf. plus bas).
     if (pickEnabled) controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: null };
+    // Restaure la pose caméra précédente (reconstruction de scène, même build).
+    if (poseRef.current) {
+      camera.position.copy(poseRef.current.pos);
+      controls.target.copy(poseRef.current.target);
+    }
 
     // ── Sélection : picking (clic droit = coin A, clic gauche = coin B) + boîte ──
     const dataMin = data.min || { x: 0, y: 0, z: 0 };
@@ -360,6 +368,7 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
 
     return () => {
       cancelled = true;
+      poseRef.current = { pos: camera.position.clone(), target: controls.target.clone() };
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
       ro.disconnect();

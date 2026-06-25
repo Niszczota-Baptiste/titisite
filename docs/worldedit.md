@@ -118,6 +118,12 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
 - **Plein écran** : bouton « ⛶ Plein écran » → la vue 3D occupe tout l'écran et le
   panneau WorldEdit **flotte par-dessus** (translucide, scrollable). Échap pour
   sortir. La scène se redimensionne via `ResizeObserver` (pas de rechargement).
+- **Pose caméra conservée** : après une commande, l'aperçu rechargé reconstruit la
+  scène mais **restaure la position/cible** de la caméra (`poseRef` dans
+  `BlueprintScene` + key stable du canvas) — pas de retour à l'angle par défaut.
+- **Autocomplétion blocs/items** : les paramètres « bloc » de *replace*/*set*/
+  *fill* utilisent `CodexPicker` (recherche filtrée sur le codex vanilla +
+  Minefield), avec un champ texte de repli pour un nom exact.
 - **Extraire une zone** : `POST …/blueprints/:id/extract` (`staging.cropBuild`)
   crée un **nouveau build léger** à partir de la sélection — les fichiers de
   région sont réduits aux seuls chunks intersectés (lossless, coords monde

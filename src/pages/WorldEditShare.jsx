@@ -80,7 +80,7 @@ export default function WorldEditShare() {
               <div style={{ background: 'rgba(20,10,42,0.5)', border: '1px solid rgba(80,50,130,0.28)', borderRadius: 14, overflow: 'hidden' }}>
                 <div style={fullscreen ? FS_CANVAS : undefined}>
                   {data
-                    ? <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`}
+                    ? <BlueprintCanvas key={`we-${token}`}
                         data={data} codex={codex} height={isMobile ? 340 : 520}
                         selection={selection} onPick={onPick} pickEnabled={pickEnabled}
                         fillHeight={fullscreen} fullscreen={fullscreen}

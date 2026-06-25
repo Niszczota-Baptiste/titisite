@@ -331,7 +331,7 @@ function BlueprintViewer({ ws, slug, id, isMobile, items, chests, onExtracted })
   return (
     <div style={{ ...card, padding: 0, marginTop: 8, overflow: 'hidden' }}>
       <div style={fullscreen ? FS_CANVAS : undefined}>
-        <BlueprintCanvas key={`${data.size.x}x${data.size.y}x${data.size.z}-${data.count}`}
+        <BlueprintCanvas key={`bp-${id}`}
           data={data} codex={codex} height={height}
           selection={selection} onPick={onPick} pickEnabled={pickEnabled}
           fillHeight={fullscreen} fullscreen={fullscreen}
