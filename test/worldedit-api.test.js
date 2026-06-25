@@ -63,7 +63,7 @@ test('WorldEdit API : transform / preview / undo / export + accès par token', a
   assert.equal(st.status, 200);
   assert.equal(st.json.editable, true);
   assert.equal(st.json.role, 'owner');
-  assert.deepEqual(st.json.bbox.min, { x: 0, y: 0, z: 0 });
+  assert.deepEqual(st.json.extent.min, { x: 0, y: 0, z: 0 });
 
   // Operations descriptor.
   const ops = await admin.get(`${wePath}/operations`);
@@ -159,6 +159,32 @@ test('Import complet (full=true) : emprise détectée automatiquement', async (t
   assert.equal(r.json.hasSource, true);
 });
 
+test('Hauteur éditable = limites du monde ; l’emprise grandit au-dessus du contenu', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug); // contenu plat à y=0
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  const st = await admin.get(`${root}/state`);
+  assert.equal(st.json.bbox.min.y, -64);
+  assert.equal(st.json.bbox.max.y, 319); // limites du monde, pas le contenu
+  assert.equal(st.json.extent.max.y, 15); // emprise réelle du contenu (boîte importée 0..15)
+
+  // Construire au-dessus du contenu (y=50) doit être accepté.
+  const tr = await admin.post(`${root}/transform`, {
+    body: { operation: 'set', params: { block: { name: 'minecraft:stone' } }, selection: { min: { x: 0, y: 50, z: 0 }, max: { x: 2, y: 50, z: 2 } } },
+  });
+  assert.equal(tr.status, 200, tr.text);
+  assert.ok(tr.json.blocksChanged >= 1);
+
+  // L'emprise du build a grandi pour inclure la nouvelle hauteur.
+  const st2 = await admin.get(`${root}/state`);
+  assert.ok(st2.json.extent.max.y >= 50);
+});
+
 test('Commande cut : vide la sélection (→ air) et remplit le presse-papier', async (t) => {
   const srv = await bootServer();
   t.after(() => srv.stop());
@@ -209,7 +235,7 @@ test('Extraction de zone → nouveau build léger et éditable', async (t) => {
   const st = await admin.get(`/api/workspaces/${slug}/blueprints/${r.json.id}/worldedit/state`);
   assert.equal(st.status, 200);
   assert.equal(st.json.editable, true);
-  assert.deepEqual(st.json.bbox.max, { x: 5, y: 0, z: 5 });
+  assert.deepEqual(st.json.extent.max, { x: 5, y: 0, z: 5 });
 
   // Une sélection hors de la zone extraite est refusée.
   const bad = await admin.post(`/api/workspaces/${slug}/blueprints/${r.json.id}/worldedit/transform`, {

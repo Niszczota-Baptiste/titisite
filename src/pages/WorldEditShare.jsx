@@ -30,6 +30,7 @@ export default function WorldEditShare() {
   const [codex, setCodex] = useState(null);
   const { selection, setSelection, onPick, active, setActive } = useBlueprintSelection(
     state && state.bbox ? state.bbox : null,
+    state && state.extent ? state.extent : null,
   );
 
   usePageMeta(state?.name ? `${state.name} — WorldEdit` : 'Build partagé');
@@ -83,6 +84,7 @@ export default function WorldEditShare() {
                     ? <BlueprintCanvas key={`we-${token}`}
                         data={data} codex={codex} height={isMobile ? 340 : 520}
                         selection={selection} onPick={onPick} pickEnabled={pickEnabled}
+                        yLimits={state?.bbox ? { min: state.bbox.min.y, max: state.bbox.max.y } : null}
                         fillHeight={fullscreen} fullscreen={fullscreen}
                         onToggleFullscreen={() => setFullscreen((v) => !v)} />
                     : <div style={{ padding: 20, color: 'rgba(180,170,200,0.7)' }}>Chargement du build…</div>}

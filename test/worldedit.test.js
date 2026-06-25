@@ -4,7 +4,7 @@ import { transformProperties, isYMirrorSafe, __test } from '../server/worldedit/
 import {
   MemoryVolume, readSelection, mirrorSchematic, rotateSchematic, stampSchematic,
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, sameBlock, selectionSize,
-  opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth,
+  opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale,
 } from '../server/worldedit/transform.js';
 
 const ROT90 = { kind: 'rotate', quarts: 1 };
@@ -269,6 +269,21 @@ test('smooth : abaisse un pic isolé vers ses voisins', () => {
   for (let y = 1; y <= 4; y++) vol.setBlock(2, y, 2, { Name: 'minecraft:grass_block', Properties: null });
   opSmooth(vol, sel, { iterations: 4 });
   assert.equal(vol.getBlock(2, 4, 2), null); // sommet du pic aplani
+});
+
+test('scale : ×2 agrandit, ×0.5 réduit', () => {
+  const up = new MemoryVolume();
+  up.setBlock(0, 0, 0, { Name: 'minecraft:gold_block', Properties: null });
+  const r = opScale(up, { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } }, { factor: 2 });
+  assert.equal(up.getBlock(1, 1, 1).Name, 'minecraft:gold_block'); // bloc 2×2×2
+  assert.deepEqual(r.bounds.max, { x: 1, y: 1, z: 1 });
+
+  const down = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+  for (let x = 0; x <= 1; x++) for (let y = 0; y <= 1; y++) for (let z = 0; z <= 1; z++) down.setBlock(x, y, z, { Name: 'minecraft:stone', Properties: null });
+  opScale(down, sel, { factor: 0.5 });
+  assert.equal(down.getBlock(0, 0, 0).Name, 'minecraft:stone');
+  assert.equal(down.getBlock(1, 1, 1), null); // réduit à 1×1×1
 });
 
 test('blocs minefield:* : géométrie déplacée, namespace préservé', () => {

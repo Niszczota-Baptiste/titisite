@@ -15,7 +15,7 @@ const nsName = (entry, id) => `${entry?.source === 'minefield' ? 'minefield' : '
 // Réinitialiser / Exporter. Le rendu 3D au-dessus est rechargé via onChanged().
 
 const AXES = ['x', 'y', 'z'];
-const CONFIRM_OPS = new Set(['set', 'replace', 'cut', 'walls', 'faces', 'hollow', 'overlay', 'naturalize', 'sphere', 'cyl', 'smooth', 'stack']);
+const CONFIRM_OPS = new Set(['set', 'replace', 'cut', 'walls', 'faces', 'hollow', 'overlay', 'naturalize', 'sphere', 'cyl', 'smooth', 'stack', 'scale']);
 
 function CoordRow({ label, value, onChange, active, onActivate }) {
   return (
@@ -127,7 +127,9 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
   if (!state.canEdit) return null; // viewer : sélection/aperçu seulement (pas d’écriture)
 
   const sel = selection;
-  const setFull = () => setSelection({ min: { ...state.bbox.min }, max: { ...state.bbox.max } });
+  // « Tout le build » = l'emprise du contenu (pas toute la hauteur du monde).
+  const full = state.extent || state.bbox;
+  const setFull = () => setSelection({ min: { ...full.min }, max: { ...full.max } });
 
   const buildParams = () => {
     const out = {};

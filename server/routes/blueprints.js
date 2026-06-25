@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { safeUnlink, uploadPath, uploadWorld } from '../uploads.js';
 import { parseWorldFile } from '../minecraftWorld/index.js';
-import { removeStaging, cropBuild, buildBBox, validateSelection } from '../worldedit/staging.js';
+import { removeStaging, cropBuild, buildLimits, validateSelection } from '../worldedit/staging.js';
 import { makeZip } from '../worldedit/zipWriter.js';
 import { regionFileName } from '../anvil/index.js';
 import { worldeditScopedRouter } from './worldedit.js';
@@ -190,7 +190,7 @@ blueprintsRouter.post('/:id/extract', async (req, res) => {
 
   // Extraction : pas de plafond de volume de boîte (c'est le NOMBRE de blocs
   // réels qui borne, via cropBuild → too_many_blocks).
-  const sel = validateSelection(req.body?.selection, buildBBox(src), { maxVolume: Infinity });
+  const sel = validateSelection(req.body?.selection, buildLimits(src), { maxVolume: Infinity });
   if (typeof sel === 'string') return res.status(400).json({ error: sel });
 
   let crop;

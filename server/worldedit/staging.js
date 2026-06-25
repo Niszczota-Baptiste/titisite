@@ -12,7 +12,7 @@ import { extractMcaEntries } from '../minecraftWorld/zip.js';
 import { RegionStore } from './regionStore.js';
 import {
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, opCut,
-  opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth,
+  opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale,
 } from './transform.js';
 import { makeZip } from './zipWriter.js';
 
@@ -26,11 +26,35 @@ const regionsDir = (id) => path.join(dirFor(id), 'regions');
 const undoDir = (id) => path.join(dirFor(id), 'undo');
 const previewPath = (id) => path.join(dirFor(id), 'preview.json.gz');
 
-export function buildBBox(bp) {
+// Limites de hauteur du monde Minecraft 1.18+ (blocs y ∈ [-64, 319]).
+const WORLD_MIN_Y = Number(process.env.WORLD_MIN_Y ?? -64);
+const WORLD_MAX_Y = Number(process.env.WORLD_MAX_Y ?? 319);
+
+// Emprise RÉELLE du contenu (depuis la base) — sert au warmup et à l'aperçu.
+export function buildExtent(bp) {
   return {
     min: { x: bp.min_x, y: bp.min_y, z: bp.min_z },
     max: { x: bp.min_x + bp.size_x - 1, y: bp.min_y + bp.size_y - 1, z: bp.min_z + bp.size_z - 1 },
   };
+}
+// Limites ÉDITABLES : X/Z = emprise du build, Y = hauteur du monde Minecraft.
+// On peut donc construire au-dessus/en-dessous du contenu existant.
+export function buildLimits(bp) {
+  return {
+    min: { x: bp.min_x, y: WORLD_MIN_Y, z: bp.min_z },
+    max: { x: bp.min_x + bp.size_x - 1, y: WORLD_MAX_Y, z: bp.min_z + bp.size_z - 1 },
+  };
+}
+// Conservé pour compat (extract) : alias d'emprise contenu.
+export const buildBBox = buildExtent;
+
+const clampBBox = (b, lim) => ({
+  min: { x: Math.max(b.min.x, lim.min.x), y: Math.max(b.min.y, lim.min.y), z: Math.max(b.min.z, lim.min.z) },
+  max: { x: Math.min(b.max.x, lim.max.x), y: Math.min(b.max.y, lim.max.y), z: Math.min(b.max.z, lim.max.z) },
+});
+function growExtent(id, ext) {
+  db.prepare(`UPDATE minecraft_blueprints SET min_x=?, min_y=?, min_z=?, size_x=?, size_y=?, size_z=? WHERE id=?`)
+    .run(ext.min.x, ext.min.y, ext.min.z, ext.max.x - ext.min.x + 1, ext.max.y - ext.min.y + 1, ext.max.z - ext.min.z + 1, id);
 }
 
 function regionKeysForBBox(bbox) {
@@ -158,16 +182,18 @@ const OPS = {
   sphere: (store, sel, p) => opSphere(store, sel, p),
   cyl: (store, sel, p) => opCyl(store, sel, p),
   smooth: (store, sel, p) => opSmooth(store, sel, p),
+  scale: (store, sel, p) => opScale(store, sel, p),
 };
 
 // Applique une opération sur le staging (non destructif) et renvoie le diff.
 export async function applyOperation({ bp, operation, params, selection, actor, clipboardStore }) {
-  const bbox = buildBBox(bp);
-  const sel = validateSelection(selection, bbox);
+  const limits = buildLimits(bp);           // X/Z du build, Y = hauteur monde
+  const extent = buildExtent(bp);           // emprise réelle du contenu
+  const sel = validateSelection(selection, limits);
   if (typeof sel === 'string') throw new Error(sel);
 
   const store = loadStore(bp);
-  await store.warmup(bbox); // décode tous les chunks (préview complète ensuite)
+  await store.warmup(extent); // décode les chunks du build (XZ) — Y libre ensuite
 
   let result;
   if (operation === 'copy') {
@@ -195,8 +221,11 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
     fs.writeFileSync(path.join(rdir, regionFileName(rx, rz)), buffer);
   }
 
-  // Aperçu re-dérivé + persistance.
-  const sparse = store.deriveSparse(bbox);
+  // L'emprise du build grandit si l'opération a écrit au-delà (ex. au-dessus du
+  // contenu) — bornée aux limites du monde. L'aperçu couvre la nouvelle emprise.
+  const grown = clampBBox(unionBBox(extent, result.bounds || sel), limits);
+  growExtent(bp.id, grown);
+  const sparse = store.deriveSparse(grown);
   fs.writeFileSync(previewPath(bp.id), zlib.gzipSync(Buffer.from(JSON.stringify(sparse))));
 
   db.prepare(`

@@ -14,7 +14,7 @@ const readSpeed = () => {
 // {palette,min,size,blocks}, `codex` = map blockCodex. En mode `fillHeight`, la
 // vue 3D occupe toute la hauteur disponible (plein écran).
 export function BlueprintCanvas({
-  data, codex, height = 480, selection, onPick, pickEnabled,
+  data, codex, height = 480, selection, onPick, pickEnabled, yLimits,
   fillHeight = false, fullscreen = false, onToggleFullscreen,
 }) {
   const maxLayer = data.size.y - 1;
@@ -33,7 +33,7 @@ export function BlueprintCanvas({
       <div style={boxStyle}>
         <Suspense fallback={<div style={{ ...muted, padding: 16 }}>Chargement du moteur 3D…</div>}>
           {codex && <BlueprintScene data={data} codex={codex} layer={layer} layerMode={mode}
-            selection={selection} onPick={onPick} pickEnabled={pickEnabled} moveSpeed={speed} />}
+            selection={selection} onPick={onPick} pickEnabled={pickEnabled} moveSpeed={speed} yLimits={yLimits} />}
         </Suspense>
         {onToggleFullscreen && (
           <button type="button" onClick={onToggleFullscreen} title={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}

@@ -276,7 +276,7 @@ function BlueprintViewer({ ws, slug, id, isMobile, items, chests, onExtracted })
   const toast = useToast();
 
   const we = useMemo(() => ws.blueprints.worldedit(id), [ws, id]);
-  const { selection, setSelection, onPick, active, setActive } = useBlueprintSelection(weState?.bbox || null);
+  const { selection, setSelection, onPick, active, setActive } = useBlueprintSelection(weState?.bbox || null, weState?.extent || null);
 
   // Plein écran : bloque le scroll du corps + sortie à Échap.
   useEffect(() => {
@@ -334,6 +334,7 @@ function BlueprintViewer({ ws, slug, id, isMobile, items, chests, onExtracted })
         <BlueprintCanvas key={`bp-${id}`}
           data={data} codex={codex} height={height}
           selection={selection} onPick={onPick} pickEnabled={pickEnabled}
+          yLimits={weState?.bbox ? { min: weState.bbox.min.y, max: weState.bbox.max.y } : null}
           fillHeight={fullscreen} fullscreen={fullscreen}
           onToggleFullscreen={() => setFullscreen((v) => !v)} />
       </div>

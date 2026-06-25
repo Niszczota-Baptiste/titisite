@@ -5,7 +5,7 @@ import { db } from '../db.js';
 import { uploadPath } from '../uploads.js';
 import { OPERATIONS, normalizeParams } from '../worldedit/operations.js';
 import {
-  buildBBox, applyOperation, undoLast, resetStaging, exportBuild,
+  buildLimits, buildExtent, applyOperation, undoLast, resetStaging, exportBuild,
   previewFilePath, hasPendingEdits, undoDepth, listAudit,
 } from '../worldedit/staging.js';
 
@@ -51,7 +51,8 @@ function getState(req, res) {
     role: req.we.role,
     canEdit: req.we.canEdit,
     editable: !!bp.source_file,
-    bbox: buildBBox(bp),
+    bbox: buildLimits(bp),    // limites éditables (Y = hauteur du monde)
+    extent: buildExtent(bp),  // emprise réelle du contenu (sélection par défaut)
     hasPendingEdits: hasPendingEdits(bp.id),
     undoDepth: undoDepth(bp.id),
     maxSelectionVolume: Number(process.env.WORLDEDIT_MAX_SELECTION || 2_000_000),
@@ -106,7 +107,7 @@ async function postTransform(req, res) {
     return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id) });
   } catch (e) {
     const known = ['invalid_selection', 'out_of_bounds', 'selection_too_large', 'unknown_operation',
-      'empty_clipboard', 'no_source', 'too_many_blocks', 'bad_axis', 'bad_degrees', 'bad_block', 'bad_direction'];
+      'empty_clipboard', 'no_source', 'too_many_blocks', 'bad_axis', 'bad_degrees', 'bad_block', 'bad_direction', 'bad_factor'];
     const code = known.includes(e.message) ? e.message : 'transform_failed';
     if (code === 'transform_failed') console.error('[worldedit] transform failed:', e?.message || e);
     return res.status(code === 'transform_failed' ? 500 : 400).json({ error: code });

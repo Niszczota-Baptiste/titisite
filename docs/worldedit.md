@@ -52,7 +52,18 @@ Toutes les routes existent sous **deux préfixes** :
 | GET | `/preview` | viewer | Aperçu sparse du staging (404 si rien en cours). |
 | POST | `/transform` | **editor** | Applique `{operation, params, selection}` sur le staging. |
 |  |  |  | Opérations (groupées dans l'UI) — **Transformer** : mirror, rotate, translate, **stack** (répétition). **Blocs** : replace, set, **walls**, **faces**, **hollow**, **overlay**, **naturalize**, **cut**. **Formes/pinceaux (type GoBrush)** : **sphere**, **cyl**, **smooth** (lissage de terrain). **Presse-papier** : copy, paste. |
-|  |  |  | Les commandes type pinceau (sphere/cyl) et hollow/overlay/smooth/walls/faces sont **bornées par la sélection** ; stack peut déborder dans la limite du build (écritures hors build ignorées). |
+|  |  |  | **scale** (×0.5/×2/×3/×4/×6) : redimensionne le build en place (échantillonnage au plus proche), borné à 8 M de blocs. |
+|  |  |  | Les commandes type pinceau (sphere/cyl) et hollow/overlay/smooth/walls/faces sont **bornées par la sélection** ; stack/scale peuvent déborder dans la limite du build (écritures hors chunks ignorées). |
+
+### Hauteur éditable & emprise
+
+La **sélection** est bornée en X/Z par l'emprise du build mais en **Y par la
+hauteur du monde Minecraft** (`-64..319`, configurable via `WORLD_MIN_Y`/
+`WORLD_MAX_Y`) : on peut donc construire **au-dessus/en-dessous** du contenu
+existant (les sections Anvil manquantes sont créées). `state.bbox` = ces limites,
+`state.extent` = l'emprise réelle du contenu (sélection par défaut). Après chaque
+opération l'emprise stockée **grandit** pour inclure les nouveaux blocs (l'aperçu
+les couvre).
 | POST | `/undo` | **editor** | Restaure le dernier snapshot. |
 | POST | `/reset` | **editor** | Jette le staging (retour à la source). |
 | GET | `/export` | **editor** | Télécharge le `.mca` (ou `.zip` du dossier region/). |

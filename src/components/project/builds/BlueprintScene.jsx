@@ -32,7 +32,7 @@ function fallbackColor(id) {
   return new THREE.Color().setHSL((h % 360) / 360, 0.42, 0.55);
 }
 
-export default function BlueprintScene({ data, codex, layer, layerMode, onProgress, selection, onPick, pickEnabled, moveSpeed = 0.5 }) {
+export default function BlueprintScene({ data, codex, layer, layerMode, onProgress, selection, onPick, pickEnabled, moveSpeed = 0.5, yLimits = null }) {
   const mountRef = useRef(null);
   const apiRef = useRef(null); // { types:[{meshes, ys, mats, n, layout}] }
   // Refs synchronisées à chaque rendu : les écouteurs three.js (stables) lisent
@@ -41,6 +41,7 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
   const selRef = useRef(selection); selRef.current = selection;
   const pickEnabledRef = useRef(pickEnabled); pickEnabledRef.current = pickEnabled;
   const moveSpeedRef = useRef(moveSpeed); moveSpeedRef.current = moveSpeed;
+  const yLimitsRef = useRef(yLimits); yLimitsRef.current = yLimits;
   // Conserve la pose caméra entre deux reconstructions de scène (ex. aperçu
   // rechargé après une commande WorldEdit) → pas de reset à l'angle par défaut.
   const poseRef = useRef(null);
@@ -148,7 +149,11 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
 
     let downX = 0, downY = 0, downBtn = -1;
     let yDrag = null; // { corner, x, z, y0, downY } pendant un shift+glissé vertical
-    const clampY = (y) => Math.max(dataMin.y, Math.min(dataMin.y + sy - 1, y));
+    const clampY = (y) => {
+      const lo = yLimitsRef.current ? yLimitsRef.current.min : dataMin.y;
+      const hi = yLimitsRef.current ? yLimitsRef.current.max : dataMin.y + sy - 1;
+      return Math.max(lo, Math.min(hi, y));
+    };
     const onPointerDown = (e) => {
       downX = e.clientX; downY = e.clientY; downBtn = e.button;
       // Shift + clic = on fixe X/Z au bloc visé puis le glissé vertical règle Y

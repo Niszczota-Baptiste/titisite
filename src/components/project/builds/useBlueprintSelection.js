@@ -8,14 +8,19 @@ import { useCallback, useEffect, useState } from 'react';
 // `bbox` (emprise du build) borne tous les déplacements.
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-export function useBlueprintSelection(bbox) {
+// `limits` = bornes éditables (Y = hauteur du monde) ; `extent` = emprise du
+// contenu (sélection par défaut). On peut donc étendre la sélection au-dessus
+// du contenu, jusqu'aux limites du monde.
+export function useBlueprintSelection(limits, extent) {
+  const bbox = limits;
   const [selection, setSelection] = useState(null);
   const [active, setActive] = useState('B'); // coin déplacé par les flèches
 
-  // Initialise sur l'emprise complète dès qu'elle est connue.
+  // Initialise sur l'emprise du contenu (ou les limites si inconnue).
   useEffect(() => {
-    if (bbox) setSelection((cur) => cur || { min: { ...bbox.min }, max: { ...bbox.max } });
-  }, [bbox]);
+    const init = extent || limits;
+    if (init) setSelection((cur) => cur || { min: { ...init.min }, max: { ...init.max } });
+  }, [extent, limits]);
 
   const onPick = useCallback((corner, coord) => {
     setActive(corner);

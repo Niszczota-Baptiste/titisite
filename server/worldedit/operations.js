@@ -34,6 +34,11 @@ export const OPERATIONS = [
     ],
   },
   {
+    id: 'scale', label: 'Échelle (×N)', minRole: 'editor', group: 'Transformer',
+    description: 'Multiplie la taille du build (échantillonnage au plus proche). ×0.5 réduit.',
+    params: [{ name: 'factor', type: 'enum', values: [0.5, 2, 3, 4, 6], default: 2, label: 'Facteur' }],
+  },
+  {
     id: 'replace', label: 'Remplacer', minRole: 'editor', group: 'Blocs',
     description: 'Remplace un type de bloc par un autre dans la sélection.',
     params: [
@@ -152,6 +157,10 @@ export function normalizeParams(operation, raw = {}) {
       return { count, direction };
     }
     case 'smooth': return { iterations: Math.max(1, Math.min(8, num(raw.iterations) || 2)) };
+    case 'scale': {
+      const factor = Number(raw.factor);
+      return [0.5, 2, 3, 4, 6].includes(factor) ? { factor } : 'bad_factor';
+    }
     case 'hollow': case 'naturalize': case 'copy': case 'cut': return {};
     case 'paste': return { mode: raw.mode === 'overwrite' ? 'overwrite' : 'overlay' };
     default: return 'unknown_operation';

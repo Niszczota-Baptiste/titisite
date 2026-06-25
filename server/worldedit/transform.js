@@ -398,6 +398,35 @@ export function opSmooth(vol, sel, { iterations } = {}) {
   return { blocksChanged: changed, bounds: sel };
 }
 
+// Échelle : redimensionne la sélection par un facteur (x0.5, x2, x3, x4, x6…).
+// Échantillonnage au plus proche. Réécrit en place à partir du coin min ; pour
+// f<1 on efface d'abord l'original. Borné pour éviter les volumes démesurés.
+export function opScale(vol, sel, { factor }) {
+  const f = factor;
+  const src = readSelection(vol, sel);
+  const nsx = Math.max(1, Math.round(src.sx * f));
+  const nsy = Math.max(1, Math.round(src.sy * f));
+  const nsz = Math.max(1, Math.round(src.sz * f));
+  if (nsx * nsy * nsz > 8_000_000) throw new Error('too_many_blocks');
+  let changed = 0;
+  if (f < 1) changed += fillSelection(vol, sel, null); // efface l'original avant réduction
+  for (let j = 0; j < nsy; j++)
+    for (let k = 0; k < nsz; k++)
+      for (let i = 0; i < nsx; i++) {
+        const si = Math.min(src.sx - 1, Math.floor(i / f));
+        const sj = Math.min(src.sy - 1, Math.floor(j / f));
+        const sk = Math.min(src.sz - 1, Math.floor(k / f));
+        const after = src.get(si, sj, sk);
+        const wx = sel.min.x + i, wy = sel.min.y + j, wz = sel.min.z + k;
+        const out = isAir(after) ? null : clone(after);
+        if (!sameBlock(vol.getBlock(wx, wy, wz), out)) { vol.setBlock(wx, wy, wz, out); changed++; }
+      }
+  return {
+    blocksChanged: changed,
+    bounds: { min: { ...sel.min }, max: { x: sel.min.x + nsx - 1, y: sel.min.y + nsy - 1, z: sel.min.z + nsz - 1 } },
+  };
+}
+
 // paste → pose le presse-papier à `at` (coin min). mode overlay par défaut
 // (l'air du presse-papier ne détruit pas l'existant).
 export function opPaste(vol, clipboard, { at, mode = 'overlay' }) {
