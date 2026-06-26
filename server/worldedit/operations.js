@@ -100,8 +100,23 @@ export const OPERATIONS = [
   },
   {
     id: 'naturalize', label: 'Naturaliser', minRole: 'editor', group: 'Blocs',
-    description: '1 herbe / 3 terre / reste pierre sous chaque surface (terrain naturel).',
-    params: [],
+    description: 'Recouvre chaque surface d’une palette naturelle (surface / sous-sol / roche profonde mélangée). « Auto » suit le biome de chaque colonne ; « Personnalisé » utilise tes blocs.',
+    params: [
+      {
+        name: 'preset', type: 'enum',
+        values: ['plains', 'forest', 'savanna', 'swamp', 'desert', 'badlands', 'snowy', 'mountain', 'stony_peaks', 'mushroom', 'auto', 'custom'],
+        labels: {
+          plains: 'Plaine (herbe · pierre/andésite)', forest: 'Forêt', savanna: 'Savane (granite)',
+          swamp: 'Marais (argile)', desert: 'Désert (sable/grès)', badlands: 'Mesa (terre cuite)',
+          snowy: 'Neige', mountain: 'Montagne (pierre · andésite · cobble)', stony_peaks: 'Pic rocheux',
+          mushroom: 'Champignon (mycélium)', auto: '🌍 Auto (selon le biome)', custom: 'Personnalisé',
+        },
+        default: 'plains', label: 'Palette',
+      },
+      { name: 'surface', type: 'block', label: 'Surface', showIf: { preset: 'custom' } },
+      { name: 'soil', type: 'block', label: 'Sous-sol', showIf: { preset: 'custom' } },
+      { name: 'filler', type: 'block', label: 'Roche profonde', showIf: { preset: 'custom' } },
+    ],
   },
   {
     id: 'drain', label: 'Drainer (eau/lave)', minRole: 'editor', group: 'Blocs',
@@ -284,7 +299,18 @@ export function normalizeParams(operation, raw = {}) {
       const block = normBlock(raw.block); // revêtement personnalisé optionnel
       return { preset, width, bow, block: block?.name ? block : null };
     }
-    case 'hollow': case 'naturalize': case 'drain': case 'copy': case 'cut': return {};
+    case 'naturalize': {
+      const presets = ['plains', 'forest', 'savanna', 'swamp', 'desert', 'badlands', 'snowy', 'mountain', 'stony_peaks', 'mushroom', 'auto', 'custom'];
+      const preset = presets.includes(raw.preset) ? raw.preset : 'plains';
+      if (preset !== 'custom') return { preset };
+      return {
+        preset,
+        surface: normBlock(raw.surface)?.name || null,
+        soil: normBlock(raw.soil)?.name || null,
+        filler: normBlock(raw.filler)?.name || null,
+      };
+    }
+    case 'hollow': case 'drain': case 'copy': case 'cut': return {};
     case 'paste': return { mode: raw.mode === 'overwrite' ? 'overwrite' : 'overlay' };
     default: return 'unknown_operation';
   }

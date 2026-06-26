@@ -428,10 +428,12 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
 
       <div style={{ ...muted, fontSize: 12, margin: '8px 0' }}>{op.description}</div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        {op.params.map((p) => (
-          <ParamField key={p.name} param={p} value={params[p.name]} catalog={catalog} byId={byId}
-            onChange={(v) => setParams((prev) => ({ ...prev, [p.name]: v }))} />
-        ))}
+        {op.params
+          .filter((p) => !p.showIf || Object.entries(p.showIf).every(([k, v]) => params[k] === v))
+          .map((p) => (
+            <ParamField key={p.name} param={p} value={params[p.name]} catalog={catalog} byId={byId}
+              onChange={(v) => setParams((prev) => ({ ...prev, [p.name]: v }))} />
+          ))}
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>

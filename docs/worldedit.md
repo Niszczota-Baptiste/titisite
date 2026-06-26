@@ -164,6 +164,18 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
   dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
+## Naturaliser par biome
+
+- `opNaturalize` recouvre chaque colonne (surface / sous-sol / **roche profonde
+  mélangée**) selon une **palette de biome** (`NATURALIZE_PRESETS`) : plaine,
+  forêt, savane (granite), marais (argile), désert (sable/grès), mesa, neige,
+  **montagne (pierre · andésite · cobble)**, pic rocheux, champignon. La roche
+  profonde est un **mélange pondéré** par bloc (rendu non uniforme).
+- Mode **`auto`** : lit le **biome réel** de chaque colonne (`vol.getBiome`, cf.
+  vague 4) et choisit la palette via `biomeToPreset`. Mode **`custom`** :
+  surface/sous-sol/roche au choix (champs masqués sauf si « Personnalisé », via
+  `showIf` sur le descripteur, filtré dans le `WorldEditPanel`).
+
 ## Outil tracé & image → relief
 
 - **Tracé / route** (op `path`, `transform.js#opPath`) : chemin entre le coin A et

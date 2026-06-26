@@ -231,15 +231,48 @@ test('overlay : pose au-dessus de la surface', () => {
   assert.equal(vol.getBlock(0, 1, 0).Name, 'minecraft:grass_block');
 });
 
-test('naturalize : herbe / terre / pierre', () => {
+test('naturalize : herbe / terre / roche profonde (palette plaine par défaut)', () => {
   const vol = new MemoryVolume();
   const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 9, z: 0 } };
   for (let y = 0; y <= 9; y++) vol.setBlock(0, y, 0, { Name: 'minecraft:cobblestone', Properties: null });
   opNaturalize(vol, sel, {});
-  assert.equal(vol.getBlock(0, 9, 0).Name, 'minecraft:grass_block');
-  assert.equal(vol.getBlock(0, 8, 0).Name, 'minecraft:dirt');
+  assert.equal(vol.getBlock(0, 9, 0).Name, 'minecraft:grass_block'); // surface
+  assert.equal(vol.getBlock(0, 8, 0).Name, 'minecraft:dirt'); // sous-sol
   assert.equal(vol.getBlock(0, 6, 0).Name, 'minecraft:dirt');
-  assert.equal(vol.getBlock(0, 5, 0).Name, 'minecraft:stone');
+  // roche profonde = mélange pondéré de la palette plaine
+  const deep = ['minecraft:stone', 'minecraft:andesite', 'minecraft:diorite', 'minecraft:gravel'];
+  assert.ok(deep.includes(vol.getBlock(0, 5, 0).Name));
+});
+
+test('naturalize : preset montagne (pierre/andésite/cobble) + désert', () => {
+  const col = (preset) => {
+    const vol = new MemoryVolume();
+    const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 9, z: 0 } };
+    for (let y = 0; y <= 9; y++) vol.setBlock(0, y, 0, { Name: 'minecraft:netherrack', Properties: null });
+    opNaturalize(vol, sel, { preset });
+    return vol;
+  };
+  assert.equal(col('mountain').getBlock(0, 9, 0).Name, 'minecraft:stone'); // surface pierre
+  assert.equal(col('mountain').getBlock(0, 8, 0).Name, 'minecraft:cobblestone'); // sous-sol cobble
+  assert.equal(col('desert').getBlock(0, 9, 0).Name, 'minecraft:sand');
+  assert.equal(col('desert').getBlock(0, 8, 0).Name, 'minecraft:sandstone');
+});
+
+test('naturalize : custom (blocs au choix) + auto (depuis le biome)', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 4, z: 0 } };
+  for (let y = 0; y <= 4; y++) vol.setBlock(0, y, 0, { Name: 'minecraft:netherrack', Properties: null });
+  opNaturalize(vol, sel, { preset: 'custom', surface: 'minecraft:moss_block', soil: 'minecraft:rooted_dirt', filler: 'minecraft:deepslate' });
+  assert.equal(vol.getBlock(0, 4, 0).Name, 'minecraft:moss_block');
+  assert.equal(vol.getBlock(0, 3, 0).Name, 'minecraft:rooted_dirt');
+  assert.equal(vol.getBlock(0, 0, 0).Name, 'minecraft:deepslate');
+
+  // auto : le biome désert de la colonne → surface sable.
+  const v2 = new MemoryVolume();
+  for (let y = 0; y <= 4; y++) v2.setBlock(0, y, 0, { Name: 'minecraft:netherrack', Properties: null });
+  v2.setBiome(0, 4, 0, 'minecraft:desert');
+  opNaturalize(v2, sel, { preset: 'auto' });
+  assert.equal(v2.getBlock(0, 4, 0).Name, 'minecraft:sand');
 });
 
 test('stack : répète la sélection', () => {

@@ -383,17 +383,74 @@ export function opOverlay(vol, sel, { block }) {
 }
 
 // Naturaliser : 1 herbe / 3 terre / reste pierre sous chaque surface exposée.
+// Palettes « naturelles » par biome : surface / sous-sol / roche profonde (cette
+// dernière est un mélange pondéré [bloc, poids] pour un rendu non uniforme —
+// pierre + andésite + cobble… selon le terrain).
+export const NATURALIZE_PRESETS = {
+  plains: { surface: 'grass_block', soil: 'dirt', filler: [['stone', 82], ['andesite', 8], ['diorite', 6], ['gravel', 4]] },
+  forest: { surface: 'grass_block', soil: 'dirt', filler: [['stone', 82], ['andesite', 10], ['coal_ore', 4], ['gravel', 4]] },
+  savanna: { surface: 'grass_block', soil: 'dirt', filler: [['stone', 80], ['granite', 18], ['gravel', 2]] },
+  swamp: { surface: 'grass_block', soil: 'dirt', filler: [['stone', 68], ['clay', 16], ['gravel', 16]] },
+  desert: { surface: 'sand', soil: 'sandstone', filler: [['sandstone', 70], ['stone', 30]] },
+  badlands: { surface: 'red_sand', soil: 'terracotta', filler: [['stone', 55], ['red_sandstone', 35], ['terracotta', 10]] },
+  snowy: { surface: 'snow_block', soil: 'dirt', filler: [['stone', 78], ['andesite', 12], ['packed_ice', 10]] },
+  mountain: { surface: 'stone', soil: 'cobblestone', filler: [['stone', 52], ['andesite', 26], ['cobblestone', 16], ['gravel', 6]] },
+  stony_peaks: { surface: 'stone', soil: 'andesite', filler: [['stone', 48], ['andesite', 30], ['cobblestone', 22]] },
+  mushroom: { surface: 'mycelium', soil: 'dirt', filler: [['stone', 88], ['andesite', 12]] },
+};
+export const NATURALIZE_PRESET_IDS = [...Object.keys(NATURALIZE_PRESETS), 'auto', 'custom'];
+
+const nm = (s) => (s && s.includes(':') ? s : `minecraft:${s}`);
+// Devine la palette depuis un nom de biome Minecraft (mode « auto »).
+function biomeToPreset(biome) {
+  const n = String(biome || '').replace('minecraft:', '');
+  if (/desert/.test(n)) return 'desert';
+  if (/badlands/.test(n)) return 'badlands';
+  if (/snow|frozen|ice|grove|slopes/.test(n)) return 'snowy';
+  if (/peak|jagged|stony/.test(n)) return 'stony_peaks';
+  if (/mountain|windswept|meadow|cherry/.test(n)) return 'mountain';
+  if (/savanna/.test(n)) return 'savanna';
+  if (/swamp/.test(n)) return 'swamp';
+  if (/mushroom/.test(n)) return 'mushroom';
+  if (/forest|taiga|jungle|grove/.test(n)) return 'forest';
+  return 'plains';
+}
+
+// Tireur pondéré pour la roche profonde (mélange par bloc).
+function fillerPicker(filler) {
+  const list = filler.map(([name, w]) => [toBlock({ name: nm(name) }), Math.max(1, w)]);
+  const total = list.reduce((s, [, w]) => s + w, 0);
+  return () => { let r = Math.random() * total; for (const [b, w] of list) { r -= w; if (r <= 0) return b; } return list[list.length - 1][0]; };
+}
+function paletteOf(p) {
+  return { surface: toBlock({ name: nm(p.surface) }), soil: toBlock({ name: nm(p.soil) }), pick: fillerPicker(p.filler) };
+}
+
 export function opNaturalize(vol, sel, params = {}) {
-  const grass = toBlock({ name: params.surface || 'minecraft:grass_block' });
-  const dirt = toBlock({ name: params.soil || 'minecraft:dirt' });
-  const stone = toBlock({ name: params.filler || 'minecraft:stone' });
+  const presetKey = params.preset || 'plains';
+  const auto = presetKey === 'auto';
+  let pal;
+  if (presetKey === 'custom') {
+    pal = paletteOf({
+      surface: params.surface || 'minecraft:grass_block',
+      soil: params.soil || 'minecraft:dirt',
+      filler: [[params.filler || 'minecraft:stone', 1]],
+    });
+  } else if (!auto) {
+    pal = paletteOf(NATURALIZE_PRESETS[presetKey] || NATURALIZE_PRESETS.plains);
+  }
   let c = 0;
   for (let z = sel.min.z; z <= sel.max.z; z++)
     for (let x = sel.min.x; x <= sel.max.x; x++) {
       let depth = 0;
+      let col = pal; // palette de la colonne (auto : choisie à la surface)
       for (let y = sel.max.y; y >= sel.min.y; y--) {
         if (isAir(vol.getBlock(x, y, z))) { depth = 0; continue; }
-        const target = depth === 0 ? grass : depth <= 3 ? dirt : stone;
+        if (depth === 0 && auto) {
+          const biome = vol.getBiome ? vol.getBiome(x, y, z) : null;
+          col = paletteOf(NATURALIZE_PRESETS[biomeToPreset(biome)]);
+        }
+        const target = depth === 0 ? col.surface : depth <= 3 ? col.soil : col.pick();
         if (!sameBlock(vol.getBlock(x, y, z), target)) { vol.setBlock(x, y, z, clone(target)); c++; }
         depth++;
       }
