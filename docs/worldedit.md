@@ -54,6 +54,9 @@ Toutes les routes existent sous **deux préfixes** :
 |  |  |  | Opérations (groupées dans l'UI) — **Transformer** : mirror, rotate, translate, **stack** (répétition). **Blocs** : replace, set, **walls**, **faces**, **hollow**, **overlay**, **naturalize**, **cut**. **Formes/pinceaux (type GoBrush)** : **sphere**, **cyl**, **smooth** (lissage de terrain). **Presse-papier** : copy, paste. |
 |  |  |  | **scale** (×0.5/×2/×3/×4/×6) : redimensionne le build en place (échantillonnage au plus proche), borné à 8 M de blocs. |
 |  |  |  | **mix** (« Mélange % ») : remplit/remplace par un mélange aléatoire pondéré (`pattern` = liste `{name, weight}`, % relatifs), `from` optionnel pour ne viser qu'un type de bloc. Ex. 20% cobble / 30% terre / 20% andésite → terrain aléatoire. |
+|  |  |  | **Formes** en plus : `line` (Bresenham 3D), `pyramid`, `cone`, `sphere`/`cyl` **creux** (`hollow`). **Terrain** : `erode`/`dilate` (seuil+passes). **Blocs** : `drain` (eau/lave). |
+|  |  |  | **Masques** (`set`/`mix`) : `all`/`solid`/`air`/`exposed`/`on_surface`/`above`/`below` (évalués sur l'état d'origine). **replace** accepte plusieurs blocs source. |
+| POST | `/redo` | **editor** | Rétablit la dernière opération annulée (pile redo, invalidée par toute nouvelle op). `redoDepth` dans `/state`. |
 |  |  |  | Les commandes type pinceau (sphere/cyl) et hollow/overlay/smooth/walls/faces sont **bornées par la sélection** ; stack/scale peuvent déborder dans la limite du build (écritures hors chunks ignorées). |
 
 ### Build vierge, presse-papier inter-builds & placement monde
