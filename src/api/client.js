@@ -104,6 +104,21 @@ export function uploadFile(path, formData, { onProgress } = {}) {
   });
 }
 
+// POST JSON et renvoie la réponse binaire (Blob) — pour les exports image.
+async function fetchBlob(path, body) {
+  const res = await fetch(`/api${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    credentials: 'include', body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const err = new Error(data?.error || `HTTP ${res.status}`);
+    err.status = res.status; err.body = data;
+    throw err;
+  }
+  return res.blob();
+}
+
 export async function triggerDownload(url, suggestedName) {
   const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error('download_failed');
@@ -213,6 +228,7 @@ export const api = {
         for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
         return uploadFile(`${root}/heightmap`, fd);
       },
+      exportHeightmap: (selection) => fetchBlob(`${root}/heightmap-export`, { selection }),
       reset:      () => request('POST', `${root}/reset`),
       audit:      () => request('GET',  `${root}/audit`),
       schematics:    () => request('GET',  `${root}/schematics`),
@@ -366,6 +382,7 @@ export const api = {
             for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
             return uploadFile(`${root}/heightmap`, fd);
           },
+          exportHeightmap: (selection) => fetchBlob(`${root}/heightmap-export`, { selection }),
           reset:      () => request('POST', `${root}/reset`),
           audit:      () => request('GET',  `${root}/audit`),
           // Bibliothèque de schematics (presse-papier persistés) + interop.

@@ -348,6 +348,33 @@ export async function applyHeightmap({ bp, actor, selection, heights, params, on
   return { blocksChanged: changed, bounds: sel, durationMs };
 }
 
+// Sort la zone en heightmap : pour chaque colonne XZ de la sélection, la hauteur
+// du bloc non-air le plus haut (dans la plage Y) → niveau de gris 0..255 (blanc
+// = haut, noir = bas / colonne vide). Renvoie un buffer brut 1 canal (z=lignes).
+export async function exportHeightmap(bp, selection) {
+  const limits = buildLimits(bp);
+  const sel = validateSelection(selection, limits);
+  if (typeof sel === 'string') throw new Error(sel);
+  const store = loadStore(bp);
+  await store.warmup(buildExtent(bp));
+  const sizeX = sel.max.x - sel.min.x + 1;
+  const sizeZ = sel.max.z - sel.min.z + 1;
+  const range = Math.max(1, sel.max.y - sel.min.y);
+  const data = new Uint8Array(sizeX * sizeZ); // 0 = colonne vide (noir)
+  for (let z = 0; z < sizeZ; z++) {
+    for (let x = 0; x < sizeX; x++) {
+      const wx = sel.min.x + x, wz = sel.min.z + z;
+      let topY = null;
+      for (let y = sel.max.y; y >= sel.min.y; y--) {
+        if (store.getBlock(wx, y, wz)) { topY = y; break; }
+      }
+      data[z * sizeX + x] = topY === null ? 0 : Math.round(((topY - sel.min.y) / range) * 255);
+    }
+    if ((z & 31) === 0) await tick();
+  }
+  return { sizeX, sizeZ, data };
+}
+
 async function regenPreview(bp) {
   const bbox = buildExtent(bp);
   const store = loadStore(bp);

@@ -182,6 +182,12 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   (sous-couche `under` + revêtement au sommet) ou **surface seule**. Passe par le
   staging (snapshot/undo/aperçu/audit `heightmap`) avec yields périodiques. UI :
   `HeightmapTool` (repliable) dans le `WorldEditPanel`.
+- **Zone → heightmap** (`POST …/worldedit/heightmap-export`,
+  `staging.js#exportHeightmap`) : l'inverse — pour chaque colonne XZ de la
+  sélection, la hauteur du bloc non-air le plus haut (dans la plage Y) → niveau
+  de gris (blanc = haut, noir = vide), encodé en **PNG** (sharp). Le client le
+  télécharge (`api…exportHeightmap` → Blob). Pratique pour ressortir un relief,
+  le retoucher dans un éditeur d'image, puis le réinjecter.
 
 ## Robustesse & perf (vague 6)
 

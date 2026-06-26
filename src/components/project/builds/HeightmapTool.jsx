@@ -42,6 +42,22 @@ export function HeightmapTool({ we, selection, onChanged, refreshState }) {
     if (file) run(file);
   };
 
+  // Sort la zone sélectionnée en image heightmap (PNG niveaux de gris).
+  const exportZone = async () => {
+    if (!selection) { toast?.error?.('Définis d’abord une sélection'); return; }
+    setBusy(true);
+    try {
+      const blob = await we.exportHeightmap(selection);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'heightmap.png'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast?.success?.('Heightmap exportée');
+    } catch (e) {
+      toast?.error?.(e?.body?.error === 'selection_too_large' ? 'Zone trop grande' : 'Export impossible');
+    } finally { setBusy(false); }
+  };
+
   return (
     <details style={box}>
       <summary style={summary}>🗺️ Image → relief (heightmap)</summary>
@@ -73,10 +89,12 @@ export function HeightmapTool({ we, selection, onChanged, refreshState }) {
             <span style={{ ...muted, fontSize: 12 }}>Inverser</span>
           </label>
         </div>
-        <div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={busy} style={{ padding: '6px 12px', fontSize: 12 }}>
-            {busy ? 'Génération…' : '⬆ Choisir une image et générer'}
+            {busy ? 'Traitement…' : '⬆ Image → relief'}
           </Button>
+          <Button variant="ghost" onClick={exportZone} disabled={busy} title="Génère une image PNG en niveaux de gris depuis le relief de la sélection"
+            style={{ padding: '6px 12px', fontSize: 12 }}>⬇ Zone → heightmap (PNG)</Button>
           <input ref={fileRef} type="file" accept="image/*" onChange={onPick} style={{ display: 'none' }} />
         </div>
       </div>

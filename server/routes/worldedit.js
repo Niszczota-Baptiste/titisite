@@ -6,7 +6,7 @@ import { db } from '../db.js';
 import { uploadPath, uploadSchematicMemory, uploadScreenshotMemory } from '../uploads.js';
 import { OPERATIONS, normalizeParams } from '../worldedit/operations.js';
 import {
-  buildLimits, buildExtent, applyOperation, applyHeightmap, validateSelection,
+  buildLimits, buildExtent, applyOperation, applyHeightmap, exportHeightmap, validateSelection,
   undoLast, redoLast, resetStaging, exportBuild,
   previewFilePath, hasPendingEdits, undoDepth, redoDepth, listAudit, floodSelect,
 } from '../worldedit/staging.js';
@@ -318,6 +318,24 @@ async function postHeightmap(req, res) {
   }
 }
 
+// Zone → image heightmap (PNG niveaux de gris) : l'inverse de /heightmap.
+async function postHeightmapExport(req, res) {
+  const bp = req.we.bp;
+  if (!bp.source_file) return res.status(422).json({ error: 'not_editable' });
+  try {
+    const { sizeX, sizeZ, data } = await exportHeightmap(bp, req.body?.selection);
+    const png = await sharp(Buffer.from(data), { raw: { width: sizeX, height: sizeZ, channels: 1 } }).png().toBuffer();
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Disposition', 'attachment; filename="heightmap.png"');
+    return res.send(png);
+  } catch (e) {
+    const known = ['invalid_selection', 'out_of_bounds', 'selection_too_large'];
+    const ok = known.includes(e?.message);
+    if (!ok) console.error('[worldedit] heightmap export failed:', e?.message || e);
+    return res.status(ok ? 400 : 500).json({ error: ok ? e.message : 'heightmap_export_failed' });
+  }
+}
+
 function getAudit(req, res) {
   res.json(listAudit(req.we.bp.id, req.query?.limit).map((r) => ({
     id: r.id, actor: r.actor, operation: r.operation,
@@ -339,6 +357,7 @@ function attachRoutes(router) {
   router.post('/reset', worldeditLimiter, requireEdit, postReset);
   router.post('/select-flood', worldeditLimiter, requireEdit, postFlood);
   router.post('/heightmap', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postHeightmap);
+  router.post('/heightmap-export', worldeditLimiter, requireEdit, postHeightmapExport);
   router.get('/export', worldeditLimiter, requireEdit, getExport);
   // Bibliothèque de schematics (scope workspace) + import/export .schem/.litematic.
   router.get('/schematics', requireEdit, getSchematics);

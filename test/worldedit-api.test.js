@@ -586,3 +586,35 @@ test('Image → relief : heightmap via API + undo', async (t) => {
   assert.equal((await admin.get(`${root}/state`)).json.undoDepth, 1);
   assert.equal((await admin.post(`${root}/undo`)).status, 200);
 });
+
+test('Zone → heightmap : export PNG depuis le relief de la sélection', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+
+  // Build avec des hauteurs variées : colonne (0,0) basse, (3,0) haute.
+  const buf = mcaBuffer([
+    { x: 0, y: 0, z: 0, Name: 'minecraft:stone' },
+    { x: 3, y: 6, z: 0, Name: 'minecraft:stone' },
+  ]);
+  const fd = new FormData();
+  fd.append('file', new Blob([buf]), 'r.0.0.mca');
+  fd.append('name', 'Relief'); fd.append('full', 'true');
+  const id = (await admin.post(`/api/workspaces/${slug}/blueprints`, { body: fd })).json.id;
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  const r = await admin.post(`${root}/heightmap-export`, {
+    body: { selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 3, y: 6, z: 0 } } }, raw: true,
+  });
+  assert.equal(r.status, 200);
+  const png = Buffer.from(await r.arrayBuffer());
+  // Signature PNG.
+  assert.equal(png[0], 0x89); assert.equal(png[1], 0x50); assert.equal(png[2], 0x4e); assert.equal(png[3], 0x47);
+  // Décode : 4×1 px, la dernière colonne (haute) plus claire que la première.
+  const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+  assert.equal(info.width, 4); assert.equal(info.height, 1);
+  const ch = info.channels;
+  assert.ok(data[3 * ch] > data[0], 'colonne haute plus claire que la basse');
+});
