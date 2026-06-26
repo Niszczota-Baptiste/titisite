@@ -37,6 +37,7 @@ export default function BlueprintScene({
   moveSpeed = 0.5, yLimits = null,
   chunkGrid = false, shadows = false, clip = null, measure = false,
   captureRef = null, onMeasure = null,
+  brush = false, onBrush = null,
 }) {
   const mountRef = useRef(null);
   const apiRef = useRef(null); // { types:[{meshes, ys, mats, n, layout}] }
@@ -52,6 +53,8 @@ export default function BlueprintScene({
   const clipRef = useRef(clip); clipRef.current = clip;
   const measureRef = useRef(measure); measureRef.current = measure;
   const onMeasureRef = useRef(onMeasure); onMeasureRef.current = onMeasure;
+  const brushRef = useRef(brush); brushRef.current = brush;
+  const onBrushRef = useRef(onBrush); onBrushRef.current = onBrush;
   // Conserve la pose caméra entre deux reconstructions de scène (ex. aperçu
   // rechargé après une commande WorldEdit) → pas de reset à l'angle par défaut.
   const poseRef = useRef(null);
@@ -282,6 +285,8 @@ export default function BlueprintScene({
       if (Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4) return; // glissé → rotation, pas un clic
       // Mode mesure : clic gauche pose un point (prioritaire sur la sélection).
       if (measureRef.current && e.button === 0) { const c = pickCoord(e); if (c) addMeasure(c); return; }
+      // Mode pinceau : clic gauche applique le pinceau au bloc visé.
+      if (brushRef.current && onBrushRef.current && e.button === 0) { const c = pickCoord(e); if (c) onBrushRef.current(c); return; }
       if (!pickEnabledRef.current || !onPickRef.current) return;
       if (e.button === 0 || e.button === 2) { const c = pickCoord(e); if (c) onPickRef.current(e.button === 2 ? 'A' : 'B', c); }
     };

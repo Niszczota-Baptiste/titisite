@@ -15,7 +15,7 @@ const readSpeed = () => {
 // vue 3D occupe toute la hauteur disponible (plein écran).
 export function BlueprintCanvas({
   data, codex, height = 480, selection, onPick, pickEnabled, yLimits,
-  fillHeight = false, fullscreen = false, onToggleFullscreen,
+  fillHeight = false, fullscreen = false, onToggleFullscreen, onBrush = null,
 }) {
   const maxLayer = data.size.y - 1;
   const [layer, setLayer] = useState(maxLayer);
@@ -38,6 +38,14 @@ export function BlueprintCanvas({
   const [cutX, setCutX] = useState(bounds.maxX);
   const [cutZ, setCutZ] = useState(bounds.maxZ);
   const captureRef = useRef(null);
+
+  // Pinceau interactif (clic dans la vue 3D) — uniquement si onBrush fourni.
+  const [brushOn, setBrushOn] = useState(false);
+  const [brushRadius, setBrushRadius] = useState(3);
+  const [brushMode, setBrushMode] = useState('paint'); // paint | erase | smooth
+  const [brushBlock, setBrushBlock] = useState('minecraft:stone');
+  const brushParams = { radius: brushRadius, mode: brushMode, block: brushBlock };
+  const handleBrush = (coord) => onBrush?.(coord, brushParams);
 
   // Réinitialise les bornes de coupe quand le build change.
   useEffect(() => { setCutX(bounds.maxX); setCutZ(bounds.maxZ); setCut(false); setMeasured(null); }, [bounds]);
@@ -66,7 +74,8 @@ export function BlueprintCanvas({
           {codex && <BlueprintScene data={data} codex={codex} layer={layer} layerMode={mode}
             selection={selection} onPick={onPick} pickEnabled={pickEnabled} moveSpeed={speed} yLimits={yLimits}
             chunkGrid={chunkGrid} shadows={shadows} clip={clip} measure={measure}
-            captureRef={captureRef} onMeasure={setMeasured} />}
+            captureRef={captureRef} onMeasure={setMeasured}
+            brush={!!onBrush && brushOn} onBrush={handleBrush} />}
         </Suspense>
         {onToggleFullscreen && (
           <button type="button" onClick={onToggleFullscreen} title={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}
@@ -132,6 +141,35 @@ export function BlueprintCanvas({
           </div>
         )}
       </div>
+
+      {/* Vague 7 : pinceau interactif (clic dans la vue) — seulement en édition */}
+      {onBrush && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '0 14px 14px' }}>
+          <Toggle on={brushOn} onClick={() => setBrushOn((v) => !v)}>🖌️ Pinceau</Toggle>
+          {brushOn && (
+            <>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[['paint', 'Peindre'], ['erase', 'Effacer'], ['smooth', 'Lisser']].map(([m, lbl]) => (
+                  <button key={m} type="button" onClick={() => setBrushMode(m)}
+                    style={{
+                      padding: '5px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: "'Inter',sans-serif",
+                      background: brushMode === m ? 'rgba(201,168,232,0.2)' : 'transparent',
+                      border: `1px solid ${brushMode === m ? '#c9a8e8' : 'rgba(80,50,130,0.28)'}`, color: '#ede8f8',
+                    }}>{lbl}</button>
+                ))}
+              </div>
+              <span style={{ ...muted, fontSize: 12 }}>Rayon {brushRadius}</span>
+              <input type="range" min={1} max={12} value={brushRadius} onChange={(e) => setBrushRadius(Number(e.target.value))} style={{ width: 100, accentColor: '#c9a8e8' }} />
+              {brushMode === 'paint' && (
+                <input value={brushBlock} onChange={(e) => setBrushBlock(e.target.value.trim().toLowerCase())}
+                  placeholder="minecraft:stone" aria-label="bloc du pinceau"
+                  style={{ width: 170, background: 'rgba(14,9,28,0.6)', border: '1px solid rgba(80,50,130,0.24)', borderRadius: 8, padding: '6px 10px', color: '#ede8f8', fontSize: 13 }} />
+              )}
+              <span style={{ ...muted, fontSize: 11 }}>← clique dans la vue 3D pour appliquer</span>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

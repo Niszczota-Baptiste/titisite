@@ -164,6 +164,19 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
   dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
+## Pinceau interactif & liste de matériaux (vague 7)
+
+- **Pinceau interactif** (`BlueprintCanvas` + `BlueprintScene`, handler dans
+  `BuildsView`) : en mode édition, un **clic gauche dans la vue 3D** applique une
+  opération centrée sur le bloc visé — réutilise `/transform` avec une sélection
+  **sphère** (rayon réglable). Modes **Peindre** (`set` bloc), **Effacer**
+  (`set` air), **Lisser** (`smooth`). Verrou anti-spam pour ne pas empiler les
+  requêtes. Aucun code serveur nouveau.
+- **Liste de matériaux améliorée** (`BlueprintBom`) : chaque ligne affiche le
+  décompte en **boîtes de Shulker (1728) + stacks (64) + unités** ; bouton
+  **⬇ CSV** (séparateur `;`, BOM `id;quantité;possédé;manquant;stacks;SB` en vue
+  « Items finaux », matières premières en vue « Matières de base »).
+
 ## Spécial Minecraft (vague 4)
 
 - **Peindre le biome** (op `biome`) : change le biome de la sélection à la

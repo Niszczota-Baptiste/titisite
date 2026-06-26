@@ -12,6 +12,38 @@ import { CraftGrid } from '../../admin/editors/minecraft/CraftGrid';
 const WORLD_EMOJI = { overworld: '🌳', nether: '🔥', end: '🌌' };
 const strip = (id) => (id.includes(':') ? id.slice(id.indexOf(':') + 1) : id);
 
+// Décompte Minecraft : 64 / stack, 27 stacks / boîte de Shulker = 1728 / SB.
+const STACK = 64, SHULKER = 1728;
+function stacksOf(count) {
+  const sb = Math.floor(count / SHULKER);
+  const rem = count % SHULKER;
+  const stacks = Math.floor(rem / STACK);
+  const units = rem % STACK;
+  return { sb, stacks, units };
+}
+// Libellé compact « 1 SB + 12 st + 5 ».
+function stacksLabel(count) {
+  const { sb, stacks, units } = stacksOf(count);
+  const parts = [];
+  if (sb) parts.push(`${sb} SB`);
+  if (stacks) parts.push(`${stacks} st`);
+  if (units || !parts.length) parts.push(`${units}`);
+  return parts.join(' + ');
+}
+
+function downloadCsv(filename, rows) {
+  const esc = (v) => {
+    const s = String(v ?? '');
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = rows.map((r) => r.map(esc).join(';')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 // Liste de matériaux (BOM) d'un build. Deux vues :
 //  • « Items finaux » : les blocs tels que posés (croisés avec les coffres).
 //  • « Matières de base » : tout décomposé en matières premières via le moteur de
@@ -76,6 +108,18 @@ export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = f
     };
   }, [mode, rawIndex, bom, idSet]);
 
+  const exportCsv = () => {
+    if (mode === 'base' && baseData) {
+      const header = ['matière', 'id', 'quantité', 'stacks', 'boîtes_shulker'];
+      const out = baseData.raws.map((m) => [byId.get(m.id)?.nomFr || m.id, m.id, m.n, Math.floor(m.n / STACK), (m.n / SHULKER).toFixed(2)]);
+      downloadCsv('materiaux-base.csv', [header, ...out]);
+      return;
+    }
+    const header = ['bloc', 'id', 'quantité', 'possédé', 'manquant', 'stacks', 'boîtes_shulker'];
+    const out = rows.map((r) => [r.entry.nomFr, r.blockId, r.count, r.owned, r.missing, Math.floor(r.count / STACK), (r.count / SHULKER).toFixed(2)]);
+    downloadCsv('liste-materiaux.csv', [header, ...out]);
+  };
+
   return (
     <div style={{ padding: 14, borderTop: '1px solid rgba(80,50,130,0.22)' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -94,6 +138,11 @@ export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = f
                 color: mode === m ? '#c9a8e8' : '#ede8f8',
               }}>{lbl}</button>
           ))}
+          <button type="button" onClick={exportCsv}
+            title="Exporter la liste de matériaux en CSV (stacks + boîtes de Shulker)"
+            style={{ padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontFamily: "'Inter',sans-serif", background: 'transparent', border: '1px solid rgba(80,50,130,0.28)', color: '#ede8f8' }}>
+            ⬇ CSV
+          </button>
         </div>
       </div>
 
@@ -104,6 +153,7 @@ export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = f
               <Icon icon={r.entry.icon} />
               <span style={{ color: '#ede8f8', fontSize: 13, flex: '1 1 150px', minWidth: 120 }}>{r.entry.nomFr}</span>
               <span style={{ fontSize: 13, color: '#ede8f8', whiteSpace: 'nowrap' }}>×{r.count.toLocaleString('fr-FR')}</span>
+              <span style={{ ...muted, fontSize: 11, whiteSpace: 'nowrap' }} title="Boîtes de Shulker (1728) + stacks (64) + unités">{stacksLabel(r.count)}</span>
               {!readOnly && (
                 <span style={{ fontSize: 12, whiteSpace: 'nowrap', color: r.owned >= r.count ? '#4ade80' : 'rgba(180,170,200,0.7)' }}>
                   possédé {r.owned}

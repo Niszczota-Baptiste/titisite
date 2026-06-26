@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadBlockCodex, resolveBlock } from '../../../data/blockCodex';
 import { useCodex } from '../../../hooks/useCodex';
 import { useIsMobile } from '../../../hooks/useIsMobile';
@@ -382,6 +382,31 @@ function BlueprintViewer({ ws, slug, id, isMobile, items, chests, onExtracted })
     }
   }, [ws, id, slug, selection, toast, onExtracted]);
 
+  // Pinceau interactif : un clic dans la vue 3D applique une opération (sphère)
+  // centrée sur le bloc visé — réutilise /transform (forme sphère). Anti-spam via
+  // un verrou pour ne pas empiler les requêtes.
+  const brushBusy = useRef(false);
+  const onBrush = useCallback(async (coord, { radius, mode, block }) => {
+    if (brushBusy.current || !weState?.bbox) return;
+    const lim = weState.bbox;
+    const cl = (v, a) => Math.max(lim.min[a], Math.min(lim.max[a], v));
+    const selection = {
+      min: { x: cl(coord.x - radius, 'x'), y: cl(coord.y - radius, 'y'), z: cl(coord.z - radius, 'z') },
+      max: { x: cl(coord.x + radius, 'x'), y: cl(coord.y + radius, 'y'), z: cl(coord.z + radius, 'z') },
+      shape: { type: 'sphere' },
+    };
+    const op = mode === 'smooth'
+      ? { operation: 'smooth', params: { iterations: 2 } }
+      : { operation: 'set', params: { block: { name: mode === 'erase' ? 'minecraft:air' : (block || 'minecraft:stone') } } };
+    brushBusy.current = true;
+    try {
+      await we.transform({ ...op, selection });
+      await reload(); refreshState();
+    } catch (e) {
+      toast?.error?.(e?.body?.error === 'bad_block' ? 'Bloc du pinceau invalide' : 'Pinceau impossible');
+    } finally { brushBusy.current = false; }
+  }, [we, weState, reload, refreshState, toast]);
+
   const height = isMobile ? 320 : 480;
   const pickEnabled = !!(weState?.canEdit && weState?.editable);
 
@@ -396,7 +421,8 @@ function BlueprintViewer({ ws, slug, id, isMobile, items, chests, onExtracted })
           selection={selection} onPick={onPick} pickEnabled={pickEnabled}
           yLimits={weState?.bbox ? { min: weState.bbox.min.y, max: weState.bbox.max.y } : null}
           fillHeight={fullscreen} fullscreen={fullscreen}
-          onToggleFullscreen={() => setFullscreen((v) => !v)} />
+          onToggleFullscreen={() => setFullscreen((v) => !v)}
+          onBrush={pickEnabled ? onBrush : null} />
       </div>
       <div style={fullscreen ? FS_PANEL : undefined}>
         <WorldEditPanel we={we} state={weState} selection={selection} setSelection={setSelection}
