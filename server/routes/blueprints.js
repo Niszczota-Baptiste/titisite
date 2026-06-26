@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { safeUnlink, uploadPath, uploadWorld } from '../uploads.js';
 import { parseWorldFile } from '../minecraftWorld/index.js';
-import { removeStaging, cropBuild, buildLimits, validateSelection } from '../worldedit/staging.js';
+import { removeStaging, cropBuild, buildLimits, validateSelection, blankRegions, templateChunk } from '../worldedit/staging.js';
 import { makeZip } from '../worldedit/zipWriter.js';
 import { regionFileName } from '../anvil/index.js';
 import { worldeditScopedRouter } from './worldedit.js';
@@ -176,6 +176,53 @@ blueprintsRouter.post('/:id/duplicate', (req, res) => {
   `).run(
     req.workspace.id, name, src.min_x, src.min_y, src.min_z, src.size_x, src.size_y, src.size_z,
     src.block_count, JSON.stringify(palette), JSON.stringify(bom), dataFile, req.user.id,
+  );
+  res.status(201).json(detail(db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ?').get(r.lastInsertRowid)));
+});
+
+// Crée un build VIERGE (.mca neuf rempli d'air) à une position monde choisie,
+// pour y coller des morceaux et assembler un build plus grand. Le format de
+// chunk est repris d'un build existant du workspace (compatible avec la version
+// Minecraft de l'utilisateur) ou synthétisé à défaut.
+blueprintsRouter.post('/blank', async (req, res) => {
+  const clampI = (v, lo, hi, d) => Math.max(lo, Math.min(hi, Math.round(Number(v)) || d));
+  const name = String(req.body?.name || 'Build vierge').trim().slice(0, 120) || 'Build vierge';
+  const o = req.body?.origin || {}, s = req.body?.size || {};
+  const origin = { x: clampI(o.x, -30_000_000, 30_000_000, 0), y: clampI(o.y, -64, 319, 0), z: clampI(o.z, -30_000_000, 30_000_000, 0) };
+  const size = { x: clampI(s.x, 1, MAX_SPAN, 64), y: clampI(s.y, 1, MAX_HEIGHT, 64), z: clampI(s.z, 1, MAX_SPAN, 64) };
+
+  const tpl = db.prepare('SELECT * FROM minecraft_blueprints WHERE workspace_id = ? AND source_file IS NOT NULL ORDER BY id DESC LIMIT 1')
+    .get(req.workspace.id);
+  let template = null;
+  if (tpl) { try { template = await templateChunk(tpl); } catch { /* repli synthétique */ } }
+
+  let regions;
+  try { regions = blankRegions({ template, origin, size }); }
+  catch (e) { console.error('[blueprints] blank failed:', e?.message || e); return res.status(500).json({ error: 'blank_failed' }); }
+
+  let sourceFile, sourceName;
+  if (regions.length === 1) {
+    sourceName = regionFileName(regions[0].regionX, regions[0].regionZ);
+    sourceFile = `${crypto.randomUUID()}.mca`;
+    fs.writeFileSync(uploadPath(sourceFile), regions[0].buffer);
+  } else {
+    sourceName = `blank-${Date.now()}.zip`;
+    sourceFile = `${crypto.randomUUID()}.zip`;
+    fs.writeFileSync(uploadPath(sourceFile), makeZip(regions.map((r) => ({ name: `region/${regionFileName(r.regionX, r.regionZ)}`, data: r.buffer }))));
+  }
+
+  const sparse = { palette: [], blocks: [], min: origin, size, count: 0 };
+  const dataFile = `${crypto.randomUUID()}.json.gz`;
+  fs.writeFileSync(uploadPath(dataFile), zlib.gzipSync(Buffer.from(JSON.stringify(sparse))));
+
+  const r = db.prepare(`
+    INSERT INTO minecraft_blueprints
+      (workspace_id, name, min_x, min_y, min_z, size_x, size_y, size_z,
+       block_count, palette, bom, data_file, source_file, source_name, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '[]', '[]', ?, ?, ?, ?)
+  `).run(
+    req.workspace.id, name, origin.x, origin.y, origin.z, size.x, size.y, size.z,
+    dataFile, sourceFile, sourceName, req.user.id,
   );
   res.status(201).json(detail(db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ?').get(r.lastInsertRowid)));
 });

@@ -23,7 +23,7 @@ export const worldeditLimiter = rateLimit({
   message: { error: 'rate_limited' },
 });
 
-// Presse-papier serveur en mémoire, lié à (acteur, build). Borné.
+// Presse-papier serveur en mémoire, par acteur (partagé entre builds). Borné.
 const clipboards = new Map();
 const CLIP_MAX = 50;
 function setClip(key, schem) {
@@ -92,7 +92,9 @@ async function postTransform(req, res) {
   const params = normalizeParams(operation, req.body?.params || {});
   if (typeof params === 'string') return res.status(400).json({ error: params });
   const selection = req.body?.selection;
-  const clipKey = `${req.we.actor}:${bp.id}`;
+  // Presse-papier par UTILISATEUR (et non par build) → copier dans un build,
+  // coller dans un autre (assemblage de builds, mca vierge…).
+  const clipKey = `${req.we.actor}`;
 
   try {
     if (operation === 'copy') {
@@ -128,11 +130,13 @@ function postReset(req, res) {
   res.json({ reset: true });
 }
 
-function getExport(req, res) {
+async function getExport(req, res) {
   const bp = req.we.bp;
   if (!bp.source_file) return res.status(422).json({ error: 'not_editable' });
+  const num = (v) => Math.round(Number(v)) || 0;
+  const offset = { dx: num(req.query?.dx), dy: num(req.query?.dy), dz: num(req.query?.dz) };
   try {
-    const { buffer, filename, mime } = exportBuild(bp);
+    const { buffer, filename, mime } = await exportBuild(bp, offset);
     res.setHeader('Content-Type', mime);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);

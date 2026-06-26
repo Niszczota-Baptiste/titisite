@@ -7,7 +7,10 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { db } from '../db.js';
 import { uploadPath } from '../uploads.js';
-import { regionFileName, regionCoordsFromName, writeRegion } from '../anvil/index.js';
+import {
+  regionFileName, regionCoordsFromName, writeRegion, readRegion, decodeChunk,
+  encodeBlockStates, SECTION_VOLUME,
+} from '../anvil/index.js';
 import { extractMcaEntries } from '../minecraftWorld/zip.js';
 import { RegionStore } from './regionStore.js';
 import {
@@ -270,18 +273,60 @@ export function removeStaging(id) {
   fs.rmSync(dirFor(id), { recursive: true, force: true });
 }
 
-// Export du build transformé : un .mca seul ou un .zip du dossier region/.
-export function exportBuild(bp) {
-  materialize(bp);
-  const rdir = regionsDir(bp.id);
-  const files = listRegionFiles(bp.id);
-  if (files.length === 0) throw new Error('no_region');
-  if (files.length === 1) {
-    return { buffer: fs.readFileSync(path.join(rdir, files[0].file)), filename: files[0].file, mime: 'application/octet-stream' };
+const safeName = (s) => String(s || 'build').replace(/[^\w.-]+/g, '_').slice(0, 60) || 'build';
+function regionsToDownload(regions, name) {
+  if (regions.length === 1) {
+    const r = regions[0];
+    return { buffer: r.buffer, filename: regionFileName(r.regionX, r.regionZ), mime: 'application/octet-stream' };
   }
-  const entries = files.map(({ file }) => ({ name: `region/${file}`, data: fs.readFileSync(path.join(rdir, file)) }));
-  const safe = String(bp.name || 'build').replace(/[^\w.-]+/g, '_').slice(0, 60) || 'build';
-  return { buffer: makeZip(entries), filename: `${safe}-region.zip`, mime: 'application/zip' };
+  const entries = regions.map((r) => ({ name: `region/${regionFileName(r.regionX, r.regionZ)}`, data: r.buffer }));
+  return { buffer: makeZip(entries), filename: `${safeName(name)}-region.zip`, mime: 'application/zip' };
+}
+
+// Export du build transformé. Sans offset → recopie lossless des régions de
+// staging (préserve coffres, biomes…). Avec offset {dx,dy,dz} → on RE-CHUNK les
+// blocs à la nouvelle position monde (perd les block-entities/biomes — pratique
+// pour repositionner un build d'assemblage). On choisit ainsi « où le mettre ».
+export async function exportBuild(bp, offset = null) {
+  const off = offset && (offset.dx || offset.dy || offset.dz) ? offset : null;
+  if (!off) {
+    materialize(bp);
+    const rdir = regionsDir(bp.id);
+    const files = listRegionFiles(bp.id);
+    if (files.length === 0) throw new Error('no_region');
+    const regions = files.map((f) => ({ regionX: f.regionX, regionZ: f.regionZ, buffer: fs.readFileSync(path.join(rdir, f.file)) }));
+    return regionsToDownload(regions, bp.name);
+  }
+  // Re-chunk à la position cible.
+  const extent = buildExtent(bp);
+  const store = loadStore(bp);
+  await store.warmup(extent);
+  const sparse = store.deriveSparse(extent, CROP_MAX_BLOCKS);
+  const dx = Math.round(off.dx) || 0, dy = Math.round(off.dy) || 0, dz = Math.round(off.dz) || 0;
+  const shifted = {
+    min: { x: extent.min.x + dx, y: Math.max(WORLD_MIN_Y, extent.min.y + dy), z: extent.min.z + dz },
+    max: { x: extent.max.x + dx, y: Math.min(WORLD_MAX_Y, extent.max.y + dy), z: extent.max.z + dz },
+  };
+  const template = await templateChunk(bp);
+  const regions = blankRegions({
+    template, origin: shifted.min,
+    size: { x: shifted.max.x - shifted.min.x + 1, y: 1, z: shifted.max.z - shifted.min.z + 1 },
+  });
+  const store2 = new RegionStore(regions);
+  await store2.warmup(shifted);
+  for (let i = 0; i < sparse.blocks.length; i += 4) {
+    const e = sparse.palette[sparse.blocks[i + 3]];
+    const x = sparse.min.x + sparse.blocks[i] + dx;
+    const y = sparse.min.y + sparse.blocks[i + 1] + dy;
+    const z = sparse.min.z + sparse.blocks[i + 2] + dz;
+    if (y < WORLD_MIN_Y || y > WORLD_MAX_Y) continue;
+    store2.setBlock(x, y, z, { Name: e.name, Properties: e.props || null });
+  }
+  const out = [...store2.commit({ touchedOnly: false })].map(([key, buffer]) => {
+    const [rx, rz] = key.split(',').map(Number);
+    return { regionX: rx, regionZ: rz, buffer };
+  });
+  return regionsToDownload(out, bp.name);
 }
 
 // Extrait une zone : renvoie l'artefact sparse de la sélection + des fichiers de
@@ -304,6 +349,96 @@ export async function cropBuild(bp, bbox) {
     regions.push({ regionX: r.regionX, regionZ: r.regionZ, buffer: writeRegion({ regionX: r.regionX, regionZ: r.regionZ, chunks }) });
   }
   return { sparse, regions };
+}
+
+// ── Build vierge (.mca neuf) + export à coordonnées choisies ─────────────────
+
+const airSection = () => encodeBlockStates({ palette: [{ Name: 'minecraft:air', Properties: null }], indices: new Uint16Array(SECTION_VOLUME) });
+const emptyList = () => ({ type: 'list', value: { type: 'end', value: [] } });
+const emptyCompoundList = () => ({ type: 'list', value: { type: 'compound', value: [] } });
+
+// Chunk synthétique « plein » d'air (repli quand aucun build modèle). Best-effort
+// pour la version `dataVersion` ; à valider en jeu.
+function syntheticTemplate(dataVersion = 3578) {
+  const sections = [];
+  for (let y = -4; y <= 19; y++) {
+    sections.push({
+      Y: { type: 'byte', value: y },
+      block_states: airSection(),
+      biomes: { type: 'compound', value: { palette: { type: 'list', value: { type: 'string', value: ['minecraft:plains'] } } } },
+    });
+  }
+  return { type: 'compound', name: '', value: {
+    DataVersion: { type: 'int', value: dataVersion },
+    Status: { type: 'string', value: 'minecraft:full' },
+    xPos: { type: 'int', value: 0 }, yPos: { type: 'int', value: -4 }, zPos: { type: 'int', value: 0 },
+    LastUpdate: { type: 'long', value: [0, 0] },
+    InhabitedTime: { type: 'long', value: [0, 0] },
+    sections: { type: 'list', value: { type: 'compound', value: sections } },
+    block_entities: emptyCompoundList(),
+    block_ticks: emptyList(),
+    fluid_ticks: emptyList(),
+    PostProcessing: emptyList(),
+    structures: { type: 'compound', value: { starts: { type: 'compound', value: {} }, References: { type: 'compound', value: {} } } },
+    Heightmaps: { type: 'compound', value: {} },
+    isLightOn: { type: 'byte', value: 0 },
+  } };
+}
+
+// Récupère un chunk MODÈLE depuis un build existant (structure NBT valide pour la
+// version Minecraft de l'utilisateur). Renvoie le NBT tagué ou null.
+export async function templateChunk(bp) {
+  if (!bp?.source_file) return null;
+  materialize(bp);
+  const rdir = regionsDir(bp.id);
+  for (const f of listRegionFiles(bp.id)) {
+    const region = readRegion(fs.readFileSync(path.join(rdir, f.file)), f.regionX, f.regionZ);
+    if (region.chunks.length) { await decodeChunk(region.chunks[0]); return region.chunks[0].root; }
+  }
+  return null;
+}
+
+// Chunk d'air dérivé d'un modèle, replacé en (cx,cz) et purgé des données liées
+// à la position (block entities / ticks).
+function airChunkFrom(template, cx, cz) {
+  const root = structuredClone(template);
+  const v = root.value;
+  v.xPos = { type: 'int', value: cx };
+  v.zPos = { type: 'int', value: cz };
+  for (const sec of (v.sections?.value?.value || [])) sec.block_states = airSection();
+  v.block_entities = emptyCompoundList();
+  if (v.block_ticks) v.block_ticks = emptyList();
+  if (v.fluid_ticks) v.fluid_ticks = emptyList();
+  if (v.Heightmaps) v.Heightmaps = { type: 'compound', value: {} };
+  return root;
+}
+
+const nowSec = () => Math.floor(Date.now() / 1000);
+function regionBuffersFromChunks(chunks) {
+  const byRegion = new Map();
+  for (const { cx, cz, root } of chunks) {
+    const rx = fdiv(cx, 32), rz = fdiv(cz, 32);
+    const key = `${rx},${rz}`;
+    if (!byRegion.has(key)) byRegion.set(key, { rx, rz, chunks: [] });
+    const localX = ((cx % 32) + 32) % 32, localZ = ((cz % 32) + 32) % 32;
+    byRegion.get(key).chunks.push({ index: localX + localZ * 32, localX, localZ, chunkX: cx, chunkZ: cz, timestamp: nowSec(), compression: 2, payload: null, root, dirty: true });
+  }
+  const out = [];
+  for (const { rx, rz, chunks: cs } of byRegion.values()) {
+    cs.sort((a, b) => a.index - b.index);
+    out.push({ regionX: rx, regionZ: rz, buffer: writeRegion({ regionX: rx, regionZ: rz, chunks: cs }) });
+  }
+  return out;
+}
+
+// Régions d'air couvrant la zone [origin, origin+size) en X/Z.
+export function blankRegions({ template, dataVersion, origin, size }) {
+  const tmpl = template || syntheticTemplate(dataVersion);
+  const cMinX = fdiv(origin.x, 16), cMaxX = fdiv(origin.x + size.x - 1, 16);
+  const cMinZ = fdiv(origin.z, 16), cMaxZ = fdiv(origin.z + size.z - 1, 16);
+  const chunks = [];
+  for (let cz = cMinZ; cz <= cMaxZ; cz++) for (let cx = cMinX; cx <= cMaxX; cx++) chunks.push({ cx, cz, root: airChunkFrom(tmpl, cx, cz) });
+  return regionBuffersFromChunks(chunks);
 }
 
 export function listAudit(id, limit = 100) {

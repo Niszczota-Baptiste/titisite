@@ -306,6 +306,7 @@ export const api = {
       remove: (id) => request('DELETE', `/workspaces/${slug}/blueprints/${id}`),
       duplicate: (id, b) => request('POST', `/workspaces/${slug}/blueprints/${id}/duplicate`, b),
       extract:   (id, b) => request('POST', `/workspaces/${slug}/blueprints/${id}/extract`, b),
+      createBlank: (b) => request('POST', `/workspaces/${slug}/blueprints/blank`, b),
       share:    (id) => request('POST', `/workspaces/${slug}/blueprints/${id}/share`),
       unshare:  (id) => request('DELETE', `/workspaces/${slug}/blueprints/${id}/share`),
       upload: (file, fields, onProgress) => {
@@ -327,7 +328,10 @@ export const api = {
           state:      () => request('GET',  `${root}/state`),
           operations: () => request('GET',  `${root}/operations`),
           previewUrl: () => `/api${root}/preview`,
-          exportUrl:  () => `/api${root}/export`,
+          exportUrl:  (off) => {
+            const q = off && (off.dx || off.dy || off.dz) ? `?dx=${off.dx | 0}&dy=${off.dy | 0}&dz=${off.dz | 0}` : '';
+            return `/api${root}/export${q}`;
+          },
           transform:  (b) => request('POST', `${root}/transform`, b),
           undo:       () => request('POST', `${root}/undo`),
           reset:      () => request('POST', `${root}/reset`),

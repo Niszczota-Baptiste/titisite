@@ -101,6 +101,7 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
   const [opId, setOpId] = useState('mirror');
   const [params, setParams] = useState({});
   const [busy, setBusy] = useState(false);
+  const [offset, setOffset] = useState({ dx: 0, dy: 0, dz: 0 });
 
   useEffect(() => {
     let alive = true;
@@ -229,7 +230,28 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
         <Button onClick={onApply} disabled={busy}>Appliquer</Button>
         <Button variant="ghost" onClick={undo} disabled={busy || !state.undoDepth}>↶ Annuler</Button>
         <Button variant="ghost" onClick={reset} disabled={busy || !state.hasPendingEdits}>Réinitialiser</Button>
-        <a href={we.exportUrl()} style={exportLink}>⬇ Exporter .mca</a>
+      </div>
+
+      {/* Export + placement dans le monde */}
+      <div style={{ marginTop: 12, borderTop: '1px solid rgba(80,50,130,0.18)', paddingTop: 10 }}>
+        <div style={{ ...muted, fontSize: 11, marginBottom: 6 }}>
+          📦 S’insère dans le monde à <strong style={{ color: '#c9a8e8' }}>X {full.min.x}…{full.max.x}</strong>,
+          {' '}<strong style={{ color: '#c9a8e8' }}>Y {full.min.y}…{full.max.y}</strong>,
+          {' '}<strong style={{ color: '#c9a8e8' }}>Z {full.min.z}…{full.max.z}</strong>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ ...muted, fontSize: 12 }}>Décaler à l’export :</span>
+          {['dx', 'dy', 'dz'].map((k) => (
+            <Input key={k} type="number" value={offset[k]} aria-label={k} style={{ width: 78 }}
+              onChange={(e) => setOffset((o) => ({ ...o, [k]: Math.round(Number(e.target.value)) || 0 }))} />
+          ))}
+          <a href={we.exportUrl(offset)} style={exportLink}>⬇ Exporter .mca</a>
+        </div>
+        {(offset.dx || offset.dy || offset.dz) ? (
+          <div style={{ ...muted, fontSize: 10, marginTop: 4 }}>
+            Décalage non nul → les chunks sont reconstruits (les coffres/biomes ne sont pas conservés).
+          </div>
+        ) : null}
       </div>
     </div>
   );

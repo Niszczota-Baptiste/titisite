@@ -185,6 +185,49 @@ test('Hauteur éditable = limites du monde ; l’emprise grandit au-dessus du co
   assert.ok(st2.json.extent.max.y >= 50);
 });
 
+test('Build vierge + copier d’un build, coller dans un autre + export round-trip', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const srcId = await uploadBuild(admin, slug); // build A (sert aussi de modèle de chunk)
+
+  // Build vierge à la position monde (100,0,100), 32³.
+  const blank = await admin.post(`/api/workspaces/${slug}/blueprints/blank`, {
+    body: { name: 'Vierge', origin: { x: 100, y: 0, z: 100 }, size: { x: 32, y: 32, z: 32 } },
+  });
+  assert.equal(blank.status, 201, blank.text);
+  assert.equal(blank.json.hasSource, true);
+  assert.deepEqual(blank.json.min, { x: 100, y: 0, z: 100 });
+  const bid = blank.json.id;
+  const rootA = `/api/workspaces/${slug}/blueprints/${srcId}/worldedit`;
+  const rootB = `/api/workspaces/${slug}/blueprints/${bid}/worldedit`;
+
+  // Copie un bloc dans A, colle dans B (presse-papier partagé entre builds).
+  const copy = await admin.post(`${rootA}/transform`, { body: { operation: 'copy', params: {}, selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } } } });
+  assert.equal(copy.status, 200, copy.text);
+  const paste = await admin.post(`${rootB}/transform`, { body: { operation: 'paste', params: { mode: 'overlay' }, selection: { min: { x: 110, y: 5, z: 110 }, max: { x: 110, y: 5, z: 110 } } } });
+  assert.equal(paste.status, 200, paste.text);
+  assert.ok(paste.json.blocksChanged >= 1);
+
+  // Export lossless puis avec offset.
+  assert.equal((await admin.get(`${rootB}/export`, { raw: true })).status, 200);
+  const exRaw = await admin.get(`${rootB}/export`, { raw: true });
+  const mca = Buffer.from(await exRaw.arrayBuffer());
+  assert.equal((await admin.get(`${rootB}/export?dx=50&dy=0&dz=50`, { raw: true })).status, 200);
+
+  // Round-trip : ré-importer le .mca exporté doit redonner le bloc collé.
+  const fd = new FormData();
+  fd.append('file', new Blob([mca]), 'r.0.0.mca');
+  fd.append('name', 'Réimport');
+  fd.append('full', 'true');
+  const reimp = await admin.post(`/api/workspaces/${slug}/blueprints`, { body: fd });
+  assert.equal(reimp.status, 201, reimp.text);
+  assert.deepEqual(reimp.json.min, { x: 110, y: 5, z: 110 }); // bloc collé retrouvé
+  assert.equal(reimp.json.blockCount, 1);
+});
+
 test('Commande cut : vide la sélection (→ air) et remplit le presse-papier', async (t) => {
   const srv = await bootServer();
   t.after(() => srv.stop());

@@ -59,6 +59,7 @@ export function BuildsView({ ws, slug, items = [], chests = [], initialOpenId = 
   const [dupId, setDupId] = useState(null);
   const [err, setErr] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [showBlank, setShowBlank] = useState(false);
 
   const load = () => ws.blueprints.list().then(setList).catch(() => setErr('Chargement impossible.'));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
@@ -78,12 +79,19 @@ export function BuildsView({ ws, slug, items = [], chests = [], initialOpenId = 
     <div>
       <ErrorBanner error={err} onDismiss={() => setErr('')} />
 
-      {!showForm && (
-        <Button onClick={() => setShowForm(true)} style={{ marginBottom: 14 }}>+ Importer un build</Button>
+      {!showForm && !showBlank && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+          <Button onClick={() => setShowForm(true)}>+ Importer un build</Button>
+          <Button variant="ghost" onClick={() => setShowBlank(true)}>+ Build vierge (.mca neuf)</Button>
+        </div>
       )}
       {showForm && (
         <UploadForm ws={ws} toast={toast} onDone={() => { setShowForm(false); load(); }}
           onCancel={() => setShowForm(false)} onError={setErr} />
+      )}
+      {showBlank && (
+        <BlankForm ws={ws} slug={slug} toast={toast} onDone={() => { setShowBlank(false); load(); }}
+          onCancel={() => setShowBlank(false)} onError={setErr} />
       )}
 
       {list == null ? (
@@ -261,6 +269,58 @@ function UploadForm({ ws, toast, onDone, onCancel, onError }) {
         <Button onClick={submit} disabled={busy}>{busy ? `Import… ${Math.round(progress * 100)}%` : 'Importer'}</Button>
         <Button variant="ghost" onClick={onCancel} disabled={busy}>Annuler</Button>
         {busy && <span style={{ ...muted, fontSize: 12 }}>Parsing du monde (peut prendre un moment)…</span>}
+      </div>
+    </div>
+  );
+}
+
+// Crée un build vierge (.mca neuf, rempli d'air) à une position monde choisie.
+function BlankForm({ ws, slug, toast, onDone, onCancel, onError }) {
+  const [name, setName] = useState('Build vierge');
+  const [origin, setOrigin] = useState({ x: 0, y: 0, z: 0 });
+  const [size, setSize] = useState({ x: 64, y: 64, z: 64 });
+  const [busy, setBusy] = useState(false);
+  const num = (v) => (v === '' || v === '-' ? v : Math.round(Number(v)));
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const created = await ws.blueprints.createBlank({
+        name,
+        origin: { x: Number(origin.x) || 0, y: Number(origin.y) || 0, z: Number(origin.z) || 0 },
+        size: { x: Number(size.x) || 64, y: Number(size.y) || 64, z: Number(size.z) || 64 },
+      });
+      toast?.success?.(`Build vierge « ${created.name} » créé`);
+      onDone();
+      if (slug) window.open(`/project/${slug}/minecraft?view=builds&build=${created.id}`, '_blank', 'noopener');
+    } catch { onError?.('Création impossible.'); }
+    finally { setBusy(false); }
+  };
+
+  const Row = ({ label, val, set }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ ...muted, fontSize: 12, width: 70 }}>{label}</span>
+      {['x', 'y', 'z'].map((a) => (
+        <Input key={a} type="number" value={val[a]} aria-label={`${label} ${a}`}
+          onChange={(e) => set({ ...val, [a]: num(e.target.value) })} style={{ width: 90 }} />
+      ))}
+    </div>
+  );
+
+  return (
+    <div style={{ ...card, padding: 16, marginBottom: 16 }}>
+      <Field label="Nom du build vierge"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+      <p style={{ ...muted, fontSize: 12, margin: '4px 0 10px' }}>
+        Un <code>.mca</code> neuf rempli d’air, à la position monde choisie. Colle-y des morceaux d’autres builds
+        (Copier dans un build → Coller ici) pour assembler, puis exporte : il s’insère exactement à ces coordonnées dans Minecraft.
+      </p>
+      <div style={{ display: 'grid', gap: 8 }}>
+        <Row label="Position (coin)" val={origin} set={setOrigin} />
+        <Row label="Taille (blocs)" val={size} set={setSize} />
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14 }}>
+        <Button onClick={submit} disabled={busy}>{busy ? 'Création…' : 'Créer le build vierge'}</Button>
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>Annuler</Button>
       </div>
     </div>
   );

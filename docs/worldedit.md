@@ -55,6 +55,24 @@ Toutes les routes existent sous **deux préfixes** :
 |  |  |  | **scale** (×0.5/×2/×3/×4/×6) : redimensionne le build en place (échantillonnage au plus proche), borné à 8 M de blocs. |
 |  |  |  | Les commandes type pinceau (sphere/cyl) et hollow/overlay/smooth/walls/faces sont **bornées par la sélection** ; stack/scale peuvent déborder dans la limite du build (écritures hors chunks ignorées). |
 
+### Build vierge, presse-papier inter-builds & placement monde
+
+- **Build vierge** (`POST …/blueprints/blank`, `staging.blankRegions`) : crée un
+  `.mca` neuf rempli d'air à une **position monde** + taille choisies. Le format
+  de chunk est **repris d'un build existant** du workspace (`templateChunk` →
+  compatible avec la version Minecraft de l'utilisateur) ou synthétisé à défaut.
+- **Presse-papier par utilisateur** (et non par build) : on **copie dans un
+  build, colle dans un autre** → on assemble un grand build à partir de petits
+  morceaux sur un canevas vierge.
+- **Export placé** : `GET …/export?dx&dy&dz`. Sans offset = recopie **lossless**
+  des régions (coffres/biomes préservés). Avec offset = **re-chunk** à la
+  position cible (perd block-entities/biomes). Le panneau affiche aussi où le
+  build s'insère dans le monde. Comme le build vierge est créé aux bonnes
+  coordonnées, un export sans offset l'y replace exactement.
+- ⚠️ Les chunks d'un build vierge sont **synthétisés** : valider l'import en jeu
+  sur ta version (le format de chunk via un build modèle réduit fortement le
+  risque).
+
 ### Hauteur éditable & emprise
 
 La **sélection** est bornée en X/Z par l'emprise du build mais en **Y par la
