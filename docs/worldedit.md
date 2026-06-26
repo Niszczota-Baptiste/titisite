@@ -164,6 +164,24 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
   dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
+## Rendu visuel (UI, vague 5)
+
+Tout est client (`BlueprintScene` + barre d'outils dans `BlueprintCanvas`), aucun
+appel serveur :
+
+- **Grille de chunks** : lignes au sol tous les 16 blocs alignées sur les
+  frontières de chunk monde (`buildGrid`).
+- **Ombres** : `shadowMap` (PCFSoft) + ombre portée de la lumière directionnelle,
+  les `InstancedMesh` projettent/reçoivent (self-shadowing), l'ambiante baisse
+  pour le contraste (`applyShadows`).
+- **Mesurer** : deux clics gauche posent deux points → segment + dimensions
+  `dx×dy×dz`, diagonale et nombre de blocs de la boîte (overlay). Prioritaire sur
+  la sélection tant que le mode est actif.
+- **Coupe** : plans de découpe globaux (`renderer.clippingPlanes`) sur X et Z,
+  sliders « X ≤ » / « Z ≤ » pour révéler l'intérieur du build (`applyClip`).
+- **Exporter image** : `preserveDrawingBuffer` + `toDataURL('image/png')` →
+  téléchargement `build.png` (rendu à la volée).
+
 ## Variables d'environnement
 
 `WORLDEDIT_MAX_SELECTION`, `WORLDEDIT_RATE_MAX`, `WORLDEDIT_MAX_UNDO`,

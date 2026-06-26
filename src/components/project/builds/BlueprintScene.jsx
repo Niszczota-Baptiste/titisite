@@ -32,7 +32,12 @@ function fallbackColor(id) {
   return new THREE.Color().setHSL((h % 360) / 360, 0.42, 0.55);
 }
 
-export default function BlueprintScene({ data, codex, layer, layerMode, onProgress, selection, onPick, pickEnabled, moveSpeed = 0.5, yLimits = null }) {
+export default function BlueprintScene({
+  data, codex, layer, layerMode, onProgress, selection, onPick, pickEnabled,
+  moveSpeed = 0.5, yLimits = null,
+  chunkGrid = false, shadows = false, clip = null, measure = false,
+  captureRef = null, onMeasure = null,
+}) {
   const mountRef = useRef(null);
   const apiRef = useRef(null); // { types:[{meshes, ys, mats, n, layout}] }
   // Refs synchronisées à chaque rendu : les écouteurs three.js (stables) lisent
@@ -42,6 +47,11 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
   const pickEnabledRef = useRef(pickEnabled); pickEnabledRef.current = pickEnabled;
   const moveSpeedRef = useRef(moveSpeed); moveSpeedRef.current = moveSpeed;
   const yLimitsRef = useRef(yLimits); yLimitsRef.current = yLimits;
+  const chunkGridRef = useRef(chunkGrid); chunkGridRef.current = chunkGrid;
+  const shadowsRef = useRef(shadows); shadowsRef.current = shadows;
+  const clipRef = useRef(clip); clipRef.current = clip;
+  const measureRef = useRef(measure); measureRef.current = measure;
+  const onMeasureRef = useRef(onMeasure); onMeasureRef.current = onMeasure;
   // Conserve la pose caméra entre deux reconstructions de scène (ex. aperçu
   // rechargé après une commande WorldEdit) → pas de reset à l'angle par défaut.
   const poseRef = useRef(null);
@@ -52,7 +62,8 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     if (!mount || !data) return undefined;
     let cancelled = false;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // `preserveDrawingBuffer` : nécessaire pour l'export PNG (toDataURL).
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     const resize = () => {
       const w = mount.clientWidth || 600;
@@ -76,10 +87,13 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     camera.position.set(span * 0.9, span * 0.8, span * 1.1);
     resize();
 
-    scene.add(new THREE.AmbientLight(0xffffff, 1.25));
+    const amb = new THREE.AmbientLight(0xffffff, 1.25);
+    scene.add(amb);
     const dir = new THREE.DirectionalLight(0xffffff, 1.0);
     dir.position.set(span, span * 1.5, span * 0.7);
+    dir.target.position.set(0, 0, 0);
     scene.add(dir);
+    scene.add(dir.target);
     const fill = new THREE.DirectionalLight(0x99a8d8, 0.5);
     fill.position.set(-span, span * 0.6, -span);
     scene.add(fill);
@@ -138,6 +152,86 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       }
     };
 
+    // coord MONDE → centre du bloc en coords scène.
+    const worldToScene = (c) => new THREE.Vector3(
+      c.x - dataMin.x + 0.5 - cx, c.y - dataMin.y + 0.5 - cy, c.z - dataMin.z + 0.5 - cz,
+    );
+
+    // ── Grille de chunks (lignes tous les 16 blocs au sol) ──
+    let gridGroup = null;
+    const buildGrid = () => {
+      if (gridGroup) { scene.remove(gridGroup); gridGroup.children.forEach((o) => { o.geometry.dispose(); o.material.dispose(); }); gridGroup = null; }
+      if (!chunkGridRef.current) return;
+      const wMinX = dataMin.x, wMaxX = dataMin.x + sx;
+      const wMinZ = dataMin.z, wMaxZ = dataMin.z + sz;
+      const yFloor = -cy; // sol = y monde le plus bas
+      const tX = (wx) => wx - dataMin.x - cx;
+      const tZ = (wz) => wz - dataMin.z - cz;
+      const pts = [];
+      for (let x = Math.floor(wMinX / 16) * 16; x <= wMaxX; x += 16) pts.push(tX(x), yFloor, tZ(wMinZ), tX(x), yFloor, tZ(wMaxZ));
+      for (let z = Math.floor(wMinZ / 16) * 16; z <= wMaxZ; z += 16) pts.push(tX(wMinX), yFloor, tZ(z), tX(wMaxX), yFloor, tZ(z));
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+      gridGroup = new THREE.Group();
+      gridGroup.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x6a5aaa, transparent: true, opacity: 0.6 })));
+      scene.add(gridGroup);
+    };
+
+    // ── Ombres portées (self-shadowing du build) ──
+    const applyShadows = () => {
+      const on = shadowsRef.current;
+      renderer.shadowMap.enabled = on;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      dir.castShadow = on;
+      if (on) {
+        const d = span * 1.1;
+        Object.assign(dir.shadow.camera, { left: -d, right: d, top: d, bottom: -d, near: 0.1, far: span * 6 });
+        dir.shadow.mapSize.set(2048, 2048);
+        dir.shadow.bias = -0.0006;
+        dir.shadow.camera.updateProjectionMatrix();
+      }
+      amb.intensity = on ? 0.75 : 1.25;
+      for (const t of types) if (t) for (const im of t.meshes) { im.castShadow = on; im.receiveShadow = on; }
+      renderer.shadowMap.needsUpdate = true;
+    };
+
+    // ── Coupe (plans de découpe X/Z, conserve [min..valeur]) ──
+    const applyClip = () => {
+      const c = clipRef.current;
+      if (!c) { renderer.clippingPlanes = []; return; }
+      const sxmin = c.xmin - dataMin.x - cx, sxmax = (c.xmax + 1) - dataMin.x - cx;
+      const szmin = c.zmin - dataMin.z - cz, szmax = (c.zmax + 1) - dataMin.z - cz;
+      renderer.clippingPlanes = [
+        new THREE.Plane(new THREE.Vector3(1, 0, 0), -sxmin),
+        new THREE.Plane(new THREE.Vector3(-1, 0, 0), sxmax),
+        new THREE.Plane(new THREE.Vector3(0, 0, 1), -szmin),
+        new THREE.Plane(new THREE.Vector3(0, 0, -1), szmax),
+      ];
+    };
+
+    // ── Mesure (2 points → distance + dimensions) ──
+    let measurePts = [];
+    let measureObjs = [];
+    const clearMeasureObjs = () => { for (const o of measureObjs) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); } measureObjs = []; };
+    const resetMeasure = () => { measurePts = []; clearMeasureObjs(); };
+    const addMeasure = (coord) => {
+      if (measurePts.length >= 2) resetMeasure();
+      measurePts.push(coord);
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 8), new THREE.MeshBasicMaterial({ color: 0x4ade80 }));
+      dot.position.copy(worldToScene(coord));
+      scene.add(dot); measureObjs.push(dot);
+      if (measurePts.length === 2) {
+        const [a, b] = measurePts;
+        const geo = new THREE.BufferGeometry().setFromPoints([worldToScene(a), worldToScene(b)]);
+        scene.add(measureObjs[measureObjs.push(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x4ade80 }))) - 1]);
+        const dx = Math.abs(b.x - a.x) + 1, dy = Math.abs(b.y - a.y) + 1, dz = Math.abs(b.z - a.z) + 1;
+        const dist = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+        onMeasureRef.current?.({ a, b, dx, dy, dz, dist, blocks: dx * dy * dz });
+      } else {
+        onMeasureRef.current?.(null);
+      }
+    };
+
     // Renvoie la coordonnée MONDE du bloc visé par le curseur, ou null.
     const pickCoord = (ev) => {
       const rect = renderer.domElement.getBoundingClientRect();
@@ -184,8 +278,11 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     };
     const onPointerUp = (e) => {
       if (yDrag) { yDrag = null; controls.enabled = true; return; }
-      if (!pickEnabledRef.current || !onPickRef.current || e.button !== downBtn) return;
+      if (e.button !== downBtn) return;
       if (Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4) return; // glissé → rotation, pas un clic
+      // Mode mesure : clic gauche pose un point (prioritaire sur la sélection).
+      if (measureRef.current && e.button === 0) { const c = pickCoord(e); if (c) addMeasure(c); return; }
+      if (!pickEnabledRef.current || !onPickRef.current) return;
       if (e.button === 0 || e.button === 2) { const c = pickCoord(e); if (c) onPickRef.current(e.button === 2 ? 'A' : 'B', c); }
     };
     const onContext = (e) => { if (pickEnabledRef.current) e.preventDefault(); };
@@ -238,8 +335,11 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     }
 
     const types = [];
-    apiRef.current = { types, span, updateSelection };
+    apiRef.current = { types, span, updateSelection, buildGrid, applyShadows, applyClip, resetMeasure };
     updateSelection(); // boîte de sélection initiale (avant le rendu des blocs)
+    buildGrid(); applyClip();
+    // Export PNG : rendu à la volée puis dataURL (drawing buffer préservé).
+    if (captureRef) captureRef.current = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); };
     const dummy = new THREE.Object3D();
 
     // Crée les InstancedMesh d'un type à partir d'une liste de specs {geometry, material}.
@@ -338,7 +438,7 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
         makeType(positions, specs, baked ? [0, 0, 0] : legacyRot);
         onProgress?.((p + 1) / palette.length);
       }
-      if (!cancelled) applyLayer();
+      if (!cancelled) { applyLayer(); applyShadows(); }
     };
 
     const tex = (url) => {
@@ -398,6 +498,9 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       disposeSel();
+      resetMeasure();
+      if (gridGroup) gridGroup.children.forEach((o) => { o.geometry.dispose(); o.material.dispose(); });
+      if (captureRef) captureRef.current = null;
       controls.dispose();
       scene.traverse((o) => {
         if (o.isInstancedMesh) { o.geometry.dispose?.(); o.material.dispose?.(); }
@@ -421,6 +524,13 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
 
   // ── Mise à jour de la boîte de sélection ──
   useEffect(() => { apiRef.current?.updateSelection?.(); }, [selection]);
+
+  // ── Options de rendu (grille / ombres / coupe) ──
+  useEffect(() => { apiRef.current?.buildGrid?.(); }, [chunkGrid]);
+  useEffect(() => { apiRef.current?.applyShadows?.(); }, [shadows]);
+  useEffect(() => { apiRef.current?.applyClip?.(); }, [clip]);
+  // Quitter le mode mesure efface les points/segments.
+  useEffect(() => { if (!measure) apiRef.current?.resetMeasure?.(); }, [measure]);
 
   return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />;
 }
