@@ -228,6 +228,30 @@ test('Build vierge + copier d’un build, coller dans un autre + export round-tr
   assert.equal(reimp.json.blockCount, 1);
 });
 
+test('Commande mix (%) : remplissage aléatoire pondéré + pattern invalide refusé', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug);
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+  const selection = { min: { x: 0, y: 0, z: 0 }, max: { x: 7, y: 0, z: 7 } };
+
+  const ok = await admin.post(`${root}/transform`, {
+    body: { operation: 'mix', params: { pattern: [{ name: 'minecraft:dirt', weight: 30 }, { name: 'minecraft:andesite', weight: 20 }, { name: 'minecraft:stone', weight: 50 }] }, selection },
+  });
+  assert.equal(ok.status, 200, ok.text);
+  assert.ok(ok.json.blocksChanged >= 1);
+
+  // Pattern vide → 400 bad_pattern.
+  const bad = await admin.post(`${root}/transform`, {
+    body: { operation: 'mix', params: { pattern: [] }, selection },
+  });
+  assert.equal(bad.status, 400);
+  assert.equal(bad.json.error, 'bad_pattern');
+});
+
 test('Commande cut : vide la sélection (→ air) et remplit le presse-papier', async (t) => {
   const srv = await bootServer();
   t.after(() => srv.stop());

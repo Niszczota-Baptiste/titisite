@@ -4,7 +4,7 @@ import { transformProperties, isYMirrorSafe, __test } from '../server/worldedit/
 import {
   MemoryVolume, readSelection, mirrorSchematic, rotateSchematic, stampSchematic,
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, sameBlock, selectionSize,
-  opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale,
+  opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
 } from '../server/worldedit/transform.js';
 
 const ROT90 = { kind: 'rotate', quarts: 1 };
@@ -284,6 +284,28 @@ test('scale : ×2 agrandit, ×0.5 réduit', () => {
   opScale(down, sel, { factor: 0.5 });
   assert.equal(down.getBlock(0, 0, 0).Name, 'minecraft:stone');
   assert.equal(down.getBlock(1, 1, 1), null); // réduit à 1×1×1
+});
+
+test('mix (mélange %) : remplit avec les blocs du pattern, filtre `from`', () => {
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 3, y: 3, z: 3 } };
+  // Un seul bloc dans le pattern → déterministe (tout en stone).
+  const a = new MemoryVolume();
+  opMix(a, sel, { from: null, pattern: [{ name: 'minecraft:stone', weight: 1 }] });
+  assert.equal(a.getBlock(2, 2, 2).Name, 'minecraft:stone');
+
+  // Propriété (vraie quel que soit le hasard) : chaque case ∈ {dirt, andesite}.
+  const allowed = new Set(['minecraft:dirt', 'minecraft:andesite']);
+  const c = new MemoryVolume();
+  opMix(c, sel, { from: null, pattern: [{ name: 'minecraft:dirt', weight: 30 }, { name: 'minecraft:andesite', weight: 20 }] });
+  for (let x = 0; x <= 3; x++) for (let y = 0; y <= 3; y++) for (let z = 0; z <= 3; z++) assert.ok(allowed.has(c.getBlock(x, y, z).Name));
+
+  // `from` : ne touche que la cobble (déterministe avec un pattern à 1 entrée).
+  const f = new MemoryVolume();
+  f.setBlock(0, 0, 0, { Name: 'minecraft:cobblestone', Properties: null });
+  f.setBlock(1, 0, 0, { Name: 'minecraft:oak_planks', Properties: null });
+  opMix(f, { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 0, z: 0 } }, { from: { name: 'minecraft:cobblestone' }, pattern: [{ name: 'minecraft:gravel', weight: 1 }] });
+  assert.equal(f.getBlock(0, 0, 0).Name, 'minecraft:gravel');
+  assert.equal(f.getBlock(1, 0, 0).Name, 'minecraft:oak_planks'); // intact
 });
 
 test('blocs minefield:* : géométrie déplacée, namespace préservé', () => {

@@ -213,6 +213,37 @@ export function opSet(vol, sel, { block }) {
   return { blocksChanged: fillSelection(vol, sel, b), bounds: sel };
 }
 
+// Mélange aléatoire pondéré : chaque case prend un bloc tiré au sort selon les
+// poids (% relatifs). `from` optionnel = ne change que les blocs correspondants
+// (sinon toute la sélection). Ex. 20% cobble / 30% terre / 20% andésite…
+export function opMix(vol, sel, { from, pattern }) {
+  if (!Array.isArray(pattern) || pattern.length === 0) throw new Error('bad_pattern');
+  const entries = pattern
+    .filter((p) => p?.name && Number(p.weight) > 0)
+    .map((p) => ({ block: { Name: p.name, Properties: p.states || null }, w: Number(p.weight) }));
+  if (!entries.length) throw new Error('bad_pattern');
+  const total = entries.reduce((s, e) => s + e.w, 0);
+  let acc = 0;
+  const cum = entries.map((e) => { acc += e.w; return { block: e.block, c: acc }; });
+  const pick = () => {
+    const r = Math.random() * total;
+    for (const e of cum) if (r < e.c) return e.block;
+    return cum[cum.length - 1].block;
+  };
+  let changed = 0;
+  for (let y = sel.min.y; y <= sel.max.y; y++) {
+    for (let z = sel.min.z; z <= sel.max.z; z++) {
+      for (let x = sel.min.x; x <= sel.max.x; x++) {
+        const cur = vol.getBlock(x, y, z);
+        if (from?.name && !matchBlock(cur, from)) continue;
+        const b = pick();
+        if (!sameBlock(cur, b)) { vol.setBlock(x, y, z, clone(b)); changed++; }
+      }
+    }
+  }
+  return { blocksChanged: changed, bounds: sel };
+}
+
 // copy → renvoie une Schematic (presse-papier) ; aucune écriture.
 export function opCopy(vol, sel) {
   return { clipboard: readSelection(vol, sel) };

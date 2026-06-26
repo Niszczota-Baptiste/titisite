@@ -15,7 +15,7 @@ const nsName = (entry, id) => `${entry?.source === 'minefield' ? 'minefield' : '
 // Réinitialiser / Exporter. Le rendu 3D au-dessus est rechargé via onChanged().
 
 const AXES = ['x', 'y', 'z'];
-const CONFIRM_OPS = new Set(['set', 'replace', 'cut', 'walls', 'faces', 'hollow', 'overlay', 'naturalize', 'sphere', 'cyl', 'smooth', 'stack', 'scale']);
+const CONFIRM_OPS = new Set(['set', 'replace', 'cut', 'walls', 'faces', 'hollow', 'overlay', 'naturalize', 'sphere', 'cyl', 'smooth', 'stack', 'scale', 'mix']);
 
 function CoordRow({ label, value, onChange, active, onActivate }) {
   return (
@@ -79,13 +79,50 @@ function ParamField({ param, value, onChange, catalog, byId }) {
       </Field>
     );
   }
+  if (param.type === 'pattern') {
+    const rows = Array.isArray(value) ? value : [];
+    const set = (r) => onChange(r);
+    const total = rows.reduce((s, x) => s + (Number(x.weight) || 0), 0);
+    return (
+      <Field label={param.label}>
+        <div style={{ display: 'grid', gap: 6, minWidth: 250 }}>
+          {rows.map((row, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <CodexPicker catalog={catalog} byId={byId} value={bareId(row.name)}
+                  onChange={(id, entry) => set(rows.map((r, j) => (j === i ? { ...r, name: nsName(entry, id) } : r)))}
+                  placeholder="Bloc…" />
+              </div>
+              <Input type="number" value={row.weight} aria-label="poids" style={{ width: 58 }}
+                onChange={(e) => set(rows.map((r, j) => (j === i ? { ...r, weight: Math.max(0, Math.round(Number(e.target.value)) || 0) } : r)))} />
+              <span style={{ ...muted, fontSize: 11, width: 34, textAlign: 'right' }}>{total > 0 ? Math.round((Number(row.weight) || 0) / total * 100) : 0}%</span>
+              <button type="button" onClick={() => set(rows.filter((_, j) => j !== i))} style={rmBtn}>×</button>
+            </div>
+          ))}
+          <button type="button" onClick={() => set([...rows, { name: '', weight: 1 }])} style={addBtn}>+ ajouter un bloc</button>
+          <span style={{ ...muted, fontSize: 11 }}>Poids relatifs (ex. 20/30/20…) — les % se calculent tout seuls.</span>
+        </div>
+      </Field>
+    );
+  }
   return null;
 }
+
+const rmBtn = {
+  flexShrink: 0, width: 28, height: 28, borderRadius: 7, cursor: 'pointer',
+  background: 'rgba(220,60,60,0.12)', border: '1px solid rgba(220,60,60,0.3)', color: '#f87171', fontSize: 15,
+};
+const addBtn = {
+  padding: '5px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12, justifySelf: 'start',
+  background: 'transparent', border: '1px dashed rgba(80,50,130,0.4)', color: 'rgba(200,180,240,0.8)', fontFamily: "'Inter',sans-serif",
+};
 
 function defaultParams(op) {
   const out = {};
   for (const p of op.params) {
-    out[p.name] = p.type === 'block' ? { name: '', statesStr: '' } : (p.default ?? (p.type === 'int' ? 0 : ''));
+    out[p.name] = p.type === 'block' ? { name: '', statesStr: '' }
+      : p.type === 'pattern' ? [{ name: '', weight: 1 }]
+        : (p.default ?? (p.type === 'int' ? 0 : ''));
   }
   return out;
 }

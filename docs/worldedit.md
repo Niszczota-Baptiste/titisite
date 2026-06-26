@@ -53,6 +53,7 @@ Toutes les routes existent sous **deux préfixes** :
 | POST | `/transform` | **editor** | Applique `{operation, params, selection}` sur le staging. |
 |  |  |  | Opérations (groupées dans l'UI) — **Transformer** : mirror, rotate, translate, **stack** (répétition). **Blocs** : replace, set, **walls**, **faces**, **hollow**, **overlay**, **naturalize**, **cut**. **Formes/pinceaux (type GoBrush)** : **sphere**, **cyl**, **smooth** (lissage de terrain). **Presse-papier** : copy, paste. |
 |  |  |  | **scale** (×0.5/×2/×3/×4/×6) : redimensionne le build en place (échantillonnage au plus proche), borné à 8 M de blocs. |
+|  |  |  | **mix** (« Mélange % ») : remplit/remplace par un mélange aléatoire pondéré (`pattern` = liste `{name, weight}`, % relatifs), `from` optionnel pour ne viser qu'un type de bloc. Ex. 20% cobble / 30% terre / 20% andésite → terrain aléatoire. |
 |  |  |  | Les commandes type pinceau (sphere/cyl) et hollow/overlay/smooth/walls/faces sont **bornées par la sélection** ; stack/scale peuvent déborder dans la limite du build (écritures hors chunks ignorées). |
 
 ### Build vierge, presse-papier inter-builds & placement monde

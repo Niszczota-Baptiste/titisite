@@ -15,7 +15,7 @@ import { extractMcaEntries } from '../minecraftWorld/zip.js';
 import { RegionStore } from './regionStore.js';
 import {
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, opCut,
-  opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale,
+  opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
 } from './transform.js';
 import { makeZip } from './zipWriter.js';
 
@@ -186,6 +186,7 @@ const OPS = {
   cyl: (store, sel, p) => opCyl(store, sel, p),
   smooth: (store, sel, p) => opSmooth(store, sel, p),
   scale: (store, sel, p) => opScale(store, sel, p),
+  mix: (store, sel, p) => opMix(store, sel, p),
 };
 
 // Applique une opération sur le staging (non destructif) et renvoie le diff.

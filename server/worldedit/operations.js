@@ -52,6 +52,14 @@ export const OPERATIONS = [
     params: [{ name: 'block', type: 'block', label: 'Bloc' }],
   },
   {
+    id: 'mix', label: 'Mélange (%)', minRole: 'editor', group: 'Blocs',
+    description: 'Remplit/remplace par un mélange aléatoire pondéré (ex. 30% terre, 20% andésite…). Laisse « bloc source » vide pour toute la sélection.',
+    params: [
+      { name: 'from', type: 'block', label: 'Bloc source (vide = tous)' },
+      { name: 'pattern', type: 'pattern', label: 'Mélange (blocs + poids %)' },
+    ],
+  },
+  {
     id: 'walls', label: 'Murs', minRole: 'editor', group: 'Blocs',
     description: 'Pose un bloc sur les 4 côtés verticaux de la sélection.',
     params: [{ name: 'block', type: 'block', label: 'Bloc' }],
@@ -157,6 +165,12 @@ export function normalizeParams(operation, raw = {}) {
       return { count, direction };
     }
     case 'smooth': return { iterations: Math.max(1, Math.min(8, num(raw.iterations) || 2)) };
+    case 'mix': {
+      const from = normBlock(raw.from); // null → toute la sélection
+      const pattern = normPattern(raw.pattern);
+      if (!pattern) return 'bad_pattern';
+      return { from: from?.name ? from : null, pattern };
+    }
     case 'scale': {
       const factor = Number(raw.factor);
       return [0.5, 2, 3, 4, 6].includes(factor) ? { factor } : 'bad_factor';
@@ -182,4 +196,17 @@ function normBlock(b) {
     if (!Object.keys(states).length) states = null;
   }
   return { name, states };
+}
+
+// Liste pondérée [{ name, states?, weight>0 }] pour le mélange aléatoire (max 32).
+function normPattern(arr) {
+  if (!Array.isArray(arr)) return null;
+  const out = [];
+  for (const e of arr) {
+    const b = normBlock(e);
+    const w = Number(e?.weight);
+    if (b?.name && Number.isFinite(w) && w > 0) out.push({ name: b.name, states: b.states, weight: w });
+    if (out.length >= 32) break;
+  }
+  return out.length ? out : null;
 }
