@@ -40,16 +40,19 @@ export const OPERATIONS = [
   },
   {
     id: 'replace', label: 'Remplacer', minRole: 'editor', group: 'Blocs',
-    description: 'Remplace un type de bloc par un autre dans la sélection.',
+    description: 'Remplace un ou plusieurs blocs source par une cible.',
     params: [
-      { name: 'from', type: 'block', label: 'Bloc source' },
+      { name: 'from', type: 'blocklist', label: 'Bloc(s) source' },
       { name: 'to', type: 'block', label: 'Bloc cible' },
     ],
   },
   {
     id: 'set', label: 'Remplir', minRole: 'editor', group: 'Blocs',
-    description: 'Remplit toute la sélection d’un bloc.',
-    params: [{ name: 'block', type: 'block', label: 'Bloc' }],
+    description: 'Remplit la sélection d’un bloc (masque optionnel : surface, air…).',
+    params: [
+      { name: 'block', type: 'block', label: 'Bloc' },
+      { name: 'mask', type: 'mask', label: 'Masque' },
+    ],
   },
   {
     id: 'mix', label: 'Mélange (%)', minRole: 'editor', group: 'Blocs',
@@ -57,6 +60,7 @@ export const OPERATIONS = [
     params: [
       { name: 'from', type: 'block', label: 'Bloc source (vide = tous)' },
       { name: 'pattern', type: 'pattern', label: 'Mélange (blocs + poids %)' },
+      { name: 'mask', type: 'mask', label: 'Masque' },
     ],
   },
   {
@@ -85,16 +89,22 @@ export const OPERATIONS = [
     params: [],
   },
   {
+    id: 'drain', label: 'Drainer (eau/lave)', minRole: 'editor', group: 'Blocs',
+    description: 'Vide l’eau et la lave de la sélection (retire aussi le waterlogged).',
+    params: [],
+  },
+  {
     id: 'cut', label: 'Couper (→ air)', minRole: 'editor', group: 'Blocs',
     description: 'Vide la sélection (tous les blocs → air) et la copie dans le presse-papier.',
     params: [],
   },
   {
     id: 'sphere', label: 'Sphère', minRole: 'editor', group: 'Formes',
-    description: 'Remplit une boule centrée sur la sélection (pinceau).',
+    description: 'Remplit une boule centrée sur la sélection (pinceau). Creux = coque.',
     params: [
       { name: 'block', type: 'block', label: 'Bloc' },
       { name: 'radius', type: 'int', default: 4, label: 'Rayon' },
+      { name: 'hollow', type: 'bool', default: false, label: 'Creux' },
     ],
   },
   {
@@ -103,12 +113,50 @@ export const OPERATIONS = [
     params: [
       { name: 'block', type: 'block', label: 'Bloc' },
       { name: 'radius', type: 'int', default: 4, label: 'Rayon' },
+      { name: 'hollow', type: 'bool', default: false, label: 'Creux' },
     ],
+  },
+  {
+    id: 'pyramid', label: 'Pyramide', minRole: 'editor', group: 'Formes',
+    description: 'Pyramide à base carrée inscrite dans la sélection.',
+    params: [
+      { name: 'block', type: 'block', label: 'Bloc' },
+      { name: 'hollow', type: 'bool', default: false, label: 'Creuse' },
+    ],
+  },
+  {
+    id: 'cone', label: 'Cône', minRole: 'editor', group: 'Formes',
+    description: 'Cône à base ronde, rayon décroissant avec la hauteur.',
+    params: [
+      { name: 'block', type: 'block', label: 'Bloc' },
+      { name: 'hollow', type: 'bool', default: false, label: 'Creux' },
+    ],
+  },
+  {
+    id: 'line', label: 'Ligne', minRole: 'editor', group: 'Formes',
+    description: 'Trace une ligne droite entre le coin A et le coin B.',
+    params: [{ name: 'block', type: 'block', label: 'Bloc' }],
   },
   {
     id: 'smooth', label: 'Lisser (terrain)', minRole: 'editor', group: 'Formes',
     description: 'Adoucit la hauteur de la surface (type GoBrush).',
     params: [{ name: 'iterations', type: 'int', default: 2, label: 'Passes' }],
+  },
+  {
+    id: 'erode', label: 'Éroder', minRole: 'editor', group: 'Formes',
+    description: 'Ronge les blocs trop exposés à l’air (arrondit le terrain).',
+    params: [
+      { name: 'iterations', type: 'int', default: 1, label: 'Passes' },
+      { name: 'threshold', type: 'int', default: 4, label: 'Seuil (faces air)' },
+    ],
+  },
+  {
+    id: 'dilate', label: 'Dilater', minRole: 'editor', group: 'Formes',
+    description: 'Comble les creux (ajoute des blocs autour de la matière).',
+    params: [
+      { name: 'iterations', type: 'int', default: 1, label: 'Passes' },
+      { name: 'threshold', type: 'int', default: 3, label: 'Seuil (voisins pleins)' },
+    ],
   },
   {
     id: 'copy', label: 'Copier', minRole: 'editor', group: 'Presse-papier',
@@ -143,21 +191,31 @@ export function normalizeParams(operation, raw = {}) {
       return { dx, dy, dz };
     }
     case 'replace': {
-      const from = normBlock(raw.from);
+      const from = normBlockList(raw.from);
       const to = normBlock(raw.to);
-      if (!from?.name || !to?.name) return 'bad_block';
+      if (!from || !to?.name) return 'bad_block';
       return { from, to };
     }
-    case 'set': case 'walls': case 'faces': case 'overlay': {
+    case 'walls': case 'faces': case 'overlay': case 'line': {
       const block = normBlock(raw.block);
       return block?.name ? { block } : 'bad_block';
+    }
+    case 'set': {
+      const block = normBlock(raw.block);
+      return block?.name ? { block, mask: normMask(raw.mask) } : 'bad_block';
     }
     case 'sphere': case 'cyl': {
       const block = normBlock(raw.block);
       if (!block?.name) return 'bad_block';
       const radius = Math.max(1, Math.min(256, num(raw.radius) || 1));
-      return { block, radius };
+      return { block, radius, hollow: !!raw.hollow };
     }
+    case 'pyramid': case 'cone': {
+      const block = normBlock(raw.block);
+      return block?.name ? { block, hollow: !!raw.hollow } : 'bad_block';
+    }
+    case 'erode': case 'dilate':
+      return { iterations: Math.max(1, Math.min(8, num(raw.iterations) || 1)), threshold: Math.max(1, Math.min(6, num(raw.threshold) || 3)) };
     case 'stack': {
       const direction = String(raw.direction || '').toLowerCase();
       if (!['east', 'west', 'up', 'down', 'south', 'north'].includes(direction)) return 'bad_direction';
@@ -169,13 +227,13 @@ export function normalizeParams(operation, raw = {}) {
       const from = normBlock(raw.from); // null → toute la sélection
       const pattern = normPattern(raw.pattern);
       if (!pattern) return 'bad_pattern';
-      return { from: from?.name ? from : null, pattern };
+      return { from: from?.name ? from : null, pattern, mask: normMask(raw.mask) };
     }
     case 'scale': {
       const factor = Number(raw.factor);
       return [0.5, 2, 3, 4, 6].includes(factor) ? { factor } : 'bad_factor';
     }
-    case 'hollow': case 'naturalize': case 'copy': case 'cut': return {};
+    case 'hollow': case 'naturalize': case 'drain': case 'copy': case 'cut': return {};
     case 'paste': return { mode: raw.mode === 'overwrite' ? 'overwrite' : 'overlay' };
     default: return 'unknown_operation';
   }
@@ -196,6 +254,20 @@ function normBlock(b) {
     if (!Object.keys(states).length) states = null;
   }
   return { name, states };
+}
+
+// Liste de blocs source (multi) pour le remplacement.
+function normBlockList(arr) {
+  const list = (Array.isArray(arr) ? arr : [arr]).map(normBlock).filter((b) => b?.name);
+  return list.length ? list : null;
+}
+
+const MASK_TYPES = ['all', 'air', 'solid', 'exposed', 'on_surface', 'above', 'below'];
+function normMask(m) {
+  const type = MASK_TYPES.includes(m?.type) ? m.type : 'all';
+  const out = { type };
+  if (type === 'above' || type === 'below') out.y = Math.round(Number(m?.y)) || 0;
+  return out;
 }
 
 // Liste pondérée [{ name, states?, weight>0 }] pour le mélange aléatoire (max 32).

@@ -252,6 +252,38 @@ test('Commande mix (%) : remplissage aléatoire pondéré + pattern invalide ref
   assert.equal(bad.json.error, 'bad_pattern');
 });
 
+test('Annuler / Rétablir (undo/redo)', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug);
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+  const selection = { min: { x: 0, y: 0, z: 0 }, max: { x: 3, y: 0, z: 3 } };
+
+  await admin.post(`${root}/transform`, { body: { operation: 'set', params: { block: { name: 'minecraft:stone' } }, selection } });
+  assert.equal((await admin.get(`${root}/state`)).json.undoDepth, 1);
+
+  const un = await admin.post(`${root}/undo`);
+  assert.equal(un.status, 200, un.text);
+  let st = (await admin.get(`${root}/state`)).json;
+  assert.equal(st.undoDepth, 0);
+  assert.equal(st.redoDepth, 1);
+
+  const re = await admin.post(`${root}/redo`);
+  assert.equal(re.status, 200, re.text);
+  st = (await admin.get(`${root}/state`)).json;
+  assert.equal(st.undoDepth, 1);
+  assert.equal(st.redoDepth, 0);
+
+  // Une nouvelle opération invalide la pile de rétablissement.
+  await admin.post(`${root}/undo`);
+  await admin.post(`${root}/transform`, { body: { operation: 'set', params: { block: { name: 'minecraft:dirt' } }, selection } });
+  assert.equal((await admin.get(`${root}/state`)).json.redoDepth, 0);
+  assert.equal((await admin.post(`${root}/redo`)).status, 409); // rien à rétablir
+});
+
 test('Commande cut : vide la sélection (→ air) et remplit le presse-papier', async (t) => {
   const srv = await bootServer();
   t.after(() => srv.stop());

@@ -5,6 +5,7 @@ import {
   MemoryVolume, readSelection, mirrorSchematic, rotateSchematic, stampSchematic,
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, sameBlock, selectionSize,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
+  opLine, opPyramid, opCone, opErode, opDilate, opDrain,
 } from '../server/worldedit/transform.js';
 
 const ROT90 = { kind: 'rotate', quarts: 1 };
@@ -306,6 +307,81 @@ test('mix (mélange %) : remplit avec les blocs du pattern, filtre `from`', () =
   opMix(f, { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 0, z: 0 } }, { from: { name: 'minecraft:cobblestone' }, pattern: [{ name: 'minecraft:gravel', weight: 1 }] });
   assert.equal(f.getBlock(0, 0, 0).Name, 'minecraft:gravel');
   assert.equal(f.getBlock(1, 0, 0).Name, 'minecraft:oak_planks'); // intact
+});
+
+test('replace multi-source : plusieurs blocs → une cible', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 0, z: 0 } };
+  vol.setBlock(0, 0, 0, { Name: 'minecraft:cobblestone', Properties: null });
+  vol.setBlock(1, 0, 0, { Name: 'minecraft:dirt', Properties: null });
+  vol.setBlock(2, 0, 0, { Name: 'minecraft:oak_planks', Properties: null });
+  opReplace(vol, sel, { from: [{ name: 'minecraft:cobblestone' }, { name: 'minecraft:dirt' }], to: { name: 'minecraft:stone' } });
+  assert.equal(vol.getBlock(0, 0, 0).Name, 'minecraft:stone');
+  assert.equal(vol.getBlock(1, 0, 0).Name, 'minecraft:stone');
+  assert.equal(vol.getBlock(2, 0, 0).Name, 'minecraft:oak_planks'); // intact
+});
+
+test('set + masque on_surface : ne pose qu’au-dessus de la surface', () => {
+  const vol = new MemoryVolume();
+  vol.setBlock(0, 0, 0, { Name: 'minecraft:dirt', Properties: null }); // surface y=0
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 3, z: 0 } };
+  opSet(vol, sel, { block: { name: 'minecraft:grass_block' }, mask: { type: 'on_surface' } });
+  assert.equal(vol.getBlock(0, 1, 0).Name, 'minecraft:grass_block'); // juste au-dessus
+  assert.equal(vol.getBlock(0, 0, 0).Name, 'minecraft:dirt'); // surface intacte
+  assert.equal(vol.getBlock(0, 2, 0), null); // pas plus haut
+});
+
+test('line : trace une droite entre A et B', () => {
+  const vol = new MemoryVolume();
+  const r = opLine(vol, { min: { x: 0, y: 0, z: 0 }, max: { x: 3, y: 0, z: 0 } }, { block: { name: 'minecraft:stone' } });
+  assert.equal(r.blocksChanged, 4);
+  for (let x = 0; x <= 3; x++) assert.equal(vol.getBlock(x, 0, 0).Name, 'minecraft:stone');
+});
+
+test('pyramid : base pleine, sommet rétréci', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 2, z: 4 } };
+  opPyramid(vol, sel, { block: { name: 'minecraft:sandstone' } });
+  assert.ok(vol.getBlock(2, 0, 2)); // centre base
+  assert.ok(vol.getBlock(0, 0, 0)); // coin base
+  assert.equal(vol.getBlock(0, 2, 0), null); // coin au sommet → vide
+});
+
+test('cône creux : coque seulement', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 6, y: 6, z: 6 } };
+  opCone(vol, sel, { block: { name: 'minecraft:stone' }, hollow: true });
+  assert.ok(vol.getBlock(3, 0, 3)); // bord/centre bas présent
+});
+
+test('sphère creuse : centre vide', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 8, y: 8, z: 8 } };
+  opSphere(vol, sel, { block: { name: 'minecraft:stone' }, radius: 4, hollow: true });
+  assert.equal(vol.getBlock(4, 4, 4), null); // centre creux
+  assert.ok(vol.getBlock(8, 4, 4) || vol.getBlock(7, 4, 4)); // coque présente
+});
+
+test('erode : un bloc isolé est rongé ; dilate comble un trou', () => {
+  const e = new MemoryVolume();
+  e.setBlock(2, 2, 2, { Name: 'minecraft:stone', Properties: null }); // 6 faces air
+  opErode(e, { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 4, z: 4 } }, { iterations: 1, threshold: 4 });
+  assert.equal(e.getBlock(2, 2, 2), null);
+
+  const d = new MemoryVolume();
+  // trou en (1,1,1) entouré de pierre sur 6 faces
+  for (const [x, y, z] of [[0, 1, 1], [2, 1, 1], [1, 0, 1], [1, 2, 1], [1, 1, 0], [1, 1, 2]]) d.setBlock(x, y, z, { Name: 'minecraft:stone', Properties: null });
+  opDilate(d, { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 2, z: 2 } }, { iterations: 1, threshold: 6 });
+  assert.equal(d.getBlock(1, 1, 1).Name, 'minecraft:stone');
+});
+
+test('drain : vide eau/lave', () => {
+  const vol = new MemoryVolume();
+  vol.setBlock(0, 0, 0, { Name: 'minecraft:water', Properties: null });
+  vol.setBlock(1, 0, 0, { Name: 'minecraft:stone', Properties: null });
+  opDrain(vol, { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 0, z: 0 } });
+  assert.equal(vol.getBlock(0, 0, 0), null);
+  assert.equal(vol.getBlock(1, 0, 0).Name, 'minecraft:stone');
 });
 
 test('blocs minefield:* : géométrie déplacée, namespace préservé', () => {

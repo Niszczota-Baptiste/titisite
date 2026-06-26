@@ -11,6 +11,7 @@ import { transformProperties, isYMirrorSafe } from './blockstates.js';
 
 const AIR_NAMES = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air']);
 const isAir = (b) => !b || AIR_NAMES.has(b.Name);
+const FACES6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
 // ── Schematic : grille dense d'une sélection (presse-papier) ─────────────────
 // data[x + sx*(z + sz*y)] = bloc|null. origin = coin (min) d'origine.
@@ -190,14 +191,36 @@ export function opTranslate(vol, sel, { dx = 0, dy = 0, dz = 0 }) {
   };
 }
 
+// ── Masques : restreignent les cases affectées par set/mix/erode… ────────────
+function neighborsAir(vol, x, y, z) {
+  return isAir(vol.getBlock(x + 1, y, z)) || isAir(vol.getBlock(x - 1, y, z))
+    || isAir(vol.getBlock(x, y + 1, z)) || isAir(vol.getBlock(x, y - 1, z))
+    || isAir(vol.getBlock(x, y, z + 1)) || isAir(vol.getBlock(x, y, z - 1));
+}
+// mask = { type:'all'|'air'|'solid'|'exposed'|'on_surface'|'above'|'below', y? }
+export function maskFn(mask) {
+  const t = mask?.type || 'all';
+  if (t === 'air') return (vol, x, y, z) => isAir(vol.getBlock(x, y, z));
+  if (t === 'solid') return (vol, x, y, z) => !isAir(vol.getBlock(x, y, z));
+  if (t === 'exposed') return (vol, x, y, z) => !isAir(vol.getBlock(x, y, z)) && neighborsAir(vol, x, y, z);
+  if (t === 'on_surface') return (vol, x, y, z) => isAir(vol.getBlock(x, y, z)) && !isAir(vol.getBlock(x, y - 1, z));
+  if (t === 'above') return (vol, x, y) => y >= (Number(mask.y) || 0);
+  if (t === 'below') return (vol, x, y) => y <= (Number(mask.y) || 0);
+  return () => true;
+}
+const matchAnyFrom = (b, froms) => froms.some((f) => f?.name && matchBlock(b, f));
+
+// Remplace un ou PLUSIEURS blocs source par une cible.
 export function opReplace(vol, sel, { from, to }) {
-  if (!from?.name || !to?.name) throw new Error('bad_replace');
+  if (!to?.name) throw new Error('bad_replace');
+  const froms = (Array.isArray(from) ? from : [from]).filter((f) => f?.name);
+  if (!froms.length) throw new Error('bad_replace');
   let changed = 0;
   for (let y = sel.min.y; y <= sel.max.y; y++) {
     for (let z = sel.min.z; z <= sel.max.z; z++) {
       for (let x = sel.min.x; x <= sel.max.x; x++) {
         const b = vol.getBlock(x, y, z);
-        if (!matchBlock(b, from)) continue;
+        if (!matchAnyFrom(b, froms)) continue;
         const props = to.states ? { ...(b.Properties || {}), ...to.states } : (b.Properties ? { ...b.Properties } : null);
         vol.setBlock(x, y, z, { Name: to.name, Properties: props && Object.keys(props).length ? props : null });
         changed++;
@@ -207,16 +230,26 @@ export function opReplace(vol, sel, { from, to }) {
   return { blocksChanged: changed, bounds: sel };
 }
 
-export function opSet(vol, sel, { block }) {
+export function opSet(vol, sel, { block, mask }) {
   if (!block?.name) throw new Error('bad_block');
   const b = { Name: block.name, Properties: block.states || null };
-  return { blocksChanged: fillSelection(vol, sel, b), bounds: sel };
+  if (!mask || mask.type === 'all') return { blocksChanged: fillSelection(vol, sel, b), bounds: sel };
+  const mfn = maskFn(mask);
+  // Deux passes : le masque est évalué sur l'état D'ORIGINE (sinon set en
+  // cascade — ex. on_surface qui remonterait toute la colonne).
+  const cells = [];
+  for (let y = sel.min.y; y <= sel.max.y; y++)
+    for (let z = sel.min.z; z <= sel.max.z; z++)
+      for (let x = sel.min.x; x <= sel.max.x; x++) if (mfn(vol, x, y, z)) cells.push([x, y, z]);
+  let changed = 0;
+  for (const [x, y, z] of cells) if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); changed++; }
+  return { blocksChanged: changed, bounds: sel };
 }
 
 // Mélange aléatoire pondéré : chaque case prend un bloc tiré au sort selon les
 // poids (% relatifs). `from` optionnel = ne change que les blocs correspondants
 // (sinon toute la sélection). Ex. 20% cobble / 30% terre / 20% andésite…
-export function opMix(vol, sel, { from, pattern }) {
+export function opMix(vol, sel, { from, pattern, mask }) {
   if (!Array.isArray(pattern) || pattern.length === 0) throw new Error('bad_pattern');
   const entries = pattern
     .filter((p) => p?.name && Number(p.weight) > 0)
@@ -230,16 +263,23 @@ export function opMix(vol, sel, { from, pattern }) {
     for (const e of cum) if (r < e.c) return e.block;
     return cum[cum.length - 1].block;
   };
-  let changed = 0;
+  const mfn = maskFn(mask);
+  const froms = from ? (Array.isArray(from) ? from : [from]).filter((f) => f?.name) : [];
+  const cells = [];
   for (let y = sel.min.y; y <= sel.max.y; y++) {
     for (let z = sel.min.z; z <= sel.max.z; z++) {
       for (let x = sel.min.x; x <= sel.max.x; x++) {
         const cur = vol.getBlock(x, y, z);
-        if (from?.name && !matchBlock(cur, from)) continue;
-        const b = pick();
-        if (!sameBlock(cur, b)) { vol.setBlock(x, y, z, clone(b)); changed++; }
+        if (froms.length && !matchAnyFrom(cur, froms)) continue;
+        if (!mfn(vol, x, y, z)) continue;
+        cells.push([x, y, z]);
       }
     }
+  }
+  let changed = 0;
+  for (const [x, y, z] of cells) {
+    const b = pick();
+    if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); changed++; }
   }
   return { blocksChanged: changed, bounds: sel };
 }
@@ -353,31 +393,33 @@ export function opStack(vol, sel, { count, direction }) {
   return { blocksChanged: changed, bounds: { min: lo, max: hi } };
 }
 
-// Sphère (pinceau) : remplit une boule centrée sur la sélection, rayon `radius`.
-export function opSphere(vol, sel, { block, radius }) {
+// Sphère (pinceau) : remplit une boule centrée sur la sélection. `hollow` = coque.
+export function opSphere(vol, sel, { block, radius, hollow }) {
   const b = toBlock(block); if (!b) throw new Error('bad_block');
   const cx = (sel.min.x + sel.max.x) / 2, cy = (sel.min.y + sel.max.y) / 2, cz = (sel.min.z + sel.max.z) / 2;
-  const r = Math.max(1, Math.round(radius) || 1), r2 = (r + 0.5) * (r + 0.5);
+  const r = Math.max(1, Math.round(radius) || 1), r2 = (r + 0.5) * (r + 0.5), ri2 = (r - 0.5) * (r - 0.5);
   let c = 0;
   for (let y = sel.min.y; y <= sel.max.y; y++)
     for (let z = sel.min.z; z <= sel.max.z; z++)
       for (let x = sel.min.x; x <= sel.max.x; x++) {
-        if ((x - cx) ** 2 + (y - cy) ** 2 + (z - cz) ** 2 > r2) continue;
+        const d2 = (x - cx) ** 2 + (y - cy) ** 2 + (z - cz) ** 2;
+        if (d2 > r2 || (hollow && d2 < ri2)) continue;
         if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); c++; }
       }
   return { blocksChanged: c, bounds: sel };
 }
 
 // Cylindre vertical (pinceau) : disque de rayon `radius` sur toute la hauteur.
-export function opCyl(vol, sel, { block, radius }) {
+export function opCyl(vol, sel, { block, radius, hollow }) {
   const b = toBlock(block); if (!b) throw new Error('bad_block');
   const cx = (sel.min.x + sel.max.x) / 2, cz = (sel.min.z + sel.max.z) / 2;
-  const r = Math.max(1, Math.round(radius) || 1), r2 = (r + 0.5) * (r + 0.5);
+  const r = Math.max(1, Math.round(radius) || 1), r2 = (r + 0.5) * (r + 0.5), ri2 = (r - 0.5) * (r - 0.5);
   let c = 0;
   for (let y = sel.min.y; y <= sel.max.y; y++)
     for (let z = sel.min.z; z <= sel.max.z; z++)
       for (let x = sel.min.x; x <= sel.max.x; x++) {
-        if ((x - cx) ** 2 + (z - cz) ** 2 > r2) continue;
+        const d2 = (x - cx) ** 2 + (z - cz) ** 2;
+        if (d2 > r2 || (hollow && d2 < ri2)) continue;
         if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); c++; }
       }
   return { blocksChanged: c, bounds: sel };
@@ -456,6 +498,135 @@ export function opScale(vol, sel, { factor }) {
     blocksChanged: changed,
     bounds: { min: { ...sel.min }, max: { x: sel.min.x + nsx - 1, y: sel.min.y + nsy - 1, z: sel.min.z + nsz - 1 } },
   };
+}
+
+// Ligne 3D entre les deux coins de la sélection (Bresenham).
+export function opLine(vol, sel, { block }) {
+  const b = toBlock(block); if (!b) throw new Error('bad_block');
+  let x = sel.min.x, y = sel.min.y, z = sel.min.z;
+  const x1 = sel.max.x, y1 = sel.max.y, z1 = sel.max.z;
+  const dx = Math.abs(x1 - x), dy = Math.abs(y1 - y), dz = Math.abs(z1 - z);
+  const sx = x <= x1 ? 1 : -1, sy = y <= y1 ? 1 : -1, sz = z <= z1 ? 1 : -1;
+  let changed = 0;
+  const put = (px, py, pz) => { if (!sameBlock(vol.getBlock(px, py, pz), b)) { vol.setBlock(px, py, pz, clone(b)); changed++; } };
+  if (dx >= dy && dx >= dz) {
+    let ey = dx / 2, ez = dx / 2;
+    for (let i = 0; i <= dx; i++) { put(x, y, z); ey -= dy; if (ey < 0) { y += sy; ey += dx; } ez -= dz; if (ez < 0) { z += sz; ez += dx; } x += sx; }
+  } else if (dy >= dx && dy >= dz) {
+    let ex = dy / 2, ez = dy / 2;
+    for (let i = 0; i <= dy; i++) { put(x, y, z); ex -= dx; if (ex < 0) { x += sx; ex += dy; } ez -= dz; if (ez < 0) { z += sz; ez += dy; } y += sy; }
+  } else {
+    let ex = dz / 2, ey = dz / 2;
+    for (let i = 0; i <= dz; i++) { put(x, y, z); ex -= dx; if (ex < 0) { x += sx; ex += dz; } ey -= dy; if (ey < 0) { y += sy; ey += dz; } z += sz; }
+  }
+  return { blocksChanged: changed, bounds: sel };
+}
+
+// Pyramide à base carrée inscrite dans la sélection (base au sol, sommet en haut).
+export function opPyramid(vol, sel, { block, hollow }) {
+  const b = toBlock(block); if (!b) throw new Error('bad_block');
+  const cx = (sel.min.x + sel.max.x) / 2, cz = (sel.min.z + sel.max.z) / 2;
+  const half = Math.min(sel.max.x - sel.min.x, sel.max.z - sel.min.z) / 2;
+  const h = Math.max(1, sel.max.y - sel.min.y);
+  let c = 0;
+  for (let level = 0; level <= h; level++) {
+    const r = half * (1 - level / h);
+    if (r < 0) break;
+    const y = sel.min.y + level;
+    for (let z = sel.min.z; z <= sel.max.z; z++)
+      for (let x = sel.min.x; x <= sel.max.x; x++) {
+        if (Math.abs(x - cx) > r + 0.5 || Math.abs(z - cz) > r + 0.5) continue;
+        if (hollow && level > 0 && Math.abs(x - cx) < r - 0.5 && Math.abs(z - cz) < r - 0.5) continue;
+        if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); c++; }
+      }
+  }
+  return { blocksChanged: c, bounds: sel };
+}
+
+// Cône : rayon décroissant avec la hauteur (base ronde au sol).
+export function opCone(vol, sel, { block, hollow }) {
+  const b = toBlock(block); if (!b) throw new Error('bad_block');
+  const cx = (sel.min.x + sel.max.x) / 2, cz = (sel.min.z + sel.max.z) / 2;
+  const baseR = Math.min(sel.max.x - sel.min.x, sel.max.z - sel.min.z) / 2;
+  const h = Math.max(1, sel.max.y - sel.min.y);
+  let c = 0;
+  for (let level = 0; level <= h; level++) {
+    const r = baseR * (1 - level / h);
+    const r2 = (r + 0.5) * (r + 0.5), ri2 = (r - 0.5) * (r - 0.5);
+    const y = sel.min.y + level;
+    for (let z = sel.min.z; z <= sel.max.z; z++)
+      for (let x = sel.min.x; x <= sel.max.x; x++) {
+        const d2 = (x - cx) ** 2 + (z - cz) ** 2;
+        if (d2 > r2 || (hollow && level > 0 && d2 < ri2)) continue;
+        if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); c++; }
+      }
+  }
+  return { blocksChanged: c, bounds: sel };
+}
+
+// Éroder : supprime les blocs pleins ayant ≥ `threshold` faces exposées à l'air.
+export function opErode(vol, sel, { iterations, threshold }) {
+  const iters = Math.max(1, Math.min(8, Math.round(iterations) || 1));
+  const thr = Math.max(1, Math.min(6, Math.round(threshold) || 4));
+  let changed = 0;
+  for (let it = 0; it < iters; it++) {
+    const rm = [];
+    for (let y = sel.min.y; y <= sel.max.y; y++)
+      for (let z = sel.min.z; z <= sel.max.z; z++)
+        for (let x = sel.min.x; x <= sel.max.x; x++) {
+          if (isAir(vol.getBlock(x, y, z))) continue;
+          let air = 0;
+          for (const [dx, dy, dz] of FACES6) if (isAir(vol.getBlock(x + dx, y + dy, z + dz))) air++;
+          if (air >= thr) rm.push([x, y, z]);
+        }
+    for (const [x, y, z] of rm) vol.setBlock(x, y, z, null);
+    changed += rm.length;
+  }
+  return { blocksChanged: changed, bounds: sel };
+}
+
+// Dilater : remplit les cases d'air ayant ≥ `threshold` voisins pleins, avec le
+// bloc voisin majoritaire.
+export function opDilate(vol, sel, { iterations, threshold }) {
+  const iters = Math.max(1, Math.min(8, Math.round(iterations) || 1));
+  const thr = Math.max(1, Math.min(6, Math.round(threshold) || 3));
+  let changed = 0;
+  for (let it = 0; it < iters; it++) {
+    const add = [];
+    for (let y = sel.min.y; y <= sel.max.y; y++)
+      for (let z = sel.min.z; z <= sel.max.z; z++)
+        for (let x = sel.min.x; x <= sel.max.x; x++) {
+          if (!isAir(vol.getBlock(x, y, z))) continue;
+          const counts = new Map(); let solid = 0;
+          for (const [dx, dy, dz] of FACES6) {
+            const nb = vol.getBlock(x + dx, y + dy, z + dz);
+            if (!isAir(nb)) { solid++; counts.set(nb.Name, (counts.get(nb.Name) || 0) + 1); }
+          }
+          if (solid >= thr) {
+            let best = null, bn = -1;
+            for (const [k, n] of counts) if (n > bn) { bn = n; best = k; }
+            add.push([x, y, z, best]);
+          }
+        }
+    for (const [x, y, z, name] of add) vol.setBlock(x, y, z, { Name: name, Properties: null });
+    changed += add.length;
+  }
+  return { blocksChanged: changed, bounds: sel };
+}
+
+// Drain : vide l'eau et la lave de la sélection (+ retire le waterlogged).
+const FLUIDS = new Set(['minecraft:water', 'minecraft:lava', 'minecraft:flowing_water', 'minecraft:flowing_lava']);
+export function opDrain(vol, sel) {
+  let changed = 0;
+  for (let y = sel.min.y; y <= sel.max.y; y++)
+    for (let z = sel.min.z; z <= sel.max.z; z++)
+      for (let x = sel.min.x; x <= sel.max.x; x++) {
+        const b = vol.getBlock(x, y, z);
+        if (isAir(b)) continue;
+        if (FLUIDS.has(b.Name)) { vol.setBlock(x, y, z, null); changed++; }
+        else if (b.Properties?.waterlogged === 'true') { vol.setBlock(x, y, z, { Name: b.Name, Properties: { ...b.Properties, waterlogged: 'false' } }); changed++; }
+      }
+  return { blocksChanged: changed, bounds: sel };
 }
 
 // paste → pose le presse-papier à `at` (coin min). mode overlay par défaut

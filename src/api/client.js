@@ -334,6 +334,7 @@ export const api = {
           },
           transform:  (b) => request('POST', `${root}/transform`, b),
           undo:       () => request('POST', `${root}/undo`),
+          redo:       () => request('POST', `${root}/redo`),
           reset:      () => request('POST', `${root}/reset`),
           audit:      () => request('GET',  `${root}/audit`),
         };

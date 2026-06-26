@@ -15,7 +15,7 @@ const nsName = (entry, id) => `${entry?.source === 'minefield' ? 'minefield' : '
 // Réinitialiser / Exporter. Le rendu 3D au-dessus est rechargé via onChanged().
 
 const AXES = ['x', 'y', 'z'];
-const CONFIRM_OPS = new Set(['set', 'replace', 'cut', 'walls', 'faces', 'hollow', 'overlay', 'naturalize', 'sphere', 'cyl', 'smooth', 'stack', 'scale', 'mix']);
+const CONFIRM_OPS = new Set(['set', 'replace', 'cut', 'walls', 'faces', 'hollow', 'overlay', 'naturalize', 'sphere', 'cyl', 'smooth', 'stack', 'scale', 'mix', 'pyramid', 'cone', 'line', 'erode', 'dilate', 'drain']);
 
 function CoordRow({ label, value, onChange, active, onActivate }) {
   return (
@@ -105,6 +105,54 @@ function ParamField({ param, value, onChange, catalog, byId }) {
       </Field>
     );
   }
+  if (param.type === 'bool') {
+    return (
+      <Field label={param.label}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#ede8f8' }}>
+          <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: '#c9a8e8' }} />
+          {param.label}
+        </label>
+      </Field>
+    );
+  }
+  if (param.type === 'mask') {
+    const v = value || { type: 'all' };
+    const opts = [['all', 'Aucun'], ['solid', 'Blocs pleins'], ['air', 'Air seulement'], ['exposed', 'Surface exposée'], ['on_surface', 'Au-dessus de la surface'], ['above', 'Au-dessus de Y'], ['below', 'En-dessous de Y']];
+    return (
+      <Field label={param.label}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <select value={v.type} onChange={(e) => onChange({ ...v, type: e.target.value })} style={selectStyle}>
+            {opts.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+          {(v.type === 'above' || v.type === 'below') && (
+            <Input type="number" value={v.y ?? 0} aria-label="Y" style={{ width: 70 }}
+              onChange={(e) => onChange({ ...v, y: Math.round(Number(e.target.value)) || 0 })} />
+          )}
+        </div>
+      </Field>
+    );
+  }
+  if (param.type === 'blocklist') {
+    const rows = Array.isArray(value) ? value : [];
+    const set = (r) => onChange(r);
+    return (
+      <Field label={param.label}>
+        <div style={{ display: 'grid', gap: 6, minWidth: 200 }}>
+          {rows.map((row, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <CodexPicker catalog={catalog} byId={byId} value={bareId(row.name)}
+                  onChange={(id, entry) => set(rows.map((r, j) => (j === i ? { ...r, name: nsName(entry, id) } : r)))}
+                  placeholder="Bloc source…" />
+              </div>
+              {rows.length > 1 && <button type="button" onClick={() => set(rows.filter((_, j) => j !== i))} style={rmBtn}>×</button>}
+            </div>
+          ))}
+          <button type="button" onClick={() => set([...rows, { name: '' }])} style={addBtn}>+ ajouter un bloc source</button>
+        </div>
+      </Field>
+    );
+  }
   return null;
 }
 
@@ -122,7 +170,10 @@ function defaultParams(op) {
   for (const p of op.params) {
     out[p.name] = p.type === 'block' ? { name: '', statesStr: '' }
       : p.type === 'pattern' ? [{ name: '', weight: 1 }]
-        : (p.default ?? (p.type === 'int' ? 0 : ''));
+        : p.type === 'blocklist' ? [{ name: '' }]
+          : p.type === 'mask' ? { type: 'all' }
+            : p.type === 'bool' ? (p.default ?? false)
+              : (p.default ?? (p.type === 'int' ? 0 : ''));
   }
   return out;
 }
@@ -198,6 +249,13 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
     finally { setBusy(false); }
   };
 
+  const redo = async () => {
+    setBusy(true);
+    try { await we.redo(); toast?.success?.('Rétabli'); await refreshState(); onChanged?.(); }
+    catch (e) { toast?.error?.(e?.message === 'nothing_to_redo' ? 'Rien à rétablir' : 'Rétablissement impossible'); }
+    finally { setBusy(false); }
+  };
+
   const reset = async () => {
     const ok = await confirm({ title: 'Réinitialiser', message: 'Toutes les modifications en cours seront jetées (retour à la source importée).', confirmLabel: 'Réinitialiser', danger: true });
     if (!ok) return;
@@ -266,6 +324,7 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
         <Button onClick={onApply} disabled={busy}>Appliquer</Button>
         <Button variant="ghost" onClick={undo} disabled={busy || !state.undoDepth}>↶ Annuler</Button>
+        <Button variant="ghost" onClick={redo} disabled={busy || !state.redoDepth}>↷ Rétablir</Button>
         <Button variant="ghost" onClick={reset} disabled={busy || !state.hasPendingEdits}>Réinitialiser</Button>
       </div>
 

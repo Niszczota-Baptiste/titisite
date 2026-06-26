@@ -16,6 +16,7 @@ import { RegionStore } from './regionStore.js';
 import {
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, opCut,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
+  opLine, opPyramid, opCone, opErode, opDilate, opDrain,
 } from './transform.js';
 import { makeZip } from './zipWriter.js';
 
@@ -27,6 +28,7 @@ const baseDir = () => uploadPath('worldedit');
 const dirFor = (id) => path.join(baseDir(), String(Number(id)));
 const regionsDir = (id) => path.join(dirFor(id), 'regions');
 const undoDir = (id) => path.join(dirFor(id), 'undo');
+const redoDir = (id) => path.join(dirFor(id), 'redo');
 const previewPath = (id) => path.join(dirFor(id), 'preview.json.gz');
 
 // Limites de hauteur du monde Minecraft 1.18+ (blocs y ∈ [-64, 319]).
@@ -132,17 +134,20 @@ export function validateSelection(sel, bbox, { maxVolume = MAX_SELECTION_VOLUME 
   return norm;
 }
 
-// ── Pile d'undo ──────────────────────────────────────────────────────────────
-function undoSeqs(id) {
-  const udir = undoDir(id);
-  if (!fs.existsSync(udir)) return [];
-  return fs.readdirSync(udir).map(Number).filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
+// ── Piles undo / redo (snapshots de fichiers de région) ──────────────────────
+function dirSeqs(base) {
+  if (!fs.existsSync(base)) return [];
+  return fs.readdirSync(base).map(Number).filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
 }
+const undoSeqs = (id) => dirSeqs(undoDir(id));
+const redoSeqs = (id) => dirSeqs(redoDir(id));
 
-function snapshotRegions(id, regionKeys) {
-  const seqs = undoSeqs(id);
+// Copie l'état actuel des régions `regionKeys` dans un nouveau snapshot sous
+// `base`. Borne la pile à `cap`.
+function snapshotInto(base, id, regionKeys, cap = MAX_UNDO) {
+  const seqs = dirSeqs(base);
   const seq = (seqs.length ? seqs[seqs.length - 1] : 0) + 1;
-  const dest = path.join(undoDir(id), String(seq));
+  const dest = path.join(base, String(seq));
   fs.mkdirSync(dest, { recursive: true });
   const rdir = regionsDir(id);
   for (const key of regionKeys) {
@@ -151,11 +156,22 @@ function snapshotRegions(id, regionKeys) {
     const src = path.join(rdir, fname);
     if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dest, fname));
   }
-  // Borne la pile : supprime les plus anciens snapshots au-delà de MAX_UNDO.
-  const all = undoSeqs(id);
-  for (const old of all.slice(0, Math.max(0, all.length - MAX_UNDO))) {
-    fs.rmSync(path.join(undoDir(id), String(old)), { recursive: true, force: true });
+  for (const old of dirSeqs(base).slice(0, Math.max(0, dirSeqs(base).length - cap))) {
+    fs.rmSync(path.join(base, String(old)), { recursive: true, force: true });
   }
+}
+const snapshotRegions = (id, regionKeys) => snapshotInto(undoDir(id), id, regionKeys);
+const clearRedo = (id) => fs.rmSync(redoDir(id), { recursive: true, force: true });
+
+// Restaure un snapshot dans regions/, en capturant d'abord l'état actuel des
+// mêmes régions dans `intoBase` (pour l'opération inverse). Renvoie les clés.
+function applySnapshot(snapDir, id, intoBase) {
+  const rdir = regionsDir(id);
+  const files = fs.readdirSync(snapDir).filter((f) => REGION_FILE_RE.test(f));
+  const keys = files.map((f) => { const m = f.match(REGION_FILE_RE); return `${m[1]},${m[2]}`; });
+  snapshotInto(intoBase, id, keys, MAX_UNDO);
+  for (const f of files) fs.copyFileSync(path.join(snapDir, f), path.join(rdir, f));
+  fs.rmSync(snapDir, { recursive: true, force: true });
 }
 
 // ── API publique du staging ──────────────────────────────────────────────────
@@ -187,6 +203,12 @@ const OPS = {
   smooth: (store, sel, p) => opSmooth(store, sel, p),
   scale: (store, sel, p) => opScale(store, sel, p),
   mix: (store, sel, p) => opMix(store, sel, p),
+  line: (store, sel, p) => opLine(store, sel, p),
+  pyramid: (store, sel, p) => opPyramid(store, sel, p),
+  cone: (store, sel, p) => opCone(store, sel, p),
+  erode: (store, sel, p) => opErode(store, sel, p),
+  dilate: (store, sel, p) => opDilate(store, sel, p),
+  drain: (store, sel) => opDrain(store, sel),
 };
 
 // Applique une opération sur le staging (non destructif) et renvoie le diff.
@@ -217,6 +239,7 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
   // Snapshot AVANT écriture : régions intersectant sélection ∪ emprise résultat.
   const affected = unionBBox(sel, result.bounds || sel);
   snapshotRegions(bp.id, regionKeysForBBox(affected));
+  clearRedo(bp.id); // une nouvelle opération invalide la pile de rétablissement
 
   // Écrit les régions modifiées sur le staging.
   const rdir = regionsDir(bp.id);
@@ -241,29 +264,37 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
   return { blocksChanged: result.blocksChanged || 0, bounds: result.bounds || sel, clipboard: result.clipboard };
 }
 
-// Annule la dernière opération : restaure les régions du dernier snapshot.
-export async function undoLast({ bp, actor }) {
-  const seqs = undoSeqs(bp.id);
-  if (!seqs.length) throw new Error('nothing_to_undo');
-  const seq = seqs[seqs.length - 1];
-  const snapDir = path.join(undoDir(bp.id), String(seq));
-  const rdir = regionsDir(bp.id);
-  for (const f of fs.readdirSync(snapDir)) {
-    if (REGION_FILE_RE.test(f)) fs.copyFileSync(path.join(snapDir, f), path.join(rdir, f));
-  }
-  fs.rmSync(snapDir, { recursive: true, force: true });
-
-  // Régénère l'aperçu depuis l'état restauré.
-  const bbox = buildBBox(bp);
+async function regenPreview(bp) {
+  const bbox = buildExtent(bp);
   const store = loadStore(bp);
   await store.warmup(bbox);
   const sparse = store.deriveSparse(bbox);
   fs.writeFileSync(previewPath(bp.id), zlib.gzipSync(Buffer.from(JSON.stringify(sparse))));
+}
 
+// Annule la dernière opération (en empilant l'inverse dans la pile redo).
+export async function undoLast({ bp, actor }) {
+  const seqs = undoSeqs(bp.id);
+  if (!seqs.length) throw new Error('nothing_to_undo');
+  applySnapshot(path.join(undoDir(bp.id), String(seqs[seqs.length - 1])), bp.id, redoDir(bp.id));
+  await regenPreview(bp);
   db.prepare(`INSERT INTO worldedit_audit (blueprint_id, actor, operation, params_json, blocks_changed) VALUES (?, ?, 'undo', '{}', 0)`)
     .run(bp.id, actor);
-  return { undone: true, remaining: undoSeqs(bp.id).length };
+  return { undone: true, remaining: undoSeqs(bp.id).length, redoDepth: redoSeqs(bp.id).length };
 }
+
+// Rétablit la dernière opération annulée (et la ré-empile dans undo).
+export async function redoLast({ bp, actor }) {
+  const seqs = redoSeqs(bp.id);
+  if (!seqs.length) throw new Error('nothing_to_redo');
+  applySnapshot(path.join(redoDir(bp.id), String(seqs[seqs.length - 1])), bp.id, undoDir(bp.id));
+  await regenPreview(bp);
+  db.prepare(`INSERT INTO worldedit_audit (blueprint_id, actor, operation, params_json, blocks_changed) VALUES (?, ?, 'redo', '{}', 0)`)
+    .run(bp.id, actor);
+  return { redone: true, undoDepth: undoSeqs(bp.id).length, redoDepth: redoSeqs(bp.id).length };
+}
+
+export const redoDepth = (id) => redoSeqs(id).length;
 
 // Réinitialise le staging (jette toutes les modifications, repart de la source).
 export function resetStaging(id) {

@@ -5,8 +5,8 @@ import { db } from '../db.js';
 import { uploadPath } from '../uploads.js';
 import { OPERATIONS, normalizeParams } from '../worldedit/operations.js';
 import {
-  buildLimits, buildExtent, applyOperation, undoLast, resetStaging, exportBuild,
-  previewFilePath, hasPendingEdits, undoDepth, listAudit,
+  buildLimits, buildExtent, applyOperation, undoLast, redoLast, resetStaging, exportBuild,
+  previewFilePath, hasPendingEdits, undoDepth, redoDepth, listAudit,
 } from '../worldedit/staging.js';
 
 // Moteur WorldEdit serveur. Deux points d'entrée partagent les mêmes handlers :
@@ -55,6 +55,7 @@ function getState(req, res) {
     extent: buildExtent(bp),  // emprise réelle du contenu (sélection par défaut)
     hasPendingEdits: hasPendingEdits(bp.id),
     undoDepth: undoDepth(bp.id),
+    redoDepth: redoDepth(bp.id),
     maxSelectionVolume: Number(process.env.WORLDEDIT_MAX_SELECTION || 2_000_000),
   });
 }
@@ -125,6 +126,15 @@ async function postUndo(req, res) {
   }
 }
 
+async function postRedo(req, res) {
+  try {
+    const out = await redoLast({ bp: req.we.bp, actor: req.we.actor });
+    res.json(out);
+  } catch (e) {
+    res.status(e.message === 'nothing_to_redo' ? 409 : 500).json({ error: e.message || 'redo_failed' });
+  }
+}
+
 function postReset(req, res) {
   resetStaging(req.we.bp.id);
   res.json({ reset: true });
@@ -161,6 +171,7 @@ function attachRoutes(router) {
   router.get('/audit', requireEdit, getAudit);
   router.post('/transform', worldeditLimiter, requireEdit, postTransform);
   router.post('/undo', worldeditLimiter, requireEdit, postUndo);
+  router.post('/redo', worldeditLimiter, requireEdit, postRedo);
   router.post('/reset', worldeditLimiter, requireEdit, postReset);
   router.get('/export', worldeditLimiter, requireEdit, getExport);
   return router;
