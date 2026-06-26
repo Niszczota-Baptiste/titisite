@@ -2,12 +2,18 @@ import fs from 'node:fs';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db.js';
-import { uploadPath } from '../uploads.js';
+import { uploadPath, uploadSchematicMemory } from '../uploads.js';
 import { OPERATIONS, normalizeParams } from '../worldedit/operations.js';
 import {
   buildLimits, buildExtent, applyOperation, undoLast, redoLast, resetStaging, exportBuild,
   previewFilePath, hasPendingEdits, undoDepth, redoDepth, listAudit, floodSelect,
 } from '../worldedit/staging.js';
+import {
+  saveSchematic, listSchematics, getSchematic, loadSchematicClip, deleteSchematic,
+} from '../worldedit/library.js';
+import {
+  schematicToSponge, schematicToLitematic, parseSchematicFile,
+} from '../worldedit/schematicFormats.js';
 
 // Moteur WorldEdit serveur. Deux points d'entrée partagent les mêmes handlers :
 //  - scoped  : membre/admin du workspace (cookie JWT)  → owner / editor
@@ -166,6 +172,76 @@ async function getExport(req, res) {
   }
 }
 
+// ── Bibliothèque de schematics (presse-papier persistés, scope workspace) ─────
+function getSchematics(req, res) {
+  res.json(listSchematics(req.we.bp.workspace_id));
+}
+
+function postSchematicSave(req, res) {
+  const clip = clipboards.get(`${req.we.actor}`);
+  if (!clip) return res.status(400).json({ error: 'empty_clipboard' });
+  try {
+    const row = saveSchematic({ workspaceId: req.we.bp.workspace_id, name: req.body?.name, schem: clip, userId: req.user?.id ?? null });
+    return res.json(row);
+  } catch (e) {
+    return res.status(e.message === 'library_full' ? 409 : 500).json({ error: e.message || 'save_failed' });
+  }
+}
+
+function postSchematicLoad(req, res) {
+  try {
+    const schem = loadSchematicClip(req.we.bp.workspace_id, req.params.sid);
+    setClip(`${req.we.actor}`, schem);
+    return res.json({ loaded: true, clipboard: { sx: schem.sx, sy: schem.sy, sz: schem.sz } });
+  } catch (e) {
+    return res.status(e.message === 'not_found' ? 404 : 500).json({ error: e.message || 'load_failed' });
+  }
+}
+
+function deleteSchematicHandler(req, res) {
+  try { deleteSchematic(req.we.bp.workspace_id, req.params.sid); return res.json({ deleted: true }); } catch (e) {
+    return res.status(e.message === 'not_found' ? 404 : 500).json({ error: e.message || 'delete_failed' });
+  }
+}
+
+function getSchematicExport(req, res) {
+  const meta = getSchematic(req.we.bp.workspace_id, req.params.sid);
+  if (!meta) return res.status(404).json({ error: 'not_found' });
+  const fmt = String(req.query?.format || 'schem').toLowerCase();
+  try {
+    const schem = loadSchematicClip(req.we.bp.workspace_id, req.params.sid);
+    const safe = String(meta.name || 'schematic').replace(/[^\w.-]+/g, '_').slice(0, 60) || 'schematic';
+    const isLite = fmt === 'litematic';
+    const buffer = isLite ? schematicToLitematic(schem, { name: meta.name }) : schematicToSponge(schem, { name: meta.name });
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${safe}.${isLite ? 'litematic' : 'schem'}"`);
+    return res.send(buffer);
+  } catch (e) {
+    return res.status(500).json({ error: e.message || 'export_failed' });
+  }
+}
+
+async function postSchematicImport(req, res) {
+  if (!req.file) return res.status(400).json({ error: 'no_file' });
+  try {
+    const schem = await parseSchematicFile(req.file.buffer, req.file.originalname);
+    if (!schem || !schem.sx) throw new Error('bad_schematic');
+    setClip(`${req.we.actor}`, schem);
+    let saved = null;
+    if (String(req.body?.save) === 'true') {
+      saved = saveSchematic({
+        workspaceId: req.we.bp.workspace_id,
+        name: req.body?.name || req.file.originalname.replace(/\.[^.]+$/, ''),
+        schem, userId: req.user?.id ?? null,
+      });
+    }
+    return res.json({ imported: true, clipboard: { sx: schem.sx, sy: schem.sy, sz: schem.sz }, saved });
+  } catch (e) {
+    const known = ['bad_schematic', 'bad_litematic', 'library_full'];
+    return res.status(known.includes(e.message) ? 400 : 500).json({ error: e.message || 'import_failed' });
+  }
+}
+
 function getAudit(req, res) {
   res.json(listAudit(req.we.bp.id, req.query?.limit).map((r) => ({
     id: r.id, actor: r.actor, operation: r.operation,
@@ -186,6 +262,13 @@ function attachRoutes(router) {
   router.post('/reset', worldeditLimiter, requireEdit, postReset);
   router.post('/select-flood', worldeditLimiter, requireEdit, postFlood);
   router.get('/export', worldeditLimiter, requireEdit, getExport);
+  // Bibliothèque de schematics (scope workspace) + import/export .schem/.litematic.
+  router.get('/schematics', requireEdit, getSchematics);
+  router.post('/schematics/save', worldeditLimiter, requireEdit, postSchematicSave);
+  router.post('/schematics/import', worldeditLimiter, requireEdit, uploadSchematicMemory.single('file'), postSchematicImport);
+  router.post('/schematics/:sid/load', worldeditLimiter, requireEdit, postSchematicLoad);
+  router.get('/schematics/:sid/export', worldeditLimiter, requireEdit, getSchematicExport);
+  router.delete('/schematics/:sid', worldeditLimiter, requireEdit, deleteSchematicHandler);
   return router;
 }
 

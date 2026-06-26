@@ -203,7 +203,21 @@ export const api = {
       exportUrl:  () => `/api${root}/export`,
       transform:  (b) => request('POST', `${root}/transform`, b),
       undo:       () => request('POST', `${root}/undo`),
+      redo:       () => request('POST', `${root}/redo`),
+      floodSelect: (b) => request('POST', `${root}/select-flood`, b),
       reset:      () => request('POST', `${root}/reset`),
+      audit:      () => request('GET',  `${root}/audit`),
+      schematics:    () => request('GET',  `${root}/schematics`),
+      saveSchematic: (b) => request('POST', `${root}/schematics/save`, b),
+      loadSchematic: (sid) => request('POST', `${root}/schematics/${sid}/load`),
+      deleteSchematic: (sid) => request('DELETE', `${root}/schematics/${sid}`),
+      schematicExportUrl: (sid, fmt) => `/api${root}/schematics/${sid}/export?format=${fmt || 'schem'}`,
+      importSchematic: (file, fields) => {
+        const fd = new FormData();
+        fd.append('file', file);
+        for (const [k, v] of Object.entries(fields || {})) fd.append(k, v);
+        return uploadFile(`${root}/schematics/import`, fd);
+      },
     };
   },
   blueprintShared: {
@@ -338,6 +352,18 @@ export const api = {
           floodSelect: (b) => request('POST', `${root}/select-flood`, b),
           reset:      () => request('POST', `${root}/reset`),
           audit:      () => request('GET',  `${root}/audit`),
+          // Bibliothèque de schematics (presse-papier persistés) + interop.
+          schematics:    () => request('GET',  `${root}/schematics`),
+          saveSchematic: (b) => request('POST', `${root}/schematics/save`, b),
+          loadSchematic: (sid) => request('POST', `${root}/schematics/${sid}/load`),
+          deleteSchematic: (sid) => request('DELETE', `${root}/schematics/${sid}`),
+          schematicExportUrl: (sid, fmt) => `/api${root}/schematics/${sid}/export?format=${fmt || 'schem'}`,
+          importSchematic: (file, fields) => {
+            const fd = new FormData();
+            fd.append('file', file);
+            for (const [k, v] of Object.entries(fields || {})) fd.append(k, v);
+            return uploadFile(`${root}/schematics/import`, fd);
+          },
         };
       },
     },

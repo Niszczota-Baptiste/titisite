@@ -77,7 +77,8 @@ export const ALLOWED_BUILD = {
 // Persist the file under a UUID + sanitized extension; the original name is
 // kept in the DB only for the Content-Disposition on download.
 function sanitizedExt(originalName) {
-  const ext = (path.extname(originalName || '').toLowerCase().match(/^\.[a-z0-9]{1,8}$/) || [''])[0];
+  // Jusqu'à 10 caractères pour couvrir « .litematic » / « .schematic ».
+  const ext = (path.extname(originalName || '').toLowerCase().match(/^\.[a-z0-9]{1,10}$/) || [''])[0];
   return ext;
 }
 
@@ -155,6 +156,16 @@ function makeMemoryUploader(allowed, maxBytes) {
 }
 export const SCREENSHOT_MAX_BYTES = Number(process.env.SCREENSHOT_MAX_BYTES || 15 * 1024 * 1024); // 15 MB
 export const uploadScreenshotMemory = makeMemoryUploader(ALLOWED_IMAGE, SCREENSHOT_MAX_BYTES);
+
+// Schematics WorldEdit à importer (.schem Sponge / .litematic Litematica) :
+// NBT gzip sans MIME dédié → octet-stream toléré, l'extension fait foi. Lu en
+// mémoire, parsé vers le presse-papier, jamais persisté tel quel.
+export const ALLOWED_SCHEMATIC = {
+  mime: new Set(['application/octet-stream', 'application/gzip', 'application/x-gzip', '']),
+  ext: new Set(['.schem', '.schematic', '.litematic']),
+};
+export const SCHEMATIC_MAX_BYTES = Number(process.env.WORLDEDIT_SCHEM_BYTES || 50 * 1024 * 1024); // 50 MB
+export const uploadSchematicMemory = makeMemoryUploader(ALLOWED_SCHEMATIC, SCHEMATIC_MAX_BYTES);
 
 export function uploadPath(filename) {
   return path.join(UPLOADS_DIR, filename);

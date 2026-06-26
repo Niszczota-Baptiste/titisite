@@ -328,6 +328,23 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_bp_shares_bp ON blueprint_shares(blueprint_id, id);`);
 
+  // Bibliothèque de schematics WorldEdit (presse-papier persistés), scopée par
+  // workspace : on copie une sélection dans un build, on la colle dans un autre.
+  // Le contenu dense (palette + indices gzip) vit sur disque (data_file).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS worldedit_schematics (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      size_x INTEGER NOT NULL, size_y INTEGER NOT NULL, size_z INTEGER NOT NULL,
+      block_count  INTEGER NOT NULL DEFAULT 0,
+      data_file    TEXT NOT NULL,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_we_schem_ws ON worldedit_schematics(workspace_id, id);`);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS comments (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -164,6 +164,31 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
   dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
+## Bibliothèque de schematics & interop (vague 3)
+
+- **Persistance** : un presse-papier (`Schematic` dense) se sauve dans
+  `worldedit_schematics` (scopé **workspace** : on copie dans un build, on colle
+  dans un autre). Le contenu (palette + indices gzip) vit sur disque
+  (`uploadPath(<uuid>.we.gz>)`), métadonnées + nom en base
+  (`server/worldedit/library.js`).
+- **Formats d'échange** (`server/worldedit/schematicFormats.js`, NBT gzip via
+  `prismarine-nbt`) :
+  - **Sponge `.schem` v2** : `Palette` (chaîne `name[k=v,…]` → index), `BlockData`
+    varint LEB128 en ordre **YZX**, `Offset` conservé. Lecture v1/v2/v3 (le v3
+    imbrique sous `Schematic.Blocks`).
+  - **Litematica `.litematic` v6** : `Regions` → `BlockStatePalette` (air en index
+    0) + `BlockStates` (long[] en **bit-array chevauchant** 64 bits, `bits =
+    max(2, ceil(log2(palette)))`). Lecture multi-régions + tailles négatives
+    (axes inversés normalisés en coin min).
+  - L'ordre linéaire interne `Schematic.data` (`x + sx*(z + sz*y)`) **est** déjà
+    l'ordre YZX des deux formats → pas de réindexage.
+- **API** (sous `…/worldedit`, JWT ou token edit) : `GET /schematics`,
+  `POST /schematics/save` (presse-papier courant), `POST /schematics/:id/load`
+  (→ presse-papier, puis `paste`), `GET /schematics/:id/export?format=schem|
+  litematic`, `POST /schematics/import` (`.schem`/`.litematic` multipart, option
+  `save`), `DELETE /schematics/:id`. UI : `SchematicLibrary` dans le
+  `WorldEditPanel`.
+
 ## Rendu visuel (UI, vague 5)
 
 Tout est client (`BlueprintScene` + barre d'outils dans `BlueprintCanvas`), aucun

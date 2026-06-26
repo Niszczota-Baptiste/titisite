@@ -5,6 +5,7 @@ import { useToast } from '../../../ui/ToastProvider';
 import { useConfirm } from '../../../ui/ConfirmProvider';
 import { useCodex } from '../../../hooks/useCodex';
 import { CodexPicker } from '../../admin/editors/minecraft/CodexPicker';
+import { SchematicLibrary } from './SchematicLibrary';
 
 // id de bloc « minecraft:oak_stairs » → id codex « oak_stairs » et inverse.
 const bareId = (name) => (name && name.includes(':') ? name.split(':').slice(1).join(':') : (name || ''));
@@ -194,6 +195,7 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
   const [params, setParams] = useState({});
   const [busy, setBusy] = useState(false);
   const [offset, setOffset] = useState({ dx: 0, dy: 0, dz: 0 });
+  const [clip, setClip] = useState(null); // dims du presse-papier {sx,sy,sz}
 
   useEffect(() => {
     let alive = true;
@@ -238,7 +240,10 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
     setBusy(true);
     try {
       const res = await we.transform({ operation: opId, params: buildParams(), selection: sel });
-      toast?.success?.(`${op.label} : ${res.blocksChanged} bloc(s) modifié(s)`);
+      // copy/cut remplissent le presse-papier → on mémorise ses dimensions.
+      if (opId === 'copy' && res.clipboard) setClip(res.clipboard);
+      else if (opId === 'cut') setClip({ sx: Math.abs(sel.max.x - sel.min.x) + 1, sy: Math.abs(sel.max.y - sel.min.y) + 1, sz: Math.abs(sel.max.z - sel.min.z) + 1 });
+      toast?.success?.(opId === 'copy' ? 'Sélection copiée dans le presse-papier' : `${op.label} : ${res.blocksChanged} bloc(s) modifié(s)`);
       await refreshState();
       onChanged?.();
     } catch (e) {
@@ -376,6 +381,9 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
         <Button variant="ghost" onClick={redo} disabled={busy || !state.redoDepth}>↷ Rétablir</Button>
         <Button variant="ghost" onClick={reset} disabled={busy || !state.hasPendingEdits}>Réinitialiser</Button>
       </div>
+
+      {/* Bibliothèque de schematics + import/export .schem/.litematic */}
+      <SchematicLibrary we={we} clipboard={clip} onLoaded={setClip} />
 
       {/* Export + placement dans le monde */}
       <div style={{ marginTop: 12, borderTop: '1px solid rgba(80,50,130,0.18)', paddingTop: 10 }}>

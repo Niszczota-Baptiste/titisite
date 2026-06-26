@@ -415,3 +415,51 @@ test('WorldEdit API : sélection hors bornes refusée', async (t) => {
   assert.equal(r.status, 400);
   assert.equal(r.json.error, 'out_of_bounds');
 });
+
+test('Bibliothèque de schematics : copy → save → list → export .schem → import → delete', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug);
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+  const selection = { min: { x: 0, y: 0, z: 0 }, max: { x: 5, y: 0, z: 0 } };
+
+  // Sauver sans presse-papier → refus.
+  assert.equal((await admin.post(`${root}/schematics/save`, { body: { name: 'x' } })).json.error, 'empty_clipboard');
+
+  // Copie la sélection puis sauvegarde dans la bibliothèque.
+  const cp = await admin.post(`${root}/transform`, { body: { operation: 'copy', selection } });
+  assert.equal(cp.status, 200, cp.text);
+  const saved = await admin.post(`${root}/schematics/save`, { body: { name: 'Ma cabane' } });
+  assert.equal(saved.status, 200, saved.text);
+  assert.equal(saved.json.sx, 6);
+
+  const list = await admin.get(`${root}/schematics`);
+  assert.equal(list.json.length, 1);
+  assert.equal(list.json[0].name, 'Ma cabane');
+  const sid = list.json[0].id;
+
+  // Export Sponge .schem → gzip (magic 1f 8b).
+  const ex = await admin.get(`${root}/schematics/${sid}/export?format=schem`, { raw: true });
+  assert.equal(ex.status, 200);
+  const buf = Buffer.from(await ex.arrayBuffer());
+  assert.equal(buf[0], 0x1f); assert.equal(buf[1], 0x8b);
+
+  // Export Litematica.
+  const exL = await admin.get(`${root}/schematics/${sid}/export?format=litematic`, { raw: true });
+  assert.equal(exL.status, 200);
+
+  // Réimporte le .schem → presse-papier (sans re-sauver).
+  const fd = new FormData();
+  fd.append('file', new Blob([buf]), 'cabane.schem');
+  fd.append('save', 'false');
+  const imp = await admin.post(`${root}/schematics/import`, { body: fd });
+  assert.equal(imp.status, 200, imp.text);
+  assert.deepEqual(imp.json.clipboard, { sx: 6, sy: 1, sz: 1 });
+
+  // Suppression.
+  assert.equal((await admin.delete(`${root}/schematics/${sid}`)).status, 200);
+  assert.equal((await admin.get(`${root}/schematics`)).json.length, 0);
+});
