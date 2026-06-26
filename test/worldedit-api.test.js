@@ -486,3 +486,31 @@ test('Peindre biome : op biome via API + undo', async (t) => {
   const un = await admin.post(`${root}/undo`);
   assert.equal(un.status, 200, un.text);
 });
+
+test('Robustesse : build vierge valide + durée d’opération dans l’audit', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+
+  // Build vierge : doit passer la validation des chunks vierges.
+  const blank = await admin.post(`/api/workspaces/${slug}/blueprints/blank`, {
+    body: { name: 'Vierge', origin: { x: 0, y: 0, z: 0 }, size: { x: 32, y: 16, z: 32 } },
+  });
+  assert.equal(blank.status, 201, blank.text);
+  const id = blank.json.id;
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  // Une opération renvoie sa durée et l’audit la consigne.
+  const r = await admin.post(`${root}/transform`, {
+    body: { operation: 'set', params: { block: { name: 'minecraft:stone' } }, selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 4, z: 4 } } },
+  });
+  assert.equal(r.status, 200, r.text);
+  assert.ok(typeof r.json.ms === 'number' && r.json.ms >= 0);
+
+  const audit = await admin.get(`${root}/audit`);
+  assert.equal(audit.status, 200);
+  assert.ok(audit.json.length >= 1);
+  assert.ok('durationMs' in audit.json[0]);
+});

@@ -258,7 +258,8 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
       // copy/cut remplissent le presse-papier → on mémorise ses dimensions.
       if (opId === 'copy' && res.clipboard) setClip(res.clipboard);
       else if (opId === 'cut') setClip({ sx: Math.abs(sel.max.x - sel.min.x) + 1, sy: Math.abs(sel.max.y - sel.min.y) + 1, sz: Math.abs(sel.max.z - sel.min.z) + 1 });
-      toast?.success?.(opId === 'copy' ? 'Sélection copiée dans le presse-papier' : `${op.label} : ${res.blocksChanged} bloc(s) modifié(s)`);
+      toast?.success?.(opId === 'copy' ? 'Sélection copiée dans le presse-papier'
+        : `${op.label} : ${res.blocksChanged} bloc(s) modifié(s)${res.ms != null ? ` · ${res.ms} ms` : ''}`);
       await refreshState();
       onChanged?.();
     } catch (e) {
@@ -332,6 +333,13 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
           {state.hasPendingEdits ? '● modifications en cours (staging)' : 'aucune modification'} · undo : {state.undoDepth}
         </span>
       </div>
+
+      {state.hasPendingEdits && (
+        <div style={recoveryBanner}>
+          💾 <strong>Sauvegarde auto</strong> : vos modifications vivent côté serveur (staging non destructif) et
+          <strong> survivent à un rechargement</strong> de la page. Exportez le .mca quand c’est prêt, ou réinitialisez pour repartir de la source.
+        </div>
+      )}
 
       <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
         <CoordRow label="Coin A" value={sel.min} onChange={(v) => setSelection({ ...sel, min: v })}
@@ -438,6 +446,10 @@ function errLabel(code) {
 }
 
 const wrap = { padding: 14, borderTop: '1px solid rgba(80,50,130,0.22)' };
+const recoveryBanner = {
+  margin: '0 0 10px', padding: '8px 12px', borderRadius: 8, fontSize: 11.5, lineHeight: 1.5,
+  color: 'rgba(232,228,248,0.85)', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.28)',
+};
 const selectStyle = {
   background: 'rgba(14,9,28,0.6)', border: '1px solid rgba(80,50,130,0.24)', borderRadius: 8,
   padding: '7px 10px', color: '#ede8f8', fontSize: 13, fontFamily: "'Inter',sans-serif",

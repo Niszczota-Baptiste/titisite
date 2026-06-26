@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { safeUnlink, uploadPath, uploadWorld } from '../uploads.js';
 import { parseWorldFile } from '../minecraftWorld/index.js';
-import { removeStaging, cropBuild, buildLimits, validateSelection, blankRegions, templateChunk } from '../worldedit/staging.js';
+import { removeStaging, cropBuild, buildLimits, validateSelection, blankRegions, validateRegions, templateChunk } from '../worldedit/staging.js';
 import { makeZip } from '../worldedit/zipWriter.js';
 import { regionFileName } from '../anvil/index.js';
 import { worldeditScopedRouter } from './worldedit.js';
@@ -197,8 +197,13 @@ blueprintsRouter.post('/blank', async (req, res) => {
   if (tpl) { try { template = await templateChunk(tpl); } catch { /* repli synthétique */ } }
 
   let regions;
-  try { regions = blankRegions({ template, origin, size }); }
-  catch (e) { console.error('[blueprints] blank failed:', e?.message || e); return res.status(500).json({ error: 'blank_failed' }); }
+  try {
+    regions = blankRegions({ template, origin, size });
+    await validateRegions(regions); // garde-fou : chunks vierges valides
+  } catch (e) {
+    console.error('[blueprints] blank failed:', e?.message || e);
+    return res.status(500).json({ error: e?.message === 'invalid_blank' ? 'invalid_blank' : 'blank_failed' });
+  }
 
   let sourceFile, sourceName;
   if (regions.length === 1) {

@@ -217,6 +217,7 @@ const OPS = {
 
 // Applique une opération sur le staging (non destructif) et renvoie le diff.
 export async function applyOperation({ bp, operation, params, selection, actor, clipboardStore }) {
+  const startedAt = Date.now();
   const limits = buildLimits(bp);           // X/Z du build, Y = hauteur monde
   const extent = buildExtent(bp);           // emprise réelle du contenu
   const sel = validateSelection(selection, limits);
@@ -261,13 +262,14 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
   const sparse = store.deriveSparse(grown);
   fs.writeFileSync(previewPath(bp.id), zlib.gzipSync(Buffer.from(JSON.stringify(sparse))));
 
+  const durationMs = Date.now() - startedAt;
   db.prepare(`
-    INSERT INTO worldedit_audit (blueprint_id, actor, operation, params_json, blocks_changed)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(bp.id, actor, operation, JSON.stringify({ selection: sel, params: params || {} }), result.blocksChanged || 0);
+    INSERT INTO worldedit_audit (blueprint_id, actor, operation, params_json, blocks_changed, duration_ms)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(bp.id, actor, operation, JSON.stringify({ selection: sel, params: params || {} }), result.blocksChanged || 0, durationMs);
 
   // `clipboard` n'est présent que pour `cut` (presse-papier rempli au passage).
-  return { blocksChanged: result.blocksChanged || 0, bounds: result.bounds || sel, clipboard: result.clipboard };
+  return { blocksChanged: result.blocksChanged || 0, bounds: result.bounds || sel, clipboard: result.clipboard, durationMs };
 }
 
 async function regenPreview(bp) {
@@ -467,6 +469,22 @@ function regionBuffersFromChunks(chunks) {
     out.push({ regionX: rx, regionZ: rz, buffer: writeRegion({ regionX: rx, regionZ: rz, chunks: cs }) });
   }
   return out;
+}
+
+// Vérifie qu'un buffer de région se relit et contient des chunks décodables
+// (garde-fou « chunk vierge valide » — vague 6). Lève `invalid_blank` sinon.
+export async function validateRegions(regions) {
+  for (const r of regions) {
+    let region;
+    try { region = readRegion(r.buffer, r.regionX, r.regionZ); } catch { throw new Error('invalid_blank'); }
+    if (!region.chunks.length) throw new Error('invalid_blank');
+    // Décode le premier chunk : structure NBT + sections lisibles.
+    const c = region.chunks[0];
+    try { await decodeChunk(c); } catch { throw new Error('invalid_blank'); }
+    const sections = c.root?.value?.sections?.value?.value;
+    if (!Array.isArray(sections) || !sections.length) throw new Error('invalid_blank');
+  }
+  return true;
 }
 
 // Régions d'air couvrant la zone [origin, origin+size) en X/Z.

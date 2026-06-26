@@ -310,6 +310,8 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_we_audit_bp ON worldedit_audit(blueprint_id, id);`);
+  // Durée d'exécution de l'opération (ms) — perf/robustesse (vague 6).
+  ensureColumn('worldedit_audit', 'duration_ms', 'INTEGER NOT NULL DEFAULT 0');
 
   // Liens de partage scopés (view / edit) avec expiration + révocation. Plusieurs
   // liens par build possibles ; l'ancien share_token reste géré à part (legacy).

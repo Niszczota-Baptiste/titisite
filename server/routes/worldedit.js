@@ -113,7 +113,7 @@ async function postTransform(req, res) {
     if (operation === 'paste' && !clipboardStore) return res.status(400).json({ error: 'empty_clipboard' });
     const out = await applyOperation({ bp, operation, params, selection, actor: req.we.actor, clipboardStore });
     if (out.clipboard) setClip(clipKey, out.clipboard); // cut remplit le presse-papier
-    return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id) });
+    return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs });
   } catch (e) {
     const known = ['invalid_selection', 'out_of_bounds', 'selection_too_large', 'unknown_operation',
       'empty_clipboard', 'no_source', 'too_many_blocks', 'bad_axis', 'bad_degrees', 'bad_block', 'bad_direction',
@@ -246,7 +246,7 @@ async function postSchematicImport(req, res) {
 function getAudit(req, res) {
   res.json(listAudit(req.we.bp.id, req.query?.limit).map((r) => ({
     id: r.id, actor: r.actor, operation: r.operation,
-    params: safeJson(r.params_json), blocksChanged: r.blocks_changed, createdAt: r.created_at,
+    params: safeJson(r.params_json), blocksChanged: r.blocks_changed, durationMs: r.duration_ms, createdAt: r.created_at,
   })));
 }
 function safeJson(s) { try { return JSON.parse(s); } catch { return {}; } }

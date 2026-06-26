@@ -164,6 +164,28 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
   dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
+## Robustesse & perf (vague 6)
+
+- **Sauvegarde auto / récupération** : le staging WorldEdit est **déjà
+  persistant sur disque** (`uploads/worldedit/<id>/`, non destructif) — il
+  survit à un rechargement de page et à un redémarrage serveur. Le panneau
+  affiche une bannière de récupération quand des modifications sont en attente
+  (continuer l'édition / exporter / réinitialiser).
+- **Validation des chunks vierges** : `validateRegions` relit chaque région
+  produite par `blankRegions` et décode le premier chunk (structure NBT +
+  sections) avant de créer le build vierge → `invalid_blank` (500) sinon, plutôt
+  qu'un build illisible en jeu.
+- **Durée d'opération** : `worldedit_audit.duration_ms` consigne le temps
+  d'exécution ; `/transform` renvoie `ms` (affiché dans le toast) et `/audit`
+  expose `durationMs`.
+- **Garde-fous existants** (rappel) : `WORLDEDIT_MAX_SELECTION` borne le volume
+  des boîtes itérées, `WORLDEDIT_WAND_MAX` la baguette, `worldeditLimiter`
+  (30/min) les écritures, `deriveSparse` lève `too_many_blocks`.
+- **Déféré** : l'offload des grosses opérations dans un *worker thread* avec
+  barre de progression live est volontairement laissé à une passe dédiée (gros
+  changement d'architecture) — les opérations restent synchrones, bornées et
+  chronométrées.
+
 ## Pinceau interactif & liste de matériaux (vague 7)
 
 - **Pinceau interactif** (`BlueprintCanvas` + `BlueprintScene`, handler dans
