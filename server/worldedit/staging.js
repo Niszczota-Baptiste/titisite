@@ -113,8 +113,14 @@ function loadStore(bp) {
 }
 
 // ── Validation de sélection ──────────────────────────────────────────────────
-const MAX_SELECTION_VOLUME = Number(process.env.WORLDEDIT_MAX_SELECTION || 2_000_000);
+// Plafond de volume de la BOÎTE de sélection (les ops itèrent chaque case). Élevé
+// par défaut : les grosses commandes (terrain, heightmap…) tournent côté serveur
+// et écrivent le .mca même si l'aperçu 3D, lui, ne montre qu'une part (truncate).
+const MAX_SELECTION_VOLUME = Number(process.env.WORLDEDIT_MAX_SELECTION || 128_000_000);
 const CROP_MAX_BLOCKS = Number(process.env.BLUEPRINT_MAX_BLOCKS || 3_000_000);
+// Budget d'affichage de l'aperçu (blocs pleins) : au-delà l'aperçu est PARTIEL
+// (le navigateur ne peut pas afficher des dizaines de millions de blocs).
+const PREVIEW_MAX_BLOCKS = Number(process.env.WORLDEDIT_PREVIEW_MAX || 4_000_000);
 
 // `maxVolume` borne le volume de la boîte (transformations, qui itèrent chaque
 // case). Pour l'extraction on passe Infinity : le coût réel y est le nombre de
@@ -249,7 +255,9 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
   } else {
     const fn = OPS[operation];
     if (!fn) throw new Error('unknown_operation');
-    result = fn(target, sel, params || {});
+    // ctx.yield : rendre la main périodiquement pendant les grosses ops (terrain…).
+    const ctx = { yield: async () => { await tick(); progress('apply', 45); } };
+    result = await fn(target, sel, params || {}, ctx);
   }
   progress('commit', 60); await tick();
 
@@ -270,7 +278,8 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
   // contenu) — bornée aux limites du monde. L'aperçu couvre la nouvelle emprise.
   const grown = clampBBox(unionBBox(extent, result.bounds || sel), limits);
   growExtent(bp.id, grown);
-  const sparse = store.deriveSparse(grown);
+  // Aperçu PARTIEL au-delà du budget (la commande a tout écrit dans le .mca).
+  const sparse = store.deriveSparse(grown, PREVIEW_MAX_BLOCKS, { truncate: true });
   fs.writeFileSync(previewPath(bp.id), zlib.gzipSync(Buffer.from(JSON.stringify(sparse))));
 
   const durationMs = Date.now() - startedAt;
@@ -280,7 +289,7 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
   `).run(bp.id, actor, operation, JSON.stringify({ selection: sel, params: params || {} }), result.blocksChanged || 0, durationMs);
 
   // `clipboard` n'est présent que pour `cut` (presse-papier rempli au passage).
-  return { blocksChanged: result.blocksChanged || 0, bounds: result.bounds || sel, clipboard: result.clipboard, durationMs };
+  return { blocksChanged: result.blocksChanged || 0, bounds: result.bounds || sel, clipboard: result.clipboard, durationMs, previewTruncated: !!sparse.truncated };
 }
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -341,12 +350,13 @@ export async function applyHeightmap({ bp, actor, selection, heights, params, on
 
   const grown = clampBBox(unionBBox(extent, sel), limits);
   growExtent(bp.id, grown);
-  fs.writeFileSync(previewPath(bp.id), zlib.gzipSync(Buffer.from(JSON.stringify(store.deriveSparse(grown)))));
+  const sparse = store.deriveSparse(grown, PREVIEW_MAX_BLOCKS, { truncate: true });
+  fs.writeFileSync(previewPath(bp.id), zlib.gzipSync(Buffer.from(JSON.stringify(sparse))));
 
   const durationMs = Date.now() - startedAt;
   db.prepare(`INSERT INTO worldedit_audit (blueprint_id, actor, operation, params_json, blocks_changed, duration_ms) VALUES (?, ?, 'heightmap', ?, ?, ?)`)
     .run(bp.id, actor, JSON.stringify({ selection: sel, mode }), changed, durationMs);
-  return { blocksChanged: changed, bounds: sel, durationMs };
+  return { blocksChanged: changed, bounds: sel, durationMs, previewTruncated: !!sparse.truncated };
 }
 
 // Sort la zone en heightmap : pour chaque colonne XZ de la sélection, la hauteur

@@ -287,6 +287,7 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
       else if (opId === 'cut') setClip({ sx: Math.abs(sel.max.x - sel.min.x) + 1, sy: Math.abs(sel.max.y - sel.min.y) + 1, sz: Math.abs(sel.max.z - sel.min.z) + 1 });
       toast?.success?.(opId === 'copy' ? 'Sélection copiée dans le presse-papier'
         : `${op.label} : ${res.blocksChanged} bloc(s) modifié(s)${res.ms != null ? ` · ${res.ms} ms` : ''}`);
+      if (res.previewTruncated) toast?.info?.('Zone très grande : l’aperçu 3D est partiel, mais l’export .mca est complet.');
       await refreshState();
       onChanged?.();
     } catch (e) {

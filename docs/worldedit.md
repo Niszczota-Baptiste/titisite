@@ -216,6 +216,24 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   télécharge (`api…exportHeightmap` → Blob). Pratique pour ressortir un relief,
   le retoucher dans un éditeur d'image, puis le réinjecter.
 
+## Grandes zones : opération serveur + aperçu partiel
+
+Pour générer du terrain (ou heightmap…) sur de **très grandes sélections**, la
+commande tourne **côté serveur** et écrit tout le `.mca` ; l'aperçu 3D, lui, est
+**borné** (le navigateur ne peut pas afficher des dizaines de millions de blocs) :
+
+- **Plafond de sélection** relevé : `WORLDEDIT_MAX_SELECTION` (défaut **128 M**,
+  réglable). C'est le volume de la boîte que les ops itèrent.
+- **Aperçu tronqué** : `deriveSparse(…, { truncate:true })` s'arrête au
+  **budget d'affichage** (`WORLDEDIT_PREVIEW_MAX`, défaut 4 M blocs pleins) et
+  renvoie `truncated:true` au lieu de lever `too_many_blocks`. La réponse
+  `/transform` (et le job async) expose `previewTruncated` → le panneau affiche
+  « aperçu partiel, export .mca complet ». **L'export `.mca` reste intégral.**
+- **Pauses internes** : `opTerrain` est asynchrone et rend la main à la boucle
+  d'événements toutes les 32 lignes (`ctx.yield`), comme `applyHeightmap` — le
+  serveur reste réactif pendant un gros calcul. Le dispatch `OPS` `await`-e donc
+  les opérations (les ops synchrones marchent toujours).
+
 ## Robustesse & perf (vague 6)
 
 - **Sauvegarde auto / récupération** : le staging WorldEdit est **déjà

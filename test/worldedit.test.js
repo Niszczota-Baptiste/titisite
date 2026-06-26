@@ -471,10 +471,10 @@ test('opPath : courbe (bow) sort de l’axe droit', () => {
   assert.ok(rc.bounds.max.z > 0, 'la courbe doit s’écarter en Z');
 });
 
-test('opTerrain : relief procédural varié + déterministe (seed)', () => {
+test('opTerrain : relief procédural varié + déterministe (seed)', async () => {
   const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 31, y: 24, z: 31 } };
-  const gen = () => { const v = new MemoryVolume(); opTerrain(v, sel, { style: 'montagne', seed: 42, palette: 'mountain' }); return v; };
-  const a = gen(), b = gen();
+  const gen = async () => { const v = new MemoryVolume(); await opTerrain(v, sel, { style: 'montagne', seed: 42, palette: 'mountain' }); return v; };
+  const a = await gen(), b = await gen();
   // déterministe : même seed → même surface en plusieurs points
   const topAt = (v, x, z) => { for (let y = sel.max.y; y >= sel.min.y; y--) if (v.getBlock(x, y, z)) return y; return -1; };
   const heights = [];
@@ -489,12 +489,12 @@ test('opTerrain : relief procédural varié + déterministe (seed)', () => {
   assert.ok(a.getBlock(0, hx, 0));
 });
 
-test('opTerrain : crevasse creuse (base haute, vallées) + clearAbove purge le dessus', () => {
+test('opTerrain : crevasse creuse (base haute, vallées) + clearAbove purge le dessus', async () => {
   const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 15, y: 30, z: 15 } };
   const v = new MemoryVolume();
   // pré-remplir tout le volume pour vérifier la purge au-dessus de la surface
   for (let y = 0; y <= 30; y++) for (let z = 0; z < 16; z++) for (let x = 0; x < 16; x++) v.setBlock(x, y, z, { Name: 'minecraft:netherrack', Properties: null });
-  opTerrain(v, sel, { style: 'crevasse', seed: 7, palette: 'mountain' });
+  await opTerrain(v, sel, { style: 'crevasse', seed: 7, palette: 'mountain' });
   const topAt = (x, z) => { for (let y = sel.max.y; y >= sel.min.y; y--) if (v.getBlock(x, y, z)) return y; return -1; };
   // au-dessus de la surface : purgé (air)
   const h = topAt(0, 0);

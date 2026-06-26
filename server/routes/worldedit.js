@@ -65,7 +65,7 @@ function getState(req, res) {
     hasPendingEdits: hasPendingEdits(bp.id),
     undoDepth: undoDepth(bp.id),
     redoDepth: redoDepth(bp.id),
-    maxSelectionVolume: Number(process.env.WORLDEDIT_MAX_SELECTION || 2_000_000),
+    maxSelectionVolume: Number(process.env.WORLDEDIT_MAX_SELECTION || 128_000_000),
   });
 }
 
@@ -121,7 +121,7 @@ async function postTransform(req, res) {
           onProgress: (phase, pct) => updateJob(jobId, { phase, pct }),
         });
         if (out.clipboard) setClip(clipKey, out.clipboard);
-        updateJob(jobId, { status: 'done', phase: 'done', pct: 100, result: { blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs } });
+        updateJob(jobId, { status: 'done', phase: 'done', pct: 100, result: { blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs, previewTruncated: out.previewTruncated } });
       } catch (e) {
         updateJob(jobId, { status: 'error', error: transformErrorCode(e) });
       }
@@ -137,7 +137,7 @@ async function postTransform(req, res) {
     }
     const out = await applyOperation({ bp, operation, params, selection, actor: req.we.actor, clipboardStore });
     if (out.clipboard) setClip(clipKey, out.clipboard); // cut remplit le presse-papier
-    return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs });
+    return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs, previewTruncated: out.previewTruncated });
   } catch (e) {
     const code = transformErrorCode(e);
     if (code === 'transform_failed') console.error('[worldedit] transform failed:', e?.message || e);
@@ -309,7 +309,7 @@ async function postHeightmap(req, res) {
       heights[i] = invert ? 1 - lum / 255 : lum / 255;
     }
     const out = await applyHeightmap({ bp, actor: req.we.actor, selection, heights, params: { block, under, mode } });
-    return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs });
+    return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs, previewTruncated: out.previewTruncated });
   } catch (e) {
     const known = [...TRANSFORM_KNOWN, 'bad_heightmap', 'bad_params'];
     const code = known.includes(e?.message) ? e.message : 'heightmap_failed';

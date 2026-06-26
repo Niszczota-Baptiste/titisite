@@ -187,18 +187,23 @@ export class RegionStore {
   // l'aperçu. Itère les sections déjà chargées (non-air only) — JAMAIS cellule
   // par cellule sur toute la boîte (qui peut compter des milliards de cases).
   // Suppose un warmup couvrant `bbox`.
-  deriveSparse(bbox, maxBlocks = 5_000_000) {
+  // `truncate` : au lieu de lever `too_many_blocks` au-delà de `maxBlocks`, on
+  // arrête et on renvoie un aperçu PARTIEL (`truncated: true`). Sert aux grosses
+  // opérations : la commande écrit tout le .mca, l'aperçu n'en montre qu'une part.
+  deriveSparse(bbox, maxBlocks = 5_000_000, { truncate = false } = {}) {
     const palette = [];
     const index = new Map();
     const counts = new Map();
     const blocks = [];
     let count = 0;
+    let truncated = false;
     const idxOf = (name, props) => {
       const key = `${name}|${propsKey(props)}`;
       let i = index.get(key);
       if (i === undefined) { i = palette.length; palette.push({ name, props: props || null }); index.set(key, i); }
       return i;
     };
+    outer:
     for (const r of this.regions.values()) {
       if (!r.chunks) continue;
       for (const rec of r.chunks.values()) {
@@ -218,7 +223,10 @@ export class RegionStore {
             const z = baseZ + ((n >> 4) & 15);
             const y = baseY + ((n >> 8) & 15);
             if (x < bbox.min.x || x > bbox.max.x || y < bbox.min.y || y > bbox.max.y || z < bbox.min.z || z > bbox.max.z) continue;
-            if (count >= maxBlocks) throw new Error('too_many_blocks');
+            if (count >= maxBlocks) {
+              if (truncate) { truncated = true; break outer; }
+              throw new Error('too_many_blocks');
+            }
             blocks.push(x - bbox.min.x, y - bbox.min.y, z - bbox.min.z, idxOf(e.Name, e.Properties));
             counts.set(e.Name, (counts.get(e.Name) || 0) + 1);
             count++;
@@ -228,7 +236,7 @@ export class RegionStore {
     }
     const bom = [...counts.entries()].map(([blockId, c]) => ({ blockId, count: c })).sort((a, b) => b.count - a.count);
     return {
-      palette, blocks, bom, count,
+      palette, blocks, bom, count, truncated,
       min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
       size: { x: bbox.max.x - bbox.min.x + 1, y: bbox.max.y - bbox.min.y + 1, z: bbox.max.z - bbox.min.z + 1 },
     };

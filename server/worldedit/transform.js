@@ -500,7 +500,7 @@ function fbm(x, z, octaves, seed) {
   return sum / norm; // [0,1]
 }
 
-export function opTerrain(vol, sel, params = {}) {
+export async function opTerrain(vol, sel, params = {}, ctx) {
   const style = TERRAIN_STYLES[params.style] || TERRAIN_STYLES.collines;
   const seed = Number.isFinite(params.seed) ? (params.seed | 0) : 1337;
   const scale = Math.max(4, Math.min(256, params.scale || style.scale));
@@ -537,6 +537,8 @@ export function opTerrain(vol, sel, params = {}) {
         }
       }
     }
+    // Rend la main périodiquement (grosse zone → ne bloque pas le serveur).
+    if (ctx?.yield && (z & 31) === 0) await ctx.yield();
   }
   return { blocksChanged: c, bounds: sel };
 }

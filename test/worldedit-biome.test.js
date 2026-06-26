@@ -66,3 +66,16 @@ test('RegionStore : setBiome → commit → relecture persistée', async () => {
   assert.equal(store2.getBiome(4, 0, 0), 'minecraft:desert');
   assert.equal(store2.getBiome(8, 0, 0), 'minecraft:plains'); // cellule non peinte (défaut)
 });
+
+test('deriveSparse : truncate → aperçu partiel au lieu de planter', async () => {
+  const buf = mcaWithSection(); // section pleine de pierre (4096 blocs)
+  const store = new RegionStore([{ regionX: 0, regionZ: 0, buffer: buf }]);
+  const bbox = { min: { x: 0, y: 0, z: 0 }, max: { x: 15, y: 15, z: 15 } };
+  await store.warmup(bbox);
+  // Sans truncate : lève au-delà du plafond.
+  assert.throws(() => store.deriveSparse(bbox, 100), /too_many_blocks/);
+  // Avec truncate : s'arrête au budget et signale l'aperçu partiel.
+  const sparse = store.deriveSparse(bbox, 100, { truncate: true });
+  assert.equal(sparse.truncated, true);
+  assert.equal(sparse.count, 100);
+});
