@@ -1,6 +1,7 @@
+import nbt from 'prismarine-nbt';
 import {
   readRegion, writeRegion, decodeChunk, chunkSections, readSection, encodeBlockStates,
-  localIndex, SECTION_VOLUME,
+  localIndex, SECTION_VOLUME, decodeBiomes, encodeBiomes, biomeLocalIndex,
 } from '../anvil/index.js';
 
 // RegionStore : présente un ensemble de régions .mca comme un VOLUME adressable
@@ -64,7 +65,8 @@ export class RegionStore {
     rec.list = root?.value?.sections?.value?.value || null; // tableau tagué (insertion)
     rec.sections = new Map();
     for (const { Y, comp } of chunkSections(rec.chunk)) {
-      rec.sections.set(Y, { comp, grid: readSection(comp), dirty: false, isNew: false });
+      // biomes : décodés à la demande (lazily) lors d'un premier accès biome.
+      rec.sections.set(Y, { comp, grid: readSection(comp), biomes: null, dirty: false, biomesDirty: false, isNew: false });
     }
     return rec;
   }
@@ -118,6 +120,43 @@ export class RegionStore {
     this._regionAt(cx, cz).dirty = true;
   }
 
+  // Décode (paresseusement) la grille de biomes 4³ d'une section.
+  _biomes(sec) {
+    if (sec.biomes) return sec.biomes;
+    const raw = sec.comp?.biomes ? nbt.simplify(sec.comp.biomes) : null;
+    sec.biomes = decodeBiomes(raw || {});
+    return sec.biomes;
+  }
+
+  getBiome(x, y, z) {
+    const sec = this._section(fdiv(x, 16), fdiv(z, 16), fdiv(y, 16), false);
+    if (!sec) return null;
+    const bi = this._biomes(sec);
+    const ci = biomeLocalIndex((fmod(x, 16)) >> 2, (fmod(y, 16)) >> 2, (fmod(z, 16)) >> 2);
+    return bi.palette[bi.indices[ci]] || null;
+  }
+
+  // Peint le biome de la cellule 4³ contenant (x,y,z). Renvoie true si changé.
+  setBiome(x, y, z, name) {
+    const cx = fdiv(x, 16), cz = fdiv(z, 16);
+    const rec = this._chunkRec(cx, cz);
+    if (!rec || !rec.sections) return false;
+    // On ne peint que les sections existantes (pas de section d'air créée pour
+    // un biome dans le vide → évite de gonfler le fichier).
+    const sec = this._section(cx, cz, fdiv(y, 16), false);
+    if (!sec) return false;
+    const bi = this._biomes(sec);
+    let pi = bi.palette.indexOf(name);
+    if (pi < 0) { pi = bi.palette.length; bi.palette.push(name); }
+    const ci = biomeLocalIndex((fmod(x, 16)) >> 2, (fmod(y, 16)) >> 2, (fmod(z, 16)) >> 2);
+    if (bi.indices[ci] === pi) return false;
+    bi.indices[ci] = pi;
+    sec.biomesDirty = true;
+    rec.dirty = true;
+    this._regionAt(cx, cz).dirty = true;
+    return true;
+  }
+
   // Réencode les sections modifiées et renvoie Map("rx,rz" -> Buffer) des régions
   // touchées. `touchedOnly` limite la sortie aux régions dirty.
   commit({ touchedOnly = true } = {}) {
@@ -129,8 +168,9 @@ export class RegionStore {
           if (!rec.sections) continue;
           let mutated = false;
           for (const sec of rec.sections.values()) {
-            if (!sec.dirty && !sec.isNew) continue;
-            sec.comp.block_states = encodeBlockStates(sec.grid);
+            if (!sec.dirty && !sec.biomesDirty && !sec.isNew) continue;
+            if (sec.dirty || sec.isNew) sec.comp.block_states = encodeBlockStates(sec.grid);
+            if (sec.biomesDirty && sec.biomes) { sec.comp.biomes = encodeBiomes(sec.biomes); sec.biomesDirty = false; }
             if (sec.isNew && rec.list) { rec.list.push(sec.comp); sec.isNew = false; }
             sec.dirty = false;
             mutated = true;

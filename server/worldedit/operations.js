@@ -5,6 +5,21 @@
 
 const DIRECTIONS = ['east', 'west', 'up', 'down', 'south', 'north'];
 
+// Biomes courants 1.20 proposés dans le menu (la saisie reste libre pour les
+// biomes modés : on valide seulement le format « namespace:id »).
+const BIOMES = [
+  'minecraft:plains', 'minecraft:forest', 'minecraft:birch_forest', 'minecraft:dark_forest',
+  'minecraft:taiga', 'minecraft:snowy_taiga', 'minecraft:jungle', 'minecraft:savanna',
+  'minecraft:desert', 'minecraft:badlands', 'minecraft:swamp', 'minecraft:mangrove_swamp',
+  'minecraft:beach', 'minecraft:snowy_plains', 'minecraft:ice_spikes', 'minecraft:mushroom_fields',
+  'minecraft:meadow', 'minecraft:cherry_grove', 'minecraft:grove', 'minecraft:snowy_slopes',
+  'minecraft:windswept_hills', 'minecraft:stony_peaks', 'minecraft:frozen_peaks', 'minecraft:jagged_peaks',
+  'minecraft:ocean', 'minecraft:warm_ocean', 'minecraft:lukewarm_ocean', 'minecraft:frozen_ocean',
+  'minecraft:river', 'minecraft:nether_wastes', 'minecraft:soul_sand_valley', 'minecraft:crimson_forest',
+  'minecraft:warped_forest', 'minecraft:basalt_deltas', 'minecraft:the_end', 'minecraft:lush_caves',
+  'minecraft:dripstone_caves', 'minecraft:deep_dark',
+];
+
 export const OPERATIONS = [
   {
     id: 'mirror', label: 'Miroir', minRole: 'editor', group: 'Transformer',
@@ -159,6 +174,11 @@ export const OPERATIONS = [
     ],
   },
   {
+    id: 'biome', label: 'Peindre biome', minRole: 'editor', group: 'Minecraft',
+    description: 'Change le biome de la sélection (cellules de 4×4×4). N’affecte que les sections déjà présentes du build.',
+    params: [{ name: 'biome', type: 'biome', values: BIOMES, default: 'minecraft:plains', label: 'Biome' }],
+  },
+  {
     id: 'copy', label: 'Copier', minRole: 'editor', group: 'Presse-papier',
     description: 'Copie la sélection dans le presse-papier serveur (lié à la session).',
     params: [],
@@ -232,6 +252,10 @@ export function normalizeParams(operation, raw = {}) {
     case 'scale': {
       const factor = Number(raw.factor);
       return [0.5, 2, 3, 4, 6].includes(factor) ? { factor } : 'bad_factor';
+    }
+    case 'biome': {
+      const biome = String(raw.biome || '').trim().toLowerCase();
+      return /^[a-z0-9_]+:[a-z0-9_/]+$/.test(biome) ? { biome } : 'bad_biome';
     }
     case 'hollow': case 'naturalize': case 'drain': case 'copy': case 'cut': return {};
     case 'paste': return { mode: raw.mode === 'overwrite' ? 'overwrite' : 'overlay' };

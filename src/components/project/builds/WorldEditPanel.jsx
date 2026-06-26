@@ -133,6 +133,21 @@ function ParamField({ param, value, onChange, catalog, byId }) {
       </Field>
     );
   }
+  if (param.type === 'biome') {
+    // Liste déroulante des biomes courants + saisie libre (biomes modés).
+    return (
+      <Field label={param.label}>
+        <div style={{ display: 'grid', gap: 6, minWidth: 220 }}>
+          <select value={(param.values || []).includes(value) ? value : ''} onChange={(e) => e.target.value && onChange(e.target.value)} style={selectStyle}>
+            <option value="">— choisir —</option>
+            {(param.values || []).map((v) => <option key={v} value={v}>{v.replace('minecraft:', '')}</option>)}
+          </select>
+          <Input placeholder="ou id exact (minecraft:plains)" value={value || ''}
+            onChange={(e) => onChange(e.target.value.trim().toLowerCase())} />
+        </div>
+      </Field>
+    );
+  }
   if (param.type === 'blocklist') {
     const rows = Array.isArray(value) ? value : [];
     const set = (r) => onChange(r);

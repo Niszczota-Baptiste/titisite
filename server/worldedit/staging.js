@@ -16,7 +16,7 @@ import { RegionStore } from './regionStore.js';
 import {
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, opCut,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
-  opLine, opPyramid, opCone, opErode, opDilate, opDrain,
+  opLine, opPyramid, opCone, opErode, opDilate, opDrain, opBiome,
   MaskedVolume, SELECTION_SHAPES,
 } from './transform.js';
 import { makeZip } from './zipWriter.js';
@@ -212,6 +212,7 @@ const OPS = {
   erode: (store, sel, p) => opErode(store, sel, p),
   dilate: (store, sel, p) => opDilate(store, sel, p),
   drain: (store, sel) => opDrain(store, sel),
+  biome: (store, sel, p) => opBiome(store, sel, p),
 };
 
 // Applique une opération sur le staging (non destructif) et renvoie le diff.

@@ -116,7 +116,8 @@ async function postTransform(req, res) {
     return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id) });
   } catch (e) {
     const known = ['invalid_selection', 'out_of_bounds', 'selection_too_large', 'unknown_operation',
-      'empty_clipboard', 'no_source', 'too_many_blocks', 'bad_axis', 'bad_degrees', 'bad_block', 'bad_direction', 'bad_factor', 'bad_pattern'];
+      'empty_clipboard', 'no_source', 'too_many_blocks', 'bad_axis', 'bad_degrees', 'bad_block', 'bad_direction',
+      'bad_factor', 'bad_pattern', 'bad_biome', 'biome_unsupported'];
     const code = known.includes(e.message) ? e.message : 'transform_failed';
     if (code === 'transform_failed') console.error('[worldedit] transform failed:', e?.message || e);
     return res.status(code === 'transform_failed' ? 500 : 400).json({ error: code });

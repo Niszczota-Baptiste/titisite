@@ -8,4 +8,5 @@ export {
 export {
   decodeBlockStates, encodeBlockStates, bitsForPalette,
   localIndex, idxX, idxY, idxZ, SECTION_VOLUME, pairToBig, bigToPair,
+  decodeBiomes, encodeBiomes, bitsForBiomes, biomeLocalIndex, BIOME_VOLUME,
 } from './section.js';

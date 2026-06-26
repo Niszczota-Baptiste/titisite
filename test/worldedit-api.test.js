@@ -463,3 +463,26 @@ test('Bibliothèque de schematics : copy → save → list → export .schem →
   assert.equal((await admin.delete(`${root}/schematics/${sid}`)).status, 200);
   assert.equal((await admin.get(`${root}/schematics`)).json.length, 0);
 });
+
+test('Peindre biome : op biome via API + undo', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug);
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+  const selection = { min: { x: 0, y: 0, z: 0 }, max: { x: 7, y: 0, z: 7 } };
+
+  // Biome invalide → 400.
+  const bad = await admin.post(`${root}/transform`, { body: { operation: 'biome', params: { biome: 'pas valide !' }, selection } });
+  assert.equal(bad.json.error, 'bad_biome');
+
+  const r = await admin.post(`${root}/transform`, { body: { operation: 'biome', params: { biome: 'minecraft:desert' }, selection } });
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.json.blocksChanged > 0);
+  assert.equal((await admin.get(`${root}/state`)).json.undoDepth, 1);
+
+  const un = await admin.post(`${root}/undo`);
+  assert.equal(un.status, 200, un.text);
+});

@@ -50,6 +50,8 @@ export class MaskedVolume {
   constructor(inner, sel) { this.inner = inner; this.sel = sel; }
   getBlock(x, y, z) { return this.inner.getBlock(x, y, z); }
   setBlock(x, y, z, b) { if (selectionContains(this.sel, x, y, z)) this.inner.setBlock(x, y, z, b); }
+  getBiome(x, y, z) { return this.inner.getBiome ? this.inner.getBiome(x, y, z) : null; }
+  setBiome(x, y, z, n) { return (selectionContains(this.sel, x, y, z) && this.inner.setBiome) ? this.inner.setBiome(x, y, z, n) : false; }
 }
 
 export function selectionSize(sel) {
@@ -665,13 +667,38 @@ export function opPaste(vol, clipboard, { at, mode = 'overlay' }) {
   };
 }
 
+// ── Biome : peint le biome (cellule 4³) de la sélection ──────────────────────
+export function opBiome(vol, sel, params) {
+  if (typeof vol.setBiome !== 'function') throw new Error('biome_unsupported');
+  const name = params.biome;
+  if (!name) throw new Error('bad_biome');
+  let changed = 0;
+  // Pas de 4 blocs (granularité des biomes) — suffisant et bien plus léger.
+  for (let y = sel.min.y; y <= sel.max.y; y += 4) {
+    for (let z = sel.min.z; z <= sel.max.z; z += 4) {
+      for (let x = sel.min.x; x <= sel.max.x; x += 4) {
+        if (vol.setBiome(x, y, z, name)) changed++;
+      }
+    }
+  }
+  return { blocksChanged: changed, bounds: sel };
+}
+
 // ── Volume en mémoire (tests + petits builds) ────────────────────────────────
 export class MemoryVolume {
-  constructor() { this.map = new Map(); }
+  constructor() { this.map = new Map(); this.biomes = new Map(); }
   key(x, y, z) { return `${x},${y},${z}`; }
   getBlock(x, y, z) { return this.map.get(this.key(x, y, z)) || null; }
   setBlock(x, y, z, b) {
     const k = this.key(x, y, z);
     if (isAir(b)) this.map.delete(k); else this.map.set(k, b);
+  }
+  // Biome à la granularité 4³ (clé alignée sur la cellule).
+  biomeKey(x, y, z) { return `${x >> 2},${y >> 2},${z >> 2}`; }
+  getBiome(x, y, z) { return this.biomes.get(this.biomeKey(x, y, z)) || null; }
+  setBiome(x, y, z, name) {
+    const k = this.biomeKey(x, y, z);
+    if (this.biomes.get(k) === name) return false;
+    this.biomes.set(k, name); return true;
   }
 }

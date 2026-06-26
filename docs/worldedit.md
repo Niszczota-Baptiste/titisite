@@ -164,6 +164,25 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
   dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
+## Spécial Minecraft (vague 4)
+
+- **Peindre le biome** (op `biome`) : change le biome de la sélection à la
+  granularité **4×4×4** (résolution biome 1.18+). N'affecte que les **sections
+  déjà présentes** du build (pas de section d'air créée dans le vide). Lossless,
+  annulable.
+  - Anvil : `decodeBiomes`/`encodeBiomes` (`server/anvil/section.js`) — palette de
+    chaînes + `data` long[] **non chevauchant**, `bits = max(1, ceil(log2(len)))`,
+    64 cellules en ordre YZX (pas de 4 blocs) ; palette de 1 → pas de `data`.
+  - `RegionStore.getBiome/setBiome` (cellule contenant le bloc) + `commit`
+    réémet `biomes` quand `biomesDirty`. `MaskedVolume`/`MemoryVolume` exposent
+    aussi `setBiome` (respect de la forme de sélection).
+  - Menu : biomes 1.20 courants + saisie libre (biomes modés), validés au format
+    `namespace:id`.
+- Note : édition de block-entities (contenu de coffres / texte de panneaux),
+  fluides « coulants » et stamps décoratifs ne sont pas inclus ici — les
+  block-entities existantes sont **préservées** passivement (chunks réémis), le
+  remplissage d'eau/lave passe par `set` + `drain`.
+
 ## Bibliothèque de schematics & interop (vague 3)
 
 - **Persistance** : un presse-papier (`Schematic` dense) se sauve dans
