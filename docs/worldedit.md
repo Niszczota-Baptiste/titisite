@@ -164,6 +164,21 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
   dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
+## Génération de terrain procédural
+
+- `opTerrain` (op `terrain`, groupe **Terrain**) sculpte des **dénivelés naturels**
+  sur toute la sélection via un **bruit de valeur fractal** (fBm, `valueNoise` +
+  octaves, hash entier déterministe → reproductible par **seed**). Chaque
+  **style** (`TERRAIN_STYLES`) règle octaves / échelle / amplitude / exposant /
+  crêtes : **Plaine**, **Collines**, **Plateau**, **Montagne**, **Pic** (ridged,
+  crêtes acérées), **Crevasse** (ridged + `carve` : creusé depuis une base haute).
+- Paramètres : `amplitude` (%), `scale` (taille des reliefs, 0 = auto), `seed`,
+  `palette` (réutilise `NATURALIZE_PRESETS` + `auto` biome + `custom`),
+  `clearAbove` (purge l'air au-dessus de la surface générée → sculpte vraiment,
+  pas seulement additif). La hauteur de colonne = `base ± amp·noise^exp` ×
+  plage Y. Borné par `WORLDEDIT_MAX_SELECTION` ; les grandes zones passent en
+  **transform asynchrone** (barre de progression).
+
 ## Naturaliser par biome
 
 - `opNaturalize` recouvre chaque colonne (surface / sous-sol / **roche profonde

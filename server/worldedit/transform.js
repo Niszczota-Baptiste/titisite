@@ -458,6 +458,89 @@ export function opNaturalize(vol, sel, params = {}) {
   return { blocksChanged: c, bounds: sel };
 }
 
+// ── Génération de terrain procédural (dénivelés naturels) ────────────────────
+// Bruit de valeur fractal (fBm). Chaque style règle octaves / échelle / amplitude
+// / exposant / crêtes (ridged) et un creusement éventuel (crevasse). La hauteur
+// de chaque colonne est dérivée du bruit, puis la colonne est remplie avec une
+// palette naturelle (réutilise NATURALIZE_PRESETS) et l'air au-dessus est purgé.
+export const TERRAIN_STYLES = {
+  plaine: { octaves: 3, scale: 48, amp: 0.14, exp: 1.0, ridged: false, base: 0.18, palette: 'plains' },
+  collines: { octaves: 4, scale: 44, amp: 0.34, exp: 1.1, ridged: false, base: 0.22, palette: 'plains' },
+  plateau: { octaves: 4, scale: 80, amp: 0.45, exp: 0.6, ridged: false, base: 0.30, palette: 'savanna' },
+  montagne: { octaves: 5, scale: 64, amp: 0.85, exp: 1.4, ridged: false, base: 0.24, palette: 'mountain' },
+  pic: { octaves: 5, scale: 56, amp: 0.96, exp: 2.2, ridged: true, base: 0.20, palette: 'stony_peaks' },
+  crevasse: { octaves: 4, scale: 38, amp: 0.72, exp: 1.7, ridged: true, carve: true, base: 0.7, palette: 'mountain' },
+};
+export const TERRAIN_STYLE_IDS = Object.keys(TERRAIN_STYLES);
+
+// Hash entier déterministe (x, z, seed) → [0,1).
+function hash2(x, z, seed) {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(z | 0, 668265263) ^ Math.imul(seed | 0, 362437);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967295;
+}
+const smoothstep = (t) => t * t * (3 - 2 * t);
+function valueNoise(x, z, seed) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fx = x - ix, fz = z - iz;
+  const v00 = hash2(ix, iz, seed), v10 = hash2(ix + 1, iz, seed);
+  const v01 = hash2(ix, iz + 1, seed), v11 = hash2(ix + 1, iz + 1, seed);
+  const sx = smoothstep(fx), sz = smoothstep(fz);
+  const a = v00 + (v10 - v00) * sx;
+  const b = v01 + (v11 - v01) * sx;
+  return a + (b - a) * sz;
+}
+function fbm(x, z, octaves, seed) {
+  let amp = 1, freq = 1, sum = 0, norm = 0;
+  for (let o = 0; o < octaves; o++) {
+    sum += amp * valueNoise(x * freq, z * freq, seed + o * 1013);
+    norm += amp; amp *= 0.5; freq *= 2;
+  }
+  return sum / norm; // [0,1]
+}
+
+export function opTerrain(vol, sel, params = {}) {
+  const style = TERRAIN_STYLES[params.style] || TERRAIN_STYLES.collines;
+  const seed = Number.isFinite(params.seed) ? (params.seed | 0) : 1337;
+  const scale = Math.max(4, Math.min(256, params.scale || style.scale));
+  const ampMul = Number.isFinite(params.amplitude) ? Math.max(0, Math.min(1, params.amplitude)) : 1;
+  const clearAbove = params.clearAbove !== false;
+  const palKey = (params.palette && params.palette !== 'match') ? params.palette : style.palette;
+  const auto = palKey === 'auto';
+  const fixedPal = (!auto && palKey !== 'custom') ? paletteOf(NATURALIZE_PRESETS[palKey] || NATURALIZE_PRESETS.plains) : null;
+  const customPal = palKey === 'custom'
+    ? paletteOf({ surface: params.surface || 'minecraft:grass_block', soil: params.soil || 'minecraft:dirt', filler: [[params.filler || 'minecraft:stone', 1]] })
+    : null;
+
+  const minY = sel.min.y, maxY = sel.max.y;
+  const range = Math.max(1, maxY - minY);
+  const freq = 1 / scale;
+  let c = 0;
+  for (let z = sel.min.z; z <= sel.max.z; z++) {
+    for (let x = sel.min.x; x <= sel.max.x; x++) {
+      let n = fbm(x * freq, z * freq, style.octaves, seed);
+      if (style.ridged) n = 1 - Math.abs(2 * n - 1); // crêtes acérées
+      n = Math.pow(Math.max(0, Math.min(1, n)), style.exp);
+      let hf = style.carve ? style.base - style.amp * ampMul * n : style.base + style.amp * ampMul * n;
+      hf = Math.max(0, Math.min(1, hf));
+      const topY = minY + Math.round(hf * range);
+      const pal = auto ? paletteOf(NATURALIZE_PRESETS[biomeToPreset(vol.getBiome ? vol.getBiome(x, topY, z) : null)]) : (customPal || fixedPal);
+      for (let y = minY; y <= topY; y++) {
+        const depth = topY - y;
+        const target = depth === 0 ? pal.surface : depth <= 3 ? pal.soil : pal.pick();
+        if (!sameBlock(vol.getBlock(x, y, z), target)) { vol.setBlock(x, y, z, clone(target)); c++; }
+      }
+      if (clearAbove) {
+        for (let y = topY + 1; y <= maxY; y++) {
+          if (!isAir(vol.getBlock(x, y, z))) { vol.setBlock(x, y, z, null); c++; }
+        }
+      }
+    }
+  }
+  return { blocksChanged: c, bounds: sel };
+}
+
 const STACK_DIR = { east: [1, 0, 0], west: [-1, 0, 0], up: [0, 1, 0], down: [0, -1, 0], south: [0, 0, 1], north: [0, 0, -1] };
 
 // Stack : répète la sélection `count` fois dans une direction.

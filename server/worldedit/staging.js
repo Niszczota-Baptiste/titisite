@@ -16,7 +16,7 @@ import { RegionStore } from './regionStore.js';
 import {
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, opCut,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
-  opLine, opPyramid, opCone, opErode, opDilate, opDrain, opBiome, opPath,
+  opLine, opPyramid, opCone, opErode, opDilate, opDrain, opBiome, opPath, opTerrain,
   MaskedVolume, SELECTION_SHAPES, sameBlock,
 } from './transform.js';
 import { makeZip } from './zipWriter.js';
@@ -214,6 +214,7 @@ const OPS = {
   drain: (store, sel) => opDrain(store, sel),
   biome: (store, sel, p) => opBiome(store, sel, p),
   path: (store, sel, p) => opPath(store, sel, p),
+  terrain: (store, sel, p) => opTerrain(store, sel, p),
 };
 
 // Rend la main à la boucle d'événements (le polling de job répond entre phases).

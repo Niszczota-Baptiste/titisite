@@ -618,3 +618,28 @@ test('Zone → heightmap : export PNG depuis le relief de la sélection', async 
   const ch = info.channels;
   assert.ok(data[3 * ch] > data[0], 'colonne haute plus claire que la basse');
 });
+
+test('Générer terrain : op terrain (dénivelés) via API', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+
+  // Plateforme plate 16×16 (un chunk) à sculpter.
+  const blocks = [];
+  for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) blocks.push({ x, y: 0, z, Name: 'minecraft:stone' });
+  const buf = mcaBuffer(blocks);
+  const fd = new FormData();
+  fd.append('file', new Blob([buf]), 'r.0.0.mca');
+  fd.append('name', 'Plat'); fd.append('full', 'true');
+  const id = (await admin.post(`/api/workspaces/${slug}/blueprints`, { body: fd })).json.id;
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  const r = await admin.post(`${root}/transform`, {
+    body: { operation: 'terrain', params: { style: 'montagne', seed: 1, palette: 'mountain' }, selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 15, y: 28, z: 15 } } },
+  });
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.json.blocksChanged > 0);
+  assert.equal((await admin.get(`${root}/state`)).json.undoDepth, 1);
+});

@@ -213,6 +213,35 @@ export const OPERATIONS = [
     params: [{ name: 'biome', type: 'biome', values: BIOMES, default: 'minecraft:plains', label: 'Biome' }],
   },
   {
+    id: 'terrain', label: 'Générer terrain', minRole: 'editor', group: 'Terrain',
+    description: 'Sculpte des dénivelés naturels sur toute la sélection (bruit fractal). Le style change l’allure du relief ; remplit avec une palette naturelle et purge l’air au-dessus.',
+    params: [
+      {
+        name: 'style', type: 'enum',
+        values: ['plaine', 'collines', 'plateau', 'montagne', 'pic', 'crevasse'],
+        labels: { plaine: 'Plaine (doux)', collines: 'Collines', plateau: 'Plateau', montagne: 'Montagne', pic: 'Pic (crêtes acérées)', crevasse: 'Crevasse (creusé)' },
+        default: 'collines', label: 'Style de relief',
+      },
+      { name: 'amplitude', type: 'int', default: 100, label: 'Amplitude (%)' },
+      { name: 'scale', type: 'int', default: 0, label: 'Échelle (0 = auto)' },
+      { name: 'seed', type: 'int', default: 0, label: 'Graine (seed)' },
+      {
+        name: 'palette', type: 'enum',
+        values: ['match', 'auto', 'plains', 'forest', 'savanna', 'swamp', 'desert', 'badlands', 'snowy', 'mountain', 'stony_peaks', 'mushroom', 'custom'],
+        labels: {
+          match: 'Selon le style', auto: '🌍 Auto (biome)', plains: 'Plaine', forest: 'Forêt', savanna: 'Savane',
+          swamp: 'Marais', desert: 'Désert', badlands: 'Mesa', snowy: 'Neige', mountain: 'Montagne',
+          stony_peaks: 'Pic rocheux', mushroom: 'Champignon', custom: 'Personnalisé',
+        },
+        default: 'match', label: 'Palette de blocs',
+      },
+      { name: 'clearAbove', type: 'bool', default: true, label: 'Purger l’air au-dessus' },
+      { name: 'surface', type: 'block', label: 'Surface', showIf: { palette: 'custom' } },
+      { name: 'soil', type: 'block', label: 'Sous-sol', showIf: { palette: 'custom' } },
+      { name: 'filler', type: 'block', label: 'Roche profonde', showIf: { palette: 'custom' } },
+    ],
+  },
+  {
     id: 'copy', label: 'Copier', minRole: 'editor', group: 'Presse-papier',
     description: 'Copie la sélection dans le presse-papier serveur (lié à la session).',
     params: [],
@@ -309,6 +338,26 @@ export function normalizeParams(operation, raw = {}) {
         soil: normBlock(raw.soil)?.name || null,
         filler: normBlock(raw.filler)?.name || null,
       };
+    }
+    case 'terrain': {
+      const styles = ['plaine', 'collines', 'plateau', 'montagne', 'pic', 'crevasse'];
+      const palettes = ['match', 'auto', 'plains', 'forest', 'savanna', 'swamp', 'desert', 'badlands', 'snowy', 'mountain', 'stony_peaks', 'mushroom', 'custom'];
+      const style = styles.includes(raw.style) ? raw.style : 'collines';
+      const palette = palettes.includes(raw.palette) ? raw.palette : 'match';
+      const amp = num(raw.amplitude);
+      const out = {
+        style, palette,
+        seed: num(raw.seed) || 0,
+        scale: Math.max(0, Math.min(256, num(raw.scale) || 0)),
+        amplitude: Number.isFinite(amp) ? Math.max(0, Math.min(100, amp)) / 100 : 1,
+        clearAbove: raw.clearAbove !== false && raw.clearAbove !== 'false',
+      };
+      if (palette === 'custom') {
+        out.surface = normBlock(raw.surface)?.name || null;
+        out.soil = normBlock(raw.soil)?.name || null;
+        out.filler = normBlock(raw.filler)?.name || null;
+      }
+      return out;
     }
     case 'hollow': case 'drain': case 'copy': case 'cut': return {};
     case 'paste': return { mode: raw.mode === 'overwrite' ? 'overwrite' : 'overlay' };

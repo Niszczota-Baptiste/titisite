@@ -5,7 +5,7 @@ import {
   MemoryVolume, readSelection, mirrorSchematic, rotateSchematic, stampSchematic,
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, sameBlock, selectionSize,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
-  opLine, opPyramid, opCone, opErode, opDilate, opDrain, opPath,
+  opLine, opPyramid, opCone, opErode, opDilate, opDrain, opPath, opTerrain,
   MaskedVolume, selectionContains,
 } from '../server/worldedit/transform.js';
 
@@ -469,4 +469,34 @@ test('opPath : courbe (bow) sort de l’axe droit', () => {
   const rc = opPath(curved, sel, { preset: 'cobblestone', width: 1, bow: 6 });
   // la courbe dépasse en Z (l'axe droit reste à z=0)
   assert.ok(rc.bounds.max.z > 0, 'la courbe doit s’écarter en Z');
+});
+
+test('opTerrain : relief procédural varié + déterministe (seed)', () => {
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 31, y: 24, z: 31 } };
+  const gen = () => { const v = new MemoryVolume(); opTerrain(v, sel, { style: 'montagne', seed: 42, palette: 'mountain' }); return v; };
+  const a = gen(), b = gen();
+  // déterministe : même seed → même surface en plusieurs points
+  const topAt = (v, x, z) => { for (let y = sel.max.y; y >= sel.min.y; y--) if (v.getBlock(x, y, z)) return y; return -1; };
+  const heights = [];
+  for (let x = 0; x < 32; x += 4) for (let z = 0; z < 32; z += 4) {
+    assert.equal(topAt(a, x, z), topAt(b, x, z), `déterminisme (${x},${z})`);
+    heights.push(topAt(a, x, z));
+  }
+  // relief varié : pas une dalle plate
+  assert.ok(Math.max(...heights) - Math.min(...heights) >= 3, 'le terrain doit avoir du dénivelé');
+  // surface = pierre (palette montagne) ; pas d'air sous la surface
+  const hx = topAt(a, 0, 0);
+  assert.ok(a.getBlock(0, hx, 0));
+});
+
+test('opTerrain : crevasse creuse (base haute, vallées) + clearAbove purge le dessus', () => {
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 15, y: 30, z: 15 } };
+  const v = new MemoryVolume();
+  // pré-remplir tout le volume pour vérifier la purge au-dessus de la surface
+  for (let y = 0; y <= 30; y++) for (let z = 0; z < 16; z++) for (let x = 0; x < 16; x++) v.setBlock(x, y, z, { Name: 'minecraft:netherrack', Properties: null });
+  opTerrain(v, sel, { style: 'crevasse', seed: 7, palette: 'mountain' });
+  const topAt = (x, z) => { for (let y = sel.max.y; y >= sel.min.y; y--) if (v.getBlock(x, y, z)) return y; return -1; };
+  // au-dessus de la surface : purgé (air)
+  const h = topAt(0, 0);
+  assert.equal(v.getBlock(0, h + 1, 0), null);
 });

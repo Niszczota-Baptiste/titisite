@@ -21,7 +21,7 @@ const PHASE_LABEL = {
   queued: 'En file', load: 'Chargement des chunks', apply: 'Application de l’opération',
   commit: 'Écriture des régions', preview: 'Génération de l’aperçu', done: 'Terminé',
 };
-const CONFIRM_OPS = new Set(['set', 'replace', 'cut', 'walls', 'faces', 'hollow', 'overlay', 'naturalize', 'sphere', 'cyl', 'smooth', 'stack', 'scale', 'mix', 'pyramid', 'cone', 'line', 'erode', 'dilate', 'drain']);
+const CONFIRM_OPS = new Set(['set', 'replace', 'cut', 'walls', 'faces', 'hollow', 'overlay', 'naturalize', 'sphere', 'cyl', 'smooth', 'stack', 'scale', 'mix', 'pyramid', 'cone', 'line', 'erode', 'dilate', 'drain', 'path', 'terrain']);
 
 function CoordRow({ label, value, onChange, active, onActivate }) {
   return (
