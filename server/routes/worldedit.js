@@ -14,6 +14,7 @@ import {
 import {
   schematicToSponge, schematicToLitematic, parseSchematicFile,
 } from '../worldedit/schematicFormats.js';
+import { createJob, updateJob, getJob } from '../worldedit/jobs.js';
 
 // Moteur WorldEdit serveur. Deux points d'entrée partagent les mêmes handlers :
 //  - scoped  : membre/admin du workspace (cookie JWT)  → owner / editor
@@ -103,25 +104,57 @@ async function postTransform(req, res) {
   // coller dans un autre (assemblage de builds, mca vierge…).
   const clipKey = `${req.we.actor}`;
 
+  const clipboardStore = operation === 'paste' ? clipboards.get(clipKey) : undefined;
+  if (operation === 'paste' && !clipboardStore) return res.status(400).json({ error: 'empty_clipboard' });
+
+  // Mode asynchrone : renvoie un jobId immédiatement, le calcul tourne en tâche
+  // de fond et rend la main entre phases (cf. applyOperation). Le client suit la
+  // progression via GET /jobs/:jobId. (copy reste synchrone, c'est instantané.)
+  if (req.body?.async && operation !== 'copy') {
+    const jobId = createJob();
+    (async () => {
+      try {
+        const out = await applyOperation({
+          bp, operation, params, selection, actor: req.we.actor, clipboardStore,
+          onProgress: (phase, pct) => updateJob(jobId, { phase, pct }),
+        });
+        if (out.clipboard) setClip(clipKey, out.clipboard);
+        updateJob(jobId, { status: 'done', phase: 'done', pct: 100, result: { blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs } });
+      } catch (e) {
+        updateJob(jobId, { status: 'error', error: transformErrorCode(e) });
+      }
+    })();
+    return res.json({ jobId });
+  }
+
   try {
     if (operation === 'copy') {
       const out = await applyOperation({ bp, operation, params, selection, actor: req.we.actor });
       setClip(clipKey, out.clipboard);
       return res.json({ blocksChanged: 0, clipboard: { sx: out.clipboard.sx, sy: out.clipboard.sy, sz: out.clipboard.sz } });
     }
-    const clipboardStore = operation === 'paste' ? clipboards.get(clipKey) : undefined;
-    if (operation === 'paste' && !clipboardStore) return res.status(400).json({ error: 'empty_clipboard' });
     const out = await applyOperation({ bp, operation, params, selection, actor: req.we.actor, clipboardStore });
     if (out.clipboard) setClip(clipKey, out.clipboard); // cut remplit le presse-papier
     return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs });
   } catch (e) {
-    const known = ['invalid_selection', 'out_of_bounds', 'selection_too_large', 'unknown_operation',
-      'empty_clipboard', 'no_source', 'too_many_blocks', 'bad_axis', 'bad_degrees', 'bad_block', 'bad_direction',
-      'bad_factor', 'bad_pattern', 'bad_biome', 'biome_unsupported'];
-    const code = known.includes(e.message) ? e.message : 'transform_failed';
+    const code = transformErrorCode(e);
     if (code === 'transform_failed') console.error('[worldedit] transform failed:', e?.message || e);
     return res.status(code === 'transform_failed' ? 500 : 400).json({ error: code });
   }
+}
+
+const TRANSFORM_KNOWN = new Set(['invalid_selection', 'out_of_bounds', 'selection_too_large', 'unknown_operation',
+  'empty_clipboard', 'no_source', 'too_many_blocks', 'bad_axis', 'bad_degrees', 'bad_block', 'bad_direction',
+  'bad_factor', 'bad_pattern', 'bad_biome', 'biome_unsupported']);
+function transformErrorCode(e) {
+  return TRANSFORM_KNOWN.has(e?.message) ? e.message : 'transform_failed';
+}
+
+// Suivi d'un transform asynchrone.
+function getJobStatus(req, res) {
+  const j = getJob(req.params.jobId);
+  if (!j) return res.status(404).json({ error: 'not_found' });
+  return res.json(j);
 }
 
 async function postUndo(req, res) {
@@ -258,6 +291,7 @@ function attachRoutes(router) {
   router.get('/data', getData);
   router.get('/audit', requireEdit, getAudit);
   router.post('/transform', worldeditLimiter, requireEdit, postTransform);
+  router.get('/jobs/:jobId', requireEdit, getJobStatus);
   router.post('/undo', worldeditLimiter, requireEdit, postUndo);
   router.post('/redo', worldeditLimiter, requireEdit, postRedo);
   router.post('/reset', worldeditLimiter, requireEdit, postReset);

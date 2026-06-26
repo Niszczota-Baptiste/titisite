@@ -16,6 +16,10 @@ const nsName = (entry, id) => `${entry?.source === 'minefield' ? 'minefield' : '
 // Réinitialiser / Exporter. Le rendu 3D au-dessus est rechargé via onChanged().
 
 const AXES = ['x', 'y', 'z'];
+const PHASE_LABEL = {
+  queued: 'En file', load: 'Chargement des chunks', apply: 'Application de l’opération',
+  commit: 'Écriture des régions', preview: 'Génération de l’aperçu', done: 'Terminé',
+};
 const CONFIRM_OPS = new Set(['set', 'replace', 'cut', 'walls', 'faces', 'hollow', 'overlay', 'naturalize', 'sphere', 'cyl', 'smooth', 'stack', 'scale', 'mix', 'pyramid', 'cone', 'line', 'erode', 'dilate', 'drain']);
 
 function CoordRow({ label, value, onChange, active, onActivate }) {
@@ -211,6 +215,7 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
   const [busy, setBusy] = useState(false);
   const [offset, setOffset] = useState({ dx: 0, dy: 0, dz: 0 });
   const [clip, setClip] = useState(null); // dims du presse-papier {sx,sy,sz}
+  const [progress, setProgress] = useState(null); // { phase, pct } pendant un job async
 
   useEffect(() => {
     let alive = true;
@@ -251,10 +256,31 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
     return out;
   };
 
+  // Au-delà de ce volume, on bascule en transform ASYNCHRONE (jobId + suivi de
+  // progression) pour ne pas bloquer ni faire « tourner » l'UI sans retour.
+  const HEAVY = 150_000;
+
+  // Lance un job async et suit sa progression jusqu'au résultat.
+  const runAsync = (body) => new Promise((resolve, reject) => {
+    we.transformAsync(body).then(({ jobId }) => {
+      setProgress({ phase: 'queued', pct: 0 });
+      const iv = setInterval(async () => {
+        try {
+          const j = await we.job(jobId);
+          setProgress({ phase: j.phase, pct: j.pct });
+          if (j.status === 'done') { clearInterval(iv); setProgress(null); resolve(j.result || {}); }
+          else if (j.status === 'error') { clearInterval(iv); setProgress(null); reject(new Error(j.error)); }
+        } catch (e) { clearInterval(iv); setProgress(null); reject(e); }
+      }, 350);
+    }).catch(reject);
+  });
+
   const apply = async () => {
     setBusy(true);
     try {
-      const res = await we.transform({ operation: opId, params: buildParams(), selection: sel });
+      const body = { operation: opId, params: buildParams(), selection: sel };
+      const heavy = opId !== 'copy' && volume(sel) > HEAVY;
+      const res = heavy ? await runAsync(body) : await we.transform(body);
       // copy/cut remplissent le presse-papier → on mémorise ses dimensions.
       if (opId === 'copy' && res.clipboard) setClip(res.clipboard);
       else if (opId === 'cut') setClip({ sx: Math.abs(sel.max.x - sel.min.x) + 1, sy: Math.abs(sel.max.y - sel.min.y) + 1, sz: Math.abs(sel.max.z - sel.min.z) + 1 });
@@ -404,6 +430,15 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
         <Button variant="ghost" onClick={redo} disabled={busy || !state.redoDepth}>↷ Rétablir</Button>
         <Button variant="ghost" onClick={reset} disabled={busy || !state.hasPendingEdits}>Réinitialiser</Button>
       </div>
+
+      {progress && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ ...muted, fontSize: 11, marginBottom: 4 }}>{PHASE_LABEL[progress.phase] || 'Traitement…'} — {progress.pct}%</div>
+          <div style={{ height: 8, borderRadius: 6, background: 'rgba(80,50,130,0.2)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${progress.pct}%`, background: 'linear-gradient(90deg,#c9a8e8,#7dd3fc)', transition: 'width 0.25s' }} />
+          </div>
+        </div>
+      )}
 
       {/* Bibliothèque de schematics + import/export .schem/.litematic */}
       <SchematicLibrary we={we} clipboard={clip} onLoaded={setClip} />

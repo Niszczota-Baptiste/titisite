@@ -202,6 +202,8 @@ export const api = {
       previewUrl: () => `/api${root}/preview`,
       exportUrl:  () => `/api${root}/export`,
       transform:  (b) => request('POST', `${root}/transform`, b),
+      transformAsync: (b) => request('POST', `${root}/transform`, { ...b, async: true }),
+      job:        (jobId) => request('GET', `${root}/jobs/${jobId}`),
       undo:       () => request('POST', `${root}/undo`),
       redo:       () => request('POST', `${root}/redo`),
       floodSelect: (b) => request('POST', `${root}/select-flood`, b),
@@ -347,6 +349,8 @@ export const api = {
             return `/api${root}/export${q}`;
           },
           transform:  (b) => request('POST', `${root}/transform`, b),
+          transformAsync: (b) => request('POST', `${root}/transform`, { ...b, async: true }),
+          job:        (jobId) => request('GET', `${root}/jobs/${jobId}`),
           undo:       () => request('POST', `${root}/undo`),
           redo:       () => request('POST', `${root}/redo`),
           floodSelect: (b) => request('POST', `${root}/select-flood`, b),

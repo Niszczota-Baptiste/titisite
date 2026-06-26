@@ -215,16 +215,23 @@ const OPS = {
   biome: (store, sel, p) => opBiome(store, sel, p),
 };
 
+// Rend la main à la boucle d'événements (le polling de job répond entre phases).
+const tick = () => new Promise((r) => setImmediate(r));
+
 // Applique une opération sur le staging (non destructif) et renvoie le diff.
-export async function applyOperation({ bp, operation, params, selection, actor, clipboardStore }) {
+// `onProgress(phase, pct)` est appelé entre les phases (transform asynchrone).
+export async function applyOperation({ bp, operation, params, selection, actor, clipboardStore, onProgress }) {
   const startedAt = Date.now();
+  const progress = (phase, pct) => { onProgress?.(phase, pct); };
   const limits = buildLimits(bp);           // X/Z du build, Y = hauteur monde
   const extent = buildExtent(bp);           // emprise réelle du contenu
   const sel = validateSelection(selection, limits);
   if (typeof sel === 'string') throw new Error(sel);
 
+  progress('load', 5);
   const store = loadStore(bp);
   await store.warmup(extent); // décode les chunks du build (XZ) — Y libre ensuite
+  progress('apply', 30); await tick();
   // Forme non rectangulaire → écritures bornées à la forme (sphère/cylindre).
   const target = sel.shape && sel.shape.type !== 'box' ? new MaskedVolume(store, sel) : store;
 
@@ -242,6 +249,7 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
     if (!fn) throw new Error('unknown_operation');
     result = fn(target, sel, params || {});
   }
+  progress('commit', 60); await tick();
 
   // Snapshot AVANT écriture : régions intersectant sélection ∪ emprise résultat.
   const affected = unionBBox(sel, result.bounds || sel);
@@ -254,6 +262,7 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
     const [rx, rz] = key.split(',').map(Number);
     fs.writeFileSync(path.join(rdir, regionFileName(rx, rz)), buffer);
   }
+  progress('preview', 85); await tick();
 
   // L'emprise du build grandit si l'opération a écrit au-delà (ex. au-dessus du
   // contenu) — bornée aux limites du monde. L'aperçu couvre la nouvelle emprise.

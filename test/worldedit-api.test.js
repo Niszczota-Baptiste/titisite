@@ -514,3 +514,33 @@ test('Robustesse : build vierge valide + durée d’opération dans l’audit', 
   assert.ok(audit.json.length >= 1);
   assert.ok('durationMs' in audit.json[0]);
 });
+
+test('Transform asynchrone : jobId + suivi de progression jusqu’au résultat', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug);
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  const start = await admin.post(`${root}/transform`, {
+    body: { operation: 'set', params: { block: { name: 'minecraft:stone' } }, selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 8, y: 0, z: 8 } }, async: true },
+  });
+  assert.equal(start.status, 200, start.text);
+  assert.ok(start.json.jobId, 'jobId renvoyé');
+
+  // Poll jusqu’à done (ou error).
+  let job, tries = 0;
+  do {
+    await new Promise((r) => setTimeout(r, 80));
+    job = (await admin.get(`${root}/jobs/${start.json.jobId}`)).json;
+  } while (job.status === 'running' && ++tries < 50);
+  assert.equal(job.status, 'done', JSON.stringify(job));
+  assert.equal(job.pct, 100);
+  assert.ok(job.result.blocksChanged > 0);
+  assert.equal((await admin.get(`${root}/state`)).json.undoDepth, 1);
+
+  // Job inconnu → 404.
+  assert.equal((await admin.get(`${root}/jobs/nope`)).status, 404);
+});

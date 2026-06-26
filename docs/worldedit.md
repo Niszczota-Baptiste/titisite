@@ -181,10 +181,15 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
 - **Garde-fous existants** (rappel) : `WORLDEDIT_MAX_SELECTION` borne le volume
   des boîtes itérées, `WORLDEDIT_WAND_MAX` la baguette, `worldeditLimiter`
   (30/min) les écritures, `deriveSparse` lève `too_many_blocks`.
-- **Déféré** : l'offload des grosses opérations dans un *worker thread* avec
-  barre de progression live est volontairement laissé à une passe dédiée (gros
-  changement d'architecture) — les opérations restent synchrones, bornées et
-  chronométrées.
+- **Transform asynchrone + progression** : au-delà de ~150k blocs, `/transform`
+  accepte `async:true` → renvoie un `jobId`, le calcul tourne en tâche de fond et
+  **rend la main à la boucle d'événements entre les phases** (`load → apply →
+  commit → preview`, `applyOperation` + `setImmediate`). Le client suit via
+  `GET …/jobs/:jobId` (`{status, phase, pct, result}`) et affiche une **barre de
+  progression**. Registre de jobs en mémoire avec TTL (`server/worldedit/jobs.js`).
+- **Reste à durcir** : un *worker thread* dédié (vrai parallélisme multi-cœur)
+  pour ne jamais bloquer pendant la phase `apply` d'une très grosse opération —
+  l'offload de phases ci-dessus couvre déjà la réactivité du polling.
 
 ## Pinceau interactif & liste de matériaux (vague 7)
 
