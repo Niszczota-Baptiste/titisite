@@ -75,7 +75,7 @@ export function BlueprintCanvas({
             selection={selection} onPick={onPick} pickEnabled={pickEnabled} moveSpeed={speed} yLimits={yLimits}
             chunkGrid={chunkGrid} shadows={shadows} clip={clip} measure={measure}
             captureRef={captureRef} onMeasure={setMeasured}
-            brush={!!onBrush && brushOn} onBrush={handleBrush} />}
+            brush={!!onBrush && brushOn} onBrush={handleBrush} brushRadius={brushRadius} />}
         </Suspense>
         {onToggleFullscreen && (
           <button type="button" onClick={onToggleFullscreen} title={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}
@@ -165,7 +165,7 @@ export function BlueprintCanvas({
                   placeholder="minecraft:stone" aria-label="bloc du pinceau"
                   style={{ width: 170, background: 'rgba(14,9,28,0.6)', border: '1px solid rgba(80,50,130,0.24)', borderRadius: 8, padding: '6px 10px', color: '#ede8f8', fontSize: 13 }} />
               )}
-              <span style={{ ...muted, fontSize: 11 }}>← clique dans la vue 3D pour appliquer</span>
+              <span style={{ ...muted, fontSize: 11 }}>← clique ou <strong>glisse</strong> dans la vue (la sphère bleue montre la zone)</span>
             </>
           )}
         </div>

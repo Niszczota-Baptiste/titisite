@@ -194,11 +194,17 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
 ## Pinceau interactif & liste de matériaux (vague 7)
 
 - **Pinceau interactif** (`BlueprintCanvas` + `BlueprintScene`, handler dans
-  `BuildsView`) : en mode édition, un **clic gauche dans la vue 3D** applique une
+  `BuildsView`) : en mode édition, **clic ou glissé dans la vue 3D** applique une
   opération centrée sur le bloc visé — réutilise `/transform` avec une sélection
   **sphère** (rayon réglable). Modes **Peindre** (`set` bloc), **Effacer**
-  (`set` air), **Lisser** (`smooth`). Verrou anti-spam pour ne pas empiler les
-  requêtes. Aucun code serveur nouveau.
+  (`set` air), **Lisser** (`smooth`). Une **sphère d'aperçu bleutée suit le
+  curseur** (taille = rayon) ; le glissé peint un trait (OrbitControls désactivé
+  pendant le trait, un seul appel par bloc traversé). Verrou anti-spam pour ne
+  pas empiler les requêtes. Aucun code serveur nouveau.
+- **UI** : l'opération se choisit dans un **menu déroulant groupé** (`optgroup`
+  par catégorie) ; la forme de sélection est aussi un menu ; les contrôles de
+  sélection avancée (forme / étendre-réduire / décaler / baguette) sont dans un
+  bloc **repliable** (`<details>`) pour alléger le panneau.
 - **Liste de matériaux améliorée** (`BlueprintBom`) : chaque ligne affiche le
   décompte en **boîtes de Shulker (1728) + stacks (64) + unités** ; bouton
   **⬇ CSV** (séparateur `;`, BOM `id;quantité;possédé;manquant;stacks;SB` en vue

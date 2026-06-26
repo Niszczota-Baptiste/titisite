@@ -381,42 +381,51 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
           )}
           <span style={{ ...muted, fontSize: 11 }}>{volume(sel).toLocaleString('fr')} blocs · max {state.maxSelectionVolume.toLocaleString('fr')}</span>
         </div>
-        {/* Forme + étendre/réduire/décaler + baguette */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ ...muted, fontSize: 11 }}>Forme</span>
-          {[['box', '⬛ Boîte'], ['sphere', '⚪ Sphère'], ['cylinder', '🟢 Cylindre']].map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setShape(k)} style={chip(shape === k)}>{l}</button>
-          ))}
-          <Button variant="ghost" onClick={() => grow(1)} style={miniBtnSt} title="Étendre d’1 bloc (tous axes)">＋ Étendre</Button>
-          <Button variant="ghost" onClick={() => grow(-1)} style={miniBtnSt} title="Réduire d’1 bloc">－ Réduire</Button>
-          <Button variant="ghost" onClick={wand} disabled={busy} style={miniBtnSt} title="Sélectionne les blocs connectés au coin A">🪄 Baguette</Button>
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ ...muted, fontSize: 11 }}>Décaler</span>
-          {[['x', 'X'], ['y', 'Y'], ['z', 'Z']].map(([a, l]) => (
-            <span key={a} style={{ display: 'inline-flex', gap: 2 }}>
-              <button type="button" onClick={() => shiftSel(a, -1)} style={miniBtnSt}>−{l}</button>
-              <button type="button" onClick={() => shiftSel(a, 1)} style={miniBtnSt}>+{l}</button>
-            </span>
-          ))}
-        </div>
-        <div style={{ ...muted, fontSize: 11 }}>
-          Coin actif (★ <span style={{ color: '#ffd24a' }}>{active === 'A' ? 'A' : 'B'}</span>) : <strong>flèches</strong> = X/Z au bloc près, <strong>PgUp/PgDn</strong> = Y · <strong>Shift+clic glissé</strong> = régler Y dans la vue
-        </div>
+        {/* Forme + étendre/réduire/décaler + baguette : repliable pour alléger. */}
+        <details style={advBox}>
+          <summary style={advSummary}>Sélection avancée — forme, étendre/réduire, décaler, baguette</summary>
+          <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ ...muted, fontSize: 11 }}>Forme</span>
+              <select value={shape} onChange={(e) => setShape(e.target.value)} style={{ ...selectStyle, padding: '5px 8px', fontSize: 12 }}>
+                <option value="box">⬛ Boîte</option>
+                <option value="sphere">⚪ Sphère</option>
+                <option value="cylinder">🟢 Cylindre</option>
+              </select>
+              <Button variant="ghost" onClick={() => grow(1)} style={miniBtnSt} title="Étendre d’1 bloc (tous axes)">＋ Étendre</Button>
+              <Button variant="ghost" onClick={() => grow(-1)} style={miniBtnSt} title="Réduire d’1 bloc">－ Réduire</Button>
+              <Button variant="ghost" onClick={wand} disabled={busy} style={miniBtnSt} title="Sélectionne les blocs connectés au coin A">🪄 Baguette</Button>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ ...muted, fontSize: 11 }}>Décaler</span>
+              {[['x', 'X'], ['y', 'Y'], ['z', 'Z']].map(([a, l]) => (
+                <span key={a} style={{ display: 'inline-flex', gap: 2 }}>
+                  <button type="button" onClick={() => shiftSel(a, -1)} style={miniBtnSt}>−{l}</button>
+                  <button type="button" onClick={() => shiftSel(a, 1)} style={miniBtnSt}>+{l}</button>
+                </span>
+              ))}
+            </div>
+            <div style={{ ...muted, fontSize: 11 }}>
+              Coin actif (★ <span style={{ color: '#ffd24a' }}>{active === 'A' ? 'A' : 'B'}</span>) : <strong>flèches</strong> = X/Z au bloc près, <strong>PgUp/PgDn</strong> = Y · <strong>Shift+clic glissé</strong> = régler Y dans la vue
+            </div>
+          </div>
+        </details>
       </div>
 
-      {groupOrder.map((g) => (
-        <div key={g} style={{ marginBottom: 8 }}>
-          <div style={{ ...muted, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 4 }}>{g}</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {ops.filter((o) => (o.group || 'Autres') === g).map((o) => (
-              <button key={o.id} type="button" onClick={() => setOpId(o.id)} style={chip(o.id === opId)}>{o.label}</button>
-            ))}
-          </div>
-        </div>
-      ))}
+      {/* Choix de l'opération : menu déroulant groupé par catégorie. */}
+      <Field label="Opération">
+        <select value={opId} onChange={(e) => setOpId(e.target.value)} style={{ ...selectStyle, width: '100%', maxWidth: 360 }}>
+          {groupOrder.map((g) => (
+            <optgroup key={g} label={g}>
+              {ops.filter((o) => (o.group || 'Autres') === g).map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </Field>
 
-      <div style={{ ...muted, fontSize: 12, marginBottom: 8 }}>{op.description}</div>
+      <div style={{ ...muted, fontSize: 12, margin: '8px 0' }}>{op.description}</div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         {op.params.map((p) => (
           <ParamField key={p.name} param={p} value={params[p.name]} catalog={catalog} byId={byId}
@@ -481,6 +490,12 @@ function errLabel(code) {
 }
 
 const wrap = { padding: 14, borderTop: '1px solid rgba(80,50,130,0.22)' };
+const advBox = {
+  borderRadius: 8, border: '1px solid rgba(80,50,130,0.2)', background: 'rgba(14,9,28,0.35)', padding: '6px 10px',
+};
+const advSummary = {
+  cursor: 'pointer', fontSize: 12, color: 'rgba(200,180,240,0.85)', fontFamily: "'Inter',sans-serif", userSelect: 'none',
+};
 const recoveryBanner = {
   margin: '0 0 10px', padding: '8px 12px', borderRadius: 8, fontSize: 11.5, lineHeight: 1.5,
   color: 'rgba(232,228,248,0.85)', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.28)',
@@ -494,9 +509,3 @@ const exportLink = {
   textDecoration: 'none', color: 'rgba(232,228,248,0.75)', border: '1px solid rgba(80,50,130,0.32)',
   fontFamily: "'Space Grotesk',sans-serif",
 };
-const chip = (active) => ({
-  padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontFamily: "'Inter',sans-serif",
-  background: active ? 'rgba(201,168,232,0.2)' : 'transparent',
-  border: `1px solid ${active ? '#c9a8e8' : 'rgba(80,50,130,0.28)'}`,
-  color: active ? '#c9a8e8' : '#ede8f8',
-});

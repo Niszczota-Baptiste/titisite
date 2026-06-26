@@ -37,7 +37,7 @@ export default function BlueprintScene({
   moveSpeed = 0.5, yLimits = null,
   chunkGrid = false, shadows = false, clip = null, measure = false,
   captureRef = null, onMeasure = null,
-  brush = false, onBrush = null,
+  brush = false, onBrush = null, brushRadius = 3,
 }) {
   const mountRef = useRef(null);
   const apiRef = useRef(null); // { types:[{meshes, ys, mats, n, layout}] }
@@ -55,6 +55,7 @@ export default function BlueprintScene({
   const onMeasureRef = useRef(onMeasure); onMeasureRef.current = onMeasure;
   const brushRef = useRef(brush); brushRef.current = brush;
   const onBrushRef = useRef(onBrush); onBrushRef.current = onBrush;
+  const brushRadiusRef = useRef(brushRadius); brushRadiusRef.current = brushRadius;
   // Conserve la pose caméra entre deux reconstructions de scène (ex. aperçu
   // rechargé après une commande WorldEdit) → pas de reset à l'angle par défaut.
   const poseRef = useRef(null);
@@ -235,6 +236,33 @@ export default function BlueprintScene({
       }
     };
 
+    // ── Pinceau : sphère d'aperçu qui suit le curseur + peinture au glissé ──
+    let brushPreview = null;
+    const ensureBrushPreview = () => {
+      if (brushPreview) return brushPreview;
+      const g = new THREE.Group();
+      const r = 0.5;
+      const wire = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.SphereGeometry(r, 20, 14), 1),
+        new THREE.LineBasicMaterial({ color: 0x7dd3fc }),
+      );
+      const fill = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 20, 14),
+        new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.12, depthWrite: false }),
+      );
+      g.add(wire); g.add(fill);
+      scene.add(g); brushPreview = g;
+      return g;
+    };
+    const hideBrushPreview = () => { if (brushPreview) brushPreview.visible = false; };
+    const showBrushAt = (coord) => {
+      const g = ensureBrushPreview();
+      g.visible = true;
+      const d = brushRadiusRef.current * 2 + 1;
+      g.scale.set(d, d, d);
+      g.position.copy(worldToScene(coord));
+    };
+
     // Renvoie la coordonnée MONDE du bloc visé par le curseur, ou null.
     const pickCoord = (ev) => {
       const rect = renderer.domElement.getBoundingClientRect();
@@ -260,13 +288,29 @@ export default function BlueprintScene({
 
     let downX = 0, downY = 0, downBtn = -1;
     let yDrag = null; // { corner, x, z, y0, downY } pendant un shift+glissé vertical
+    let painting = false, lastPaintKey = null; // pinceau au glissé
     const clampY = (y) => {
       const lo = yLimitsRef.current ? yLimitsRef.current.min : dataMin.y;
       const hi = yLimitsRef.current ? yLimitsRef.current.max : dataMin.y + sy - 1;
       return Math.max(lo, Math.min(hi, y));
     };
+    // Applique le pinceau au bloc visé (une seule fois par bloc traversé).
+    const paintAt = (coord) => {
+      if (!coord || !onBrushRef.current) return;
+      const k = `${coord.x},${coord.y},${coord.z}`;
+      if (k === lastPaintKey) return;
+      lastPaintKey = k;
+      onBrushRef.current(coord);
+    };
     const onPointerDown = (e) => {
       downX = e.clientX; downY = e.clientY; downBtn = e.button;
+      // Pinceau : clic gauche (sans Shift) commence un trait — on désactive
+      // OrbitControls le temps du glissé pour peindre au lieu de pivoter.
+      if (brushRef.current && onBrushRef.current && e.button === 0 && !e.shiftKey) {
+        painting = true; lastPaintKey = null; controls.enabled = false;
+        paintAt(pickCoord(e));
+        return;
+      }
       // Shift + clic = on fixe X/Z au bloc visé puis le glissé vertical règle Y
       // (permet de placer un coin AU-DESSUS de la surface, hors de portée du clic).
       if (pickEnabledRef.current && e.shiftKey && (e.button === 0 || e.button === 2)) {
@@ -275,25 +319,29 @@ export default function BlueprintScene({
       }
     };
     const onPointerMove = (e) => {
+      if (painting) { paintAt(pickCoord(e)); return; }
+      // Aperçu du pinceau : sphère bleutée qui suit le curseur.
+      if (brushRef.current) { const c = pickCoord(e); if (c) showBrushAt(c); else hideBrushPreview(); return; }
       if (!yDrag || !onPickRef.current) return;
       const y = clampY(yDrag.y0 + Math.round((yDrag.downY - e.clientY) / 6)); // vers le haut = +Y
       onPickRef.current(yDrag.corner, { x: yDrag.x, y, z: yDrag.z });
     };
     const onPointerUp = (e) => {
+      if (painting) { painting = false; controls.enabled = true; return; }
       if (yDrag) { yDrag = null; controls.enabled = true; return; }
       if (e.button !== downBtn) return;
       if (Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4) return; // glissé → rotation, pas un clic
       // Mode mesure : clic gauche pose un point (prioritaire sur la sélection).
       if (measureRef.current && e.button === 0) { const c = pickCoord(e); if (c) addMeasure(c); return; }
-      // Mode pinceau : clic gauche applique le pinceau au bloc visé.
-      if (brushRef.current && onBrushRef.current && e.button === 0) { const c = pickCoord(e); if (c) onBrushRef.current(c); return; }
       if (!pickEnabledRef.current || !onPickRef.current) return;
       if (e.button === 0 || e.button === 2) { const c = pickCoord(e); if (c) onPickRef.current(e.button === 2 ? 'A' : 'B', c); }
     };
+    const onPointerLeave = () => { hideBrushPreview(); };
     const onContext = (e) => { if (pickEnabledRef.current) e.preventDefault(); };
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointermove', onPointerMove);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave);
     renderer.domElement.addEventListener('contextmenu', onContext);
 
     // ── Déplacement libre de la caméra au clavier (ZQSD/WASD) ──
@@ -340,7 +388,7 @@ export default function BlueprintScene({
     }
 
     const types = [];
-    apiRef.current = { types, span, updateSelection, buildGrid, applyShadows, applyClip, resetMeasure };
+    apiRef.current = { types, span, updateSelection, buildGrid, applyShadows, applyClip, resetMeasure, hideBrushPreview };
     updateSelection(); // boîte de sélection initiale (avant le rendu des blocs)
     buildGrid(); applyClip();
     // Export PNG : rendu à la volée puis dataURL (drawing buffer préservé).
@@ -499,11 +547,13 @@ export default function BlueprintScene({
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
+      renderer.domElement.removeEventListener('pointerleave', onPointerLeave);
       renderer.domElement.removeEventListener('contextmenu', onContext);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       disposeSel();
       resetMeasure();
+      if (brushPreview) brushPreview.children.forEach((o) => { o.geometry.dispose(); o.material.dispose(); });
       if (gridGroup) gridGroup.children.forEach((o) => { o.geometry.dispose(); o.material.dispose(); });
       if (captureRef) captureRef.current = null;
       controls.dispose();
@@ -536,6 +586,8 @@ export default function BlueprintScene({
   useEffect(() => { apiRef.current?.applyClip?.(); }, [clip]);
   // Quitter le mode mesure efface les points/segments.
   useEffect(() => { if (!measure) apiRef.current?.resetMeasure?.(); }, [measure]);
+  // Quitter le mode pinceau masque la sphère d'aperçu.
+  useEffect(() => { if (!brush) apiRef.current?.hideBrushPreview?.(); }, [brush]);
 
   return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />;
 }
