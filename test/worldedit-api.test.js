@@ -252,6 +252,45 @@ test('Commande mix (%) : remplissage aléatoire pondéré + pattern invalide ref
   assert.equal(bad.json.error, 'bad_pattern');
 });
 
+test('Sélection : forme sphère (clippée) + baguette magique (flood)', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+
+  // Build : une ligne de 3 pierres connectées + un bloc isolé.
+  const buf = mcaBuffer([
+    { x: 0, y: 0, z: 0, Name: 'minecraft:stone' },
+    { x: 1, y: 0, z: 0, Name: 'minecraft:stone' },
+    { x: 2, y: 0, z: 0, Name: 'minecraft:stone' },
+    { x: 8, y: 0, z: 0, Name: 'minecraft:gold_block' },
+    { x: 4, y: 4, z: 4, Name: 'minecraft:dirt' }, // élargit l'emprise à 5³ pour la sphère
+  ]);
+  const fd = new FormData();
+  fd.append('file', new Blob([buf]), 'r.0.0.mca');
+  fd.append('name', 'Flood'); fd.append('full', 'true');
+  const id = (await admin.post(`/api/workspaces/${slug}/blueprints`, { body: fd })).json.id;
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  // Baguette depuis (0,0,0) → boîte des 3 pierres connectées.
+  const w = await admin.post(`${root}/select-flood`, { body: { x: 0, y: 0, z: 0 } });
+  assert.equal(w.status, 200, w.text);
+  assert.deepEqual(w.json.min, { x: 0, y: 0, z: 0 });
+  assert.deepEqual(w.json.max, { x: 2, y: 0, z: 0 });
+  assert.equal(w.json.count, 3);
+
+  // set avec forme sphère sur une boîte 5³ : moins de blocs que la boîte pleine.
+  const sphere = await admin.post(`${root}/transform`, {
+    body: { operation: 'set', params: { block: { name: 'minecraft:stone' } }, selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 4, z: 4 }, shape: { type: 'sphere' } } },
+  });
+  assert.equal(sphere.status, 200, sphere.text);
+  assert.ok(sphere.json.blocksChanged > 0 && sphere.json.blocksChanged < 125);
+
+  // Baguette sur de l'air (in-bounds, entre la ligne de pierre et l'or) → refus.
+  assert.equal((await admin.post(`${root}/select-flood`, { body: { x: 5, y: 0, z: 0 } })).json.error, 'empty_seed');
+});
+
 test('Annuler / Rétablir (undo/redo)', async (t) => {
   const srv = await bootServer();
   t.after(() => srv.stop());

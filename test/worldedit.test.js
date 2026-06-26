@@ -6,6 +6,7 @@ import {
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, sameBlock, selectionSize,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
   opLine, opPyramid, opCone, opErode, opDilate, opDrain,
+  MaskedVolume, selectionContains,
 } from '../server/worldedit/transform.js';
 
 const ROT90 = { kind: 'rotate', quarts: 1 };
@@ -382,6 +383,16 @@ test('drain : vide eau/lave', () => {
   opDrain(vol, { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 0, z: 0 } });
   assert.equal(vol.getBlock(0, 0, 0), null);
   assert.equal(vol.getBlock(1, 0, 0).Name, 'minecraft:stone');
+});
+
+test('sélection sphère : MaskedVolume clippe les écritures hors forme', () => {
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 4, z: 4 }, shape: { type: 'sphere' } };
+  assert.equal(selectionContains(sel, 2, 2, 2), true); // centre
+  assert.equal(selectionContains(sel, 0, 0, 0), false); // coin hors sphère
+  const vol = new MemoryVolume();
+  opSet(new MaskedVolume(vol, sel), sel, { block: { name: 'minecraft:stone' } });
+  assert.equal(vol.getBlock(2, 2, 2).Name, 'minecraft:stone');
+  assert.equal(vol.getBlock(0, 0, 0), null); // jamais écrit (hors sphère)
 });
 
 test('blocs minefield:* : géométrie déplacée, namespace préservé', () => {

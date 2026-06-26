@@ -102,10 +102,10 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
     // ── Sélection : picking (clic droit = coin A, clic gauche = coin B) + boîte ──
     const dataMin = data.min || { x: 0, y: 0, z: 0 };
     const raycaster = new THREE.Raycaster();
-    let selBox = null, selEdges = null;
+    const selObjs = [];
     const disposeSel = () => {
-      for (const o of [selBox, selEdges]) { if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); } }
-      selBox = selEdges = null;
+      for (const o of selObjs) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); }
+      selObjs.length = 0;
     };
     const updateSelection = () => {
       disposeSel();
@@ -118,10 +118,24 @@ export default function BlueprintScene({ data, codex, layer, layerMode, onProgre
       const max = new THREE.Vector3(hi.x - dataMin.x + 1 - cx, hi.y - dataMin.y + 1 - cy, hi.z - dataMin.z + 1 - cz);
       const size = new THREE.Vector3().subVectors(max, min);
       const center = new THREE.Vector3().addVectors(min, max).multiplyScalar(0.5);
-      const geo = new THREE.BoxGeometry(size.x, size.y, size.z).translate(center.x, center.y, center.z);
-      selBox = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.1, depthWrite: false }));
-      selEdges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffd24a }));
-      scene.add(selBox); scene.add(selEdges);
+      const shape = sel.shape?.type || 'box';
+      const add = (geo, fill) => {
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, fill ? 1 : 30), new THREE.LineBasicMaterial({ color: 0xffd24a }));
+        scene.add(edges); selObjs.push(edges);
+        if (fill) {
+          const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.1, depthWrite: false }));
+          scene.add(mesh); selObjs.push(mesh);
+        }
+      };
+      // Boîte englobante (faible) toujours visible.
+      add(new THREE.BoxGeometry(size.x, size.y, size.z).translate(center.x, center.y, center.z), shape === 'box');
+      if (shape === 'sphere') {
+        const g = new THREE.SphereGeometry(0.5, 24, 16).scale(size.x, size.y, size.z).translate(center.x, center.y, center.z);
+        add(g, false);
+      } else if (shape === 'cylinder') {
+        const g = new THREE.CylinderGeometry(0.5, 0.5, 1, 24).scale(size.x, size.y, size.z).translate(center.x, center.y, center.z);
+        add(g, false);
+      }
     };
 
     // Renvoie la coordonnée MONDE du bloc visé par le curseur, ou null.

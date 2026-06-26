@@ -17,6 +17,7 @@ import {
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, opCut,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
   opLine, opPyramid, opCone, opErode, opDilate, opDrain,
+  MaskedVolume, SELECTION_SHAPES,
 } from './transform.js';
 import { makeZip } from './zipWriter.js';
 
@@ -131,6 +132,8 @@ export function validateSelection(sel, bbox, { maxVolume = MAX_SELECTION_VOLUME 
   }
   const vol = (norm.max.x - norm.min.x + 1) * (norm.max.y - norm.min.y + 1) * (norm.max.z - norm.min.z + 1);
   if (vol > maxVolume) return 'selection_too_large';
+  const stype = SELECTION_SHAPES.has(sel?.shape?.type) ? sel.shape.type : 'box';
+  norm.shape = { type: stype };
   return norm;
 }
 
@@ -220,6 +223,8 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
 
   const store = loadStore(bp);
   await store.warmup(extent); // décode les chunks du build (XZ) — Y libre ensuite
+  // Forme non rectangulaire → écritures bornées à la forme (sphère/cylindre).
+  const target = sel.shape && sel.shape.type !== 'box' ? new MaskedVolume(store, sel) : store;
 
   let result;
   if (operation === 'copy') {
@@ -229,11 +234,11 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
   }
   if (operation === 'paste') {
     if (!clipboardStore) throw new Error('empty_clipboard');
-    result = opPaste(store, clipboardStore, { at: sel.min, mode: params?.mode === 'overwrite' ? 'overwrite' : 'overlay' });
+    result = opPaste(target, clipboardStore, { at: sel.min, mode: params?.mode === 'overwrite' ? 'overwrite' : 'overlay' });
   } else {
     const fn = OPS[operation];
     if (!fn) throw new Error('unknown_operation');
-    result = fn(store, sel, params || {});
+    result = fn(target, sel, params || {});
   }
 
   // Snapshot AVANT écriture : régions intersectant sélection ∪ emprise résultat.
@@ -471,6 +476,40 @@ export function blankRegions({ template, dataVersion, origin, size }) {
   const chunks = [];
   for (let cz = cMinZ; cz <= cMaxZ; cz++) for (let cx = cMinX; cx <= cMaxX; cx++) chunks.push({ cx, cz, root: airChunkFrom(tmpl, cx, cz) });
   return regionBuffersFromChunks(chunks);
+}
+
+// Baguette magique : remplit en 6-connexité depuis (seed) tous les blocs de même
+// type (bornés à l'emprise du build, plafonné). Renvoie la boîte englobante.
+const WAND_MAX = Number(process.env.WORLDEDIT_WAND_MAX || 250_000);
+export async function floodSelect(bp, seed) {
+  const extent = buildExtent(bp);
+  const inB = (x, y, z) => x >= extent.min.x && x <= extent.max.x && y >= extent.min.y && y <= extent.max.y && z >= extent.min.z && z <= extent.max.z;
+  const sx = Math.round(Number(seed?.x)), sy = Math.round(Number(seed?.y)), sz = Math.round(Number(seed?.z));
+  if (![sx, sy, sz].every(Number.isFinite) || !inB(sx, sy, sz)) throw new Error('out_of_bounds');
+  const store = loadStore(bp);
+  await store.warmup(extent);
+  const target = store.getBlock(sx, sy, sz);
+  if (!target) throw new Error('empty_seed'); // pas d'air
+  const name = target.Name;
+  const seen = new Set([`${sx},${sy},${sz}`]);
+  const q = [[sx, sy, sz]];
+  let min = { x: sx, y: sy, z: sz }, max = { x: sx, y: sy, z: sz };
+  let count = 0;
+  while (q.length) {
+    if (count >= WAND_MAX) break;
+    const [x, y, z] = q.pop();
+    const b = store.getBlock(x, y, z);
+    if (!b || b.Name !== name) continue;
+    count++;
+    min = { x: Math.min(min.x, x), y: Math.min(min.y, y), z: Math.min(min.z, z) };
+    max = { x: Math.max(max.x, x), y: Math.max(max.y, y), z: Math.max(max.z, z) };
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      const nx = x + dx, ny = y + dy, nz = z + dz, k = `${nx},${ny},${nz}`;
+      if (!inB(nx, ny, nz) || seen.has(k)) continue;
+      seen.add(k); q.push([nx, ny, nz]);
+    }
+  }
+  return { min, max, count, block: name };
 }
 
 export function listAudit(id, limit = 100) {

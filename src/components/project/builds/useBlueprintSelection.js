@@ -19,7 +19,7 @@ export function useBlueprintSelection(limits, extent) {
   // Initialise sur l'emprise du contenu (ou les limites si inconnue).
   useEffect(() => {
     const init = extent || limits;
-    if (init) setSelection((cur) => cur || { min: { ...init.min }, max: { ...init.max } });
+    if (init) setSelection((cur) => cur || { min: { ...init.min }, max: { ...init.max }, shape: { type: 'box' } });
   }, [extent, limits]);
 
   const onPick = useCallback((corner, coord) => {

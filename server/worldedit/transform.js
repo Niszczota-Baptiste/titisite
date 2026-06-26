@@ -27,6 +27,31 @@ export class Schematic {
   set(x, y, z, b) { this.data[this.idx(x, y, z)] = b; }
 }
 
+// ── Forme de sélection (boîte / sphère / cylindre) ───────────────────────────
+export const SELECTION_SHAPES = new Set(['box', 'sphere', 'cylinder']);
+
+// `sel` normalisée (min ≤ max). Renvoie true si (x,y,z) est DANS la sélection
+// selon sa forme (par défaut une boîte).
+export function selectionContains(sel, x, y, z) {
+  if (x < sel.min.x || x > sel.max.x || y < sel.min.y || y > sel.max.y || z < sel.min.z || z > sel.max.z) return false;
+  const type = sel.shape?.type || 'box';
+  if (type === 'box') return true;
+  const cx = (sel.min.x + sel.max.x) / 2, cy = (sel.min.y + sel.max.y) / 2, cz = (sel.min.z + sel.max.z) / 2;
+  const rx = (sel.max.x - sel.min.x) / 2 + 0.5, ry = (sel.max.y - sel.min.y) / 2 + 0.5, rz = (sel.max.z - sel.min.z) / 2 + 0.5;
+  if (type === 'sphere') return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 + ((z - cz) / rz) ** 2 <= 1;
+  if (type === 'cylinder') return ((x - cx) / rx) ** 2 + ((z - cz) / rz) ** 2 <= 1;
+  return true;
+}
+
+// Volume « masqué » par la forme de sélection : les écritures hors forme sont
+// ignorées. Toute opération écrivant à travers ce volume respecte donc la forme
+// SANS la modifier (sphère, cylindre…). La lecture passe à travers.
+export class MaskedVolume {
+  constructor(inner, sel) { this.inner = inner; this.sel = sel; }
+  getBlock(x, y, z) { return this.inner.getBlock(x, y, z); }
+  setBlock(x, y, z, b) { if (selectionContains(this.sel, x, y, z)) this.inner.setBlock(x, y, z, b); }
+}
+
 export function selectionSize(sel) {
   return {
     x: sel.max.x - sel.min.x + 1,

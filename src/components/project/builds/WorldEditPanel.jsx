@@ -164,6 +164,10 @@ const addBtn = {
   padding: '5px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12, justifySelf: 'start',
   background: 'transparent', border: '1px dashed rgba(80,50,130,0.4)', color: 'rgba(200,180,240,0.8)', fontFamily: "'Inter',sans-serif",
 };
+const miniBtnSt = {
+  padding: '3px 8px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+  background: 'transparent', border: '1px solid rgba(80,50,130,0.32)', color: 'rgba(232,228,248,0.8)', fontFamily: "'Inter',sans-serif",
+};
 
 function defaultParams(op) {
   const out = {};
@@ -265,6 +269,32 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
     finally { setBusy(false); }
   };
 
+  // ── Sélection : forme, étendre/réduire/décaler, baguette magique ──
+  const clampSel = (s) => {
+    const lim = state.bbox;
+    const cl = (v, a) => Math.max(lim.min[a], Math.min(lim.max[a], v));
+    return {
+      ...s,
+      min: { x: cl(s.min.x, 'x'), y: cl(s.min.y, 'y'), z: cl(s.min.z, 'z') },
+      max: { x: cl(s.max.x, 'x'), y: cl(s.max.y, 'y'), z: cl(s.max.z, 'z') },
+    };
+  };
+  const grow = (d) => setSelection((s) => clampSel({ ...s, min: { x: s.min.x - d, y: s.min.y - d, z: s.min.z - d }, max: { x: s.max.x + d, y: s.max.y + d, z: s.max.z + d } }));
+  const shiftSel = (a, d) => setSelection((s) => clampSel({ ...s, min: { ...s.min, [a]: s.min[a] + d }, max: { ...s.max, [a]: s.max[a] + d } }));
+  const setShape = (type) => setSelection((s) => ({ ...s, shape: { type } }));
+  const shape = sel.shape?.type || 'box';
+
+  const wand = async () => {
+    setBusy(true);
+    try {
+      const r = await we.floodSelect({ x: sel.min.x, y: sel.min.y, z: sel.min.z });
+      setSelection((s) => ({ ...s, min: { ...r.min }, max: { ...r.max } }));
+      toast?.success?.(`Baguette : ${r.count.toLocaleString('fr')} blocs « ${r.block} »`);
+    } catch (e) {
+      toast?.error?.(e?.message === 'empty_seed' ? 'Vise un bloc (coin A) — pas de l’air' : 'Baguette impossible');
+    } finally { setBusy(false); }
+  };
+
   const needsConfirm = opId === 'cut' || (CONFIRM_OPS.has(opId) && volume(sel) > 50_000);
   const onApply = async () => {
     if (needsConfirm) {
@@ -296,6 +326,25 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
             </Button>
           )}
           <span style={{ ...muted, fontSize: 11 }}>{volume(sel).toLocaleString('fr')} blocs · max {state.maxSelectionVolume.toLocaleString('fr')}</span>
+        </div>
+        {/* Forme + étendre/réduire/décaler + baguette */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ ...muted, fontSize: 11 }}>Forme</span>
+          {[['box', '⬛ Boîte'], ['sphere', '⚪ Sphère'], ['cylinder', '🟢 Cylindre']].map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setShape(k)} style={chip(shape === k)}>{l}</button>
+          ))}
+          <Button variant="ghost" onClick={() => grow(1)} style={miniBtnSt} title="Étendre d’1 bloc (tous axes)">＋ Étendre</Button>
+          <Button variant="ghost" onClick={() => grow(-1)} style={miniBtnSt} title="Réduire d’1 bloc">－ Réduire</Button>
+          <Button variant="ghost" onClick={wand} disabled={busy} style={miniBtnSt} title="Sélectionne les blocs connectés au coin A">🪄 Baguette</Button>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ ...muted, fontSize: 11 }}>Décaler</span>
+          {[['x', 'X'], ['y', 'Y'], ['z', 'Z']].map(([a, l]) => (
+            <span key={a} style={{ display: 'inline-flex', gap: 2 }}>
+              <button type="button" onClick={() => shiftSel(a, -1)} style={miniBtnSt}>−{l}</button>
+              <button type="button" onClick={() => shiftSel(a, 1)} style={miniBtnSt}>+{l}</button>
+            </span>
+          ))}
         </div>
         <div style={{ ...muted, fontSize: 11 }}>
           Coin actif (★ <span style={{ color: '#ffd24a' }}>{active === 'A' ? 'A' : 'B'}</span>) : <strong>flèches</strong> = X/Z au bloc près, <strong>PgUp/PgDn</strong> = Y · <strong>Shift+clic glissé</strong> = régler Y dans la vue

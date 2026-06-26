@@ -6,7 +6,7 @@ import { uploadPath } from '../uploads.js';
 import { OPERATIONS, normalizeParams } from '../worldedit/operations.js';
 import {
   buildLimits, buildExtent, applyOperation, undoLast, redoLast, resetStaging, exportBuild,
-  previewFilePath, hasPendingEdits, undoDepth, redoDepth, listAudit,
+  previewFilePath, hasPendingEdits, undoDepth, redoDepth, listAudit, floodSelect,
 } from '../worldedit/staging.js';
 
 // Moteur WorldEdit serveur. Deux points d'entrée partagent les mêmes handlers :
@@ -140,6 +140,17 @@ function postReset(req, res) {
   res.json({ reset: true });
 }
 
+// Baguette magique : renvoie la boîte englobante des blocs connectés au seed.
+async function postFlood(req, res) {
+  if (!req.we.bp.source_file) return res.status(422).json({ error: 'not_editable' });
+  try {
+    res.json(await floodSelect(req.we.bp, req.body || {}));
+  } catch (e) {
+    const code = ['out_of_bounds', 'empty_seed'].includes(e.message) ? e.message : 'flood_failed';
+    res.status(code === 'flood_failed' ? 500 : 400).json({ error: code });
+  }
+}
+
 async function getExport(req, res) {
   const bp = req.we.bp;
   if (!bp.source_file) return res.status(422).json({ error: 'not_editable' });
@@ -173,6 +184,7 @@ function attachRoutes(router) {
   router.post('/undo', worldeditLimiter, requireEdit, postUndo);
   router.post('/redo', worldeditLimiter, requireEdit, postRedo);
   router.post('/reset', worldeditLimiter, requireEdit, postReset);
+  router.post('/select-flood', worldeditLimiter, requireEdit, postFlood);
   router.get('/export', worldeditLimiter, requireEdit, getExport);
   return router;
 }
