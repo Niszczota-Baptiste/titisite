@@ -5,7 +5,7 @@ import {
   MemoryVolume, readSelection, mirrorSchematic, rotateSchematic, stampSchematic,
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, sameBlock, selectionSize,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
-  opLine, opPyramid, opCone, opErode, opDilate, opDrain,
+  opLine, opPyramid, opCone, opErode, opDilate, opDrain, opPath,
   MaskedVolume, selectionContains,
 } from '../server/worldedit/transform.js';
 
@@ -403,4 +403,37 @@ test('blocs minefield:* : géométrie déplacée, namespace préservé', () => {
   const b = vol.getBlock(0, 0, 0);
   assert.equal(b.Name, 'minefield:quart_de_bloc'); // jamais remappé vanilla
   assert.equal(b.Properties.facing, 'south');
+});
+
+test('opPath : route droite de largeur 3 (revêtement + sous-couche)', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 4, z: 0 }, max: { x: 10, y: 4, z: 0 } }; // ligne sur X
+  const r = opPath(vol, sel, { preset: 'dirt_path', width: 3, bow: 0 });
+  assert.ok(r.blocksChanged > 0);
+  // centre du chemin = revêtement dirt_path
+  assert.equal(vol.getBlock(5, 4, 0)?.Name, 'minecraft:dirt_path');
+  // sous-couche dirt juste dessous
+  assert.equal(vol.getBlock(5, 3, 0)?.Name, 'minecraft:dirt');
+  // largeur 3 → la colonne voisine en Z est aussi pavée
+  assert.equal(vol.getBlock(5, 4, 1)?.Name, 'minecraft:dirt_path');
+  assert.equal(vol.getBlock(5, 4, 2), null); // pas au-delà de la largeur
+});
+
+test('opPath : pont = planches + rambardes (fences) sur les bords', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 4, z: 0 }, max: { x: 6, y: 4, z: 0 } };
+  opPath(vol, sel, { preset: 'bridge', width: 3, bow: 0 });
+  assert.equal(vol.getBlock(3, 4, 0)?.Name, 'minecraft:oak_planks'); // tablier
+  // rambarde (fence) un bloc au-dessus, sur un bord
+  assert.equal(vol.getBlock(3, 5, 1)?.Name, 'minecraft:oak_fence');
+});
+
+test('opPath : courbe (bow) sort de l’axe droit', () => {
+  const straight = new MemoryVolume();
+  const curved = new MemoryVolume();
+  const sel = { min: { x: 0, y: 4, z: 0 }, max: { x: 12, y: 4, z: 0 } };
+  opPath(straight, sel, { preset: 'cobblestone', width: 1, bow: 0 });
+  const rc = opPath(curved, sel, { preset: 'cobblestone', width: 1, bow: 6 });
+  // la courbe dépasse en Z (l'axe droit reste à z=0)
+  assert.ok(rc.bounds.max.z > 0, 'la courbe doit s’écarter en Z');
 });

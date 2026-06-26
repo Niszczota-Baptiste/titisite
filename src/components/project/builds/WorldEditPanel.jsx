@@ -6,6 +6,7 @@ import { useConfirm } from '../../../ui/ConfirmProvider';
 import { useCodex } from '../../../hooks/useCodex';
 import { CodexPicker } from '../../admin/editors/minecraft/CodexPicker';
 import { SchematicLibrary } from './SchematicLibrary';
+import { HeightmapTool } from './HeightmapTool';
 
 // id de bloc « minecraft:oak_stairs » → id codex « oak_stairs » et inverse.
 const bareId = (name) => (name && name.includes(':') ? name.split(':').slice(1).join(':') : (name || ''));
@@ -55,7 +56,7 @@ function ParamField({ param, value, onChange, catalog, byId }) {
     return (
       <Field label={param.label}>
         <select value={value} onChange={(e) => onChange(e.target.value)} style={selectStyle}>
-          {param.values.map((v) => <option key={v} value={v}>{String(v)}</option>)}
+          {param.values.map((v) => <option key={v} value={v}>{param.labels?.[v] || String(v)}</option>)}
         </select>
       </Field>
     );
@@ -448,6 +449,9 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
           </div>
         </div>
       )}
+
+      {/* Image → relief (heightmap) */}
+      <HeightmapTool we={we} selection={sel} onChanged={onChanged} refreshState={refreshState} />
 
       {/* Bibliothèque de schematics + import/export .schem/.litematic */}
       <SchematicLibrary we={we} clipboard={clip} onLoaded={setClip} />

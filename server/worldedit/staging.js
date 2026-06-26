@@ -16,8 +16,8 @@ import { RegionStore } from './regionStore.js';
 import {
   opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, opCut,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
-  opLine, opPyramid, opCone, opErode, opDilate, opDrain, opBiome,
-  MaskedVolume, SELECTION_SHAPES,
+  opLine, opPyramid, opCone, opErode, opDilate, opDrain, opBiome, opPath,
+  MaskedVolume, SELECTION_SHAPES, sameBlock,
 } from './transform.js';
 import { makeZip } from './zipWriter.js';
 
@@ -213,6 +213,7 @@ const OPS = {
   dilate: (store, sel, p) => opDilate(store, sel, p),
   drain: (store, sel) => opDrain(store, sel),
   biome: (store, sel, p) => opBiome(store, sel, p),
+  path: (store, sel, p) => opPath(store, sel, p),
 };
 
 // Rend la main à la boucle d'événements (le polling de job répond entre phases).
@@ -279,6 +280,72 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
 
   // `clipboard` n'est présent que pour `cut` (presse-papier rempli au passage).
   return { blocksChanged: result.blocksChanged || 0, bounds: result.bounds || sel, clipboard: result.clipboard, durationMs };
+}
+
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+// Génère du relief depuis une heightmap : `heights` (valeurs 0..1, indexées
+// z*sizeX + x) donne la hauteur de chaque colonne XZ dans la sélection. La
+// hauteur max = la plage Y de la sélection. mode 'solid' remplit la colonne
+// (sous-couche `under` + revêtement au sommet), 'surface' ne pose que le sommet.
+export async function applyHeightmap({ bp, actor, selection, heights, params, onProgress }) {
+  const startedAt = Date.now();
+  const limits = buildLimits(bp);
+  const extent = buildExtent(bp);
+  const sel = validateSelection(selection, limits);
+  if (typeof sel === 'string') throw new Error(sel);
+  const surfaceName = params?.block?.name;
+  if (!surfaceName) throw new Error('bad_block');
+  const surface = { Name: surfaceName, Properties: params.block.states || null };
+  const under = params?.under?.name ? { Name: params.under.name, Properties: params.under.states || null } : null;
+  const mode = params?.mode === 'surface' ? 'surface' : 'solid';
+
+  const sizeX = sel.max.x - sel.min.x + 1;
+  const sizeZ = sel.max.z - sel.min.z + 1;
+  const maxH = sel.max.y - sel.min.y;
+  if (!heights || heights.length < sizeX * sizeZ) throw new Error('bad_heightmap');
+
+  onProgress?.('load', 5);
+  const store = loadStore(bp);
+  await store.warmup(extent);
+  onProgress?.('apply', 30); await tick();
+
+  let changed = 0;
+  for (let z = 0; z < sizeZ; z++) {
+    for (let x = 0; x < sizeX; x++) {
+      const h = Math.round(clamp01(heights[z * sizeX + x]) * maxH);
+      const wx = sel.min.x + x, wz = sel.min.z + z;
+      const topY = sel.min.y + h;
+      if (mode === 'surface') {
+        if (!sameBlock(store.getBlock(wx, topY, wz), surface)) { store.setBlock(wx, topY, wz, { Name: surface.Name, Properties: surface.Properties }); changed++; }
+      } else {
+        for (let y = sel.min.y; y <= topY; y++) {
+          const b = (y === topY || !under) ? surface : under;
+          if (!sameBlock(store.getBlock(wx, y, wz), b)) { store.setBlock(wx, y, wz, { Name: b.Name, Properties: b.Properties }); changed++; }
+        }
+      }
+    }
+    if ((z & 31) === 0) await tick(); // respire périodiquement
+  }
+  onProgress?.('commit', 60); await tick();
+
+  snapshotRegions(bp.id, regionKeysForBBox(sel));
+  clearRedo(bp.id);
+  const rdir = regionsDir(bp.id);
+  for (const [key, buffer] of store.commit({ touchedOnly: true })) {
+    const [rx, rz] = key.split(',').map(Number);
+    fs.writeFileSync(path.join(rdir, regionFileName(rx, rz)), buffer);
+  }
+  onProgress?.('preview', 85); await tick();
+
+  const grown = clampBBox(unionBBox(extent, sel), limits);
+  growExtent(bp.id, grown);
+  fs.writeFileSync(previewPath(bp.id), zlib.gzipSync(Buffer.from(JSON.stringify(store.deriveSparse(grown)))));
+
+  const durationMs = Date.now() - startedAt;
+  db.prepare(`INSERT INTO worldedit_audit (blueprint_id, actor, operation, params_json, blocks_changed, duration_ms) VALUES (?, ?, 'heightmap', ?, ?, ?)`)
+    .run(bp.id, actor, JSON.stringify({ selection: sel, mode }), changed, durationMs);
+  return { blocksChanged: changed, bounds: sel, durationMs };
 }
 
 async function regenPreview(bp) {

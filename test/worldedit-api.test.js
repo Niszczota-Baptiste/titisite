@@ -544,3 +544,45 @@ test('Transform asynchrone : jobId + suivi de progression jusqu’au résultat',
   // Job inconnu → 404.
   assert.equal((await admin.get(`${root}/jobs/nope`)).status, 404);
 });
+
+import sharp from 'sharp';
+
+test('Tracé / route : op path via API', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug);
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  const r = await admin.post(`${root}/transform`, {
+    body: { operation: 'path', params: { preset: 'cobblestone', width: 3, bow: 0 }, selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 0, z: 0 } } },
+  });
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.json.blocksChanged > 0);
+});
+
+test('Image → relief : heightmap via API + undo', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug);
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  // Image grise uniforme → moitié de la hauteur partout.
+  const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: { r: 128, g: 128, b: 128 } } }).png().toBuffer();
+  const fd = new FormData();
+  fd.append('image', new Blob([png], { type: 'image/png' }), 'h.png');
+  fd.append('selection', JSON.stringify({ min: { x: 0, y: 0, z: 0 }, max: { x: 3, y: 8, z: 3 } }));
+  fd.append('block', JSON.stringify({ name: 'minecraft:grass_block', states: null }));
+  fd.append('under', JSON.stringify({ name: 'minecraft:dirt' }));
+  fd.append('mode', 'solid');
+  const r = await admin.post(`${root}/heightmap`, { body: fd });
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.json.blocksChanged > 0);
+  assert.equal((await admin.get(`${root}/state`)).json.undoDepth, 1);
+  assert.equal((await admin.post(`${root}/undo`)).status, 200);
+});

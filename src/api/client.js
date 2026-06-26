@@ -207,6 +207,12 @@ export const api = {
       undo:       () => request('POST', `${root}/undo`),
       redo:       () => request('POST', `${root}/redo`),
       floodSelect: (b) => request('POST', `${root}/select-flood`, b),
+      heightmap:  (file, fields) => {
+        const fd = new FormData();
+        fd.append('image', file);
+        for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
+        return uploadFile(`${root}/heightmap`, fd);
+      },
       reset:      () => request('POST', `${root}/reset`),
       audit:      () => request('GET',  `${root}/audit`),
       schematics:    () => request('GET',  `${root}/schematics`),
@@ -354,6 +360,12 @@ export const api = {
           undo:       () => request('POST', `${root}/undo`),
           redo:       () => request('POST', `${root}/redo`),
           floodSelect: (b) => request('POST', `${root}/select-flood`, b),
+          heightmap:  (file, fields) => {
+            const fd = new FormData();
+            fd.append('image', file);
+            for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
+            return uploadFile(`${root}/heightmap`, fd);
+          },
           reset:      () => request('POST', `${root}/reset`),
           audit:      () => request('GET',  `${root}/audit`),
           // Bibliothèque de schematics (presse-papier persistés) + interop.

@@ -153,6 +153,25 @@ export const OPERATIONS = [
     params: [{ name: 'block', type: 'block', label: 'Bloc' }],
   },
   {
+    id: 'path', label: 'Tracé / route', minRole: 'editor', group: 'Formes',
+    description: 'Chemin entre le coin A et le coin B (route, pont, rail, rambarde). Largeur + courbure réglables ; courbe = Bézier.',
+    params: [
+      {
+        name: 'preset', type: 'enum',
+        values: ['dirt_path', 'gravel', 'cobblestone', 'stone_bricks', 'planks', 'bridge', 'rail', 'fence'],
+        labels: {
+          dirt_path: 'Chemin de terre', gravel: 'Gravier', cobblestone: 'Pavé (cobblestone)',
+          stone_bricks: 'Pierre taillée', planks: 'Planches', bridge: 'Pont (planches + rambardes)',
+          rail: 'Rail (sur planches)', fence: 'Rambarde seule',
+        },
+        default: 'dirt_path', label: 'Type de chemin',
+      },
+      { name: 'width', type: 'int', default: 3, label: 'Largeur' },
+      { name: 'bow', type: 'int', default: 0, label: 'Courbure (0 = droit)' },
+      { name: 'block', type: 'block', label: 'Revêtement personnalisé (optionnel)' },
+    ],
+  },
+  {
     id: 'smooth', label: 'Lisser (terrain)', minRole: 'editor', group: 'Formes',
     description: 'Adoucit la hauteur de la surface (type GoBrush).',
     params: [{ name: 'iterations', type: 'int', default: 2, label: 'Passes' }],
@@ -256,6 +275,14 @@ export function normalizeParams(operation, raw = {}) {
     case 'biome': {
       const biome = String(raw.biome || '').trim().toLowerCase();
       return /^[a-z0-9_]+:[a-z0-9_/]+$/.test(biome) ? { biome } : 'bad_biome';
+    }
+    case 'path': {
+      const presets = ['dirt_path', 'gravel', 'cobblestone', 'stone_bricks', 'planks', 'bridge', 'rail', 'fence'];
+      const preset = presets.includes(raw.preset) ? raw.preset : 'dirt_path';
+      const width = Math.max(1, Math.min(16, num(raw.width) || 1));
+      const bow = Math.max(-128, Math.min(128, num(raw.bow) || 0));
+      const block = normBlock(raw.block); // revêtement personnalisé optionnel
+      return { preset, width, bow, block: block?.name ? block : null };
     }
     case 'hollow': case 'naturalize': case 'drain': case 'copy': case 'cut': return {};
     case 'paste': return { mode: raw.mode === 'overwrite' ? 'overwrite' : 'overlay' };

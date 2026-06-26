@@ -549,6 +549,97 @@ export function opLine(vol, sel, { block }) {
   return { blocksChanged: changed, bounds: sel };
 }
 
+// ── Tracé / route : chemin (droit ou courbe) entre les deux coins ────────────
+// Chaque preset décrit la coupe transversale : `surface` (revêtement), `base`
+// (couche dessous), `rail` (rambarde/garde-corps aux deux bords). « rail » comme
+// surface pose des rails orientés selon la direction du tracé.
+export const PATH_PRESETS = {
+  dirt_path: { surface: 'minecraft:dirt_path', base: 'minecraft:dirt' },
+  gravel: { surface: 'minecraft:gravel', base: 'minecraft:dirt' },
+  cobblestone: { surface: 'minecraft:cobblestone' },
+  stone_bricks: { surface: 'minecraft:stone_bricks' },
+  planks: { surface: 'minecraft:oak_planks' },
+  bridge: { surface: 'minecraft:oak_planks', rail: 'minecraft:oak_fence' },
+  rail: { surface: 'minecraft:rail', base: 'minecraft:oak_planks' },
+  fence: { rail: 'minecraft:oak_fence' },
+};
+export const PATH_PRESET_IDS = Object.keys(PATH_PRESETS);
+
+// Échantillonne le tracé : droit (bow=0) ou courbe de Bézier quadratique dont le
+// point de contrôle est le milieu décalé perpendiculairement (dans le plan XZ).
+function samplePath(A, B, bow) {
+  const mid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, z: (A.z + B.z) / 2 };
+  const dlen = Math.hypot(B.x - A.x, B.z - A.z) || 1;
+  const perp = { x: -(B.z - A.z) / dlen, z: (B.x - A.x) / dlen };
+  const C = { x: mid.x + perp.x * bow, y: mid.y, z: mid.z + perp.z * bow };
+  const chord = Math.hypot(B.x - A.x, B.y - A.y, B.z - A.z);
+  const steps = Math.max(2, Math.ceil((chord + Math.abs(bow)) * 2));
+  const pts = [];
+  for (let s = 0; s <= steps; s++) {
+    const t = s / steps;
+    if (!bow) { pts.push({ x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t, z: A.z + (B.z - A.z) * t }); continue; }
+    const u = 1 - t;
+    pts.push({
+      x: u * u * A.x + 2 * u * t * C.x + t * t * B.x,
+      y: u * u * A.y + 2 * u * t * C.y + t * t * B.y,
+      z: u * u * A.z + 2 * u * t * C.z + t * t * B.z,
+    });
+  }
+  return pts;
+}
+function tangentAt(pts, s) {
+  const a = pts[Math.max(0, s - 1)], b = pts[Math.min(pts.length - 1, s + 1)];
+  const t = { x: b.x - a.x, z: b.z - a.z };
+  const len = Math.hypot(t.x, t.z) || 1;
+  return { x: t.x / len, z: t.z / len };
+}
+
+export function opPath(vol, sel, params) {
+  const width = Math.max(1, Math.min(16, Math.round(params.width) || 1));
+  const bow = Math.round(params.bow) || 0;
+  const preset = PATH_PRESETS[params.preset] || PATH_PRESETS.dirt_path;
+  const surfaceName = (params.block && params.block.name) || preset.surface || null;
+  const isRailSurface = surfaceName === 'minecraft:rail';
+  const surface = (surfaceName && !isRailSurface) ? { Name: surfaceName, Properties: params.block?.states || null } : null;
+  const baseBlock = preset.base ? { Name: preset.base, Properties: null } : null;
+  const railBlock = preset.rail ? { Name: preset.rail, Properties: null } : null;
+
+  const A = sel.min, B = sel.max;
+  const pts = samplePath(A, B, bow);
+  let changed = 0;
+  const mn = { x: Infinity, y: Infinity, z: Infinity }, mx = { x: -Infinity, y: -Infinity, z: -Infinity };
+  const seen = new Set();
+  const put = (x, y, z, b) => {
+    if (!b) return;
+    if (!sameBlock(vol.getBlock(x, y, z), b)) { vol.setBlock(x, y, z, clone(b)); changed++; }
+    mn.x = Math.min(mn.x, x); mn.y = Math.min(mn.y, y); mn.z = Math.min(mn.z, z);
+    mx.x = Math.max(mx.x, x); mx.y = Math.max(mx.y, y); mx.z = Math.max(mx.z, z);
+  };
+  for (let s = 0; s < pts.length; s++) {
+    const p = pts[s];
+    const t = tangentAt(pts, s);
+    const perp = { x: -t.z, z: t.x };
+    const railSurf = isRailSurface ? { Name: 'minecraft:rail', Properties: { shape: Math.abs(t.x) >= Math.abs(t.z) ? 'east_west' : 'north_south' } } : null;
+    const half = (width - 1) / 2;
+    for (let i = 0; i < width; i++) {
+      const off = i - half;
+      const cx = Math.round(p.x + perp.x * off);
+      const cy = Math.round(p.y);
+      const cz = Math.round(p.z + perp.z * off);
+      const k = `${cx},${cy},${cz}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        if (baseBlock) put(cx, cy - 1, cz, baseBlock);
+        if (railSurf) put(cx, cy, cz, railSurf);
+        else if (surface) put(cx, cy, cz, surface);
+      }
+      if (railBlock && (i === 0 || i === width - 1)) put(cx, cy + 1, cz, railBlock);
+    }
+  }
+  if (!Number.isFinite(mn.x)) return { blocksChanged: 0, bounds: sel };
+  return { blocksChanged: changed, bounds: { min: mn, max: mx } };
+}
+
 // Pyramide à base carrée inscrite dans la sélection (base au sol, sommet en haut).
 export function opPyramid(vol, sel, { block, hollow }) {
   const b = toBlock(block); if (!b) throw new Error('bad_block');

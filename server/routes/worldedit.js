@@ -1,11 +1,13 @@
 import fs from 'node:fs';
+import sharp from 'sharp';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db.js';
-import { uploadPath, uploadSchematicMemory } from '../uploads.js';
+import { uploadPath, uploadSchematicMemory, uploadScreenshotMemory } from '../uploads.js';
 import { OPERATIONS, normalizeParams } from '../worldedit/operations.js';
 import {
-  buildLimits, buildExtent, applyOperation, undoLast, redoLast, resetStaging, exportBuild,
+  buildLimits, buildExtent, applyOperation, applyHeightmap, validateSelection,
+  undoLast, redoLast, resetStaging, exportBuild,
   previewFilePath, hasPendingEdits, undoDepth, redoDepth, listAudit, floodSelect,
 } from '../worldedit/staging.js';
 import {
@@ -276,6 +278,46 @@ async function postSchematicImport(req, res) {
   }
 }
 
+// Image → relief : l'image (luminance) sert de heightmap pour remplir la
+// sélection. On redimensionne au gabarit XZ de la sélection (sharp) et la
+// hauteur de chaque colonne = luminance × plage Y.
+async function postHeightmap(req, res) {
+  const bp = req.we.bp;
+  if (!bp.source_file) return res.status(422).json({ error: 'not_editable' });
+  if (!req.file) return res.status(400).json({ error: 'no_file' });
+  let selection, block, under;
+  try {
+    selection = JSON.parse(req.body?.selection || 'null');
+    block = JSON.parse(req.body?.block || 'null');
+    under = req.body?.under ? JSON.parse(req.body.under) : null;
+  } catch { return res.status(400).json({ error: 'bad_params' }); }
+  const mode = req.body?.mode === 'surface' ? 'surface' : 'solid';
+  const invert = String(req.body?.invert) === 'true';
+
+  const sel = validateSelection(selection, buildLimits(bp));
+  if (typeof sel === 'string') return res.status(400).json({ error: sel });
+  const sizeX = sel.max.x - sel.min.x + 1, sizeZ = sel.max.z - sel.min.z + 1;
+
+  try {
+    const { data, info } = await sharp(req.file.buffer)
+      .resize(sizeX, sizeZ, { fit: 'fill' }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const ch = info.channels || 1;
+    const heights = new Float32Array(sizeX * sizeZ);
+    for (let i = 0; i < heights.length; i++) {
+      const o = i * ch;
+      const lum = ch >= 3 ? (data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114) : data[o];
+      heights[i] = invert ? 1 - lum / 255 : lum / 255;
+    }
+    const out = await applyHeightmap({ bp, actor: req.we.actor, selection, heights, params: { block, under, mode } });
+    return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs });
+  } catch (e) {
+    const known = [...TRANSFORM_KNOWN, 'bad_heightmap', 'bad_params'];
+    const code = known.includes(e?.message) ? e.message : 'heightmap_failed';
+    if (code === 'heightmap_failed') console.error('[worldedit] heightmap failed:', e?.message || e);
+    return res.status(code === 'heightmap_failed' ? 500 : 400).json({ error: code });
+  }
+}
+
 function getAudit(req, res) {
   res.json(listAudit(req.we.bp.id, req.query?.limit).map((r) => ({
     id: r.id, actor: r.actor, operation: r.operation,
@@ -296,6 +338,7 @@ function attachRoutes(router) {
   router.post('/redo', worldeditLimiter, requireEdit, postRedo);
   router.post('/reset', worldeditLimiter, requireEdit, postReset);
   router.post('/select-flood', worldeditLimiter, requireEdit, postFlood);
+  router.post('/heightmap', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postHeightmap);
   router.get('/export', worldeditLimiter, requireEdit, getExport);
   // Bibliothèque de schematics (scope workspace) + import/export .schem/.litematic.
   router.get('/schematics', requireEdit, getSchematics);

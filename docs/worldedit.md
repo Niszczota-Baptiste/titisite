@@ -164,6 +164,25 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
   dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
+## Outil tracé & image → relief
+
+- **Tracé / route** (op `path`, `transform.js#opPath`) : chemin entre le coin A et
+  le coin B, **droit** (Bresenham dense) ou **courbe** (Bézier quadratique dont
+  le point de contrôle est le milieu décalé perpendiculairement par `bow`).
+  **Largeur** réglable (coupe perpendiculaire au tracé) ; **presets** de coupe
+  (`PATH_PRESETS`) : chemins classiques *terre / gravier / pavé / pierre /
+  planches*, plus *pont* (planches + rambardes en `oak_fence` sur les bords),
+  *rail* (rails orientés selon le segment, sur base de planches) et *rambarde
+  seule*. `block` optionnel pour un revêtement personnalisé. `bounds` couvre
+  l'emprise réellement posée (largeur/rambardes incluses).
+- **Image → relief** (`POST …/worldedit/heightmap`, `staging.js#applyHeightmap`) :
+  l'image est redimensionnée au gabarit **XZ de la sélection** (sharp,
+  `fit:'fill'`), sa **luminance** par cellule donne la hauteur de colonne
+  (× plage Y de la sélection ; `invert` possible). Mode **colonne pleine**
+  (sous-couche `under` + revêtement au sommet) ou **surface seule**. Passe par le
+  staging (snapshot/undo/aperçu/audit `heightmap`) avec yields périodiques. UI :
+  `HeightmapTool` (repliable) dans le `WorldEditPanel`.
+
 ## Robustesse & perf (vague 6)
 
 - **Sauvegarde auto / récupération** : le staging WorldEdit est **déjà
