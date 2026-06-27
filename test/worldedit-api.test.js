@@ -643,3 +643,29 @@ test('Générer terrain : op terrain (dénivelés) via API', async (t) => {
   assert.ok(r.json.blocksChanged > 0);
   assert.equal((await admin.get(`${root}/state`)).json.undoDepth, 1);
 });
+
+test('Miroir (copie) : duplique en miroir, original intact', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+
+  // Plateforme 16×16 (un chunk) pour avoir de la place à droite.
+  const blocks = [];
+  for (let x = 0; x < 4; x++) blocks.push({ x, y: 0, z: 0, Name: 'minecraft:stone' });
+  const buf = mcaBuffer(blocks);
+  const fd = new FormData();
+  fd.append('file', new Blob([buf]), 'r.0.0.mca');
+  fd.append('name', 'Sym'); fd.append('full', 'true');
+  for (const [k, v] of [['minX', 0], ['minY', 0], ['minZ', 0], ['maxX', 15], ['maxY', 0], ['maxZ', 0]]) fd.append(k, String(v));
+  const id = (await admin.post(`/api/workspaces/${slug}/blueprints`, { body: fd })).json.id;
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  const r = await admin.post(`${root}/transform`, {
+    body: { operation: 'mirrorcopy', params: { axis: 'x', side: 'positive', gap: 0, mode: 'overwrite' }, selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 3, y: 0, z: 0 } } },
+  });
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.json.blocksChanged > 0);
+  assert.deepEqual(r.json.bounds.min, { x: 4, y: 0, z: 0 }); // copie posée à droite
+});

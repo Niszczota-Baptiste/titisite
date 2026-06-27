@@ -23,8 +23,18 @@ const BIOMES = [
 export const OPERATIONS = [
   {
     id: 'mirror', label: 'Miroir', minRole: 'editor', group: 'Transformer',
-    description: 'Réfléchit la sélection (états retournés : escaliers, portes, panneaux…).',
+    description: 'Réfléchit la sélection EN PLACE (états retournés : escaliers, portes, panneaux…).',
     params: [{ name: 'axis', type: 'enum', values: ['x', 'y', 'z'], default: 'x', label: 'Axe' }],
+  },
+  {
+    id: 'mirrorcopy', label: 'Miroir (copie)', minRole: 'editor', group: 'Transformer',
+    description: 'Duplique la sélection en miroir de l’AUTRE côté (l’original reste). Ex. copier une aile à droite. La copie est posée juste à côté (écart réglable) ; les états sont retournés.',
+    params: [
+      { name: 'axis', type: 'enum', values: ['x', 'y', 'z'], labels: { x: 'X (Est ⇄ Ouest)', y: 'Y (haut ⇄ bas)', z: 'Z (Nord ⇄ Sud)' }, default: 'x', label: 'Axe miroir' },
+      { name: 'side', type: 'enum', values: ['positive', 'negative'], labels: { positive: 'Vers + (Est / Sud / Haut)', negative: 'Vers − (Ouest / Nord / Bas)' }, default: 'positive', label: 'Côté' },
+      { name: 'gap', type: 'int', default: 0, label: 'Écart (blocs)' },
+      { name: 'mode', type: 'enum', values: ['overlay', 'overwrite'], labels: { overlay: 'Superposer (garde l’existant)', overwrite: 'Écraser (copie exacte, air inclus)' }, default: 'overlay', label: 'Mode' },
+    ],
   },
   {
     id: 'rotate', label: 'Rotation', minRole: 'editor', group: 'Transformer',
@@ -263,6 +273,16 @@ export function normalizeParams(operation, raw = {}) {
     case 'mirror': {
       const axis = String(raw.axis || '').toLowerCase();
       return ['x', 'y', 'z'].includes(axis) ? { axis } : 'bad_axis';
+    }
+    case 'mirrorcopy': {
+      const axis = String(raw.axis || '').toLowerCase();
+      if (!['x', 'y', 'z'].includes(axis)) return 'bad_axis';
+      return {
+        axis,
+        side: raw.side === 'negative' ? 'negative' : 'positive',
+        gap: Math.max(0, Math.min(512, num(raw.gap) || 0)),
+        mode: raw.mode === 'overwrite' ? 'overwrite' : 'overlay',
+      };
     }
     case 'rotate': {
       const degrees = num(raw.degrees);

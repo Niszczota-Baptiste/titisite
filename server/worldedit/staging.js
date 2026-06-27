@@ -14,7 +14,7 @@ import {
 import { extractMcaEntries } from '../minecraftWorld/zip.js';
 import { RegionStore } from './regionStore.js';
 import {
-  opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, opCut,
+  opMirror, opMirrorCopy, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, opCut,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
   opLine, opPyramid, opCone, opErode, opDilate, opDrain, opBiome, opPath, opTerrain,
   MaskedVolume, SELECTION_SHAPES, sameBlock,
@@ -196,6 +196,7 @@ export function previewFilePath(id) {
 
 const OPS = {
   mirror: (store, sel, p) => opMirror(store, sel, p),
+  mirrorcopy: (store, sel, p) => opMirrorCopy(store, sel, p),
   rotate: (store, sel, p) => opRotate(store, sel, p),
   translate: (store, sel, p) => opTranslate(store, sel, p),
   replace: (store, sel, p) => opReplace(store, sel, p),

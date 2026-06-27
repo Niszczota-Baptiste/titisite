@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { transformProperties, isYMirrorSafe, __test } from '../server/worldedit/blockstates.js';
 import {
   MemoryVolume, readSelection, mirrorSchematic, rotateSchematic, stampSchematic,
-  opMirror, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, sameBlock, selectionSize,
+  opMirror, opMirrorCopy, opRotate, opTranslate, opReplace, opSet, opCopy, opPaste, sameBlock, selectionSize,
   opWalls, opFaces, opHollow, opOverlay, opNaturalize, opStack, opSphere, opCyl, opSmooth, opScale, opMix,
   opLine, opPyramid, opCone, opErode, opDilate, opDrain, opPath, opTerrain,
   MaskedVolume, selectionContains,
@@ -499,4 +499,34 @@ test('opTerrain : crevasse creuse (base haute, vallées) + clearAbove purge le d
   // au-dessus de la surface : purgé (air)
   const h = topAt(0, 0);
   assert.equal(v.getBlock(0, h + 1, 0), null);
+});
+
+test('opMirrorCopy : duplique en miroir à droite (original intact, états retournés)', () => {
+  const vol = new MemoryVolume();
+  // Sélection 0..2 en X : un escalier orienté est en x=0, pierre en x=2.
+  vol.setBlock(0, 0, 0, { Name: 'minecraft:oak_stairs', Properties: { facing: 'east' } });
+  vol.setBlock(2, 0, 0, { Name: 'minecraft:stone', Properties: null });
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 0, z: 0 } };
+  const r = opMirrorCopy(vol, sel, { axis: 'x', side: 'positive', gap: 0, mode: 'overlay' });
+
+  // L'original est intact.
+  assert.equal(vol.getBlock(0, 0, 0).Properties.facing, 'east');
+  assert.equal(vol.getBlock(2, 0, 0).Name, 'minecraft:stone');
+  // La copie est posée juste à droite (x=3..5), en miroir : la pierre (x=2) →
+  // bord gauche de la copie (x=3), l'escalier (x=0) → bord droit (x=5) retourné.
+  assert.equal(vol.getBlock(3, 0, 0).Name, 'minecraft:stone');
+  assert.equal(vol.getBlock(5, 0, 0).Properties.facing, 'west'); // east → west (miroir X)
+  assert.deepEqual(r.bounds.min, { x: 3, y: 0, z: 0 });
+  assert.deepEqual(r.bounds.max, { x: 5, y: 0, z: 0 });
+});
+
+test('opMirrorCopy : côté négatif + écart', () => {
+  const vol = new MemoryVolume();
+  vol.setBlock(10, 0, 0, { Name: 'minecraft:stone', Properties: null });
+  const sel = { min: { x: 10, y: 0, z: 0 }, max: { x: 11, y: 0, z: 0 } };
+  const r = opMirrorCopy(vol, sel, { axis: 'x', side: 'negative', gap: 2, mode: 'overlay' });
+  // largeur 2, côté −, écart 2 → origine x = 10 - 2 - 2 = 6, copie 6..7
+  assert.deepEqual(r.bounds.min, { x: 6, y: 0, z: 0 });
+  assert.deepEqual(r.bounds.max, { x: 7, y: 0, z: 0 });
+  assert.ok(vol.getBlock(10, 0, 0)); // original intact
 });

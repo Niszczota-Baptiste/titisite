@@ -164,6 +164,18 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
   dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
+## Miroir copie (symétrie qui duplique)
+
+- `opMirrorCopy` (op `mirrorcopy`, groupe **Transformer**) : lit la sélection, la
+  réfléchit (`mirrorSchematic`, états retournés : escaliers/portes/rails…) et la
+  **colle de l'autre côté** — l'original reste. Le plan miroir est la face de la
+  sélection ; `side` (+/−) choisit le côté, `gap` l'écart, `mode`
+  overlay/overwrite. Le copie est posée adjacente (`bounds` = zone copiée, hors
+  sélection). Idéal pour symétriser une aile (ex. dupliquer la partie gauche à
+  droite). *Limite : la destination doit être dans l'emprise chargée du build
+  (mêmes chunks) — comme `stack`/`path`, les écritures hors chunks existants sont
+  ignorées.*
+
 ## Génération de terrain procédural
 
 - `opTerrain` (op `terrain`, groupe **Terrain**) sculpte des **dénivelés naturels**

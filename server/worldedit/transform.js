@@ -192,6 +192,23 @@ export function opMirror(vol, sel, { axis }) {
   return { blocksChanged: changed, bounds: sel };
 }
 
+// Miroir COPIE : duplique la sélection en miroir de l'autre côté (l'original
+// reste). Le plan miroir est la face de la sélection (côté + ou −) ; le copie est
+// posée adjacente (écart `gap` réglable). Idéal pour symétriser une aile de build.
+export function opMirrorCopy(vol, sel, { axis, side = 'positive', gap = 0, mode = 'overlay' }) {
+  if (!['x', 'y', 'z'].includes(axis)) throw new Error('bad_axis');
+  const schem = mirrorSchematic(readSelection(vol, sel), axis);
+  const size = selectionSize(sel);
+  const g = Math.max(0, Math.round(gap) || 0);
+  const origin = { ...sel.min };
+  origin[axis] = side === 'negative' ? sel.min[axis] - size[axis] - g : sel.max[axis] + 1 + g;
+  const changed = stampSchematic(vol, schem, origin, mode === 'overwrite' ? 'overwrite' : 'overlay');
+  return {
+    blocksChanged: changed,
+    bounds: { min: { ...origin }, max: { x: origin.x + size.x - 1, y: origin.y + size.y - 1, z: origin.z + size.z - 1 } },
+  };
+}
+
 export function opRotate(vol, sel, { degrees }) {
   const quarts = { 90: 1, 180: 2, 270: 3 }[degrees];
   if (!quarts) throw new Error('bad_degrees');
