@@ -225,9 +225,13 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
 - **Aperçu PNG** (`POST …/worldedit/render-preview`) : renvoie le rendu 256×256
   du texte/image pour **vérifier les caractères** avant de générer. Le client
   l'affiche en live (debounce) dans `TextPanelTool`.
-- **Police** : `font-family` avec repli **CJK** explicite (WenQuanYi Zen Hei /
-  Noto Sans CJK KR / Malgun Gothic / Unifont…) + baseline explicite (librsvg
-  gère mal `dominant-baseline`).
+- **Police (rendu vectoriel)** : le texte est converti en **tracés `<path>`**
+  via `opentype.js` + **Unifont embarquée** (`server/assets/fonts/unifont.otf`,
+  couvre tout le BMP : coréen/latin/japonais…), cf. `textRender.js`. Donc
+  **aucune dépendance aux polices système** — le serveur déployé n'a pas besoin
+  de police CJK (sinon les caractères manquants s'affichaient en **code point
+  hexadécimal**, ex. 푸=`D478`). Auto-ajustement de taille + retour à la ligne
+  automatique ; style pixel adapté à Minecraft.
 
 ## Carte Minecraft (item filled_map 128×128)
 

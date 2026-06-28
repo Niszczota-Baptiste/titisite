@@ -18,6 +18,7 @@ import {
   schematicToSponge, schematicToLitematic, parseSchematicFile,
 } from '../worldedit/schematicFormats.js';
 import { rgbaToMapColors, buildMapDat, imageToMapBlocks } from '../worldedit/mapColors.js';
+import { renderTextSvg } from '../worldedit/textRender.js';
 import { createJob, updateJob, getJob } from '../worldedit/jobs.js';
 
 // Moteur WorldEdit serveur. Deux points d'entrée partagent les mêmes handlers :
@@ -339,19 +340,9 @@ async function postHeightmapExport(req, res) {
 }
 
 // Panneau texte / image → mur plat de blocs (texte coréen sur marbre, etc.).
-const escapeXml = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
-// Liste de polices avec repli CJK : fontconfig prend la 1re qui a les glyphes.
-const FONT_FAMILY = "'WenQuanYi Zen Hei','Noto Sans CJK KR','Noto Sans KR','Noto Sans CJK SC','Malgun Gothic','AppleGothic','Unifont','DejaVu Sans',sans-serif";
-// Rend un texte centré sur un fond `bg` en couleur `fg`, image W×H (supersample).
-function renderTextSvg(text, w, h, ss, bg, fg) {
-  const lines = String(text).split('\n').slice(0, 12);
-  const W = w * ss, H = h * ss;
-  const lineGap = H / lines.length;
-  const fontSize = Math.max(6, Math.floor(lineGap * 0.74));
-  const baseY = (i) => lineGap * i + lineGap * 0.72; // baseline explicite (librsvg gère mal central)
-  const spans = lines.map((ln, i) => `<text x="${W / 2}" y="${baseY(i)}" font-size="${fontSize}" fill="${fg}" text-anchor="middle" font-family="${FONT_FAMILY}">${escapeXml(ln)}</text>`).join('');
-  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="100%" height="100%" fill="${bg}"/>${spans}</svg>`);
-}
+// Le rendu du texte passe par des TRACÉS vectoriels (server/worldedit/
+// textRender.js, police Unifont embarquée) → aucune dépendance aux polices
+// système (le serveur déployé n'a pas forcément de police coréenne).
 const textToSvg = (text, w, h) => renderTextSvg(text, w, h, 4, 'white', 'black');
 
 async function postPanel(req, res) {
