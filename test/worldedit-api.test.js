@@ -730,3 +730,38 @@ test('Carte Minecraft : texte → map_0.dat (128×128, palette de carte)', async
   const r2 = await admin.post(`${root}/mapart`, { body: new FormData() });
   assert.equal(r2.json.error, 'no_content');
 });
+
+test('Carte en blocs : image → zone plate de blocs-couleurs + aperçu PNG', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+
+  // Sol plat 12×12 (épaisseur 1 en Y).
+  const blocks = [];
+  for (let x = 0; x < 12; x++) for (let z = 0; z < 12; z++) blocks.push({ x, y: 0, z, Name: 'minecraft:stone' });
+  const buf = mcaBuffer(blocks);
+  const fd0 = new FormData();
+  fd0.append('file', new Blob([buf]), 'r.0.0.mca');
+  fd0.append('name', 'Sol'); fd0.append('full', 'true');
+  const id = (await admin.post(`/api/workspaces/${slug}/blueprints`, { body: fd0 })).json.id;
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  const png = await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 255, g: 0, b: 0 } } }).png().toBuffer();
+  const fd = new FormData();
+  fd.append('image', new Blob([png], { type: 'image/png' }), 'a.png');
+  fd.append('selection', JSON.stringify({ min: { x: 0, y: 0, z: 0 }, max: { x: 11, y: 0, z: 11 } }));
+  const r = await admin.post(`${root}/mapblocks`, { body: fd });
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.json.blocksChanged > 0);
+  assert.deepEqual(r.json.plane, { w: 12, h: 12 });
+
+  // Aperçu PNG du texte.
+  const fdP = new FormData();
+  fdP.append('text', '한A'); fdP.append('preset', 'black_marble');
+  const rp = await admin.post(`${root}/render-preview`, { body: fdP, raw: true });
+  assert.equal(rp.status, 200);
+  const pbuf = Buffer.from(await rp.arrayBuffer());
+  assert.equal(pbuf[0], 0x89); assert.equal(pbuf[1], 0x50); // PNG
+});

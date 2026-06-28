@@ -61,6 +61,49 @@ export function rgbaToMapColors(data, channels) {
   return out;
 }
 
+// ── Map-art EN BLOCS (survie) : baseId → bloc plat qui rend cette couleur ─────
+// Pour une carte PLATE (tous les blocs au même Y), chaque couleur de base donne
+// une seule nuance (×220) → ~60 couleurs. On choisit un bloc obtenable par base.
+const BASE_BLOCK = {
+  1: 'grass_block', 2: 'sand', 3: 'mushroom_stem', 4: 'redstone_block', 5: 'packed_ice',
+  6: 'iron_block', 7: 'oak_leaves', 8: 'white_concrete', 9: 'clay', 10: 'dirt',
+  11: 'stone', 12: 'water', 13: 'oak_planks', 14: 'quartz_block', 15: 'orange_concrete',
+  16: 'magenta_concrete', 17: 'light_blue_concrete', 18: 'yellow_concrete', 19: 'lime_concrete', 20: 'pink_concrete',
+  21: 'gray_concrete', 22: 'light_gray_concrete', 23: 'cyan_concrete', 24: 'purple_concrete', 25: 'blue_concrete',
+  26: 'brown_concrete', 27: 'green_concrete', 28: 'red_concrete', 29: 'black_concrete', 30: 'gold_block',
+  31: 'diamond_block', 32: 'lapis_block', 33: 'emerald_block', 34: 'podzol', 35: 'netherrack',
+  36: 'white_terracotta', 37: 'orange_terracotta', 38: 'magenta_terracotta', 39: 'light_blue_terracotta', 40: 'yellow_terracotta',
+  41: 'lime_terracotta', 42: 'pink_terracotta', 43: 'gray_terracotta', 44: 'light_gray_terracotta', 45: 'cyan_terracotta',
+  46: 'purple_terracotta', 47: 'blue_terracotta', 48: 'brown_terracotta', 49: 'green_terracotta', 50: 'red_terracotta',
+  51: 'black_terracotta', 52: 'crimson_nylium', 53: 'crimson_planks', 54: 'crimson_hyphae', 55: 'warped_nylium',
+  56: 'warped_planks', 57: 'warped_hyphae', 58: 'warped_wart_block', 59: 'deepslate', 60: 'raw_iron_block',
+};
+// Palette PLATE (nuance ×220) restreinte aux bases ayant un bloc.
+const FLAT_PALETTE = Object.entries(BASE_BLOCK).map(([id, block]) => {
+  const [br, bg, bb] = BASE[Number(id)];
+  const m = 220 / 255;
+  return { block: `minecraft:${block}`, r: Math.round(br * m), g: Math.round(bg * m), b: Math.round(bb * m) };
+});
+function nearestFlatBlock(r, g, b) {
+  let best = FLAT_PALETTE[0], bd = Infinity;
+  for (const c of FLAT_PALETTE) {
+    const dr = r - c.r, dg = g - c.g, db = b - c.b;
+    const d = dr * dr * 0.30 + dg * dg * 0.59 + db * db * 0.11;
+    if (d < bd) { bd = d; best = c; }
+  }
+  return best.block;
+}
+// Données RGBA (w×h) → grille de noms de blocs (null si transparent).
+export function imageToMapBlocks(data, w, h, channels) {
+  const out = new Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const o = i * channels;
+    const a = channels === 4 ? data[o + 3] : 255;
+    out[i] = a < 128 ? null : nearestFlatBlock(data[o], data[o + 1], data[o + 2]);
+  }
+  return out;
+}
+
 // Construit le fichier `map_<n>.dat` (NBT gzip) à partir des 16384 bytes.
 export function buildMapDat(colors, { dataVersion = 3578, xCenter = 0, zCenter = 0 } = {}) {
   const root = { type: 'compound', name: '', value: {

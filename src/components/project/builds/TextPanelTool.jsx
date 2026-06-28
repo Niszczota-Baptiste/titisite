@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, Input } from '../../admin/ui';
 import { muted } from '../shared';
 import { useToast } from '../../../ui/ToastProvider';
@@ -27,6 +27,20 @@ export function TextPanelTool({ we, selection, onChanged, refreshState }) {
   const [preset, setPreset] = useState('black_marble');
   const [ink, setInk] = useState('');
   const [invert, setInvert] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  // Aperçu live du rendu texte (vérifier les caractères avant de générer).
+  useEffect(() => {
+    if (!text.trim()) { setPreviewUrl(null); return undefined; }
+    let alive = true; let url = null;
+    const t = setTimeout(() => {
+      we.renderPreview({ preset, invert: String(invert), text }).then((blob) => {
+        if (!alive) return;
+        url = URL.createObjectURL(blob); setPreviewUrl(url);
+      }).catch(() => {});
+    }, 400);
+    return () => { alive = false; clearTimeout(t); if (url) URL.revokeObjectURL(url); };
+  }, [text, preset, invert, we]);
 
   const fields = () => ({
     selection, preset, invert: String(invert),
@@ -74,6 +88,27 @@ export function TextPanelTool({ we, selection, onChanged, refreshState }) {
     if (file) makeMap(file);
   };
 
+  // Carte EN BLOCS : pose une zone 128×128 de blocs-couleurs (à refaire en jeu).
+  const mapBlocksFileRef = useRef(null);
+  const makeMapBlocks = async (file) => {
+    if (!selection) { toast?.error?.('Sélectionne une zone plate (idéalement 128×128)'); return; }
+    if (!file && !text.trim()) { toast?.error?.('Tape un texte ou choisis une image'); return; }
+    setBusy(true);
+    try {
+      const r = await we.mapBlocks({ ...fields(), text: file ? '' : text }, file || undefined);
+      toast?.success?.(`Carte en blocs : ${r.blocksChanged.toLocaleString('fr')} bloc(s) · ${r.plane.w}×${r.plane.h}`);
+      if (r.previewTruncated) toast?.info?.('Zone très grande : aperçu partiel, export .mca complet.');
+      await refreshState?.(); onChanged?.();
+    } catch (e) {
+      toast?.error?.(e?.body?.error === 'selection_too_large' ? 'Zone trop grande' : 'Génération impossible');
+    } finally { setBusy(false); }
+  };
+  const onPickMapBlocks = (e) => {
+    const file = e.target.files?.[0];
+    if (file) e.target.value = '';
+    if (file) makeMapBlocks(file);
+  };
+
   return (
     <details style={box}>
       <summary style={summary}>🔤 Panneau texte / image (marbre)</summary>
@@ -84,6 +119,13 @@ export function TextPanelTool({ we, selection, onChanged, refreshState }) {
         </div>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="안녕하세요 / Texte…"
           style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+        {previewUrl && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <img src={previewUrl} alt="aperçu" width={88} height={88}
+              style={{ borderRadius: 6, border: '1px solid rgba(80,50,130,0.3)', imageRendering: 'pixelated', background: '#161616' }} />
+            <span style={{ ...muted, fontSize: 11 }}>Aperçu du rendu — vérifie que les caractères s’affichent bien. Si c’est illisible, agrandis la zone ou réduis le texte / passe par une image.</span>
+          </div>
+        )}
         <label style={field}>
           <span style={{ ...muted, fontSize: 11 }}>Style de fond</span>
           <select value={preset} onChange={(e) => setPreset(e.target.value)} style={inputStyle}>
@@ -112,14 +154,23 @@ export function TextPanelTool({ we, selection, onChanged, refreshState }) {
             <strong>Carte Minecraft</strong> (item 128×128, <code>map_&lt;n&gt;.dat</code>) — pas des blocs, l’<em>objet</em> carte.
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Button variant="ghost" onClick={() => makeMap(null)} disabled={busy} style={{ padding: '6px 12px', fontSize: 12 }}>🗺️ Carte depuis le texte</Button>
-            <Button variant="ghost" onClick={() => mapFileRef.current?.click()} disabled={busy} style={{ padding: '6px 12px', fontSize: 12 }}>🗺️ Carte depuis une image</Button>
+            <Button variant="ghost" onClick={() => makeMapBlocks(null)} disabled={busy} style={{ padding: '6px 12px', fontSize: 12 }} title="Pose une zone 128×128 de blocs-couleurs dans la sélection — tu refais la carte EN JEU">🧱 Carte en blocs (texte)</Button>
+            <Button variant="ghost" onClick={() => mapBlocksFileRef.current?.click()} disabled={busy} style={{ padding: '6px 12px', fontSize: 12 }}>🧱 Carte en blocs (image)</Button>
+            <input ref={mapBlocksFileRef} type="file" accept="image/*" onChange={onPickMapBlocks} style={{ display: 'none' }} />
+          </div>
+          <div style={{ ...muted, fontSize: 10 }}>
+            <strong>Carte en blocs</strong> : pose les blocs dans une zone <strong>plate</strong> (sol/mur) — idéalement
+            <strong> 128×128</strong> pour 1 carte. En jeu, tiens une <em>carte vierge</em> au-dessus → elle capture l’image.
+            Les blocs nécessaires apparaissent dans la <em>liste de matériaux</em> du build.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button variant="ghost" onClick={() => makeMap(null)} disabled={busy} style={{ padding: '6px 12px', fontSize: 12 }}>🗺️ Fichier .dat (texte)</Button>
+            <Button variant="ghost" onClick={() => mapFileRef.current?.click()} disabled={busy} style={{ padding: '6px 12px', fontSize: 12 }}>🗺️ Fichier .dat (image)</Button>
             <input ref={mapFileRef} type="file" accept="image/*" onChange={onPickMap} style={{ display: 'none' }} />
           </div>
           <div style={{ ...muted, fontSize: 10 }}>
-            Place <code>map_0.dat</code> dans <code>&lt;monde&gt;/data/</code>, puis en jeu :
+            <strong>Fichier .dat</strong> : place <code>map_0.dat</code> dans <code>&lt;monde&gt;/data/</code>, puis en jeu
             {' '}<code>/give @p filled_map[minecraft:map_id=0]</code> (1.21+) ou <code>filled_map{'{'}map:0{'}'}</code> (1.20−).
-            Renomme en <code>map_1.dat</code>, <code>map_2.dat</code>… pour plusieurs.
           </div>
         </div>
       </div>

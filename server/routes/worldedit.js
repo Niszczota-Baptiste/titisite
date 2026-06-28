@@ -7,7 +7,7 @@ import { uploadPath, uploadSchematicMemory, uploadScreenshotMemory } from '../up
 import { OPERATIONS, normalizeParams } from '../worldedit/operations.js';
 import {
   buildLimits, buildExtent, applyOperation, applyHeightmap, exportHeightmap, validateSelection,
-  applyPanel, panelPlane, PANEL_PRESETS,
+  applyPanel, applyMapBlocks, panelPlane, PANEL_PRESETS,
   undoLast, redoLast, resetStaging, exportBuild,
   previewFilePath, hasPendingEdits, undoDepth, redoDepth, listAudit, floodSelect,
 } from '../worldedit/staging.js';
@@ -17,7 +17,7 @@ import {
 import {
   schematicToSponge, schematicToLitematic, parseSchematicFile,
 } from '../worldedit/schematicFormats.js';
-import { rgbaToMapColors, buildMapDat } from '../worldedit/mapColors.js';
+import { rgbaToMapColors, buildMapDat, imageToMapBlocks } from '../worldedit/mapColors.js';
 import { createJob, updateJob, getJob } from '../worldedit/jobs.js';
 
 // Moteur WorldEdit serveur. Deux points d'entrée partagent les mêmes handlers :
@@ -340,15 +340,19 @@ async function postHeightmapExport(req, res) {
 
 // Panneau texte / image → mur plat de blocs (texte coréen sur marbre, etc.).
 const escapeXml = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
-function textToSvg(text, w, h) {
+// Liste de polices avec repli CJK : fontconfig prend la 1re qui a les glyphes.
+const FONT_FAMILY = "'WenQuanYi Zen Hei','Noto Sans CJK KR','Noto Sans KR','Noto Sans CJK SC','Malgun Gothic','AppleGothic','Unifont','DejaVu Sans',sans-serif";
+// Rend un texte centré sur un fond `bg` en couleur `fg`, image W×H (supersample).
+function renderTextSvg(text, w, h, ss, bg, fg) {
   const lines = String(text).split('\n').slice(0, 12);
-  const SS = 4; // supersample pour des glyphes nets une fois réduits
-  const W = w * SS, H = h * SS;
+  const W = w * ss, H = h * ss;
   const lineGap = H / lines.length;
-  const fontSize = Math.max(6, Math.floor(lineGap * 0.78));
-  const spans = lines.map((ln, i) => `<text x="${W / 2}" y="${lineGap * (i + 0.5)}" font-size="${fontSize}" fill="black" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">${escapeXml(ln)}</text>`).join('');
-  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="100%" height="100%" fill="white"/>${spans}</svg>`);
+  const fontSize = Math.max(6, Math.floor(lineGap * 0.74));
+  const baseY = (i) => lineGap * i + lineGap * 0.72; // baseline explicite (librsvg gère mal central)
+  const spans = lines.map((ln, i) => `<text x="${W / 2}" y="${baseY(i)}" font-size="${fontSize}" fill="${fg}" text-anchor="middle" font-family="${FONT_FAMILY}">${escapeXml(ln)}</text>`).join('');
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="100%" height="100%" fill="${bg}"/>${spans}</svg>`);
 }
+const textToSvg = (text, w, h) => renderTextSvg(text, w, h, 4, 'white', 'black');
 
 async function postPanel(req, res) {
   const bp = req.we.bp;
@@ -389,38 +393,83 @@ async function postPanel(req, res) {
 
 // Carte Minecraft (item filled_map, 128×128) → fichier data/map_<n>.dat.
 // Indépendant du build : texte (rendu serveur) ou image → palette de carte.
-function mapTextSvg(text, bg, fg) {
-  const lines = String(text).split('\n').slice(0, 12);
-  const SS = 4, W = 128 * SS, H = 128 * SS;
-  const lineGap = H / lines.length;
-  const fontSize = Math.max(8, Math.floor(lineGap * 0.78));
-  const spans = lines.map((ln, i) => `<text x="${W / 2}" y="${lineGap * (i + 0.5)}" font-size="${fontSize}" fill="${fg}" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">${escapeXml(ln)}</text>`).join('');
-  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="100%" height="100%" fill="${bg}"/>${spans}</svg>`);
+const mapTextSvg = (text, bg, fg) => renderTextSvg(text, 128, 128, 4, bg, fg);
+// Couleurs clair/sombre selon le preset (le fond marbre n'a pas de sens à plat).
+function panelColors(preset, invert) {
+  const dark = !(preset === 'white_marble' || preset === 'white_clean');
+  return (dark !== invert) ? { bg: '#161616', fg: '#ededed' } : { bg: '#e9e9e9', fg: '#161616' };
+}
+
+// Source image 128×128 (texte ou upload) pour les sorties carte.
+async function mapSource(req) {
+  const text = typeof req.body?.text === 'string' ? req.body.text : '';
+  if (!text.trim() && !req.file) return null;
+  const { bg, fg } = panelColors(req.body?.preset, String(req.body?.invert) === 'true');
+  const fit = req.body?.fit === 'contain' ? 'contain' : 'fill';
+  const src = text.trim() ? mapTextSvg(text, bg, fg) : req.file.buffer;
+  return sharp(src).resize(128, 128, { fit, background: { r: 0, g: 0, b: 0, alpha: 0 } }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 }
 
 async function postMapart(req, res) {
-  const text = typeof req.body?.text === 'string' ? req.body.text : '';
-  const invert = String(req.body?.invert) === 'true';
-  // Préréglages de couleurs pour le texte (le fond marbre n'a pas de sens sur
-  // une carte plate → on retient juste clair/sombre).
-  const dark = req.body?.preset === 'white_marble' || req.body?.preset === 'white_clean' ? false : true;
-  const bg = (dark !== invert) ? '#161616' : '#e9e9e9';
-  const fg = (dark !== invert) ? '#ededed' : '#161616';
-  if (!text.trim() && !req.file) return res.status(400).json({ error: 'no_content' });
-  const fit = req.body?.fit === 'contain' ? 'contain' : 'fill';
   try {
-    const src = text.trim() ? mapTextSvg(text, bg, fg) : req.file.buffer;
-    const { data, info } = await sharp(src)
-      .resize(128, 128, { fit, background: { r: 0, g: 0, b: 0, alpha: 0 } })
-      .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    const colors = rgbaToMapColors(data, info.channels);
-    const dat = buildMapDat(colors);
+    const out = await mapSource(req);
+    if (!out) return res.status(400).json({ error: 'no_content' });
+    const dat = buildMapDat(rgbaToMapColors(out.data, out.info.channels));
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', 'attachment; filename="map_0.dat"');
     return res.send(dat);
   } catch (e) {
     console.error('[worldedit] mapart failed:', e?.message || e);
     return res.status(500).json({ error: 'mapart_failed' });
+  }
+}
+
+// Carte EN BLOCS : pose une zone 128×128 de blocs-couleurs dans la sélection
+// (mur/sol plat) → on refait la carte EN JEU (sans .dat). La sélection est
+// redimensionnée à 128×128 si possible ; sinon on remplit le plan disponible.
+async function postMapBlocks(req, res) {
+  const bp = req.we.bp;
+  if (!bp.source_file) return res.status(422).json({ error: 'not_editable' });
+  let selection;
+  try { selection = JSON.parse(req.body?.selection || 'null'); } catch { return res.status(400).json({ error: 'bad_params' }); }
+  const sel = validateSelection(selection, buildLimits(bp));
+  if (typeof sel === 'string') return res.status(400).json({ error: sel });
+  const { w, h } = panelPlane(sel);
+  if (w < 1 || h < 1) return res.status(400).json({ error: 'bad_panel' });
+  const text = typeof req.body?.text === 'string' ? req.body.text : '';
+  if (!text.trim() && !req.file) return res.status(400).json({ error: 'no_content' });
+  try {
+    const { bg, fg } = panelColors(req.body?.preset, String(req.body?.invert) === 'true');
+    const fit = req.body?.fit === 'contain' ? 'contain' : 'fill';
+    const src = text.trim() ? renderTextSvg(text, w, h, 4, bg, fg) : req.file.buffer;
+    const { data, info } = await sharp(src).resize(w, h, { fit, background: { r: 0, g: 0, b: 0, alpha: 0 } }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const names = imageToMapBlocks(data, w, h, info.channels).map((n) => (n ? n : null));
+    const out = await applyMapBlocks(bp, { selection, names, actor: req.we.actor });
+    return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs, previewTruncated: out.previewTruncated, plane: out.plane });
+  } catch (e) {
+    const known = [...TRANSFORM_KNOWN, 'bad_panel', 'bad_params'];
+    const code = known.includes(e?.message) ? e.message : 'mapblocks_failed';
+    if (code === 'mapblocks_failed') console.error('[worldedit] mapblocks failed:', e?.message || e);
+    return res.status(code === 'mapblocks_failed' ? 500 : 400).json({ error: code });
+  }
+}
+
+// Aperçu PNG du rendu (texte/image) → l'utilisateur vérifie les caractères avant
+// de générer quoi que ce soit. 256×256 en niveaux réels.
+async function postRenderPreview(req, res) {
+  const text = typeof req.body?.text === 'string' ? req.body.text : '';
+  if (!text.trim() && !req.file) return res.status(400).json({ error: 'no_content' });
+  try {
+    const { bg, fg } = panelColors(req.body?.preset, String(req.body?.invert) === 'true');
+    const fit = req.body?.fit === 'contain' ? 'contain' : 'fill';
+    const src = text.trim() ? renderTextSvg(text, 256, 256, 2, bg, fg) : req.file.buffer;
+    const png = await sharp(src).resize(256, 256, { fit, background: { r: 22, g: 22, b: 22, alpha: 1 } }).png().toBuffer();
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.send(png);
+  } catch (e) {
+    console.error('[worldedit] preview failed:', e?.message || e);
+    return res.status(500).json({ error: 'preview_failed' });
   }
 }
 
@@ -448,6 +497,8 @@ function attachRoutes(router) {
   router.post('/heightmap-export', worldeditLimiter, requireEdit, postHeightmapExport);
   router.post('/panel', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postPanel);
   router.post('/mapart', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postMapart);
+  router.post('/mapblocks', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postMapBlocks);
+  router.post('/render-preview', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postRenderPreview);
   router.get('/export', worldeditLimiter, requireEdit, getExport);
   // Bibliothèque de schematics (scope workspace) + import/export .schem/.litematic.
   router.get('/schematics', requireEdit, getSchematics);

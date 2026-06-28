@@ -214,6 +214,21 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   surface/sous-sol/roche au choix (champs masqués sauf si « Personnalisé », via
   `showIf` sur le descripteur, filtré dans le `WorldEditPanel`).
 
+## Carte en blocs (survie) + aperçu
+
+- **Carte EN BLOCS** (`POST …/worldedit/mapblocks`, `staging.js#applyMapBlocks`) :
+  image/texte → 128×128 (ou taille du plan) → chaque cellule reçoit un **bloc**
+  dont la couleur de carte (nuance plate ×220) approche le pixel
+  (`mapColors.js#imageToMapBlocks` + table `baseId→bloc`). Posé à plat dans la
+  sélection → on refait la **carte en jeu** (tenir une carte vierge au-dessus),
+  sans `.dat`. Les blocs nécessaires sortent dans la liste de matériaux du build.
+- **Aperçu PNG** (`POST …/worldedit/render-preview`) : renvoie le rendu 256×256
+  du texte/image pour **vérifier les caractères** avant de générer. Le client
+  l'affiche en live (debounce) dans `TextPanelTool`.
+- **Police** : `font-family` avec repli **CJK** explicite (WenQuanYi Zen Hei /
+  Noto Sans CJK KR / Malgun Gothic / Unifont…) + baseline explicite (librsvg
+  gère mal `dominant-baseline`).
+
 ## Carte Minecraft (item filled_map 128×128)
 
 - `POST …/worldedit/mapart` (`server/worldedit/mapColors.js`) : génère le fichier

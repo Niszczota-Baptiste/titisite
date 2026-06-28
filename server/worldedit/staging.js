@@ -325,6 +325,58 @@ export function panelPlane(sel) {
   return { flat, uAxis: 'x', vAxis: 'y', invertV: true, w: size.x, h: size.y };
 }
 
+// Map-art en blocs : écrit une grille de noms de blocs (un par cellule du plan)
+// à plat dans la sélection — chaque bloc rend la couleur de carte voulue, pour
+// refaire la carte EN JEU (sans .dat). `names` indexé v*w+u (null = inchangé).
+export async function applyMapBlocks(bp, { selection, names, actor, onProgress }) {
+  const startedAt = Date.now();
+  const limits = buildLimits(bp);
+  const sel = validateSelection(selection, limits);
+  if (typeof sel === 'string') throw new Error(sel);
+  const { flat, uAxis, vAxis, invertV, w, h } = panelPlane(sel);
+  if (!names || names.length < w * h) throw new Error('bad_panel');
+
+  onProgress?.('load', 5);
+  const store = loadStore(bp);
+  await store.warmup(buildExtent(bp));
+  onProgress?.('apply', 30); await tick();
+  const cache = new Map();
+  let changed = 0;
+  for (let v = 0; v < h; v++) {
+    for (let u = 0; u < w; u++) {
+      const name = names[v * w + u];
+      if (!name) continue;
+      let block = cache.get(name);
+      if (!block) { block = { Name: name, Properties: null }; cache.set(name, block); }
+      const pos = { x: 0, y: 0, z: 0 };
+      pos[uAxis] = sel.min[uAxis] + u;
+      pos[vAxis] = invertV ? sel.max[vAxis] - v : sel.min[vAxis] + v;
+      for (let t = sel.min[flat]; t <= sel.max[flat]; t++) {
+        pos[flat] = t;
+        if (!sameBlock(store.getBlock(pos.x, pos.y, pos.z), block)) { store.setBlock(pos.x, pos.y, pos.z, { Name: block.Name, Properties: null }); changed++; }
+      }
+    }
+    if ((v & 15) === 0) await tick();
+  }
+  onProgress?.('commit', 60); await tick();
+  snapshotRegions(bp.id, regionKeysForBBox(sel));
+  clearRedo(bp.id);
+  const rdir = regionsDir(bp.id);
+  for (const [key, buffer] of store.commit({ touchedOnly: true })) {
+    const [rx, rz] = key.split(',').map(Number);
+    fs.writeFileSync(path.join(rdir, regionFileName(rx, rz)), buffer);
+  }
+  onProgress?.('preview', 85); await tick();
+  const grown = clampBBox(unionBBox(buildExtent(bp), sel), limits);
+  growExtent(bp.id, grown);
+  const sparse = store.deriveSparse(grown, PREVIEW_MAX_BLOCKS, { truncate: true });
+  fs.writeFileSync(previewPath(bp.id), zlib.gzipSync(Buffer.from(JSON.stringify(sparse))));
+  const durationMs = Date.now() - startedAt;
+  db.prepare(`INSERT INTO worldedit_audit (blueprint_id, actor, operation, params_json, blocks_changed, duration_ms) VALUES (?, ?, 'mapblocks', ?, ?, ?)`)
+    .run(bp.id, actor || '', JSON.stringify({ selection: sel }), changed, durationMs);
+  return { blocksChanged: changed, bounds: sel, durationMs, previewTruncated: !!sparse.truncated, plane: { w, h } };
+}
+
 // Écrit un panneau plat : `mask` (1 = bloc d'écriture, 0 = fond) indexé v*w+u.
 export async function applyPanel(bp, { selection, mask, inkBlock, preset = 'white_marble', actor, onProgress }) {
   const startedAt = Date.now();

@@ -251,6 +251,13 @@ export const api = {
         return uploadFile(`${root}/panel`, fd);
       },
       mapart:     (fields, file) => uploadBlob(`${root}/mapart`, fields, file),
+      mapBlocks:  (fields, file) => {
+        const fd = new FormData();
+        if (file) fd.append('image', file);
+        for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
+        return uploadFile(`${root}/mapblocks`, fd);
+      },
+      renderPreview: (fields, file) => uploadBlob(`${root}/render-preview`, fields, file),
       reset:      () => request('POST', `${root}/reset`),
       audit:      () => request('GET',  `${root}/audit`),
       schematics:    () => request('GET',  `${root}/schematics`),
@@ -412,6 +419,13 @@ export const api = {
             return uploadFile(`${root}/panel`, fd);
           },
           mapart:     (fields, file) => uploadBlob(`${root}/mapart`, fields, file),
+          mapBlocks:  (fields, file) => {
+            const fd = new FormData();
+            if (file) fd.append('image', file);
+            for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
+            return uploadFile(`${root}/mapblocks`, fd);
+          },
+          renderPreview: (fields, file) => uploadBlob(`${root}/render-preview`, fields, file),
           reset:      () => request('POST', `${root}/reset`),
           audit:      () => request('GET',  `${root}/audit`),
           // Bibliothèque de schematics (presse-papier persistés) + interop.
