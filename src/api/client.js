@@ -119,6 +119,21 @@ async function fetchBlob(path, body) {
   return res.blob();
 }
 
+// POST multipart (FormData + champs) et renvoie la réponse binaire (Blob).
+async function uploadBlob(path, fields, file) {
+  const fd = new FormData();
+  if (file) fd.append('image', file);
+  for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
+  const res = await fetch(`/api${path}`, { method: 'POST', credentials: 'include', body: fd });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const err = new Error(data?.error || `HTTP ${res.status}`);
+    err.status = res.status; err.body = data;
+    throw err;
+  }
+  return res.blob();
+}
+
 export async function triggerDownload(url, suggestedName) {
   const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error('download_failed');
@@ -235,6 +250,7 @@ export const api = {
         for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
         return uploadFile(`${root}/panel`, fd);
       },
+      mapart:     (fields, file) => uploadBlob(`${root}/mapart`, fields, file),
       reset:      () => request('POST', `${root}/reset`),
       audit:      () => request('GET',  `${root}/audit`),
       schematics:    () => request('GET',  `${root}/schematics`),
@@ -395,6 +411,7 @@ export const api = {
             for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
             return uploadFile(`${root}/panel`, fd);
           },
+          mapart:     (fields, file) => uploadBlob(`${root}/mapart`, fields, file),
           reset:      () => request('POST', `${root}/reset`),
           audit:      () => request('GET',  `${root}/audit`),
           // Bibliothèque de schematics (presse-papier persistés) + interop.

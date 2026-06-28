@@ -214,6 +214,17 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   surface/sous-sol/roche au choix (champs masqués sauf si « Personnalisé », via
   `showIf` sur le descripteur, filtré dans le `WorldEditPanel`).
 
+## Carte Minecraft (item filled_map 128×128)
+
+- `POST …/worldedit/mapart` (`server/worldedit/mapColors.js`) : génère le fichier
+  **`map_<n>.dat`** d'un item carte — **pas** des blocs. Texte (rendu SVG, coréen
+  OK) ou image → 128×128 → conversion vers la **palette « map colors »** (62
+  couleurs de base × 4 nuances `180/220/255/135`, byte = `baseId*4+nuance`,
+  distance perceptuelle pondérée). NBT gzip (`buildMapDat`) : `data.colors`
+  byteArray[16384], `scale 0`, `dimension overworld`. Indépendant du build.
+  Client `mapart()` → Blob téléchargé `map_0.dat`. Bouton dans `TextPanelTool`
+  avec le mode d'emploi (placer dans `<monde>/data/`, `/give filled_map…`).
+
 ## Panneau texte / image (marbre)
 
 - `POST …/worldedit/panel` (`staging.js#applyPanel`) : écrit du **texte** ou une

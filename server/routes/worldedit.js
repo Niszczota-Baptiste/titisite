@@ -17,6 +17,7 @@ import {
 import {
   schematicToSponge, schematicToLitematic, parseSchematicFile,
 } from '../worldedit/schematicFormats.js';
+import { rgbaToMapColors, buildMapDat } from '../worldedit/mapColors.js';
 import { createJob, updateJob, getJob } from '../worldedit/jobs.js';
 
 // Moteur WorldEdit serveur. Deux points d'entrée partagent les mêmes handlers :
@@ -386,6 +387,43 @@ async function postPanel(req, res) {
   }
 }
 
+// Carte Minecraft (item filled_map, 128×128) → fichier data/map_<n>.dat.
+// Indépendant du build : texte (rendu serveur) ou image → palette de carte.
+function mapTextSvg(text, bg, fg) {
+  const lines = String(text).split('\n').slice(0, 12);
+  const SS = 4, W = 128 * SS, H = 128 * SS;
+  const lineGap = H / lines.length;
+  const fontSize = Math.max(8, Math.floor(lineGap * 0.78));
+  const spans = lines.map((ln, i) => `<text x="${W / 2}" y="${lineGap * (i + 0.5)}" font-size="${fontSize}" fill="${fg}" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">${escapeXml(ln)}</text>`).join('');
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="100%" height="100%" fill="${bg}"/>${spans}</svg>`);
+}
+
+async function postMapart(req, res) {
+  const text = typeof req.body?.text === 'string' ? req.body.text : '';
+  const invert = String(req.body?.invert) === 'true';
+  // Préréglages de couleurs pour le texte (le fond marbre n'a pas de sens sur
+  // une carte plate → on retient juste clair/sombre).
+  const dark = req.body?.preset === 'white_marble' || req.body?.preset === 'white_clean' ? false : true;
+  const bg = (dark !== invert) ? '#161616' : '#e9e9e9';
+  const fg = (dark !== invert) ? '#ededed' : '#161616';
+  if (!text.trim() && !req.file) return res.status(400).json({ error: 'no_content' });
+  const fit = req.body?.fit === 'contain' ? 'contain' : 'fill';
+  try {
+    const src = text.trim() ? mapTextSvg(text, bg, fg) : req.file.buffer;
+    const { data, info } = await sharp(src)
+      .resize(128, 128, { fit, background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const colors = rgbaToMapColors(data, info.channels);
+    const dat = buildMapDat(colors);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename="map_0.dat"');
+    return res.send(dat);
+  } catch (e) {
+    console.error('[worldedit] mapart failed:', e?.message || e);
+    return res.status(500).json({ error: 'mapart_failed' });
+  }
+}
+
 function getAudit(req, res) {
   res.json(listAudit(req.we.bp.id, req.query?.limit).map((r) => ({
     id: r.id, actor: r.actor, operation: r.operation,
@@ -409,6 +447,7 @@ function attachRoutes(router) {
   router.post('/heightmap', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postHeightmap);
   router.post('/heightmap-export', worldeditLimiter, requireEdit, postHeightmapExport);
   router.post('/panel', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postPanel);
+  router.post('/mapart', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postMapart);
   router.get('/export', worldeditLimiter, requireEdit, getExport);
   // Bibliothèque de schematics (scope workspace) + import/export .schem/.litematic.
   router.get('/schematics', requireEdit, getSchematics);

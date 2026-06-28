@@ -54,6 +54,26 @@ export function TextPanelTool({ we, selection, onChanged, refreshState }) {
     if (file) generate(file);
   };
 
+  // Carte Minecraft (item filled_map 128×128) → télécharge map_0.dat.
+  const mapFileRef = useRef(null);
+  const makeMap = async (file) => {
+    if (!file && !text.trim()) { toast?.error?.('Tape un texte ou choisis une image'); return; }
+    setBusy(true);
+    try {
+      const blob = await we.mapart({ preset, invert: String(invert), text: file ? '' : text }, file || undefined);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'map_0.dat'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast?.success?.('Carte générée (map_0.dat) — voir l’aide ci-dessous');
+    } catch { toast?.error?.('Génération de carte impossible'); } finally { setBusy(false); }
+  };
+  const onPickMap = (e) => {
+    const file = e.target.files?.[0];
+    if (file) e.target.value = '';
+    if (file) makeMap(file);
+  };
+
   return (
     <details style={box}>
       <summary style={summary}>🔤 Panneau texte / image (marbre)</summary>
@@ -85,6 +105,22 @@ export function TextPanelTool({ we, selection, onChanged, refreshState }) {
           </Button>
           <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={busy} style={{ padding: '6px 12px', fontSize: 12 }}>⬆ Depuis une image</Button>
           <input ref={fileRef} type="file" accept="image/*" onChange={onPick} style={{ display: 'none' }} />
+        </div>
+
+        <div style={{ borderTop: '1px solid rgba(80,50,130,0.18)', paddingTop: 8, display: 'grid', gap: 6 }}>
+          <div style={{ ...muted, fontSize: 11 }}>
+            <strong>Carte Minecraft</strong> (item 128×128, <code>map_&lt;n&gt;.dat</code>) — pas des blocs, l’<em>objet</em> carte.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button variant="ghost" onClick={() => makeMap(null)} disabled={busy} style={{ padding: '6px 12px', fontSize: 12 }}>🗺️ Carte depuis le texte</Button>
+            <Button variant="ghost" onClick={() => mapFileRef.current?.click()} disabled={busy} style={{ padding: '6px 12px', fontSize: 12 }}>🗺️ Carte depuis une image</Button>
+            <input ref={mapFileRef} type="file" accept="image/*" onChange={onPickMap} style={{ display: 'none' }} />
+          </div>
+          <div style={{ ...muted, fontSize: 10 }}>
+            Place <code>map_0.dat</code> dans <code>&lt;monde&gt;/data/</code>, puis en jeu :
+            {' '}<code>/give @p filled_map[minecraft:map_id=0]</code> (1.21+) ou <code>filled_map{'{'}map:0{'}'}</code> (1.20−).
+            Renomme en <code>map_1.dat</code>, <code>map_2.dat</code>… pour plusieurs.
+          </div>
         </div>
       </div>
     </details>

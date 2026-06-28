@@ -702,3 +702,31 @@ test('Panneau texte : écrit du texte (coréen) sur marbre, mur plat', async (t)
   fd2.append('selection', JSON.stringify({ min: { x: 0, y: 0, z: 0 }, max: { x: 11, y: 5, z: 0 } }));
   assert.equal((await admin.post(`${root}/panel`, { body: fd2 })).json.error, 'no_content');
 });
+
+import nbt from 'prismarine-nbt';
+
+test('Carte Minecraft : texte → map_0.dat (128×128, palette de carte)', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+  const id = await uploadBuild(admin, slug);
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  const fd = new FormData();
+  fd.append('text', '한국');
+  fd.append('preset', 'black_marble');
+  const r = await admin.post(`${root}/mapart`, { body: fd, raw: true });
+  assert.equal(r.status, 200);
+  const buf = Buffer.from(await r.arrayBuffer());
+  assert.equal(buf[0], 0x1f); assert.equal(buf[1], 0x8b); // gzip
+  const { parsed } = await nbt.parse(buf);
+  const s = nbt.simplify(parsed);
+  assert.equal(s.data.colors.length, 16384); // 128×128
+  assert.equal(s.data.scale, 0);
+
+  // Sans contenu → refus.
+  const r2 = await admin.post(`${root}/mapart`, { body: new FormData() });
+  assert.equal(r2.json.error, 'no_content');
+});
