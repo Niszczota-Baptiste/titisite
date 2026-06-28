@@ -530,3 +530,30 @@ test('opMirrorCopy : côté négatif + écart', () => {
   assert.deepEqual(r.bounds.max, { x: 7, y: 0, z: 0 });
   assert.ok(vol.getBlock(10, 0, 0)); // original intact
 });
+
+test('opScale hollow : agrandit puis garde la coque (intérieur vidé)', () => {
+  // Cube plein 2×2×2 → ×2 = 4×4×4. En plein : 64 blocs. En coque : intérieur 2×2×2 vidé → 56.
+  const solid = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+  for (let y = 0; y <= 1; y++) for (let z = 0; z <= 1; z++) for (let x = 0; x <= 1; x++) solid.setBlock(x, y, z, { Name: 'minecraft:stone', Properties: null });
+
+  const hollowVol = new MemoryVolume();
+  for (let y = 0; y <= 1; y++) for (let z = 0; z <= 1; z++) for (let x = 0; x <= 1; x++) hollowVol.setBlock(x, y, z, { Name: 'minecraft:stone', Properties: null });
+  opScale(hollowVol, sel, { factor: 2, hollow: true });
+
+  const count = (v) => { let n = 0; for (let y = 0; y < 4; y++) for (let z = 0; z < 4; z++) for (let x = 0; x < 4; x++) if (v.getBlock(x, y, z)) n++; return n; };
+  assert.equal(count(hollowVol), 56); // 64 - 8 (cœur 2³) = coque
+  // Les coins et faces restent pleins, le centre est vide.
+  assert.ok(hollowVol.getBlock(0, 0, 0));
+  assert.equal(hollowVol.getBlock(1, 1, 1), null); // une cellule du cœur 2³ (1..2)
+  assert.equal(hollowVol.getBlock(2, 2, 2), null);
+});
+
+test('opScale plein (sans hollow) : remplit tout le cube agrandi', () => {
+  const vol = new MemoryVolume();
+  const sel = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+  for (let y = 0; y <= 1; y++) for (let z = 0; z <= 1; z++) for (let x = 0; x <= 1; x++) vol.setBlock(x, y, z, { Name: 'minecraft:stone', Properties: null });
+  opScale(vol, sel, { factor: 2, hollow: false });
+  let n = 0; for (let y = 0; y < 4; y++) for (let z = 0; z < 4; z++) for (let x = 0; x < 4; x++) if (vol.getBlock(x, y, z)) n++;
+  assert.equal(n, 64);
+});

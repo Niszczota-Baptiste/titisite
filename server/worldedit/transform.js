@@ -660,30 +660,59 @@ export function opSmooth(vol, sel, { iterations } = {}) {
 // Échelle : redimensionne la sélection par un facteur (x0.5, x2, x3, x4, x6…).
 // Échantillonnage au plus proche. Réécrit en place à partir du coin min ; pour
 // f<1 on efface d'abord l'original. Borné pour éviter les volumes démesurés.
-export function opScale(vol, sel, { factor }) {
+// Échelle ×N (échantillonnage au plus proche). `hollow` : après agrandissement,
+// retire les blocs entièrement enfermés (tous voisins pleins) → ne garde que la
+// COQUE extérieure. Évite de transformer chaque bloc en masse pleine N³ : on
+// agrandit la structure mais on ne garde que les blocs « les plus à l'extérieur ».
+export function opScale(vol, sel, { factor, hollow = false }) {
   const f = factor;
   const src = readSelection(vol, sel);
   const nsx = Math.max(1, Math.round(src.sx * f));
   const nsy = Math.max(1, Math.round(src.sy * f));
   const nsz = Math.max(1, Math.round(src.sz * f));
   if (nsx * nsy * nsz > 8_000_000) throw new Error('too_many_blocks');
+  const sampled = (i, j, k) => src.get(
+    Math.min(src.sx - 1, Math.floor(i / f)),
+    Math.min(src.sy - 1, Math.floor(j / f)),
+    Math.min(src.sz - 1, Math.floor(k / f)),
+  );
   let changed = 0;
   if (f < 1) changed += fillSelection(vol, sel, null); // efface l'original avant réduction
-  for (let j = 0; j < nsy; j++)
-    for (let k = 0; k < nsz; k++)
-      for (let i = 0; i < nsx; i++) {
-        const si = Math.min(src.sx - 1, Math.floor(i / f));
-        const sj = Math.min(src.sy - 1, Math.floor(j / f));
-        const sk = Math.min(src.sz - 1, Math.floor(k / f));
-        const after = src.get(si, sj, sk);
-        const wx = sel.min.x + i, wy = sel.min.y + j, wz = sel.min.z + k;
-        const out = isAir(after) ? null : clone(after);
-        if (!sameBlock(vol.getBlock(wx, wy, wz), out)) { vol.setBlock(wx, wy, wz, out); changed++; }
-      }
-  return {
-    blocksChanged: changed,
-    bounds: { min: { ...sel.min }, max: { x: sel.min.x + nsx - 1, y: sel.min.y + nsy - 1, z: sel.min.z + nsz - 1 } },
+
+  const writeCell = (i, j, k, block) => {
+    const wx = sel.min.x + i, wy = sel.min.y + j, wz = sel.min.z + k;
+    if (!sameBlock(vol.getBlock(wx, wy, wz), block)) { vol.setBlock(wx, wy, wz, block ? clone(block) : null); changed++; }
   };
+  const bounds = { min: { ...sel.min }, max: { x: sel.min.x + nsx - 1, y: sel.min.y + nsy - 1, z: sel.min.z + nsz - 1 } };
+
+  if (!hollow) {
+    // Mode plein (historique) : flux cellule par cellule, mémoire légère.
+    for (let j = 0; j < nsy; j++) for (let k = 0; k < nsz; k++) for (let i = 0; i < nsx; i++) {
+      const after = sampled(i, j, k);
+      writeCell(i, j, k, isAir(after) ? null : after);
+    }
+    return { blocksChanged: changed, bounds };
+  }
+
+  // Mode coque : on matérialise la grille agrandie, on retire l'intérieur (les
+  // 6 voisins pleins ET dans les bornes), on n'écrit que la peau.
+  const N = nsx * nsy * nsz;
+  const idx = (i, j, k) => i + nsx * (k + nsz * j);
+  const solidGrid = new Uint8Array(N);
+  for (let j = 0; j < nsy; j++) for (let k = 0; k < nsz; k++) for (let i = 0; i < nsx; i++) {
+    if (!isAir(sampled(i, j, k))) solidGrid[idx(i, j, k)] = 1;
+  }
+  const isSolid = (i, j, k) => i >= 0 && i < nsx && j >= 0 && j < nsy && k >= 0 && k < nsz && solidGrid[idx(i, j, k)] === 1;
+  for (let j = 0; j < nsy; j++) for (let k = 0; k < nsz; k++) for (let i = 0; i < nsx; i++) {
+    const after = sampled(i, j, k);
+    if (isAir(after)) { writeCell(i, j, k, null); continue; }
+    // intérieur = plein entouré de pleins (en bornes) → vidé ; sinon coque.
+    const interior = isSolid(i - 1, j, k) && isSolid(i + 1, j, k)
+      && isSolid(i, j - 1, k) && isSolid(i, j + 1, k)
+      && isSolid(i, j, k - 1) && isSolid(i, j, k + 1);
+    writeCell(i, j, k, interior ? null : after);
+  }
+  return { blocksChanged: changed, bounds };
 }
 
 // Ligne 3D entre les deux coins de la sélection (Bresenham).

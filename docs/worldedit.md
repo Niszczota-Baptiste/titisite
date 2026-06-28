@@ -164,6 +164,17 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   conservées), bien plus rapide à charger/éditer que le `.mca` complet. Ouvert
   dans un nouvel onglet via `…/minecraft?view=builds&build=<id>`.
 
+## Échelle « coque seule »
+
+- `opScale` accepte `hollow` : après l'agrandissement ×N (échantillonnage au plus
+  proche), on **vide l'intérieur** (tout bloc dont les 6 voisins en bornes sont
+  pleins) → il ne reste que la **coque extérieure**. Évite que chaque bloc plein
+  devienne une masse pleine N³ (le « 2×2×2 plein » d'un ×2). Mode plein
+  (historique) conservé en flux léger ; mode coque matérialise la grille
+  agrandie pour calculer la peau (borné à 8M cellules). Limite physique : un mur
+  d'1 bloc passe à N d'épaisseur (les deux faces touchent l'air) — `hollow`
+  retire surtout le **remplissage** des volumes pleins.
+
 ## Miroir copie (symétrie qui duplique)
 
 - `opMirrorCopy` (op `mirrorcopy`, groupe **Transformer**) : lit la sélection, la

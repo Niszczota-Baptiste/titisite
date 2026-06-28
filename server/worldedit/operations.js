@@ -60,8 +60,11 @@ export const OPERATIONS = [
   },
   {
     id: 'scale', label: 'Échelle (×N)', minRole: 'editor', group: 'Transformer',
-    description: 'Multiplie la taille du build (échantillonnage au plus proche). ×0.5 réduit.',
-    params: [{ name: 'factor', type: 'enum', values: [0.5, 2, 3, 4, 6], default: 2, label: 'Facteur' }],
+    description: 'Agrandit le build (×0.5 réduit). « Coque seule » agrandit la structure puis vide l’intérieur — ne garde que les blocs extérieurs (évite de transformer chaque bloc en masse pleine N³).',
+    params: [
+      { name: 'factor', type: 'enum', values: [0.5, 2, 3, 4, 6], default: 2, label: 'Facteur' },
+      { name: 'hollow', type: 'bool', default: false, label: 'Coque seule (vider l’intérieur)' },
+    ],
   },
   {
     id: 'replace', label: 'Remplacer', minRole: 'editor', group: 'Blocs',
@@ -334,7 +337,7 @@ export function normalizeParams(operation, raw = {}) {
     }
     case 'scale': {
       const factor = Number(raw.factor);
-      return [0.5, 2, 3, 4, 6].includes(factor) ? { factor } : 'bad_factor';
+      return [0.5, 2, 3, 4, 6].includes(factor) ? { factor, hollow: !!raw.hollow } : 'bad_factor';
     }
     case 'biome': {
       const biome = String(raw.biome || '').trim().toLowerCase();
