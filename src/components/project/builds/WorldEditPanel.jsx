@@ -7,6 +7,7 @@ import { useCodex } from '../../../hooks/useCodex';
 import { CodexPicker } from '../../admin/editors/minecraft/CodexPicker';
 import { SchematicLibrary } from './SchematicLibrary';
 import { HeightmapTool } from './HeightmapTool';
+import { TextPanelTool } from './TextPanelTool';
 
 // id de bloc « minecraft:oak_stairs » → id codex « oak_stairs » et inverse.
 const bareId = (name) => (name && name.includes(':') ? name.split(':').slice(1).join(':') : (name || ''));
@@ -455,6 +456,9 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
 
       {/* Image → relief (heightmap) */}
       <HeightmapTool we={we} selection={sel} onChanged={onChanged} refreshState={refreshState} />
+
+      {/* Panneau texte / image (marbre) */}
+      <TextPanelTool we={we} selection={sel} onChanged={onChanged} refreshState={refreshState} />
 
       {/* Bibliothèque de schematics + import/export .schem/.litematic */}
       <SchematicLibrary we={we} clipboard={clip} onLoaded={setClip} />

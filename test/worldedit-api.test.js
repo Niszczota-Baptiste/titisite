@@ -669,3 +669,36 @@ test('Miroir (copie) : duplique en miroir, original intact', async (t) => {
   assert.ok(r.json.blocksChanged > 0);
   assert.deepEqual(r.json.bounds.min, { x: 4, y: 0, z: 0 }); // copie posée à droite
 });
+
+test('Panneau texte : écrit du texte (coréen) sur marbre, mur plat', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+
+  // Mur plat 12 (X) × 6 (Y), épaisseur 1 en Z.
+  const blocks = [];
+  for (let x = 0; x < 12; x++) for (let y = 0; y < 6; y++) blocks.push({ x, y, z: 0, Name: 'minecraft:stone' });
+  const buf = mcaBuffer(blocks);
+  const fd0 = new FormData();
+  fd0.append('file', new Blob([buf]), 'r.0.0.mca');
+  fd0.append('name', 'Mur'); fd0.append('full', 'true');
+  const id = (await admin.post(`/api/workspaces/${slug}/blueprints`, { body: fd0 })).json.id;
+  const root = `/api/workspaces/${slug}/blueprints/${id}/worldedit`;
+
+  const fd = new FormData();
+  fd.append('selection', JSON.stringify({ min: { x: 0, y: 0, z: 0 }, max: { x: 11, y: 5, z: 0 } }));
+  fd.append('text', '한A');
+  fd.append('preset', 'black_marble');
+  const r = await admin.post(`${root}/panel`, { body: fd });
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.json.blocksChanged > 0);
+  assert.deepEqual(r.json.plane, { w: 12, h: 6 });
+  assert.equal((await admin.get(`${root}/state`)).json.undoDepth, 1);
+
+  // Ni texte ni image → refus.
+  const fd2 = new FormData();
+  fd2.append('selection', JSON.stringify({ min: { x: 0, y: 0, z: 0 }, max: { x: 11, y: 5, z: 0 } }));
+  assert.equal((await admin.post(`${root}/panel`, { body: fd2 })).json.error, 'no_content');
+});

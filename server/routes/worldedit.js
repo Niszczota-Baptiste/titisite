@@ -7,6 +7,7 @@ import { uploadPath, uploadSchematicMemory, uploadScreenshotMemory } from '../up
 import { OPERATIONS, normalizeParams } from '../worldedit/operations.js';
 import {
   buildLimits, buildExtent, applyOperation, applyHeightmap, exportHeightmap, validateSelection,
+  applyPanel, panelPlane, PANEL_PRESETS,
   undoLast, redoLast, resetStaging, exportBuild,
   previewFilePath, hasPendingEdits, undoDepth, redoDepth, listAudit, floodSelect,
 } from '../worldedit/staging.js';
@@ -336,6 +337,55 @@ async function postHeightmapExport(req, res) {
   }
 }
 
+// Panneau texte / image → mur plat de blocs (texte coréen sur marbre, etc.).
+const escapeXml = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
+function textToSvg(text, w, h) {
+  const lines = String(text).split('\n').slice(0, 12);
+  const SS = 4; // supersample pour des glyphes nets une fois réduits
+  const W = w * SS, H = h * SS;
+  const lineGap = H / lines.length;
+  const fontSize = Math.max(6, Math.floor(lineGap * 0.78));
+  const spans = lines.map((ln, i) => `<text x="${W / 2}" y="${lineGap * (i + 0.5)}" font-size="${fontSize}" fill="black" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">${escapeXml(ln)}</text>`).join('');
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="100%" height="100%" fill="white"/>${spans}</svg>`);
+}
+
+async function postPanel(req, res) {
+  const bp = req.we.bp;
+  if (!bp.source_file) return res.status(422).json({ error: 'not_editable' });
+  let selection, ink;
+  try {
+    selection = JSON.parse(req.body?.selection || 'null');
+    ink = req.body?.ink ? JSON.parse(req.body.ink) : null;
+  } catch { return res.status(400).json({ error: 'bad_params' }); }
+  const preset = PANEL_PRESETS[req.body?.preset] ? req.body.preset : 'white_marble';
+  const invert = String(req.body?.invert) === 'true';
+  const text = typeof req.body?.text === 'string' ? req.body.text : '';
+
+  const sel = validateSelection(selection, buildLimits(bp));
+  if (typeof sel === 'string') return res.status(400).json({ error: sel });
+  const { w, h } = panelPlane(sel);
+  if (w < 1 || h < 1) return res.status(400).json({ error: 'bad_panel' });
+  if (!text.trim() && !req.file) return res.status(400).json({ error: 'no_content' });
+
+  try {
+    const src = text.trim() ? textToSvg(text, w, h) : req.file.buffer;
+    const { data, info } = await sharp(src).resize(w, h, { fit: 'fill' }).removeAlpha().grayscale().raw().toBuffer({ resolveWithObject: true });
+    const ch = info.channels || 1;
+    const mask = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const dark = data[i * ch] < 128; // sombre = encre (le texte)
+      mask[i] = (dark !== invert) ? 1 : 0;
+    }
+    const out = await applyPanel(bp, { selection, mask, inkBlock: ink, preset, actor: req.we.actor });
+    return res.json({ blocksChanged: out.blocksChanged, bounds: out.bounds, undoDepth: undoDepth(bp.id), ms: out.durationMs, previewTruncated: out.previewTruncated, plane: out.plane });
+  } catch (e) {
+    const known = [...TRANSFORM_KNOWN, 'bad_panel', 'bad_params', 'no_content'];
+    const code = known.includes(e?.message) ? e.message : 'panel_failed';
+    if (code === 'panel_failed') console.error('[worldedit] panel failed:', e?.message || e);
+    return res.status(code === 'panel_failed' ? 500 : 400).json({ error: code });
+  }
+}
+
 function getAudit(req, res) {
   res.json(listAudit(req.we.bp.id, req.query?.limit).map((r) => ({
     id: r.id, actor: r.actor, operation: r.operation,
@@ -358,6 +408,7 @@ function attachRoutes(router) {
   router.post('/select-flood', worldeditLimiter, requireEdit, postFlood);
   router.post('/heightmap', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postHeightmap);
   router.post('/heightmap-export', worldeditLimiter, requireEdit, postHeightmapExport);
+  router.post('/panel', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postPanel);
   router.get('/export', worldeditLimiter, requireEdit, getExport);
   // Bibliothèque de schematics (scope workspace) + import/export .schem/.litematic.
   router.get('/schematics', requireEdit, getSchematics);

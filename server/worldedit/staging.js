@@ -295,6 +295,88 @@ export async function applyOperation({ bp, operation, params, selection, actor, 
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
+// ── Panneaux (texte / image → mur plat de blocs) ─────────────────────────────
+// Palettes « marbre » : fond texturé (mélange pondéré) + bloc d'écriture (ink).
+const nm = (s) => (s && s.includes(':') ? s : `minecraft:${s}`);
+export const PANEL_PRESETS = {
+  white_marble: { label: 'Marbre blanc', ink: 'minecraft:black_concrete', bg: [['quartz_block', 50], ['smooth_quartz', 22], ['calcite', 16], ['diorite', 8], ['white_concrete', 4]] },
+  black_marble: { label: 'Marbre noir', ink: 'minecraft:white_concrete', bg: [['blackstone', 46], ['polished_blackstone', 26], ['basalt', 16], ['black_concrete', 8], ['gilded_blackstone', 4]] },
+  white_clean: { label: 'Quartz uni', ink: 'minecraft:black_concrete', bg: [['quartz_block', 1]] },
+  black_clean: { label: 'Noir uni', ink: 'minecraft:white_concrete', bg: [['black_concrete', 1]] },
+};
+export const PANEL_PRESET_IDS = Object.keys(PANEL_PRESETS);
+
+function weightedPicker(pattern) {
+  const list = pattern.map(([name, w]) => [{ Name: nm(name), Properties: null }, Math.max(1, w)]);
+  const total = list.reduce((s, [, w]) => s + w, 0);
+  return () => { let r = Math.random() * total; for (const [b, w] of list) { r -= w; if (r <= 0) return b; } return list[list.length - 1][0]; };
+}
+
+// Plan du panneau : l'axe « plat » est la plus petite dimension de la sélection.
+// uAxis = horizontal, vAxis = vertical (Y sur un mur → image à l'endroit).
+export function panelPlane(sel) {
+  const size = { x: sel.max.x - sel.min.x + 1, y: sel.max.y - sel.min.y + 1, z: sel.max.z - sel.min.z + 1 };
+  let flat;
+  if (size.x <= size.y && size.x <= size.z) flat = 'x';
+  else if (size.y <= size.x && size.y <= size.z) flat = 'y';
+  else flat = 'z';
+  if (flat === 'y') return { flat, uAxis: 'x', vAxis: 'z', invertV: false, w: size.x, h: size.z };
+  if (flat === 'x') return { flat, uAxis: 'z', vAxis: 'y', invertV: true, w: size.z, h: size.y };
+  return { flat, uAxis: 'x', vAxis: 'y', invertV: true, w: size.x, h: size.y };
+}
+
+// Écrit un panneau plat : `mask` (1 = bloc d'écriture, 0 = fond) indexé v*w+u.
+export async function applyPanel(bp, { selection, mask, inkBlock, preset = 'white_marble', actor, onProgress }) {
+  const startedAt = Date.now();
+  const limits = buildLimits(bp);
+  const sel = validateSelection(selection, limits);
+  if (typeof sel === 'string') throw new Error(sel);
+  const pal = PANEL_PRESETS[preset] || PANEL_PRESETS.white_marble;
+  const ink = inkBlock?.name ? { Name: inkBlock.name, Properties: inkBlock.states || null } : { Name: pal.ink, Properties: null };
+  const { flat, uAxis, vAxis, invertV, w, h } = panelPlane(sel);
+  if (!mask || mask.length < w * h) throw new Error('bad_panel');
+
+  onProgress?.('load', 5);
+  const store = loadStore(bp);
+  await store.warmup(buildExtent(bp));
+  onProgress?.('apply', 30); await tick();
+  const pick = weightedPicker(pal.bg);
+  let changed = 0;
+  for (let v = 0; v < h; v++) {
+    for (let u = 0; u < w; u++) {
+      const block = mask[v * w + u] === 1 ? ink : pick();
+      const wu = sel.min[uAxis] + u;
+      const wv = invertV ? sel.max[vAxis] - v : sel.min[vAxis] + v;
+      const pos = { x: 0, y: 0, z: 0 };
+      pos[uAxis] = wu; pos[vAxis] = wv;
+      for (let t = sel.min[flat]; t <= sel.max[flat]; t++) {
+        pos[flat] = t;
+        if (!sameBlock(store.getBlock(pos.x, pos.y, pos.z), block)) { store.setBlock(pos.x, pos.y, pos.z, { Name: block.Name, Properties: block.Properties }); changed++; }
+      }
+    }
+    if ((v & 15) === 0) await tick();
+  }
+  onProgress?.('commit', 60); await tick();
+
+  snapshotRegions(bp.id, regionKeysForBBox(sel));
+  clearRedo(bp.id);
+  const rdir = regionsDir(bp.id);
+  for (const [key, buffer] of store.commit({ touchedOnly: true })) {
+    const [rx, rz] = key.split(',').map(Number);
+    fs.writeFileSync(path.join(rdir, regionFileName(rx, rz)), buffer);
+  }
+  onProgress?.('preview', 85); await tick();
+  const grown = clampBBox(unionBBox(buildExtent(bp), sel), limits);
+  growExtent(bp.id, grown);
+  const sparse = store.deriveSparse(grown, PREVIEW_MAX_BLOCKS, { truncate: true });
+  fs.writeFileSync(previewPath(bp.id), zlib.gzipSync(Buffer.from(JSON.stringify(sparse))));
+
+  const durationMs = Date.now() - startedAt;
+  db.prepare(`INSERT INTO worldedit_audit (blueprint_id, actor, operation, params_json, blocks_changed, duration_ms) VALUES (?, ?, 'panel', ?, ?, ?)`)
+    .run(bp.id, actor || '', JSON.stringify({ selection: sel, preset }), changed, durationMs);
+  return { blocksChanged: changed, bounds: sel, durationMs, previewTruncated: !!sparse.truncated, plane: { w, h } };
+}
+
 // Génère du relief depuis une heightmap : `heights` (valeurs 0..1, indexées
 // z*sizeX + x) donne la hauteur de chaque colonne XZ dans la sélection. La
 // hauteur max = la plage Y de la sélection. mode 'solid' remplit la colonne

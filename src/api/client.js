@@ -229,6 +229,12 @@ export const api = {
         return uploadFile(`${root}/heightmap`, fd);
       },
       exportHeightmap: (selection) => fetchBlob(`${root}/heightmap-export`, { selection }),
+      panel:      (fields, file) => {
+        const fd = new FormData();
+        if (file) fd.append('image', file);
+        for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
+        return uploadFile(`${root}/panel`, fd);
+      },
       reset:      () => request('POST', `${root}/reset`),
       audit:      () => request('GET',  `${root}/audit`),
       schematics:    () => request('GET',  `${root}/schematics`),
@@ -383,6 +389,12 @@ export const api = {
             return uploadFile(`${root}/heightmap`, fd);
           },
           exportHeightmap: (selection) => fetchBlob(`${root}/heightmap-export`, { selection }),
+          panel:      (fields, file) => {
+            const fd = new FormData();
+            if (file) fd.append('image', file);
+            for (const [k, v] of Object.entries(fields || {})) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
+            return uploadFile(`${root}/panel`, fd);
+          },
           reset:      () => request('POST', `${root}/reset`),
           audit:      () => request('GET',  `${root}/audit`),
           // Bibliothèque de schematics (presse-papier persistés) + interop.

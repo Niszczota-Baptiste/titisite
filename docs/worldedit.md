@@ -214,6 +214,18 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   surface/sous-sol/roche au choix (champs masqués sauf si « Personnalisé », via
   `showIf` sur le descripteur, filtré dans le `WorldEditPanel`).
 
+## Panneau texte / image (marbre)
+
+- `POST …/worldedit/panel` (`staging.js#applyPanel`) : écrit du **texte** ou une
+  **image** sur un mur **plat** de la sélection (l'axe le plus fin = la face,
+  `panelPlane`). Le texte est rendu côté serveur en SVG → raster (sharp,
+  supersampling ×4) ; le **coréen** marche (fontconfig bascule sur WenQuanYi Zen
+  Hei / Unifont). Seuil de luminance → masque : pixel sombre = bloc « encre »,
+  sinon **fond marbre** (mélange pondéré). Presets `PANEL_PRESETS` : marbre blanc
+  (encre noire), marbre noir (encre blanche), quartz uni, noir uni ; `ink`
+  surchargeable, `invert` échange texte/fond. Multi-lignes (`\n`). UI :
+  `TextPanelTool` (repliable). Annulable, aperçu tronqué si géant.
+
 ## Outil tracé & image → relief
 
 - **Tracé / route** (op `path`, `transform.js#opPath`) : chemin entre le coin A et
