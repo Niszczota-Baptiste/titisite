@@ -18,18 +18,18 @@
     "prepare": "husky || true"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.104.1",
+    "@anthropic-ai/sdk": "^0.106.0",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.9.0",
+    "better-sqlite3": "^12.11.1",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "express-rate-limit": "^8.4.1",
-    "helmet": "^8.1.0",
+    "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
     "leaflet": "^1.9.4",
     "multer": "^2.1.1",
@@ -38,9 +38,9 @@
     "prismarine-nbt": "^2.8.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.17.0",
-    "sharp": "^0.35.1",
-    "three": "^0.170.0"
+    "react-router-dom": "^7.18.0",
+    "sharp": "^0.35.2",
+    "three": "^0.185.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
