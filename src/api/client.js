@@ -286,6 +286,43 @@ export const api = {
     remove: (id) => request('DELETE', `/recipes/${id}`),
   },
 
+  // Quest tracker (« Quêtes » — Nostra / Minefield). Global module: read gated
+  // by canViewQuests, edit by canEditQuests. Completion is per-member.
+  quests: {
+    factions:   () => request('GET', '/quests/factions'),
+    chains:     () => request('GET', '/quests/chains'),
+    chainGraph: (id) => request('GET', `/quests/chains/${id}/graph`),
+    gains:      () => request('GET', '/quests/gains'),
+    reputation: () => request('GET', '/quests/reputation'),
+    list:       (params = {}) => {
+      const q = new URLSearchParams();
+      if (params.faction) q.set('faction', params.faction);
+      if (params.chain) q.set('chain', params.chain);
+      if (params.occurrence) q.set('occurrence', params.occurrence);
+      const s = q.toString();
+      return request('GET', `/quests/quests${s ? `?${s}` : ''}`);
+    },
+    get:        (id) => request('GET', `/quests/quests/${id}`),
+    mine:       () => request('GET', '/quests/me/quests'),
+    complete:   (id) => request('POST', `/quests/quests/${id}/complete`),
+    uncomplete: (id) => request('POST', `/quests/quests/${id}/uncomplete`),
+    // Édition (canEditQuests) — factions, chaînes, quêtes (payload imbriqué).
+    createFaction: (b) => request('POST', '/quests/factions', b),
+    updateFaction: (id, b) => request('PUT', `/quests/factions/${id}`, b),
+    deleteFaction: (id) => request('DELETE', `/quests/factions/${id}`),
+    createChain:   (b) => request('POST', '/quests/chains', b),
+    updateChain:   (id, b) => request('PUT', `/quests/chains/${id}`, b),
+    deleteChain:   (id) => request('DELETE', `/quests/chains/${id}`),
+    createQuest:   (b) => request('POST', '/quests/quests', b),
+    updateQuest:   (id, b) => request('PUT', `/quests/quests/${id}`, b),
+    deleteQuest:   (id) => request('DELETE', `/quests/quests/${id}`),
+  },
+
+  // Cockpit MF pull feed: secret per-user token + reminder opt-in.
+  cockpitInfo:       () => request('GET',  '/me/cockpit-token'),
+  rotateCockpit:     () => request('POST', '/me/cockpit-token/rotate'),
+  setQuestReminders: (enabled) => request('PUT', '/me/quest-reminders', { enabled }),
+
   // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.
   minecraftAdmin: {
     overview:    () => request('GET', '/minecraft-admin/overview'),

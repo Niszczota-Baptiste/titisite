@@ -11,9 +11,11 @@ import { db } from '../db.js';
 import { isMailerConfigured } from '../mailer.js';
 import {
   bumpTokenVersion,
+  ensureCockpitToken,
   ensureIcalToken,
   findById,
   PasswordPolicyError,
+  rotateCockpitToken,
   rotateIcalToken,
   SALT_ROUNDS,
   validatePassword,
@@ -103,6 +105,31 @@ meRouter.post('/ical-token/rotate', requireAuth, requireRole('admin', 'member'),
     webcalUrl: `webcal://${host}/api/calendar/${token}.ics`,
     downloadUrl: `${base}/api/calendar/${token}.ics?download=1`,
   });
+});
+
+// ── Minefield cockpit pull feed (secret per-user token, polled by the PC app) ──
+function cockpitPayload(req, token) {
+  const base = canonicalBase(req);
+  const row = db.prepare(`SELECT wants_quest_reminders FROM users WHERE id = ?`).get(req.user.id);
+  return {
+    token,
+    feedUrl: `${base}/api/quests/cockpit/${token}.json`,
+    wantsReminders: (row?.wants_quest_reminders ?? 1) === 1,
+  };
+}
+
+meRouter.get('/cockpit-token', requireAuth, requireRole('admin', 'member'), (req, res) => {
+  res.json(cockpitPayload(req, ensureCockpitToken(req.user.id)));
+});
+
+meRouter.post('/cockpit-token/rotate', requireAuth, requireRole('admin', 'member'), (req, res) => {
+  res.json(cockpitPayload(req, rotateCockpitToken(req.user.id)));
+});
+
+meRouter.put('/quest-reminders', requireAuth, requireRole('admin', 'member'), (req, res) => {
+  const enabled = req.body?.enabled ? 1 : 0;
+  db.prepare(`UPDATE users SET wants_quest_reminders = ? WHERE id = ?`).run(enabled, req.user.id);
+  res.json({ wantsReminders: enabled === 1 });
 });
 
 /**

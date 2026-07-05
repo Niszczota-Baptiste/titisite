@@ -86,6 +86,24 @@ Single-process Node app:
   single `<audio>` (30 s public clip cap) and `MiniPlayer.jsx` floats across
   routes — hidden on /admin and in the reader, which pauses it (ReaderAudio
   streams the full file there). `Music.jsx` is just a consumer.
+- **Quest tracker** (« Quêtes » — Nostra/Minefield) is a **global** module (not
+  workspace-scoped): a few authorised members share one quest DB and each ticks
+  **their own** completion. Read gated by `users.can_view_quests`, edit by
+  `can_edit_quests` (admins bypass; both surfaced on `/auth/me`). Relational
+  tables (`factions`/`faction_tiers`, `quest_chains`, `quests`, `quest_edges`,
+  `quest_inputs`/`quest_rewards`/`quest_prerequisites`, `quest_map_points`,
+  `quest_completions`) in `db.js#migrate`. Back under `/api/quests`
+  (`server/routes/quests.js` read+complete, `quests-admin.js` edit,
+  `server/quests/` helpers); front `src/components/quests/*` + page `/quetes`,
+  API via `api.quests.*`. **No reputation score is stored** (in-game) —
+  factions/tiers are a reference and rewards only *document* gains. Item lines
+  reuse the **codex** catalogue (`CodexPicker`, `ref_code` = codex id, no FK).
+  **Recurring reset is a pure function of `period_key`** (07:00 Europe/Paris,
+  `server/quests/period.js`) — no cron, no DB mutation, replayable/self-healing.
+  **Cockpit MF integration is PULL**: a secret per-user `cockpit_token`
+  (iCal-style) serves `GET /api/quests/cockpit/:token.json` for the user's local
+  Python app to poll (opt-in `wants_quest_reminders`). Map points are raw X/Y/Z
+  on a neutral editable grid (`QuestMap.jsx`). See `docs/quetes.md`.
 - **SEO**: `GET /sitemap.xml` is generated from the DB
   (`server/routes/sitemap.js`); per-route meta via
   `src/hooks/usePageMeta.js`. Reader prefs (font size/width/theme) live in

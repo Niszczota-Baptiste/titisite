@@ -81,7 +81,39 @@ export function findByEmail(email) {
 }
 
 export function findById(id) {
-  return db.prepare(`SELECT id, email, name, role, token_version, can_view_stairs, created_at FROM users WHERE id = ?`).get(id);
+  return db.prepare(`SELECT id, email, name, role, token_version, can_view_stairs, can_view_quests, can_edit_quests, wants_quest_reminders, created_at FROM users WHERE id = ?`).get(id);
+}
+
+function newCockpitToken() {
+  return crypto.randomBytes(24).toString('hex');
+}
+
+export function ensureCockpitToken(userId) {
+  const row = db.prepare(`SELECT cockpit_token FROM users WHERE id = ?`).get(userId);
+  if (!row) return null;
+  if (row.cockpit_token) return row.cockpit_token;
+  let token = newCockpitToken();
+  while (db.prepare(`SELECT 1 FROM users WHERE cockpit_token = ?`).get(token)) {
+    token = newCockpitToken();
+  }
+  db.prepare(`UPDATE users SET cockpit_token = ? WHERE id = ?`).run(token, userId);
+  return token;
+}
+
+export function rotateCockpitToken(userId) {
+  let token = newCockpitToken();
+  while (db.prepare(`SELECT 1 FROM users WHERE cockpit_token = ?`).get(token)) {
+    token = newCockpitToken();
+  }
+  db.prepare(`UPDATE users SET cockpit_token = ? WHERE id = ?`).run(token, userId);
+  return token;
+}
+
+export function findByCockpitToken(token) {
+  if (!token) return null;
+  return db.prepare(
+    `SELECT id, email, name, role, wants_quest_reminders FROM users WHERE cockpit_token = ?`,
+  ).get(token);
 }
 
 export function bumpTokenVersion(userId) {
@@ -89,7 +121,7 @@ export function bumpTokenVersion(userId) {
 }
 
 export function listUsers() {
-  return db.prepare(`SELECT id, email, name, role, can_view_stairs, created_at FROM users ORDER BY id`).all();
+  return db.prepare(`SELECT id, email, name, role, can_view_stairs, can_view_quests, can_edit_quests, wants_quest_reminders, created_at FROM users ORDER BY id`).all();
 }
 
 export function createUser({ email, name, password, role }) {

@@ -32,6 +32,8 @@ import { minecraftRouter } from './routes/minecraft.js';
 import { blueprintsRouter, blueprintsPublicRouter } from './routes/blueprints.js';
 import { worldeditTokenRouter } from './routes/worldedit.js';
 import { minecraftAdminRouter } from './routes/minecraft-admin.js';
+import { questsRouter } from './routes/quests.js';
+import { questsAdminRouter } from './routes/quests-admin.js';
 import { recipesRouter } from './routes/recipes.js';
 import { settingsRouter } from './routes/settings.js';
 import { sitemapRouter } from './routes/sitemap.js';
@@ -266,6 +268,13 @@ app.use('/api/me', meRouter);
 // Custom Minecraft recipes (read: any auth user — used by the craft calculator;
 // write: admin). Vanilla recipes live client-side in src/data/recipes_vanilla.json.
 app.use('/api/recipes', recipesRouter);
+
+// Quest tracker (« Quêtes » — Nostra / Minefield). Global module: read gated by
+// can_view_quests, edit by can_edit_quests (admins bypass). The cockpit pull
+// feed lives inside questsRouter under a token URL (no cookie). Read router is
+// mounted before the admin one so GETs win and writes fall through.
+app.use('/api/quests', questsRouter);
+app.use('/api/quests', questsAdminRouter);
 
 // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.
 app.use('/api/minecraft-admin', minecraftAdminRouter);

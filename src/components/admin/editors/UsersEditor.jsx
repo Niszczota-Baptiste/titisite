@@ -142,6 +142,18 @@ export function UsersEditor() {
                             🪜 ESCALIERS
                           </span>
                         )}
+                        {u.role !== 'admin' && (u.can_view_quests === 1 || u.can_edit_quests === 1) && (
+                          <span
+                            title={u.can_edit_quests === 1 ? 'Éditeur des quêtes' : 'Lecture des quêtes'}
+                            style={{
+                              fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 3,
+                              background: 'rgba(232,200,106,0.12)', color: '#e8c86a',
+                              letterSpacing: '0.5px', fontWeight: 600,
+                            }}
+                          >
+                            📜 QUÊTES{u.can_edit_quests === 1 ? '+' : ''}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -173,6 +185,8 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
   const [role, setRole] = useState(user?.role || 'member');
   const [password, setPassword] = useState('');
   const [canViewStairs, setCanViewStairs] = useState(user?.can_view_stairs === 1);
+  const [canViewQuests, setCanViewQuests] = useState(user?.can_view_quests === 1);
+  const [canEditQuests, setCanEditQuests] = useState(user?.can_edit_quests === 1);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -185,12 +199,12 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
     setSaving(true); setErr(null);
     try {
       if (isEdit) {
-        const payload = { name, role, canViewStairs };
+        const payload = { name, role, canViewStairs, canViewQuests, canEditQuests };
         if (password && canResetPassword) payload.password = password;
         await api.updateUser(user.id, payload);
       } else {
         if (!email || !password) { setErr('Email et mot de passe requis'); setSaving(false); return; }
-        await api.createUser({ email, name, role, password, canViewStairs });
+        await api.createUser({ email, name, role, password, canViewStairs, canViewQuests, canEditQuests });
       }
       onSaved();
     } catch (ex) {
@@ -295,6 +309,32 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
         </label>
       )}
 
+      {showStairsToggle && (
+        <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+          <label style={questToggle}>
+            <input
+              type="checkbox"
+              checked={canViewQuests || canEditQuests}
+              onChange={(e) => setCanViewQuests(e.target.checked)}
+              disabled={canEditQuests}
+              style={{ accentColor: ACC, width: 16, height: 16 }}
+            />
+            <span>Accès au <strong>📜 Journal de quêtes</strong> (lecture)</span>
+          </label>
+          <label style={questToggle}>
+            <input
+              type="checkbox"
+              checked={canEditQuests}
+              onChange={(e) => { setCanEditQuests(e.target.checked); if (e.target.checked) setCanViewQuests(true); }}
+              style={{ accentColor: ACC, width: 16, height: 16 }}
+            />
+            <span>Peut <strong>éditer</strong> les quêtes/factions/chaînes
+              <span style={{ color: 'rgba(180,170,200,0.55)', fontSize: 11, marginLeft: 6 }}>(implique la lecture)</span>
+            </span>
+          </label>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
         <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Annuler</Button>
         <Button type="submit" disabled={saving}>{saving ? '…' : (isEdit ? 'Mettre à jour' : 'Créer')}</Button>
@@ -302,6 +342,11 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
     </form>
   );
 }
+
+const questToggle = {
+  display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+  fontFamily: "'Inter',sans-serif", fontSize: 13, color: '#ede8f8',
+};
 
 function SelfPasswordPanel() {
   const [open, setOpen] = useState(false);

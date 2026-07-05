@@ -27,13 +27,16 @@ authRouter.post('/login', (req, res) => {
   setSessionCookie(res, user);
   // No token in body — the cookie is the source of truth. We still return the
   // public user info so the SPA can populate its UI without a follow-up GET.
+  const isAdmin = user.role === 'admin';
   res.json({
     user: {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
-      canViewStairs: user.role === 'admin' || user.can_view_stairs === 1,
+      canViewStairs: isAdmin || user.can_view_stairs === 1,
+      canViewQuests: isAdmin || user.can_view_quests === 1 || user.can_edit_quests === 1,
+      canEditQuests: isAdmin || user.can_edit_quests === 1,
     },
     expiresIn: '7d',
   });
@@ -49,11 +52,14 @@ authRouter.post('/logout', (req, res) => {
 
 authRouter.get('/me', requireAuth, (req, res) => {
   const { id, email, name, role } = req.user;
+  const isAdmin = role === 'admin';
   res.json({
     id,
     email,
     name,
     role,
-    canViewStairs: role === 'admin' || req.user.can_view_stairs === 1,
+    canViewStairs: isAdmin || req.user.can_view_stairs === 1,
+    canViewQuests: isAdmin || req.user.can_view_quests === 1 || req.user.can_edit_quests === 1,
+    canEditQuests: isAdmin || req.user.can_edit_quests === 1,
   });
 });

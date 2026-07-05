@@ -51,7 +51,16 @@ export function migrate() {
   // Per-member access flag for the /stairs section. Admins always have access
   // regardless of this column; for members it must be explicitly enabled.
   ensureColumn('users', 'can_view_stairs', 'INTEGER NOT NULL DEFAULT 0');
+  // Quest tracker (« Quêtes ») access flags — same pattern as can_view_stairs.
+  // Admins bypass both. can_edit_quests implies read access.
+  ensureColumn('users', 'can_view_quests', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'can_edit_quests', 'INTEGER NOT NULL DEFAULT 0');
+  // Secret token for the Minefield cockpit pull feed (no cookie, like ical_token).
+  ensureColumn('users', 'cockpit_token', 'TEXT');
+  // Per-member opt-in: include quest reminders in that member's cockpit feed.
+  ensureColumn('users', 'wants_quest_reminders', 'INTEGER NOT NULL DEFAULT 1');
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ical_token ON users(ical_token) WHERE ical_token IS NOT NULL;`);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_cockpit_token ON users(cockpit_token) WHERE cockpit_token IS NOT NULL;`);
 
   // ── Workspaces (team projects) ──
   db.exec(`
@@ -780,6 +789,179 @@ export function migrate() {
     db.prepare('UPDATE characters     SET project_id = ? WHERE project_id IS NULL').run(proj.id);
     db.prepare('UPDATE glossary_terms SET project_id = ? WHERE project_id IS NULL').run(proj.id);
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  //  Quest tracker (« Quêtes » — Nostra / Minefield). Global module (NOT
+  //  workspace-scoped): a small set of authorised members share one quest DB.
+  //  Completion is per-member + per-period (period_key). The site never holds
+  //  a reputation score (that lives in-game) — factions/tiers are a reference,
+  //  and rewards only *document* what a quest grants.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // A faction (« Hewyr », « Château »…) or a mastery track (« Forge »…). Its
+  // tiers are its own — never shared with another faction.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS factions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      nom         TEXT NOT NULL,
+      couleur     TEXT NOT NULL DEFAULT '#c9a8e8',
+      type        TEXT NOT NULL DEFAULT 'faction' CHECK (type IN ('faction','maitrise')),
+      description TEXT NOT NULL DEFAULT '',
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_factions_sort ON factions(sort_order, id);`);
+
+  // Reputation / mastery tiers of a faction (« Néophyte maladroit »=1, …).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS faction_tiers (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      faction_id INTEGER NOT NULL REFERENCES factions(id) ON DELETE CASCADE,
+      nom_palier TEXT NOT NULL,
+      seuil      INTEGER NOT NULL DEFAULT 0,
+      ordre      INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_faction_tiers_faction ON faction_tiers(faction_id, ordre);`);
+
+  // A quest chain (« suite »). The linear-progression illusion is rendered from
+  // the edge graph; a chain row is just a grouping label + optional faction.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_chains (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      nom         TEXT NOT NULL,
+      faction_id  INTEGER REFERENCES factions(id) ON DELETE SET NULL,
+      description TEXT NOT NULL DEFAULT '',
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_chains_faction ON quest_chains(faction_id);`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quests (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      titre           TEXT NOT NULL,
+      description     TEXT NOT NULL DEFAULT '',
+      occurrence_type TEXT NOT NULL DEFAULT 'simple'
+                      CHECK (occurrence_type IN ('simple','journaliere','hebdomadaire','mensuelle')),
+      faction_id      INTEGER REFERENCES factions(id) ON DELETE SET NULL,
+      chain_id        INTEGER REFERENCES quest_chains(id) ON DELETE SET NULL,
+      chain_rank      INTEGER NOT NULL DEFAULT 0,
+      due_date        INTEGER,
+      created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at      INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quests_faction ON quests(faction_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quests_chain ON quests(chain_id, chain_rank);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quests_occurrence ON quests(occurrence_type);`);
+
+  // Directed unlock graph: from_quest → to_quest (allows branches from one node).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_edges (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_quest_id INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      to_quest_id   INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      UNIQUE (from_quest_id, to_quest_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_edges_from ON quest_edges(from_quest_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_edges_to ON quest_edges(to_quest_id);`);
+
+  // Inputs (what to spend/provide). ref_code = a codex item id (public/codex +
+  // codex_vanilla), never a FK — the referential is a JSON catalogue, not a table.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_inputs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      quest_id   INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      kind       TEXT NOT NULL DEFAULT 'item'
+                 CHECK (kind IN ('item','pa','reputation','pnj','autre')),
+      ref_code   TEXT,
+      faction_id INTEGER REFERENCES factions(id) ON DELETE SET NULL,
+      quantite   INTEGER,
+      label      TEXT NOT NULL DEFAULT '',
+      icon       TEXT,
+      ordre      INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_inputs_quest ON quest_inputs(quest_id, ordre);`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_rewards (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      quest_id        INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      kind            TEXT NOT NULL DEFAULT 'item'
+                      CHECK (kind IN ('item','pa','reputation','deblocage','autre')),
+      ref_code        TEXT,
+      faction_id      INTEGER REFERENCES factions(id) ON DELETE SET NULL,
+      quantite        INTEGER,
+      unlock_quest_id INTEGER REFERENCES quests(id) ON DELETE SET NULL,
+      label           TEXT NOT NULL DEFAULT '',
+      icon            TEXT,
+      ordre           INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_rewards_quest ON quest_rewards(quest_id, ordre);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_rewards_faction ON quest_rewards(faction_id);`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_prerequisites (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      quest_id     INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      kind         TEXT NOT NULL DEFAULT 'autre'
+                   CHECK (kind IN ('quete_terminee','reputation_min','item_possede','maitrise_min','autre')),
+      ref_quest_id INTEGER REFERENCES quests(id) ON DELETE SET NULL,
+      faction_id   INTEGER REFERENCES factions(id) ON DELETE SET NULL,
+      tier_id      INTEGER REFERENCES faction_tiers(id) ON DELETE SET NULL,
+      ref_code     TEXT,
+      valeur       INTEGER,
+      label        TEXT NOT NULL DEFAULT '',
+      ordre        INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_prereqs_quest ON quest_prerequisites(quest_id, ordre);`);
+
+  // 1–2 map points per quest (validated server-side). Raw in-game X/Y/Z.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_map_points (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      quest_id INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      label    TEXT NOT NULL DEFAULT '',
+      role     TEXT NOT NULL DEFAULT 'autre'
+               CHECK (role IN ('recuperation','rendu','pnj','autre')),
+      x        INTEGER NOT NULL DEFAULT 0,
+      y        INTEGER NOT NULL DEFAULT 0,
+      z        INTEGER NOT NULL DEFAULT 0,
+      ordre    INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_map_points_quest ON quest_map_points(quest_id, ordre);`);
+
+  // Per-member, per-period completion. The reset is implicit: "done this
+  // period?" = does a row exist for the current period_key. Nothing is ever
+  // deleted on reset, so history is preserved and the model is replayable.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_completions (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      quest_id     INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      member_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      period_key   TEXT NOT NULL,
+      completed_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      UNIQUE (quest_id, member_id, period_key)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_member ON quest_completions(member_id, period_key);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_quest ON quest_completions(quest_id, period_key);`);
 }
 
 function ensureColumn(table, column, ddl) {

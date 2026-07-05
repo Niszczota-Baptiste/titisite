@@ -33,10 +33,12 @@ usersRouter.post('/', requireAuth, ADMIN, (req, res) => {
   if (findByEmail(email)) return res.status(409).json({ error: 'email_taken' });
   const hash = bcrypt.hashSync(password, SALT_ROUNDS);
   const canViewStairs = req.body?.canViewStairs ? 1 : 0;
+  const canViewQuests = req.body?.canViewQuests ? 1 : 0;
+  const canEditQuests = req.body?.canEditQuests ? 1 : 0;
   const result = db
-    .prepare(`INSERT INTO users (email, name, password_hash, role, can_view_stairs) VALUES (?, ?, ?, ?, ?)`)
-    .run(email.toLowerCase().trim(), (name || '').trim(), hash, role, canViewStairs);
-  const row = db.prepare(`SELECT id, email, name, role, can_view_stairs, created_at FROM users WHERE id = ?`).get(result.lastInsertRowid);
+    .prepare(`INSERT INTO users (email, name, password_hash, role, can_view_stairs, can_view_quests, can_edit_quests) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(email.toLowerCase().trim(), (name || '').trim(), hash, role, canViewStairs, canViewQuests, canEditQuests);
+  const row = db.prepare(`SELECT id, email, name, role, can_view_stairs, can_view_quests, can_edit_quests, created_at FROM users WHERE id = ?`).get(result.lastInsertRowid);
   res.status(201).json(row);
 });
 
@@ -76,18 +78,21 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
   }
 
   const newHash = wantsPasswordChange ? bcrypt.hashSync(password, SALT_ROUNDS) : existing.password_hash;
-  const canViewStairs = req.body?.canViewStairs === undefined
-    ? null
-    : (req.body.canViewStairs ? 1 : 0);
+  const flag = (v) => (v === undefined ? null : (v ? 1 : 0));
+  const canViewStairs = flag(req.body?.canViewStairs);
+  const canViewQuests = flag(req.body?.canViewQuests);
+  const canEditQuests = flag(req.body?.canEditQuests);
 
   db.prepare(`
     UPDATE users SET
       name            = COALESCE(?, name),
       role            = COALESCE(?, role),
       password_hash   = ?,
-      can_view_stairs = COALESCE(?, can_view_stairs)
+      can_view_stairs = COALESCE(?, can_view_stairs),
+      can_view_quests = COALESCE(?, can_view_quests),
+      can_edit_quests = COALESCE(?, can_edit_quests)
     WHERE id = ?
-  `).run(name ?? null, role ?? null, newHash, canViewStairs, id);
+  `).run(name ?? null, role ?? null, newHash, canViewStairs, canViewQuests, canEditQuests, id);
 
   if (wantsPasswordChange) {
     bumpTokenVersion(id);
@@ -99,7 +104,7 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
     );
   }
 
-  const row = db.prepare(`SELECT id, email, name, role, can_view_stairs, created_at FROM users WHERE id = ?`).get(id);
+  const row = db.prepare(`SELECT id, email, name, role, can_view_stairs, can_view_quests, can_edit_quests, created_at FROM users WHERE id = ?`).get(id);
   res.json(row);
 });
 
