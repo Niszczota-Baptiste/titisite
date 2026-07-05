@@ -146,6 +146,64 @@ describe('quests — CRUD + access + completion', () => {
   });
 });
 
+// ── User-defined groups (many-to-many) ──────────────────────────────────────
+describe('quests — groups', () => {
+  let admin;
+  let groupId;
+  let questId;
+
+  it('admin creates a group and assigns a quest to it', async () => {
+    admin = await login(ADMIN);
+    const g = await admin.f.post('/api/quests/groups', { body: { nom: 'Prioritaire', couleur: '#ff8800' } });
+    assert.equal(g.status, 201);
+    groupId = g.json.id;
+
+    const q = await admin.f.post('/api/quests/quests', {
+      body: { titre: 'Quête groupée', occurrenceType: 'simple', groupIds: [groupId] },
+    });
+    assert.equal(q.status, 201);
+    questId = q.json.id;
+    assert.deepEqual(q.json.groups.map((x) => x.id), [groupId]);
+  });
+
+  it('lists groups with a quest count and filters quests by group', async () => {
+    const groups = await admin.f.get('/api/quests/groups');
+    const grp = groups.json.find((x) => x.id === groupId);
+    assert.equal(grp.questCount, 1);
+
+    const filtered = await admin.f.get(`/api/quests/quests?group=${groupId}`);
+    assert.ok(filtered.json.every((q) => q.groups.some((g) => g.id === groupId)));
+    assert.ok(filtered.json.some((q) => q.id === questId));
+  });
+
+  it('reassigning groups via updateQuest replaces membership', async () => {
+    const upd = await admin.f.put(`/api/quests/quests/${questId}`, {
+      body: { titre: 'Quête groupée', occurrenceType: 'simple', groupIds: [] },
+    });
+    assert.equal(upd.status, 200);
+    assert.equal(upd.json.groups.length, 0);
+    const groups = await admin.f.get('/api/quests/groups');
+    assert.equal(groups.json.find((x) => x.id === groupId).questCount, 0);
+  });
+
+  it('member without edit flag cannot create a group; empty name is 400', async () => {
+    const member = await login(MEMBER);
+    const forbidden = await member.f.post('/api/quests/groups', { body: { nom: 'X' } });
+    assert.equal(forbidden.status, 403);
+    const bad = await admin.f.post('/api/quests/groups', { body: { nom: '' } });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.json.error, 'group_nom_required');
+  });
+
+  it('deleting a group leaves quests intact', async () => {
+    const del = await admin.f.delete(`/api/quests/groups/${groupId}`);
+    assert.equal(del.status, 204);
+    const q = await admin.f.get(`/api/quests/quests/${questId}`);
+    assert.equal(q.status, 200);
+    assert.equal(q.json.groups.length, 0);
+  });
+});
+
 // ── Cockpit pull feed ───────────────────────────────────────────────────────
 describe('cockpit pull feed', () => {
   it('serves a member feed by secret token and honours the reminder opt-in', async () => {

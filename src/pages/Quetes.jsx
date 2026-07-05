@@ -49,6 +49,7 @@ function QuestsApp({ user }) {
   const [tab, setTab] = useState('quetes');
   const [factions, setFactions] = useState(new Map());
   const [chains, setChains] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [quests, setQuests] = useState([]);
   const [doneMap, setDoneMap] = useState({});
   const [filters, setFilters] = useState({ status: 'all' });
@@ -61,9 +62,12 @@ function QuestsApp({ user }) {
   const canEdit = !!user.canEditQuests;
 
   const loadRef = useCallback(async () => {
-    const [fac, ch] = await Promise.all([api.quests.factions(), api.quests.chains()]);
+    const [fac, ch, gr] = await Promise.all([
+      api.quests.factions(), api.quests.chains(), api.quests.groups(),
+    ]);
     setFactions(new Map(fac.map((f) => [f.id, f])));
     setChains(ch);
+    setGroups(gr);
   }, []);
 
   const loadQuests = useCallback(async () => {
@@ -71,10 +75,11 @@ function QuestsApp({ user }) {
     if (filters.faction) params.faction = filters.faction;
     if (filters.occurrence) params.occurrence = filters.occurrence;
     if (filters.chain) params.chain = filters.chain;
+    if (filters.group) params.group = filters.group;
     const [qs, mine] = await Promise.all([api.quests.list(params), api.quests.mine()]);
     setQuests(qs);
     setDoneMap(mine.done || {});
-  }, [filters.faction, filters.occurrence, filters.chain]);
+  }, [filters.faction, filters.occurrence, filters.chain, filters.group]);
 
   useEffect(() => { loadRef().catch((e) => setErr(e.message)); }, [loadRef]);
   useEffect(() => { loadQuests().catch((e) => setErr(e.message)); }, [loadQuests]);
@@ -139,13 +144,13 @@ function QuestsApp({ user }) {
         )}
 
         {tab === 'quetes' && (
-          <QuestList quests={quests} factions={factions} chains={chains} filters={filters} setFilters={setFilters} onOpen={setDetailId} />
+          <QuestList quests={quests} factions={factions} chains={chains} groups={groups} filters={filters} setFilters={setFilters} onOpen={setDetailId} />
         )}
         {tab === 'chaines' && <ChainsTab chains={chains} doneMap={doneMap} onOpen={setDetailId} />}
         {tab === 'reputation' && <ReputationView onOpenQuest={setDetailId} />}
         {tab === 'gains' && <GainsView />}
         {tab === 'editeur' && canEdit && (
-          <QuestEditor factions={factions} chains={chains} quests={quests} byId={byId} catalog={catalog} onChanged={refreshAll} />
+          <QuestEditor factions={factions} chains={chains} groups={groups} quests={quests} byId={byId} catalog={catalog} onChanged={refreshAll} />
         )}
       </div>
 

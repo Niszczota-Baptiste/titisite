@@ -8,7 +8,8 @@ référentiel.
 
 Module isolé : back sous `server/quests/` + `server/routes/quests*.js`
 (préfixe `/api/quests`), front sous `src/components/quests/` +
-`src/pages/Quetes.jsx` (route `/quetes`).
+`src/pages/Quetes.jsx` (route `/quetes`). Point d'entrée : un lien discret
+« 📜 Quêtes » dans le `Footer` du site public redirige vers `/quetes`.
 
 ## Installation / migration
 
@@ -56,6 +57,10 @@ membre). Exposés au front en camelCase via `/auth/me`
 - `quest_prerequisites` — `kind` + réf (quête / faction+palier / item / valeur).
 - `quest_map_points` — 1–2 points **X/Y/Z** bruts + `role`.
 - `quest_completions` — `(quest_id, member_id, period_key)` **unique**.
+- `quest_groups` + `quest_group_items` — **groupes personnalisés** (many-to-many),
+  un axe de rangement libre en plus des factions (origine) et chaînes (séquence).
+  Une quête peut appartenir à plusieurs groupes ; gérés dans l'onglet « Groupes »
+  de l'éditeur, filtrables dans la liste, affichés en puces sur les cartes/fiches.
 
 ### Le reset : `period_key` (pas de job qui mute la DB)
 

@@ -82,6 +82,9 @@ export function QuestDetail({ quest, byId, factions, onComplete, onUncomplete, o
           {quest.dueDate && (
             <Chip color={CRIMSON} title={formatDate(quest.dueDate)}>⏳ échéance {fromNow(quest.dueDate)}</Chip>
           )}
+          {(quest.groups || []).map((g) => (
+            <Chip key={g.id} color={g.couleur} title="Groupe">◈ {g.nom}</Chip>
+          ))}
         </div>
         <h2 style={{
           margin: 0, fontFamily: "'Space Grotesk',sans-serif", fontSize: 24, fontWeight: 800,

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ACCENTS } from '../../data/constants';
 
 export function Footer({ t, accent, onEaster }) {
@@ -24,16 +25,35 @@ export function Footer({ t, accent, onEaster }) {
         alignItems: 'center',
       }}
     >
-      <p
-        style={{
-          fontFamily: "'Inter',sans-serif",
-          fontSize: 12,
-          color: 'var(--text-faint)',
-          opacity: 0.5,
-        }}
-      >
-        © 2024 Baptiste Niszczota — {t.footer.rights}
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <p
+          style={{
+            fontFamily: "'Inter',sans-serif",
+            fontSize: 12,
+            color: 'var(--text-faint)',
+            opacity: 0.5,
+            margin: 0,
+          }}
+        >
+          © 2024 Baptiste Niszczota — {t.footer.rights}
+        </p>
+        <Link
+          to="/quetes"
+          data-interactive
+          style={{
+            fontFamily: "'Inter',sans-serif",
+            fontSize: 12,
+            color: 'var(--text-faint)',
+            opacity: 0.55,
+            textDecoration: 'none',
+            transition: 'color 0.2s,opacity 0.2s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = acc.hex; e.currentTarget.style.opacity = '1'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.opacity = '0.55'; }}
+        >
+          📜 Quêtes
+        </Link>
+      </div>
       <span
         title="클릭하세요 :)"
         onClick={handle}

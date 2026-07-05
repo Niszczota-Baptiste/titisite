@@ -9,6 +9,7 @@ import {
   getQuest,
   listChains,
   listFactions,
+  listGroups,
   listQuests,
   memberCurrentDone,
   potentialGains,
@@ -33,6 +34,7 @@ const READ = [requireAuth, requireQuestView];
 // ── Reference data ─────────────────────────────────────────────────────────
 questsRouter.get('/factions', READ, (_req, res) => res.json(listFactions()));
 questsRouter.get('/chains', READ, (_req, res) => res.json(listChains()));
+questsRouter.get('/groups', READ, (_req, res) => res.json(listGroups()));
 questsRouter.get('/chains/:id/graph', READ, (req, res) => {
   res.json(getChainGraph(Number(req.params.id)));
 });
@@ -44,6 +46,7 @@ questsRouter.get('/quests', READ, (req, res) => {
   const filters = {};
   if (req.query.faction) filters.factionId = Number(req.query.faction);
   if (req.query.chain) filters.chainId = Number(req.query.chain);
+  if (req.query.group) filters.groupId = Number(req.query.group);
   if (req.query.occurrence) filters.occurrence = String(req.query.occurrence);
   const done = memberCurrentDone(req.user.id);
   const quests = listQuests(filters).map((q) => ({ ...q, done: !!done[q.id] }));

@@ -291,6 +291,7 @@ export const api = {
   quests: {
     factions:   () => request('GET', '/quests/factions'),
     chains:     () => request('GET', '/quests/chains'),
+    groups:     () => request('GET', '/quests/groups'),
     chainGraph: (id) => request('GET', `/quests/chains/${id}/graph`),
     gains:      () => request('GET', '/quests/gains'),
     reputation: () => request('GET', '/quests/reputation'),
@@ -298,6 +299,7 @@ export const api = {
       const q = new URLSearchParams();
       if (params.faction) q.set('faction', params.faction);
       if (params.chain) q.set('chain', params.chain);
+      if (params.group) q.set('group', params.group);
       if (params.occurrence) q.set('occurrence', params.occurrence);
       const s = q.toString();
       return request('GET', `/quests/quests${s ? `?${s}` : ''}`);
@@ -313,6 +315,9 @@ export const api = {
     createChain:   (b) => request('POST', '/quests/chains', b),
     updateChain:   (id, b) => request('PUT', `/quests/chains/${id}`, b),
     deleteChain:   (id) => request('DELETE', `/quests/chains/${id}`),
+    createGroup:   (b) => request('POST', '/quests/groups', b),
+    updateGroup:   (id, b) => request('PUT', `/quests/groups/${id}`, b),
+    deleteGroup:   (id) => request('DELETE', `/quests/groups/${id}`),
     createQuest:   (b) => request('POST', '/quests/quests', b),
     updateQuest:   (id, b) => request('PUT', `/quests/quests/${id}`, b),
     deleteQuest:   (id) => request('DELETE', `/quests/quests/${id}`),

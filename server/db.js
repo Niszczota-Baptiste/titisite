@@ -962,6 +962,32 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_member ON quest_completions(member_id, period_key);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_quest ON quest_completions(quest_id, period_key);`);
+
+  // User-defined quest groups — a free organizational axis on top of the fixed
+  // faction (origin) and chain (sequence) structure. A quest can belong to
+  // several groups (many-to-many). Shared/editable like factions & chains.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_groups (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      nom         TEXT NOT NULL,
+      couleur     TEXT NOT NULL DEFAULT '#c9a8e8',
+      description TEXT NOT NULL DEFAULT '',
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_groups_sort ON quest_groups(sort_order, id);`);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_group_items (
+      group_id INTEGER NOT NULL REFERENCES quest_groups(id) ON DELETE CASCADE,
+      quest_id INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      PRIMARY KEY (group_id, quest_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_group_items_quest ON quest_group_items(quest_id);`);
 }
 
 function ensureColumn(table, column, ddl) {

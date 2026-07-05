@@ -3,13 +3,16 @@ import { requireAuth } from '../auth.js';
 import {
   createChain,
   createFaction,
+  createGroup,
   createQuest,
   deleteChain,
   deleteFaction,
+  deleteGroup,
   deleteQuest,
   getFaction,
   updateChain,
   updateFaction,
+  updateGroup,
   updateQuest,
 } from '../quests/store.js';
 
@@ -51,6 +54,10 @@ function validateFaction(b) {
 
 function validateChain(b) {
   if (!nonEmpty(b?.nom)) throw new Invalid('chain_nom_required');
+}
+
+function validateGroup(b) {
+  if (!nonEmpty(b?.nom)) throw new Invalid('group_nom_required');
 }
 
 function validateQuest(b) {
@@ -123,6 +130,24 @@ questsAdminRouter.put('/chains/:id', handle((req, res) => {
 
 questsAdminRouter.delete('/chains/:id', (req, res) => {
   if (!deleteChain(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Groups ─────────────────────────────────────────────────────────────────
+questsAdminRouter.post('/groups', handle((req, res) => {
+  validateGroup(req.body);
+  res.status(201).json(createGroup(req.body, req.user.id));
+}));
+
+questsAdminRouter.put('/groups/:id', handle((req, res) => {
+  validateGroup(req.body);
+  const out = updateGroup(Number(req.params.id), req.body, req.user.id);
+  if (!out) return res.status(404).json({ error: 'not_found' });
+  res.json(out);
+}));
+
+questsAdminRouter.delete('/groups/:id', (req, res) => {
+  if (!deleteGroup(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
   res.status(204).end();
 });
 

@@ -25,7 +25,7 @@ function Select({ value, onChange, children, ariaLabel }) {
   );
 }
 
-export function QuestList({ quests, factions, chains, filters, setFilters, onOpen }) {
+export function QuestList({ quests, factions, chains, groups = [], filters, setFilters, onOpen }) {
   const factionList = useMemo(() => [...factions.values()], [factions]);
 
   const shown = useMemo(() => {
@@ -52,6 +52,12 @@ export function QuestList({ quests, factions, chains, filters, setFilters, onOpe
           <option value="">Toutes les chaînes</option>
           {chains.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
         </Select>
+        {groups.length > 0 && (
+          <Select ariaLabel="Filtrer par groupe" value={filters.group || ''} onChange={(v) => setFilters((f) => ({ ...f, group: v }))}>
+            <option value="">Tous les groupes</option>
+            {groups.map((g) => <option key={g.id} value={g.id}>{g.nom}</option>)}
+          </Select>
+        )}
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
           {STATUS.map((s) => {
             const on = (filters.status || 'all') === s.key;
@@ -118,6 +124,17 @@ function QuestCard({ q, factions, onOpen }) {
         fontFamily: "'Space Grotesk',sans-serif", fontSize: 15.5, fontWeight: 700, color: INK,
         lineHeight: 1.25,
       }}>{q.titre}</div>
+      {q.groups && q.groups.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {q.groups.map((g) => (
+            <span key={g.id} style={{
+              fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 999,
+              color: g.couleur, background: `rgba(${hexToRgb(g.couleur)},0.14)`,
+              border: `1px solid rgba(${hexToRgb(g.couleur)},0.4)`, fontFamily: "'Inter',sans-serif",
+            }}>{g.nom}</span>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 'auto', alignItems: 'center' }}>
         {faction && (
           <span style={{

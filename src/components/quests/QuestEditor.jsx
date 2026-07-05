@@ -18,9 +18,10 @@ const EDITOR_TABS = [
   ['quetes', 'Quêtes'],
   ['factions', 'Factions & paliers'],
   ['chaines', 'Chaînes'],
+  ['groupes', 'Groupes'],
 ];
 
-export function QuestEditor({ factions, chains, quests, byId, catalog, onChanged }) {
+export function QuestEditor({ factions, chains, groups = [], quests, byId, catalog, onChanged }) {
   const [tab, setTab] = useState('quetes');
   return (
     <div>
@@ -40,9 +41,10 @@ export function QuestEditor({ factions, chains, quests, byId, catalog, onChanged
 
       {tab === 'factions' && <FactionsManager factions={factions} onChanged={onChanged} />}
       {tab === 'chaines' && <ChainsManager chains={chains} factions={factions} onChanged={onChanged} />}
+      {tab === 'groupes' && <GroupsManager groups={groups} onChanged={onChanged} />}
       {tab === 'quetes' && (
         <QuestsManager
-          quests={quests} factions={factions} chains={chains}
+          quests={quests} factions={factions} chains={chains} groups={groups}
           byId={byId} catalog={catalog} onChanged={onChanged}
         />
       )}
@@ -224,8 +226,83 @@ function ChainForm({ chain, factions, onDone, onCancel }) {
   );
 }
 
+// ── Groups ──────────────────────────────────────────────────────────────────
+function GroupsManager({ groups, onChanged }) {
+  const confirm = useConfirm();
+  const [editing, setEditing] = useState(null);
+
+  const remove = async (g) => {
+    const ok = await confirm({ title: 'Supprimer le groupe', danger: true, confirmLabel: 'Supprimer', message: `« ${g.nom} » sera supprimé. Les quêtes ne sont pas supprimées, elles perdent juste ce groupe.` });
+    if (!ok) return;
+    await api.quests.deleteGroup(g.id); onChanged();
+  };
+
+  return (
+    <div>
+      <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: MUTED, margin: '0 0 12px', lineHeight: 1.5 }}>
+        Tes propres groupes pour ranger les quêtes comme tu veux (« Prioritaire », « Event de Noël »…),
+        en plus des factions et des chaînes. Une quête peut appartenir à plusieurs groupes.
+      </p>
+      <Button onClick={() => setEditing('new')} disabled={editing != null}>+ Nouveau groupe</Button>
+      {editing === 'new' && <GroupForm onDone={() => { setEditing(null); onChanged(); }} onCancel={() => setEditing(null)} />}
+      <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+        {groups.map((g) => (
+          editing?.id === g.id ? (
+            <GroupForm key={g.id} group={g} onDone={() => { setEditing(null); onChanged(); }} onCancel={() => setEditing(null)} />
+          ) : (
+            <div key={g.id} style={{ ...panel, padding: 12, display: 'flex', alignItems: 'center', gap: 10, borderLeft: `3px solid ${g.couleur}` }}>
+              <strong style={{ color: INK, fontFamily: "'Space Grotesk',sans-serif" }}>◈ {g.nom}</strong>
+              <span style={{ fontSize: 11, color: MUTED }}>{g.questCount ?? 0} quête(s)</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                <Button variant="ghost" onClick={() => setEditing(g)}>Éditer</Button>
+                <Button variant="danger" onClick={() => remove(g)}>Suppr.</Button>
+              </div>
+            </div>
+          )
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GroupForm({ group, onDone, onCancel }) {
+  const [nom, setNom] = useState(group?.nom || '');
+  const [couleur, setCouleur] = useState(group?.couleur || '#c9a8e8');
+  const [description, setDescription] = useState(group?.description || '');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const save = async () => {
+    setSaving(true); setErr(null);
+    try {
+      const body = { nom, couleur, description };
+      if (group) await api.quests.updateGroup(group.id, body);
+      else await api.quests.createGroup(body);
+      onDone();
+    } catch (e) { setErr(e.body?.error || e.message); setSaving(false); }
+  };
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); save(); }} style={{ ...panel, padding: 16, marginTop: 10, border: `1px solid rgba(${ACC_RGB},0.4)` }}>
+      {err && <p style={{ color: '#ff8a9b', fontSize: 12 }}>{err}</p>}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 80px', gap: 10 }}>
+        <Field label="Nom"><Input value={nom} onChange={(e) => setNom(e.target.value)} required placeholder="Prioritaire" /></Field>
+        <Field label="Couleur">
+          <input type="color" value={couleur} onChange={(e) => setCouleur(e.target.value)}
+            style={{ width: '100%', height: 38, background: 'none', border: '1px solid rgba(80,50,130,0.3)', borderRadius: 8 }} />
+        </Field>
+      </div>
+      <Field label="Description (optionnel)"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} /></Field>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <Button type="button" variant="ghost" onClick={onCancel}>Annuler</Button>
+        <Button type="submit" disabled={saving}>{saving ? '…' : 'Enregistrer'}</Button>
+      </div>
+    </form>
+  );
+}
+
 // ── Quests ──────────────────────────────────────────────────────────────────
-function QuestsManager({ quests, factions, chains, byId, catalog, onChanged }) {
+function QuestsManager({ quests, factions, chains, groups, byId, catalog, onChanged }) {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(null); // 'new' | quest summary | null
 
@@ -243,7 +320,7 @@ function QuestsManager({ quests, factions, chains, byId, catalog, onChanged }) {
     return (
       <QuestForm
         quest={editing === 'new' ? null : editing}
-        factions={factions} chains={chains} quests={quests} byId={byId} catalog={catalog}
+        factions={factions} chains={chains} groups={groups} quests={quests} byId={byId} catalog={catalog}
         onDone={() => { setEditing(null); onChanged(); }}
         onCancel={() => setEditing(null)}
       />
@@ -280,7 +357,7 @@ const toDatetimeLocal = (unix) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-function QuestForm({ quest, factions, chains, quests, byId, catalog, onDone, onCancel }) {
+function QuestForm({ quest, factions, chains, groups = [], quests, byId, catalog, onDone, onCancel }) {
   const [titre, setTitre] = useState(quest?.titre || '');
   const [description, setDescription] = useState(quest?.description || '');
   const [occurrenceType, setOccurrenceType] = useState(quest?.occurrenceType || 'simple');
@@ -292,7 +369,9 @@ function QuestForm({ quest, factions, chains, quests, byId, catalog, onDone, onC
   const [rewards, setRewards] = useState(quest?.rewards?.map(strip) || []);
   const [prerequisites, setPrereqs] = useState(quest?.prerequisites?.map(strip) || []);
   const [mapPoints, setMapPoints] = useState(quest?.mapPoints?.map((p) => ({ label: p.label, role: p.role, x: p.x, y: p.y, z: p.z })) || []);
+  const [groupIds, setGroupIds] = useState(quest?.groups?.map((g) => g.id) || []);
   const [activePoint, setActivePoint] = useState(null);
+  const toggleGroup = (id) => setGroupIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -308,7 +387,7 @@ function QuestForm({ quest, factions, chains, quests, byId, catalog, onDone, onC
         chainId: chainId ? Number(chainId) : null,
         chainRank: Number(chainRank) || 0,
         dueDate: dueDate ? Math.floor(new Date(dueDate).getTime() / 1000) : null,
-        inputs, rewards, prerequisites, mapPoints,
+        inputs, rewards, prerequisites, mapPoints, groupIds,
       };
       if (quest) await api.quests.updateQuest(quest.id, body);
       else await api.quests.createQuest(body);
@@ -343,6 +422,35 @@ function QuestForm({ quest, factions, chains, quests, byId, catalog, onDone, onC
         </Field>
         <Field label="Rang dans la chaîne"><Input type="number" value={chainRank} onChange={(e) => setChainRank(e.target.value)} /></Field>
         <Field label="Échéance (optionnel)"><Input type="datetime-local" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
+      </div>
+
+      <div style={{ marginTop: 4, marginBottom: 8 }}>
+        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px', color: MUTED, marginBottom: 6, fontWeight: 600 }}>
+          Groupes
+        </div>
+        {groups.length === 0 ? (
+          <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: MUTED, margin: 0 }}>
+            Aucun groupe. Crée-en dans l'onglet « Groupes ».
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {groups.map((g) => {
+              const on = groupIds.includes(g.id);
+              return (
+                <button
+                  key={g.id} type="button" onClick={() => toggleGroup(g.id)}
+                  style={{
+                    cursor: 'pointer', padding: '5px 11px', borderRadius: 999,
+                    fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 600,
+                    color: on ? '#08051a' : g.couleur,
+                    background: on ? g.couleur : `rgba(${'201,168,232'},0.06)`,
+                    border: `1px solid ${g.couleur}`,
+                  }}
+                >{on ? '✓ ' : ''}{g.nom}</button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <LineSection

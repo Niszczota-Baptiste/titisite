@@ -183,6 +183,76 @@ export function getChainGraph(chainId) {
   return { nodes: [...inChain, ...externalNodes], edges };
 }
 
+// ── Groups (user-defined organizational buckets) ─────────────────────────
+
+function mapGroup(r) {
+  if (!r) return null;
+  return {
+    id: r.id, nom: r.nom, couleur: r.couleur, description: r.description,
+    sortOrder: r.sort_order, questCount: r.quest_count ?? undefined,
+  };
+}
+
+export function listGroups() {
+  return db.prepare(`
+    SELECT g.*, (SELECT COUNT(*) FROM quest_group_items i WHERE i.group_id = g.id) AS quest_count
+    FROM quest_groups g ORDER BY g.sort_order, g.id
+  `).all().map(mapGroup);
+}
+
+export function createGroup(data, userId) {
+  const info = db.prepare(`
+    INSERT INTO quest_groups (nom, couleur, description, sort_order, created_by, updated_by)
+    VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_groups), 0), ?, ?)
+  `).run(data.nom, data.couleur || '#c9a8e8', data.description || '', userId, userId);
+  return mapGroup(db.prepare(`SELECT * FROM quest_groups WHERE id = ?`).get(info.lastInsertRowid));
+}
+
+export function updateGroup(id, data, userId) {
+  const exists = db.prepare(`SELECT id FROM quest_groups WHERE id = ?`).get(id);
+  if (!exists) return null;
+  db.prepare(`
+    UPDATE quest_groups SET nom = ?, couleur = ?, description = ?,
+      updated_by = ?, updated_at = strftime('%s','now') WHERE id = ?
+  `).run(data.nom, data.couleur || '#c9a8e8', data.description || '', userId, id);
+  return mapGroup(db.prepare(`SELECT * FROM quest_groups WHERE id = ?`).get(id));
+}
+
+export function deleteGroup(id) {
+  return db.prepare(`DELETE FROM quest_groups WHERE id = ?`).run(id).changes > 0;
+}
+
+// Groups a single quest belongs to (light: id/nom/couleur for chips).
+function groupsForQuest(questId) {
+  return db.prepare(`
+    SELECT g.id, g.nom, g.couleur FROM quest_group_items i
+    JOIN quest_groups g ON g.id = i.group_id
+    WHERE i.quest_id = ? ORDER BY g.sort_order, g.id
+  `).all(questId);
+}
+
+// Batch fetch groups for many quests → { questId: [ {id,nom,couleur} ] }.
+function groupsForQuests(ids) {
+  if (ids.length === 0) return {};
+  const ph = ids.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT i.quest_id, g.id, g.nom, g.couleur FROM quest_group_items i
+    JOIN quest_groups g ON g.id = i.group_id
+    WHERE i.quest_id IN (${ph}) ORDER BY g.sort_order, g.id
+  `).all(...ids);
+  const out = {};
+  for (const r of rows) {
+    (out[r.quest_id] ||= []).push({ id: r.id, nom: r.nom, couleur: r.couleur });
+  }
+  return out;
+}
+
+function replaceGroupItems(questId, groupIds) {
+  db.prepare(`DELETE FROM quest_group_items WHERE quest_id = ?`).run(questId);
+  const ins = db.prepare(`INSERT OR IGNORE INTO quest_group_items (group_id, quest_id) VALUES (?, ?)`);
+  for (const gid of new Set((groupIds || []).map(Number).filter(Boolean))) ins.run(gid, questId);
+}
+
 // ── Quests ───────────────────────────────────────────────────────────────
 
 export function listQuests(filters = {}) {
@@ -191,10 +261,16 @@ export function listQuests(filters = {}) {
   if (filters.factionId != null) { where.push('q.faction_id = ?'); args.push(filters.factionId); }
   if (filters.chainId != null) { where.push('q.chain_id = ?'); args.push(filters.chainId); }
   if (filters.occurrence) { where.push('q.occurrence_type = ?'); args.push(filters.occurrence); }
+  if (filters.groupId != null) {
+    where.push('q.id IN (SELECT quest_id FROM quest_group_items WHERE group_id = ?)');
+    args.push(filters.groupId);
+  }
   const sql = `${QUEST_SUMMARY_SELECT}
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY q.chain_id IS NULL, q.chain_id, q.chain_rank, q.titre`;
-  return db.prepare(sql).all(...args).map(mapQuestSummary);
+  const quests = db.prepare(sql).all(...args).map(mapQuestSummary);
+  const groups = groupsForQuests(quests.map((q) => q.id));
+  return quests.map((q) => ({ ...q, groups: groups[q.id] || [] }));
 }
 
 export function getQuest(id) {
@@ -213,7 +289,8 @@ export function getQuest(id) {
     SELECT q.id, q.titre, q.occurrence_type FROM quest_edges e
     JOIN quests q ON q.id = e.from_quest_id WHERE e.to_quest_id = ? ORDER BY q.chain_rank, q.id
   `).all(id).map((q) => ({ id: q.id, titre: q.titre, occurrenceType: q.occurrence_type }));
-  return { ...base, inputs, rewards, prerequisites, mapPoints, nextQuests, prevQuests };
+  const groups = groupsForQuest(id);
+  return { ...base, inputs, rewards, prerequisites, mapPoints, nextQuests, prevQuests, groups };
 }
 
 function replaceInputs(questId, rows) {
@@ -290,6 +367,7 @@ const insertQuestTx = db.transaction((data, userId) => {
   replacePrereqs(id, data.prerequisites);
   replacePoints(id, data.mapPoints);
   replaceEdges(id, data.rewards);
+  replaceGroupItems(id, data.groupIds);
   return id;
 });
 
@@ -311,6 +389,7 @@ const updateQuestTx = db.transaction((id, data, userId) => {
   if (Array.isArray(data.rewards)) { replaceRewards(id, data.rewards); replaceEdges(id, data.rewards); }
   if (Array.isArray(data.prerequisites)) replacePrereqs(id, data.prerequisites);
   if (Array.isArray(data.mapPoints)) replacePoints(id, data.mapPoints);
+  if (Array.isArray(data.groupIds)) replaceGroupItems(id, data.groupIds);
 });
 
 export function updateQuest(id, data, userId) {

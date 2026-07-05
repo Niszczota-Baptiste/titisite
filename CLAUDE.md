@@ -92,7 +92,8 @@ Single-process Node app:
   `can_edit_quests` (admins bypass; both surfaced on `/auth/me`). Relational
   tables (`factions`/`faction_tiers`, `quest_chains`, `quests`, `quest_edges`,
   `quest_inputs`/`quest_rewards`/`quest_prerequisites`, `quest_map_points`,
-  `quest_completions`) in `db.js#migrate`. Back under `/api/quests`
+  `quest_completions`, plus user-defined `quest_groups` + `quest_group_items`
+  many-to-many) in `db.js#migrate`. Back under `/api/quests`
   (`server/routes/quests.js` read+complete, `quests-admin.js` edit,
   `server/quests/` helpers); front `src/components/quests/*` + page `/quetes`,
   API via `api.quests.*`. **No reputation score is stored** (in-game) —
@@ -103,7 +104,9 @@ Single-process Node app:
   **Cockpit MF integration is PULL**: a secret per-user `cockpit_token`
   (iCal-style) serves `GET /api/quests/cockpit/:token.json` for the user's local
   Python app to poll (opt-in `wants_quest_reminders`). Map points are raw X/Y/Z
-  on a neutral editable grid (`QuestMap.jsx`). See `docs/quetes.md`.
+  on a neutral editable grid (`QuestMap.jsx`). **Groups** (`quest_groups`) are a
+  free organizational axis on top of factions/chains — a quest can be in several.
+  A discreet `/quetes` link lives in the public-site `Footer`. See `docs/quetes.md`.
 - **SEO**: `GET /sitemap.xml` is generated from the DB
   (`server/routes/sitemap.js`); per-route meta via
   `src/hooks/usePageMeta.js`. Reader prefs (font size/width/theme) live in
