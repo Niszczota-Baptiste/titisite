@@ -19,6 +19,12 @@ d'environnement** n'est requise par le module.
 
 Pour repartir de zéro en local : supprimer `data.sqlite*` puis `npm run dev`.
 
+**Données de démonstration** : au premier boot, si la table `factions` est vide,
+`server/seed-quests.js` insère un jeu d'exemple (5 factions dont une « maîtrise »,
+une chaîne avec embranchement, des quêtes de chaque cadence) — tout est
+supprimable depuis l'onglet « ✎ Éditeur ». Idempotent (rejoué uniquement tant
+qu'aucune faction n'existe). Mettre `SEED_DEMO_QUESTS=off` pour ne rien insérer.
+
 ## Accès / permissions
 
 Deux flags par membre sur `users` (les admins passent partout) :
