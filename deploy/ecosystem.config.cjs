@@ -23,7 +23,11 @@ module.exports = {
       exec_mode: 'fork',
 
       watch: false,
-      max_memory_restart: '512M',
+      // World imports accept files up to 512 MB and WorldEdit manipulates
+      // regions in memory, so a 512 MB ceiling could kill the process mid-import
+      // (the upload is lost, the user sees a network error). 1 GB leaves head-
+      // room for those legitimate peaks while still guarding against a leak.
+      max_memory_restart: '1G',
 
       // Logs
       error_file: '/var/log/titisite/error.log',

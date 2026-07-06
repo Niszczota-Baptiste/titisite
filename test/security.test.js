@@ -23,7 +23,7 @@ describe('security headers', () => {
     const r = await f.get('/api/health');
     assert.equal(r.status, 200);
     assert.match(r.headers.get('content-security-policy') || '', /default-src 'self'/);
-    assert.equal(r.headers.get('x-frame-options'), 'SAMEORIGIN');
+    assert.equal(r.headers.get('x-frame-options'), 'DENY');
     assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   });
 

@@ -35,13 +35,33 @@ export const worldeditLimiter = rateLimit({
   message: { error: 'rate_limited' },
 });
 
-// Presse-papier serveur en mémoire, par acteur (partagé entre builds). Borné.
+// Presse-papier serveur en mémoire, par acteur (partagé entre builds). Borné
+// à la fois en NOMBRE d'entrées et en VOLUME cumulé de blocs : un détenteur de
+// lien « edit » pourrait sinon empiler des schematics volumineux et saturer la
+// mémoire du process (plafonné à 1 Go côté PM2). On évince les plus anciens
+// (insertion order de Map) jusqu'à repasser sous les deux seuils.
 const clipboards = new Map();
 const CLIP_MAX = 50;
+const CLIP_MAX_VOLUME = Number(process.env.WORLDEDIT_CLIP_MAX_VOLUME || 256_000_000);
+function clipVolume(schem) {
+  return Math.max(0, (schem?.sx || 0) * (schem?.sy || 0) * (schem?.sz || 0));
+}
+function totalClipVolume() {
+  let total = 0;
+  for (const s of clipboards.values()) total += clipVolume(s);
+  return total;
+}
 function setClip(key, schem) {
   clipboards.delete(key);
   clipboards.set(key, schem);
-  while (clipboards.size > CLIP_MAX) clipboards.delete(clipboards.keys().next().value);
+  while (
+    clipboards.size > CLIP_MAX
+    || (clipboards.size > 1 && totalClipVolume() > CLIP_MAX_VOLUME)
+  ) {
+    const oldest = clipboards.keys().next().value;
+    if (oldest === key) break; // ne jamais évincer l'entrée qu'on vient de poser
+    clipboards.delete(oldest);
+  }
 }
 
 function requireEdit(req, res, next) {

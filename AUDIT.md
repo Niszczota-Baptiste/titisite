@@ -4,6 +4,17 @@
 > commit `0e8e5c6`. Périmètre : sécurité, qualité de code, performance,
 > architecture, UX, SEO, dépendances, tests, DevOps, documentation.
 >
+> **⚙️ Correctifs appliqués (commit suivant l'audit)** — quick wins + failles
+> traitées : S1/D1 (setup.sh), S2 (secret CI), S4 (tokens hors logs nginx),
+> S6 (sel analytics dédié), S7 (brute-force par compte), S10 (emails masqués
+> aux membres), S11 (presse-papier WorldEdit borné en volume), S12 (X-Frame
+> DENY), P1 (bcrypt async), P4/D3 (mémoire PM2 1G), Q2 (script déplacé),
+> Q3/Q4 (validations d'entrée), SEO2 (favicon). Tests 191/191 ✓, build ✓.
+> **Restent à traiter** (plus lourds, hors quick win) : S3 (2FA), S5 (fonts
+> auto-hébergées), S8 (magic-bytes), S9 (hash des tokens au repos), D2
+> (backups off-site), U1 (a11y), SEO1 (meta serveur), T1 (tests front).
+>
+
 > **Verdict global : dépôt d'une maturité sécurité exceptionnelle pour un
 > projet personnel.** La quasi-totalité des classiques OWASP est déjà traitée
 > (et testée par une suite de non-régression dédiée). Les problèmes restants

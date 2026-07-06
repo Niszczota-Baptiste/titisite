@@ -58,8 +58,14 @@ sudo -u "$APP_USER" git clone \
 # ── 7. Dépendances Node + build ────────────────────────────
 echo "[7/9] npm install + build..."
 cd "$APP_DIR"
-sudo -u "$APP_USER" npm ci --omit=dev
+# --include=dev est indispensable : vite & co sont en devDependencies et sont
+# nécessaires pour builder le front. Si NODE_ENV=production traîne dans l'env,
+# npm omettrait sinon les devDependencies et le build échouerait (« vite: not
+# found »). On retire ensuite les devDependencies pour ne pas laisser de CVE de
+# build sur le disque en prod (même schéma que deploy.sh).
+sudo -u "$APP_USER" npm ci --include=dev
 sudo -u "$APP_USER" npm run build
+sudo -u "$APP_USER" npm prune --omit=dev
 
 # Fichier .env — À REMPLIR avant de continuer !
 if [ ! -f "$APP_DIR/.env" ]; then

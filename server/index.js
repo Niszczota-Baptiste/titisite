@@ -88,6 +88,10 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false,
+  // Deny all framing. Matches the CSP `frameAncestors: 'none'` above so the
+  // legacy header and the modern directive express the same intent (modern
+  // browsers follow the CSP; the header covers older ones).
+  xFrameOptions: { action: 'deny' },
   strictTransportSecurity: IS_PROD
     ? { maxAge: 15552000, includeSubDomains: true }
     : false,
@@ -141,6 +145,27 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true,
   message: rlMessage('too_many_attempts'),
   store: new SqliteStore(60_000),
+});
+
+// Second login shield, keyed by the *target account* instead of the IP. The
+// per-IP limiter above doesn't stop a distributed attack (a botnet spreads
+// guesses across many IPs against one email); this caps failed attempts per
+// email regardless of source. 30 failed tries / 15 min / account. Successful
+// logins don't count, and the key is prefixed so it can't collide with an IP.
+const ACCOUNT_WINDOW_MS = 15 * 60_000;
+const loginAccountLimiter = rateLimit({
+  windowMs: ACCOUNT_WINDOW_MS,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: rlMessage('too_many_attempts'),
+  store: new SqliteStore(ACCOUNT_WINDOW_MS),
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === 'string'
+      ? req.body.email.toLowerCase().trim().slice(0, 254) : '';
+    return `acct:${email}`;
+  },
 });
 
 // Audio streaming: 60 req / minute / IP
@@ -234,7 +259,7 @@ app.use('/api/analytics', analyticsLimiter, analyticsRouter);
 
 // Auth + users + tracks (tracks has its own router with audio upload support,
 // so we skip the generic collection router for it below)
-app.use('/api/auth/login', loginLimiter);
+app.use('/api/auth/login', loginLimiter, loginAccountLimiter);
 app.use('/api/auth',   authRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/users',  usersRouter);

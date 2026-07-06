@@ -52,12 +52,16 @@ documentsRouter.put('/:id', (req, res) => {
     .get(id, req.workspace.id);
   if (!existing) return res.status(404).json({ error: 'not_found' });
   const { title, notes } = req.body || {};
+  // Only accept strings — a non-string (object/array) would make better-sqlite3
+  // throw and surface as a 500. `undefined` → COALESCE keeps the existing value.
+  const nextTitle = typeof title === 'string' ? title.trim() : null;
+  const nextNotes = typeof notes === 'string' ? notes.trim() : null;
   db.prepare(`
     UPDATE documents SET
       title = COALESCE(?, title),
       notes = COALESCE(?, notes)
     WHERE id = ?
-  `).run(title ?? null, notes ?? null, id);
+  `).run(nextTitle, nextNotes, id);
   const row = db.prepare(`${SELECT} WHERE d.id = ?`).get(id);
   res.json(rowToDoc(row));
 });

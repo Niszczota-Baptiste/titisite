@@ -7,10 +7,17 @@ export const analyticsRouter = Router();
 
 // The visitor-hash salt MUST be secret — with a public fallback anyone could
 // recompute hashes offline and de-anonymise visitors. Fail fast instead.
-const SECRET = process.env.JWT_SECRET;
-if (!SECRET) {
-  throw new Error('JWT_SECRET must be set (used as the analytics visitor-hash salt)');
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET must be set (used to derive the analytics visitor-hash salt)');
 }
+// Dedicated salt so the session-signing key and the analytics fingerprint salt
+// aren't the same value: a leak of one shouldn't compromise the other. Prefer
+// an explicit ANALYTICS_SALT; otherwise derive a distinct key from JWT_SECRET
+// (HMAC domain-separated) so existing installs need no new config. The hash
+// already embeds the day and rotates at midnight, so changing the salt only
+// re-buckets within the current day at worst — never across days.
+const SECRET = process.env.ANALYTICS_SALT
+  || crypto.createHmac('sha256', process.env.JWT_SECRET).update('analytics-visitor-hash').digest('hex');
 const MAX_PATH = 512;
 const MAX_REFERRER = 255;
 // Hard cap on a single page-timing beacon. 30 minutes covers any realistic

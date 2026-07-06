@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import { pathToFileURL } from 'node:url';
-import { db, migrate } from './db.js';
-import { ensureSeedUsers } from './users.js';
-import { createWorkspace, findBySlug } from './workspaces.js';
+import { db, migrate } from '../server/db.js';
+import { ensureSeedUsers } from '../server/users.js';
+import { createWorkspace, findBySlug } from '../server/workspaces.js';
 
 // Test data for the site launch: an 8-week bass training program shaped as a
 // kanban workspace. Idempotent — if the workspace already exists, we leave it

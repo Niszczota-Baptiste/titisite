@@ -139,7 +139,11 @@ jobs:
       - name: Run security test suite
         run: npm test
         env:
-          JWT_SECRET: ${{ secrets.JWT_SECRET || 'ci-test-secret-not-for-prod' }}
+          # Deliberately a fixed, non-secret value: the test suite never needs
+          # the production JWT_SECRET, and injecting it here would expose it to
+          # every dependency / action running in this job (npm, semgrep,
+          # gitleaks…). Keep prod secrets out of test jobs.
+          JWT_SECRET: ci-test-secret-not-for-prod
           ADMIN_EMAIL: admin@ci.test
           ADMIN_PASSWORD: CIadminPwd99!
           MEMBER_EMAIL: member@ci.test

@@ -16,8 +16,15 @@ export const usersRouter = Router();
 const BOTH  = requireRole('admin', 'member');
 const ADMIN = requireRole('admin');
 
-usersRouter.get('/', requireAuth, BOTH, (_req, res) => {
-  res.json(listUsers());
+usersRouter.get('/', requireAuth, BOTH, (req, res) => {
+  const users = listUsers();
+  // Members only need id/name/role to populate assignee pickers — they have no
+  // business seeing every other account's email or access flags. Admins get the
+  // full list for the users editor.
+  if (req.user.role !== 'admin') {
+    return res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role })));
+  }
+  res.json(users);
 });
 
 usersRouter.post('/', requireAuth, ADMIN, (req, res) => {

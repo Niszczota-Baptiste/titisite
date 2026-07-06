@@ -34,7 +34,9 @@ tracksRouter.delete('/:id(\\d+)', ...ADMIN, (req, res) => {
 });
 
 tracksRouter.post('/reorder', ...ADMIN, (req, res) => {
-  const list = reorder('tracks', req.body.order);
+  const { order } = req.body || {};
+  if (!Array.isArray(order)) return res.status(400).json({ error: 'invalid_order' });
+  const list = reorder('tracks', order.map(Number));
   res.json(list);
 });
 

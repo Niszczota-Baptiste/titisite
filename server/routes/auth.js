@@ -15,12 +15,16 @@ const DUMMY_HASH = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
 
 export const authRouter = Router();
 
-authRouter.post('/login', (req, res) => {
+authRouter.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
   const user = findByEmail(email);
   const hash = user?.password_hash ?? DUMMY_HASH;
+  // Async bcrypt: the hash comparison is ~80-100 ms of CPU. The sync variant
+  // would block the event loop for that whole time, stalling every other
+  // request (including public audio streaming). We always compare against a
+  // dummy hash when the user is missing so the timing stays constant either way.
   const valid = typeof password === 'string' && password.length > 0
-    && bcrypt.compareSync(password, hash);
+    && await bcrypt.compare(password, hash);
   if (!user || !valid) {
     return res.status(401).json({ error: 'invalid_credentials' });
   }
