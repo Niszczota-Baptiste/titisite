@@ -509,4 +509,68 @@ export function reputationOverview() {
   });
 }
 
+// ── World map: aggregated quest points + standalone POIs ─────────────────
+
+// Every quest's map points, flattened, with the owning quest's title/colour so
+// the map can label them and link back to the quest.
+export function allQuestMapPoints() {
+  return db.prepare(`
+    SELECT p.id, p.quest_id, p.label, p.role, p.x, p.y, p.z,
+           q.titre AS quest_titre, f.couleur AS faction_couleur
+    FROM quest_map_points p
+    JOIN quests q ON q.id = p.quest_id
+    LEFT JOIN factions f ON f.id = q.faction_id
+    ORDER BY q.titre, p.ordre
+  `).all().map((r) => ({
+    id: r.id, questId: r.quest_id, questTitre: r.quest_titre,
+    label: r.label, role: r.role, x: r.x, y: r.y, z: r.z, factionCouleur: r.faction_couleur,
+  }));
+}
+
+function mapPoi(r) {
+  if (!r) return null;
+  return {
+    id: r.id, label: r.label, category: r.category, note: r.note, couleur: r.couleur,
+    x: r.x, y: r.y, z: r.z, createdBy: r.created_by, updatedAt: r.updated_at,
+  };
+}
+
+export function listPois() {
+  return db.prepare(`SELECT * FROM quest_map_pois ORDER BY category, label`).all().map(mapPoi);
+}
+
+export function createPoi(data, userId) {
+  const info = db.prepare(`
+    INSERT INTO quest_map_pois (label, category, note, couleur, x, y, z, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    data.label, data.category || 'autre', data.note || '', data.couleur || '',
+    Math.trunc(+data.x || 0), Math.trunc(+data.y || 0), Math.trunc(+data.z || 0), userId, userId,
+  );
+  return mapPoi(db.prepare(`SELECT * FROM quest_map_pois WHERE id = ?`).get(info.lastInsertRowid));
+}
+
+export function updatePoi(id, data, userId) {
+  const exists = db.prepare(`SELECT id FROM quest_map_pois WHERE id = ?`).get(id);
+  if (!exists) return null;
+  db.prepare(`
+    UPDATE quest_map_pois SET label = ?, category = ?, note = ?, couleur = ?,
+      x = ?, y = ?, z = ?, updated_by = ?, updated_at = strftime('%s','now')
+    WHERE id = ?
+  `).run(
+    data.label, data.category || 'autre', data.note || '', data.couleur || '',
+    Math.trunc(+data.x || 0), Math.trunc(+data.y || 0), Math.trunc(+data.z || 0), userId, id,
+  );
+  return mapPoi(db.prepare(`SELECT * FROM quest_map_pois WHERE id = ?`).get(id));
+}
+
+export function deletePoi(id) {
+  return db.prepare(`DELETE FROM quest_map_pois WHERE id = ?`).run(id).changes > 0;
+}
+
+// Everything the « Carte » tab needs in one shot.
+export function worldMap() {
+  return { questPoints: allQuestMapPoints(), pois: listPois() };
+}
+
 export { RECURRING };

@@ -60,6 +60,16 @@ export const POINT_ROLES = {
   autre:        { label: 'Autre',        icon: '📍', color: ACC },
 };
 
+// Standalone points of interest (not tied to a quest).
+export const POI_CATEGORIES = {
+  batiment:  { label: 'Bâtiment',   icon: '🏛️', color: '#e8c86a' },
+  farm:      { label: 'Zone de farm', icon: '🌾', color: '#7be3a8' },
+  pnj:       { label: 'PNJ',        icon: '🧑‍🌾', color: '#7bd3e8' },
+  ressource: { label: 'Ressource',  icon: '⛏️', color: '#e0913a' },
+  autre:     { label: 'Autre',      icon: '📍', color: ACC },
+};
+export const POI_CATEGORY_ORDER = ['batiment', 'farm', 'pnj', 'ressource', 'autre'];
+
 // Relative "prochain reset" / due-date label from a unix-seconds instant.
 export function fromNow(unixSeconds) {
   if (!unixSeconds) return '';

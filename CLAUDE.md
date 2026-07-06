@@ -93,7 +93,7 @@ Single-process Node app:
   tables (`factions`/`faction_tiers`, `quest_chains`, `quests`, `quest_edges`,
   `quest_inputs`/`quest_rewards`/`quest_prerequisites`, `quest_map_points`,
   `quest_completions`, plus user-defined `quest_groups` + `quest_group_items`
-  many-to-many) in `db.js#migrate`. Back under `/api/quests`
+  many-to-many, and standalone `quest_map_pois`) in `db.js#migrate`. Back under `/api/quests`
   (`server/routes/quests.js` read+complete, `quests-admin.js` edit,
   `server/quests/` helpers); front `src/components/quests/*` + page `/quetes`,
   API via `api.quests.*`. **No reputation score is stored** (in-game) —
@@ -104,7 +104,10 @@ Single-process Node app:
   **Cockpit MF integration is PULL**: a secret per-user `cockpit_token`
   (iCal-style) serves `GET /api/quests/cockpit/:token.json` for the user's local
   Python app to poll (opt-in `wants_quest_reminders`). Map points are raw X/Y/Z
-  on a neutral editable grid (`QuestMap.jsx`). **Groups** (`quest_groups`) are a
+  on a neutral editable grid (`QuestMap.jsx`); a « Carte » tab
+  (`QuestWorldMap.jsx`, pan/zoom) aggregates every quest's points plus
+  **standalone POIs** (`quest_map_pois` — buildings, farm zones…, add-by-clicking
+  for editors). **Groups** (`quest_groups`) are a
   free organizational axis on top of factions/chains — a quest can be in several.
   A discreet `/quetes` link lives in the public-site `Footer`. See `docs/quetes.md`.
 - **SEO**: `GET /sitemap.xml` is generated from the DB

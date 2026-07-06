@@ -1,5 +1,5 @@
 import { db } from './db.js';
-import { createChain, createFaction, createQuest, updateQuest } from './quests/store.js';
+import { createChain, createFaction, createPoi, createQuest, updateQuest } from './quests/store.js';
 
 // Demo seed for the quest tracker, exercising every view end to end: five
 // factions (incl. a « maîtrise »), a branching chain, and quests of each
@@ -164,6 +164,14 @@ const QUESTS = [
   },
 ];
 
+// Standalone points of interest (not tied to a quest) for the « Carte » tab.
+const POIS = [
+  { label: 'Ferme à blé communautaire', category: 'farm', x: 250, y: 66, z: -95, note: 'Pour l\'offrande de cendres — récolte auto.' },
+  { label: 'Mine de fer du Château', category: 'ressource', x: 55, y: 32, z: 40, note: 'Filon riche, proche des cuisines.' },
+  { label: 'Grande bibliothèque', category: 'batiment', x: 5, y: 70, z: -20, note: 'Bâtiment notable de la cour.' },
+  { label: 'Farm de Blaze', category: 'farm', x: 305, y: 48, z: -160, note: 'Poudre de Blaze pour le Festival des cendres.' },
+];
+
 export function seedQuestsIfEmpty() {
   // Operators (and the test harness) can suppress the demo data.
   if (process.env.SEED_DEMO_QUESTS === 'off') return { skipped: 'disabled' };
@@ -220,5 +228,7 @@ export function seedQuestsIfEmpty() {
     }, uid);
   }
 
-  return { inserted: { factions: Object.keys(FACTIONS).length, chains: 1, quests: QUESTS.length } };
+  for (const p of POIS) createPoi(p, uid);
+
+  return { inserted: { factions: Object.keys(FACTIONS).length, chains: 1, quests: QUESTS.length, pois: POIS.length } };
 }

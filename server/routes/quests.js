@@ -16,6 +16,7 @@ import {
   questHistory,
   reputationOverview,
   uncompleteQuest,
+  worldMap,
 } from '../quests/store.js';
 
 export const questsRouter = Router();
@@ -40,6 +41,7 @@ questsRouter.get('/chains/:id/graph', READ, (req, res) => {
 });
 questsRouter.get('/gains', READ, (_req, res) => res.json(potentialGains()));
 questsRouter.get('/reputation', READ, (_req, res) => res.json(reputationOverview()));
+questsRouter.get('/map', READ, (_req, res) => res.json(worldMap()));
 
 // ── Quests ─────────────────────────────────────────────────────────────────
 questsRouter.get('/quests', READ, (req, res) => {

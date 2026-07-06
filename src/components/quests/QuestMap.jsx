@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { ACC, ACC_RGB, INK, MUTED, POINT_ROLES, hexToRgb } from './theme';
+import { computeView, gridLines, niceStep } from './mapGrid';
 
 // Neutral, editable coordinate grid — reuses the Minecraft-map aesthetic of the
 // writing Map2D (pixel grid + diamond markers) but plots RAW in-game X/Z (the
@@ -15,21 +16,6 @@ import { ACC, ACC_RGB, INK, MUTED, POINT_ROLES, hexToRgb } from './theme';
 //   onPlace     (index, x, z) => void
 
 const SIZE = 320;           // canvas px (square)
-const DEFAULT_SPAN = 256;   // world blocks shown when points don't define a span
-
-function computeView(points) {
-  const xs = points.map((p) => p.x);
-  const zs = points.map((p) => p.z);
-  if (xs.length === 0) {
-    return { cx: 0, cz: 0, span: DEFAULT_SPAN };
-  }
-  const minX = Math.min(...xs); const maxX = Math.max(...xs);
-  const minZ = Math.min(...zs); const maxZ = Math.max(...zs);
-  const cx = (minX + maxX) / 2;
-  const cz = (minZ + maxZ) / 2;
-  const span = Math.max(64, (maxX - minX), (maxZ - minZ)) * 1.6 || DEFAULT_SPAN;
-  return { cx, cz, span };
-}
 
 export function QuestMap({ points = [], selected = null, onSelect, editable = false, active = null, onPlace }) {
   const boxRef = useRef(null);
@@ -164,23 +150,3 @@ export function QuestMap({ points = [], selected = null, onSelect, editable = fa
   );
 }
 
-function niceStep(span) {
-  const target = span / 6; // ~6 divisions
-  const pow = 10 ** Math.floor(Math.log10(target));
-  for (const m of [1, 2, 5, 10]) if (m * pow >= target) return m * pow;
-  return 10 * pow;
-}
-
-function gridLines(view, step) {
-  const half = view.span / 2;
-  const v = []; const h = [];
-  const startX = Math.ceil((view.cx - half) / step) * step;
-  for (let x = startX; x <= view.cx + half; x += step) {
-    v.push({ world: x, pct: ((x - view.cx) / view.span + 0.5) * 100, axis: x === 0 });
-  }
-  const startZ = Math.ceil((view.cz - half) / step) * step;
-  for (let z = startZ; z <= view.cz + half; z += step) {
-    h.push({ world: z, pct: ((z - view.cz) / view.span + 0.5) * 100, axis: z === 0 });
-  }
-  return { v, h };
-}

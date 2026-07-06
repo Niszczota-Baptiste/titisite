@@ -204,6 +204,59 @@ describe('quests — groups', () => {
   });
 });
 
+// ── World map: aggregated quest points + standalone POIs ────────────────────
+describe('quests — map & POIs', () => {
+  let admin;
+  let poiId;
+
+  it('aggregates quest map points and lists standalone POIs', async () => {
+    admin = await login(ADMIN);
+    await admin.f.post('/api/quests/quests', {
+      body: {
+        titre: 'Quête cartographiée', occurrenceType: 'simple',
+        mapPoints: [{ label: 'Autel', role: 'recuperation', x: 100, y: 64, z: 200 }],
+      },
+    });
+    const poi = await admin.f.post('/api/quests/pois', {
+      body: { label: 'Ferme à fer', category: 'farm', note: 'proche du spawn', x: -30, y: 50, z: 12 },
+    });
+    assert.equal(poi.status, 201);
+    poiId = poi.json.id;
+
+    const map = await admin.f.get('/api/quests/map');
+    assert.equal(map.status, 200);
+    assert.ok(map.json.questPoints.some((p) => p.label === 'Autel' && p.questTitre === 'Quête cartographiée'));
+    assert.ok(map.json.pois.some((p) => p.id === poiId && p.category === 'farm'));
+  });
+
+  it('validates POI label and category', async () => {
+    const noLabel = await admin.f.post('/api/quests/pois', { body: { label: '' } });
+    assert.equal(noLabel.status, 400);
+    assert.equal(noLabel.json.error, 'poi_label_required');
+    const badCat = await admin.f.post('/api/quests/pois', { body: { label: 'X', category: 'nope' } });
+    assert.equal(badCat.status, 400);
+    assert.equal(badCat.json.error, 'invalid_poi_category');
+  });
+
+  it('member without edit flag cannot create a POI', async () => {
+    const member = await login(MEMBER);
+    const r = await member.f.post('/api/quests/pois', { body: { label: 'X', category: 'batiment' } });
+    assert.equal(r.status, 403);
+  });
+
+  it('updates and deletes a POI', async () => {
+    const upd = await admin.f.put(`/api/quests/pois/${poiId}`, {
+      body: { label: 'Ferme à fer (v2)', category: 'ressource', x: -30, y: 50, z: 12 },
+    });
+    assert.equal(upd.status, 200);
+    assert.equal(upd.json.category, 'ressource');
+    const del = await admin.f.delete(`/api/quests/pois/${poiId}`);
+    assert.equal(del.status, 204);
+    const map = await admin.f.get('/api/quests/map');
+    assert.ok(!map.json.pois.some((p) => p.id === poiId));
+  });
+});
+
 // ── Cockpit pull feed ───────────────────────────────────────────────────────
 describe('cockpit pull feed', () => {
   it('serves a member feed by secret token and honours the reminder opt-in', async () => {

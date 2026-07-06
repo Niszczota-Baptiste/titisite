@@ -988,6 +988,27 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_group_items_quest ON quest_group_items(quest_id);`);
+
+  // Standalone points of interest on the quest world map — NOT tied to a quest.
+  // Special buildings, quest-item farming zones, NPCs, etc. Shared/editable.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_map_pois (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      label       TEXT NOT NULL,
+      category    TEXT NOT NULL DEFAULT 'autre'
+                  CHECK (category IN ('batiment','farm','pnj','ressource','autre')),
+      note        TEXT NOT NULL DEFAULT '',
+      couleur     TEXT NOT NULL DEFAULT '',
+      x           INTEGER NOT NULL DEFAULT 0,
+      y           INTEGER NOT NULL DEFAULT 0,
+      z           INTEGER NOT NULL DEFAULT 0,
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_map_pois_cat ON quest_map_pois(category);`);
 }
 
 function ensureColumn(table, column, ddl) {

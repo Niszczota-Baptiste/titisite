@@ -9,6 +9,7 @@ import { Modal } from '../components/project/shared';
 import { ChainGraph } from '../components/quests/ChainGraph';
 import { CockpitPanel } from '../components/quests/CockpitPanel';
 import { GainsView } from '../components/quests/GainsView';
+import { MapTab } from '../components/quests/MapTab';
 import { QuestDetail } from '../components/quests/QuestDetail';
 import { QuestEditor } from '../components/quests/QuestEditor';
 import { QuestList } from '../components/quests/QuestList';
@@ -39,6 +40,7 @@ export default function Quetes() {
 
 const TABS = [
   ['quetes', 'Quêtes'],
+  ['carte', 'Carte'],
   ['chaines', 'Chaînes'],
   ['reputation', 'Réputation'],
   ['gains', 'Gains'],
@@ -146,6 +148,7 @@ function QuestsApp({ user }) {
         {tab === 'quetes' && (
           <QuestList quests={quests} factions={factions} chains={chains} groups={groups} filters={filters} setFilters={setFilters} onOpen={setDetailId} />
         )}
+        {tab === 'carte' && <MapTab canEdit={canEdit} onOpenQuest={setDetailId} />}
         {tab === 'chaines' && <ChainsTab chains={chains} doneMap={doneMap} onOpen={setDetailId} />}
         {tab === 'reputation' && <ReputationView onOpenQuest={setDetailId} />}
         {tab === 'gains' && <GainsView />}

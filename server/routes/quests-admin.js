@@ -4,15 +4,18 @@ import {
   createChain,
   createFaction,
   createGroup,
+  createPoi,
   createQuest,
   deleteChain,
   deleteFaction,
   deleteGroup,
+  deletePoi,
   deleteQuest,
   getFaction,
   updateChain,
   updateFaction,
   updateGroup,
+  updatePoi,
   updateQuest,
 } from '../quests/store.js';
 
@@ -34,6 +37,7 @@ const INPUT_KINDS = new Set(['item', 'pa', 'reputation', 'pnj', 'autre']);
 const REWARD_KINDS = new Set(['item', 'pa', 'reputation', 'deblocage', 'autre']);
 const PREREQ_KINDS = new Set(['quete_terminee', 'reputation_min', 'item_possede', 'maitrise_min', 'autre']);
 const POINT_ROLES = new Set(['recuperation', 'rendu', 'pnj', 'autre']);
+const POI_CATEGORIES = new Set(['batiment', 'farm', 'pnj', 'ressource', 'autre']);
 
 class Invalid extends Error {
   constructor(code) { super(code); this.code = code; }
@@ -58,6 +62,11 @@ function validateChain(b) {
 
 function validateGroup(b) {
   if (!nonEmpty(b?.nom)) throw new Invalid('group_nom_required');
+}
+
+function validatePoi(b) {
+  if (!nonEmpty(b?.label)) throw new Invalid('poi_label_required');
+  if (b.category && !POI_CATEGORIES.has(b.category)) throw new Invalid('invalid_poi_category');
 }
 
 function validateQuest(b) {
@@ -148,6 +157,24 @@ questsAdminRouter.put('/groups/:id', handle((req, res) => {
 
 questsAdminRouter.delete('/groups/:id', (req, res) => {
   if (!deleteGroup(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Map POIs (standalone points of interest) ────────────────────────────────
+questsAdminRouter.post('/pois', handle((req, res) => {
+  validatePoi(req.body);
+  res.status(201).json(createPoi(req.body, req.user.id));
+}));
+
+questsAdminRouter.put('/pois/:id', handle((req, res) => {
+  validatePoi(req.body);
+  const out = updatePoi(Number(req.params.id), req.body, req.user.id);
+  if (!out) return res.status(404).json({ error: 'not_found' });
+  res.json(out);
+}));
+
+questsAdminRouter.delete('/pois/:id', (req, res) => {
+  if (!deletePoi(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
   res.status(204).end();
 });
 
