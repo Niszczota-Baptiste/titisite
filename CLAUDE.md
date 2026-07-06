@@ -131,7 +131,9 @@ Single-process Node app:
   scoped by `map_id` (NULL resolves to the default/first map). **Groups**
   (`quest_groups`) are a
   free organizational axis on top of factions/chains — a quest can be in several.
-  A discreet `/quetes` link lives in the public-site `Footer`. See `docs/quetes.md`.
+  The `/quetes` entry point is a « 📜 Quêtes » link in the Minecraft tab of
+  projects (`QuestsLink` in `src/components/project/Minecraft.jsx`) — NOT in
+  the public-site footer. See `docs/quetes.md`.
 - **SEO**: `GET /sitemap.xml` is generated from the DB
   (`server/routes/sitemap.js`); per-route meta via
   `src/hooks/usePageMeta.js`. Reader prefs (font size/width/theme) live in

@@ -8,8 +8,10 @@ référentiel.
 
 Module isolé : back sous `server/quests/` + `server/routes/quests*.js`
 (préfixe `/api/quests`), front sous `src/components/quests/` +
-`src/pages/Quetes.jsx` (route `/quetes`). Point d'entrée : un lien discret
-« 📜 Quêtes » dans le `Footer` du site public redirige vers `/quetes`.
+`src/pages/Quetes.jsx` (route `/quetes`). Point d'entrée : le bouton
+« 📜 Quêtes » de l'onglet ⛏️ Minecraft des projets (`QuestsLink`,
+`src/components/project/Minecraft.jsx`) — le site public n'y fait plus
+référence.
 
 ## Installation / migration
 

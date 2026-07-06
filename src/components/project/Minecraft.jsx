@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { searchBlocks } from '../../data/minecraftBlocks';
 import {
@@ -389,10 +390,21 @@ export function MinecraftTab() {
   const currentSortLabel = SORT_OPTIONS.find((o) => o.id === sortBy)?.label ?? 'Trier';
 
   const subNav = <MinecraftSubNav view={view} setView={setView} />;
+  // Lien vers le journal de quêtes global (Nostra/Minefield) — vit ici plutôt
+  // que dans le footer du site public.
+  const questsLink = <QuestsLink />;
 
   if (view === 'builds') {
     return (
-      <Section title="🏗️ Builds 3D importés" actions={subNav}>
+      <Section
+        title="🏗️ Builds 3D importés"
+        actions={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {questsLink}
+            {subNav}
+          </div>
+        }
+      >
         <BuildsView ws={ws} slug={workspace.slug} items={items} chests={chests} initialOpenId={initialBuildId} />
       </Section>
     );
@@ -403,6 +415,7 @@ export function MinecraftTab() {
       title="⛏️ Ressources Minecraft"
       actions={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {questsLink}
           {subNav}
           <Button variant="ghost" onClick={() => setCalcOpen(true)}>🧮 Calculateur</Button>
           <Button variant="ghost" onClick={() => { setEditingChest(null); setChestModalOpen(true); }}>
@@ -691,6 +704,25 @@ export function MinecraftTab() {
         Objets et textures © serveur Minefield
       </p>
     </Section>
+  );
+}
+
+// ── Lien vers le journal de quêtes (/quetes) ──────────────────────────────────
+
+function QuestsLink() {
+  return (
+    <Link
+      to="/quetes"
+      title="Journal de quêtes Nostra / Minefield"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '7px 12px', borderRadius: 8, textDecoration: 'none',
+        background: 'rgba(232,200,106,0.08)', border: '1px solid rgba(232,200,106,0.4)',
+        color: '#e8c86a', fontFamily: "'Inter',sans-serif", fontSize: 13, whiteSpace: 'nowrap',
+      }}
+    >
+      📜 Quêtes
+    </Link>
   );
 }
 
