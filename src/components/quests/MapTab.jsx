@@ -3,6 +3,7 @@ import { api } from '../../api/client';
 import { Modal } from '../project/shared';
 import { useConfirm } from '../../ui/ConfirmProvider';
 import { Button, Field, Input, Textarea } from '../admin/ui';
+import { ImageUploadField } from '../admin/ImageUploadField';
 import { QuestWorldMap } from './QuestWorldMap';
 import { ACC, ACC_RGB, INK, MUTED, POI_CATEGORIES, POI_CATEGORY_ORDER, hexToRgb } from './theme';
 
@@ -92,6 +93,9 @@ export function MapTab({ canEdit, onOpenQuest }) {
         pois={data.pois}
         canEdit={canEdit}
         initialView={initialView}
+        image={selectedMap?.imageUrl
+          ? { url: selectedMap.imageUrl, cx: selectedMap.imgCenterX, cz: selectedMap.imgCenterZ, span: selectedMap.imgSpan }
+          : null}
         onOpenQuest={onOpenQuest}
         onEditPoi={(poi) => setEditingPoi(poi)}
         onAddAt={(x, z) => setEditingPoi({ x, y: 64, z })}
@@ -226,13 +230,22 @@ function MapForm({ map, canDelete, onDone, onCancel }) {
   const [centerX, setCenterX] = useState(map?.centerX ?? 0);
   const [centerZ, setCenterZ] = useState(map?.centerZ ?? 0);
   const [defaultSpan, setDefaultSpan] = useState(map?.defaultSpan ?? 512);
+  const [imageUrl, setImageUrl] = useState(map?.imageUrl || '');
+  const [imgCenterX, setImgCenterX] = useState(map?.imgCenterX ?? map?.centerX ?? 0);
+  const [imgCenterZ, setImgCenterZ] = useState(map?.imgCenterZ ?? map?.centerZ ?? 0);
+  const [imgSpan, setImgSpan] = useState(map?.imgSpan ?? map?.defaultSpan ?? 512);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
 
   const save = async () => {
     setSaving(true); setErr(null);
     try {
-      const body = { nom, description, couleur, centerX: Number(centerX), centerZ: Number(centerZ), defaultSpan: Number(defaultSpan) };
+      const body = {
+        nom, description, couleur,
+        centerX: Number(centerX), centerZ: Number(centerZ), defaultSpan: Number(defaultSpan),
+        imageFilename: imageUrl || null,
+        imgCenterX: Number(imgCenterX), imgCenterZ: Number(imgCenterZ), imgSpan: Number(imgSpan),
+      };
       const out = map ? await api.quests.updateMap(map.id, body) : await api.quests.createMap(body);
       onDone(out?.id);
     } catch (e) { setErr(e.body?.error || e.message); setSaving(false); }
@@ -266,6 +279,31 @@ function MapForm({ map, canDelete, onDone, onCancel }) {
       <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: MUTED, margin: '0 0 8px' }}>
         Astuce : tu peux aussi cadrer la carte à la souris puis cliquer « 💾 Vue par défaut ».
       </p>
+
+      <div style={{ borderTop: '1px solid rgba(80,50,130,0.2)', margin: '6px 0 10px' }} />
+      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px', color: MUTED, marginBottom: 6, fontWeight: 600 }}>
+        Vraie carte 2D (image de fond, optionnel)
+      </div>
+      <ImageUploadField
+        label="Importe une image de ta carte (screenshot / atlas) — elle remplace la grille"
+        value={imageUrl}
+        onChange={(url) => setImageUrl(url || '')}
+        aspect="1/1"
+      />
+      {imageUrl && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <Field label="Image centre X"><Input type="number" value={imgCenterX} onChange={(e) => setImgCenterX(e.target.value)} /></Field>
+            <Field label="Image centre Z"><Input type="number" value={imgCenterZ} onChange={(e) => setImgCenterZ(e.target.value)} /></Field>
+            <Field label="Largeur image (blocs)"><Input type="number" value={imgSpan} onChange={(e) => setImgSpan(e.target.value)} /></Field>
+          </div>
+          <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: MUTED, margin: '0 0 8px' }}>
+            Ajuste ces valeurs (centre = coordonnées au milieu de l'image, largeur = nombre de blocs
+            couverts) jusqu'à ce que les marqueurs se calent sur l'image — l'aperçu est en direct sur la carte.
+          </p>
+        </>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 6 }}>
         {map && canDelete ? <Button type="button" variant="danger" onClick={remove}>Supprimer</Button> : <span />}
         <div style={{ display: 'flex', gap: 8 }}>

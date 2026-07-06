@@ -1022,6 +1022,10 @@ export function migrate() {
       center_x     INTEGER NOT NULL DEFAULT 0,
       center_z     INTEGER NOT NULL DEFAULT 0,
       default_span INTEGER NOT NULL DEFAULT 512,
+      image_filename TEXT,
+      img_center_x INTEGER NOT NULL DEFAULT 0,
+      img_center_z INTEGER NOT NULL DEFAULT 0,
+      img_span     INTEGER NOT NULL DEFAULT 512,
       sort_order   INTEGER NOT NULL DEFAULT 0,
       created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
       updated_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -1030,6 +1034,14 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_maps_sort ON quest_maps(sort_order, id);`);
+  // Optional real 2D map image (reuses the /api/images pipeline), calibrated to
+  // world coords: the image is centred at (img_center_x, img_center_z) and spans
+  // img_span blocks across its width. Added post-hoc for installs on the first
+  // multi-map release.
+  ensureColumn('quest_maps', 'image_filename', 'TEXT');
+  ensureColumn('quest_maps', 'img_center_x', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('quest_maps', 'img_center_z', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('quest_maps', 'img_span', 'INTEGER NOT NULL DEFAULT 512');
   // A NULL map_id means "the default (first) map" — resolved at read time so
   // deleting a map (SET NULL) never orphans a point off the map view.
   ensureColumn('quest_map_pois', 'map_id', 'INTEGER REFERENCES quest_maps(id) ON DELETE SET NULL');

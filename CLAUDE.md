@@ -109,7 +109,9 @@ Single-process Node app:
   (`QuestWorldMap.jsx`, pan/zoom) aggregates every quest's points plus
   **standalone POIs** (`quest_map_pois` — buildings, farm zones…, add-by-clicking
   for editors), across **multiple named maps** (`quest_maps`, each with its own
-  editable centre/span since a world isn't always at 0,0). Points/POIs are
+  editable centre/span since a world isn't always at 0,0, and an optional real
+  2D **background image** reusing the `/api/images` pipeline, calibrated to world
+  coords via `img_center_x/z`+`img_span`). Points/POIs are
   scoped by `map_id` (NULL resolves to the default/first map). **Groups**
   (`quest_groups`) are a
   free organizational axis on top of factions/chains — a quest can be in several.

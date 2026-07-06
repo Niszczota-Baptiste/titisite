@@ -519,7 +519,18 @@ function mapMap(r) {
   return {
     id: r.id, nom: r.nom, description: r.description, couleur: r.couleur,
     centerX: r.center_x, centerZ: r.center_z, defaultSpan: r.default_span, sortOrder: r.sort_order,
+    imageFilename: r.image_filename || null,
+    imageUrl: r.image_filename ? `/api/images/${r.image_filename}` : null,
+    imgCenterX: r.img_center_x, imgCenterZ: r.img_center_z, imgSpan: r.img_span,
   };
+}
+
+// Extract a stored filename from either a bare UUID or a /api/images/<f> URL.
+function imageFilenameOf(v) {
+  if (!v) return null;
+  const s = String(v);
+  const m = s.match(/\/api\/images\/([\w.-]+)$/);
+  return m ? m[1] : (/^[\w.-]+$/.test(s) ? s : null);
 }
 
 // id of the default (first) map. A NULL map_id on a point/POI resolves here.
@@ -533,12 +544,16 @@ export function listMaps() {
 }
 
 export function createMap(data, userId) {
+  const span = Math.max(16, Math.trunc(+data.defaultSpan || 512));
   const info = db.prepare(`
-    INSERT INTO quest_maps (nom, description, couleur, center_x, center_z, default_span, sort_order, created_by, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_maps), 0), ?, ?)
+    INSERT INTO quest_maps
+      (nom, description, couleur, center_x, center_z, default_span, image_filename, img_center_x, img_center_z, img_span, sort_order, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_maps), 0), ?, ?)
   `).run(
     data.nom, data.description || '', data.couleur || '#c9a8e8',
-    Math.trunc(+data.centerX || 0), Math.trunc(+data.centerZ || 0), Math.max(16, Math.trunc(+data.defaultSpan || 512)),
+    Math.trunc(+data.centerX || 0), Math.trunc(+data.centerZ || 0), span,
+    imageFilenameOf(data.imageFilename),
+    Math.trunc(+data.imgCenterX || 0), Math.trunc(+data.imgCenterZ || 0), Math.max(16, Math.trunc(+data.imgSpan || span)),
     userId, userId,
   );
   return mapMap(db.prepare(`SELECT * FROM quest_maps WHERE id = ?`).get(info.lastInsertRowid));
@@ -547,12 +562,16 @@ export function createMap(data, userId) {
 export function updateMap(id, data, userId) {
   const exists = db.prepare(`SELECT id FROM quest_maps WHERE id = ?`).get(id);
   if (!exists) return null;
+  const span = Math.max(16, Math.trunc(+data.defaultSpan || 512));
   db.prepare(`
     UPDATE quest_maps SET nom = ?, description = ?, couleur = ?, center_x = ?, center_z = ?,
-      default_span = ?, updated_by = ?, updated_at = strftime('%s','now') WHERE id = ?
+      default_span = ?, image_filename = ?, img_center_x = ?, img_center_z = ?, img_span = ?,
+      updated_by = ?, updated_at = strftime('%s','now') WHERE id = ?
   `).run(
     data.nom, data.description || '', data.couleur || '#c9a8e8',
-    Math.trunc(+data.centerX || 0), Math.trunc(+data.centerZ || 0), Math.max(16, Math.trunc(+data.defaultSpan || 512)),
+    Math.trunc(+data.centerX || 0), Math.trunc(+data.centerZ || 0), span,
+    imageFilenameOf(data.imageFilename),
+    Math.trunc(+data.imgCenterX || 0), Math.trunc(+data.imgCenterZ || 0), Math.max(16, Math.trunc(+data.imgSpan || span)),
     userId, id,
   );
   return mapMap(db.prepare(`SELECT * FROM quest_maps WHERE id = ?`).get(id));

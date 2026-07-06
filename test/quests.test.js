@@ -322,6 +322,28 @@ describe('quests — multiple maps', () => {
     }
   });
 
+  it('stores a background image + calibration on a map', async () => {
+    const created = await admin.f.post('/api/quests/maps', {
+      body: {
+        nom: 'Atlas', imageFilename: '/api/images/abc123.webp',
+        imgCenterX: -120, imgCenterZ: 340, imgSpan: 2000,
+      },
+    });
+    assert.equal(created.status, 201);
+    // Accepts a full /api/images/<f> URL and stores just the filename.
+    assert.equal(created.json.imageFilename, 'abc123.webp');
+    assert.equal(created.json.imageUrl, '/api/images/abc123.webp');
+    assert.equal(created.json.imgCenterX, -120);
+    assert.equal(created.json.imgSpan, 2000);
+
+    // Clearing the image nulls it out.
+    const cleared = await admin.f.put(`/api/quests/maps/${created.json.id}`, {
+      body: { nom: 'Atlas', imageFilename: null },
+    });
+    assert.equal(cleared.json.imageFilename, null);
+    assert.equal(cleared.json.imageUrl, null);
+  });
+
   it('member without edit flag cannot manage maps', async () => {
     const member = await login(MEMBER);
     const r = await member.f.post('/api/quests/maps', { body: { nom: 'X' } });

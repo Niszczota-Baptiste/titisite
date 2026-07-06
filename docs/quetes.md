@@ -60,7 +60,10 @@ membre). Exposés au front en camelCase via `/auth/me`
 - `quest_maps` — **plusieurs cartes** nommées (Overworld, Nether, régions…),
   chacune avec son **centre + zoom** propre (`center_x/center_z/default_span`)
   car un monde n'est pas toujours centré en 0,0. Éditables, non supprimable s'il
-  n'en reste qu'une.
+  n'en reste qu'une. Peut porter une **vraie image de carte 2D** en fond
+  (`image_filename`, réutilise le pipeline `/api/images`), calée sur les
+  coordonnées via `img_center_x/img_center_z/img_span` (centre + largeur en
+  blocs) ; l'aperçu superpose les marqueurs et se règle en direct.
 - `quest_map_pois` — **points d'intérêt libres** (non liés à une quête) :
   bâtiments, zones de farm, PNJ… avec catégorie, note, X/Y/Z. Les points de
   quête (`quest_map_points`) et les POI portent un `map_id` (NULL = carte par

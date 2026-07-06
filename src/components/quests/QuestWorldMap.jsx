@@ -12,7 +12,7 @@ import { computeView, gridLines, niceStep } from './mapGrid';
 const CLICK_SLOP = 4; // px of movement below which a drag counts as a click
 
 export function QuestWorldMap({
-  questPoints = [], pois = [], canEdit = false, initialView = null,
+  questPoints = [], pois = [], canEdit = false, initialView = null, image = null,
   onOpenQuest, onEditPoi, onAddAt, onSaveView,
 }) {
   const boxRef = useRef(null);
@@ -24,12 +24,30 @@ export function QuestWorldMap({
   const [addMode, setAddMode] = useState(false);
   const [showQuests, setShowQuests] = useState(true);
   const [showPois, setShowPois] = useState(true);
+  const [showGrid, setShowGrid] = useState(!image);
+  const [imgOpacity, setImgOpacity] = useState(1);
+  const [imgDim, setImgDim] = useState(null); // natural { w, h } of the background image
   const [hover, setHover] = useState(null); // { kind, id }
 
   const pos = (x, z) => ({
     left: `${((x - view.cx) / view.span + 0.5) * 100}%`,
     top: `${((z - view.cz) / view.span + 0.5) * 100}%`,
   });
+  // Background image placed in world space: centred on (image.cx, image.cz),
+  // image.span blocks wide, height derived from its natural aspect ratio.
+  const imgStyle = () => {
+    const aspect = imgDim ? imgDim.h / imgDim.w : 1;
+    const spanX = image.span;
+    const spanZ = spanX * aspect;
+    return {
+      position: 'absolute',
+      left: `${((image.cx - spanX / 2 - view.cx) / view.span + 0.5) * 100}%`,
+      top: `${((image.cz - spanZ / 2 - view.cz) / view.span + 0.5) * 100}%`,
+      width: `${(spanX / view.span) * 100}%`,
+      height: `${(spanZ / view.span) * 100}%`,
+      opacity: imgOpacity, pointerEvents: 'none', userSelect: 'none',
+    };
+  };
   const worldAt = (clientX, clientY) => {
     const r = boxRef.current.getBoundingClientRect();
     return {
@@ -84,6 +102,14 @@ export function QuestWorldMap({
         )}
         <Toggle on={showQuests} onClick={() => setShowQuests((v) => !v)} color={ACC}>◆ Quêtes ({questPoints.length})</Toggle>
         <Toggle on={showPois} onClick={() => setShowPois((v) => !v)} color="#e8c86a">● Points ({pois.length})</Toggle>
+        {image && <Toggle on={showGrid} onClick={() => setShowGrid((v) => !v)} color="#7bd3e8"># Grille</Toggle>}
+        {image && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: MUTED, fontFamily: "'Inter',sans-serif" }} title="Opacité de l'image de fond">
+            🖼
+            <input type="range" min="0.15" max="1" step="0.05" value={imgOpacity}
+              onChange={(e) => setImgOpacity(+e.target.value)} style={{ accentColor: ACC, width: 70 }} />
+          </label>
+        )}
         {canEdit && (
           <button
             type="button"
@@ -113,16 +139,25 @@ export function QuestWorldMap({
           cursor: addMode ? 'crosshair' : (drag.current ? 'grabbing' : 'grab'),
         }}
       >
-        <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} aria-hidden>
-          {lines.v.map((l) => (
-            <line key={`v${l.world}`} x1={`${l.pct}%`} y1="0" x2={`${l.pct}%`} y2="100%"
-              stroke={l.axis ? `rgba(${ACC_RGB},0.5)` : 'rgba(120,90,180,0.13)'} strokeWidth={l.axis ? 1.2 : 1} />
-          ))}
-          {lines.h.map((l) => (
-            <line key={`h${l.world}`} x1="0" y1={`${l.pct}%`} x2="100%" y2={`${l.pct}%`}
-              stroke={l.axis ? `rgba(${ACC_RGB},0.5)` : 'rgba(120,90,180,0.13)'} strokeWidth={l.axis ? 1.2 : 1} />
-          ))}
-        </svg>
+        {image && (
+          <img
+            src={image.url} alt="" draggable={false}
+            onLoad={(e) => setImgDim({ w: e.target.naturalWidth, h: e.target.naturalHeight })}
+            style={imgStyle()}
+          />
+        )}
+        {showGrid && (
+          <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} aria-hidden>
+            {lines.v.map((l) => (
+              <line key={`v${l.world}`} x1={`${l.pct}%`} y1="0" x2={`${l.pct}%`} y2="100%"
+                stroke={l.axis ? `rgba(${ACC_RGB},0.5)` : `rgba(120,90,180,${image ? 0.09 : 0.13})`} strokeWidth={l.axis ? 1.2 : 1} />
+            ))}
+            {lines.h.map((l) => (
+              <line key={`h${l.world}`} x1="0" y1={`${l.pct}%`} x2="100%" y2={`${l.pct}%`}
+                stroke={l.axis ? `rgba(${ACC_RGB},0.5)` : `rgba(120,90,180,${image ? 0.09 : 0.13})`} strokeWidth={l.axis ? 1.2 : 1} />
+            ))}
+          </svg>
+        )}
 
         {/* quest points (diamonds) */}
         {showQuests && questPoints.map((p) => {
