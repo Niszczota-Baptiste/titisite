@@ -401,6 +401,14 @@ export const api = {
       toggleFav:    (id) => request('PATCH', `/workspaces/${slug}/minecraft/${id}/favorite`),
       remove:       (id) => request('DELETE', `/workspaces/${slug}/minecraft/${id}`),
       craftApply:   (b) => request('POST', `/workspaces/${slug}/minecraft/craft/apply`, b),
+      // Ressources recherchées (wanted) : wishlist triée par priorité.
+      wanted: {
+        list:       () => request('GET',    `/workspaces/${slug}/minecraft/wanted`),
+        create:     (b) => request('POST',  `/workspaces/${slug}/minecraft/wanted`, b),
+        update:     (id, b) => request('PUT', `/workspaces/${slug}/minecraft/wanted/${id}`, b),
+        toggleDone: (id) => request('PATCH', `/workspaces/${slug}/minecraft/wanted/${id}/done`),
+        remove:     (id) => request('DELETE', `/workspaces/${slug}/minecraft/wanted/${id}`),
+      },
       // Coffres (containers) + flux screenshot → items.
       chests: {
         list:   () => request('GET',    `/workspaces/${slug}/minecraft/chests`),

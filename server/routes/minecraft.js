@@ -220,6 +220,126 @@ minecraftRouter.delete('/:id', (req, res) => {
   res.status(204).end();
 });
 
+// ── Wanted (ressources recherchées) ─────────────────────────────────────────
+// Wishlist par workspace, triée par priorité (1 haute → 3 basse), cochable
+// quand la quantité voulue est récupérée. La progression (inventaire courant)
+// est calculée côté client à partir de minecraft_resources.
+
+function rowToWanted(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    name: r.name,
+    quantity: r.quantity,
+    priority: r.priority,
+    note: r.note || '',
+    done: r.done === 1,
+    doneAt: r.done_at,
+    position: r.position,
+    createdBy: r.created_by,
+    createdByName: r.created_by_name,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+const WANTED_SELECT = `
+  SELECT w.*, u.name AS created_by_name
+  FROM minecraft_wanted w
+  LEFT JOIN users u ON u.id = w.created_by
+`;
+
+const parsePriority = (v, fallback = 2) => {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n >= 1 && n <= 3 ? n : fallback;
+};
+
+function listWanted(workspaceId) {
+  return db.prepare(`${WANTED_SELECT} WHERE w.workspace_id = ? ORDER BY w.done, w.priority, w.position, w.id`)
+    .all(workspaceId)
+    .map(rowToWanted);
+}
+
+minecraftRouter.get('/wanted', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  res.json(listWanted(req.workspace.id));
+});
+
+minecraftRouter.post('/wanted', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const { name, quantity, priority, note } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'missing_name' });
+  const qty = Math.max(1, Math.floor(Number(quantity) || 1));
+  const pos = db.prepare(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM minecraft_wanted WHERE workspace_id = ?`,
+  ).get(req.workspace.id).n;
+  const result = db.prepare(`
+    INSERT INTO minecraft_wanted (workspace_id, name, quantity, priority, note, position, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.workspace.id,
+    String(name).trim(),
+    qty,
+    parsePriority(priority),
+    String(note || '').trim(),
+    pos,
+    req.user.id,
+  );
+  const row = db.prepare(`${WANTED_SELECT} WHERE w.id = ?`).get(result.lastInsertRowid);
+  res.status(201).json(rowToWanted(row));
+});
+
+minecraftRouter.put('/wanted/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const id = Number(req.params.id);
+  const existing = db.prepare(`SELECT * FROM minecraft_wanted WHERE id = ? AND workspace_id = ?`)
+    .get(id, req.workspace.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  const { name, quantity, priority, note } = req.body || {};
+  db.prepare(`
+    UPDATE minecraft_wanted SET
+      name       = COALESCE(?, name),
+      quantity   = ?,
+      priority   = ?,
+      note       = COALESCE(?, note),
+      updated_at = strftime('%s','now')
+    WHERE id = ?
+  `).run(
+    name === undefined ? null : String(name).trim(),
+    quantity === undefined ? existing.quantity : Math.max(1, Math.floor(Number(quantity) || 1)),
+    priority === undefined ? existing.priority : parsePriority(priority, existing.priority),
+    note === undefined ? null : String(note).trim(),
+    id,
+  );
+  const row = db.prepare(`${WANTED_SELECT} WHERE w.id = ?`).get(id);
+  res.json(rowToWanted(row));
+});
+
+// Coche / décoche « quantité récupérée ».
+minecraftRouter.patch('/wanted/:id/done', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const id = Number(req.params.id);
+  const existing = db.prepare(`SELECT * FROM minecraft_wanted WHERE id = ? AND workspace_id = ?`)
+    .get(id, req.workspace.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  const next = existing.done ? 0 : 1;
+  db.prepare(`
+    UPDATE minecraft_wanted SET done = ?, done_at = ?, updated_at = strftime('%s','now') WHERE id = ?
+  `).run(next, next ? Math.floor(Date.now() / 1000) : null, id);
+  const row = db.prepare(`${WANTED_SELECT} WHERE w.id = ?`).get(id);
+  res.json(rowToWanted(row));
+});
+
+minecraftRouter.delete('/wanted/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const id = Number(req.params.id);
+  const r = db.prepare(`DELETE FROM minecraft_wanted WHERE id = ? AND workspace_id = ?`)
+    .run(id, req.workspace.id);
+  if (r.changes === 0) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
 // ── Chests (coffres) ────────────────────────────────────────────────────────
 
 minecraftRouter.get('/chests', (req, res) => {

@@ -66,7 +66,12 @@ Single-process Node app:
   A chest can be filled from a screenshot: `POST …/minecraft/scan-screenshot`
   reads it with Claude vision (`server/minecraftVision.js`, **optional** — needs
   `ANTHROPIC_API_KEY`, model `MINECRAFT_VISION_MODEL`), then the user validates a
-  draft and `POST …/minecraft/chests/:id/apply` (`replace`|`merge`). All under
+  draft and `POST …/minecraft/chests/:id/apply` (`replace`|`merge`). A
+  « Ressources wanted » wishlist card (`minecraft_wanted`, workspace-scoped)
+  sits above the chests: priority 1–3 (sorted, done last), progress computed
+  client-side from the inventory by normalized name, checkbox when the wanted
+  quantity is collected (`…/minecraft/wanted/*`, `WantedPanel` in
+  `src/components/project/Minecraft.jsx`). All under
   `server/routes/minecraft.js` + `api.ws(slug).minecraft.*`.
 - **Imported builds + WorldEdit** (`minecraft_blueprints`, workspace-scoped):
   `.mca`/`region.zip` imported → parsed to a **sparse artifact** (`data_file`)

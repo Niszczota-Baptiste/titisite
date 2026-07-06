@@ -417,6 +417,15 @@ export function MinecraftTab() {
       )}
       <ErrorBanner error={err} onDismiss={() => setErr(null)} />
 
+      {/* ── Ressources wanted (wishlist du projet, triée par priorité) ── */}
+      {!loading && (
+        <WantedPanel
+          ws={ws} slug={workspace.slug} items={items} catalog={catalog}
+          iconIndex={iconIndex} idIndex={idIndex} block3d={block3d}
+          toast={toast} confirm={confirm}
+        />
+      )}
+
       {loading ? (
         <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>
       ) : items.length === 0 && chests.length === 0 ? (
@@ -1113,6 +1122,322 @@ function ChestPanel({
             <p style={{ ...muted, fontSize: 12.5, padding: '4px 0 2px' }}>Coffre vide.</p>
           ) : (
             <ItemCollection items={items} {...itemHandlers} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── WantedPanel (ressources recherchées, triées par priorité) ─────────────────
+// Wishlist du projet : chaque ligne vise une quantité ; la progression est
+// calculée depuis l'inventaire (toutes lignes/coffres confondus) et on coche
+// quand la quantité voulue est récupérée.
+
+export const WANTED_PRIORITIES = [
+  { id: 1, label: 'Haute',   emoji: '🔥', color: '#f87171' },
+  { id: 2, label: 'Moyenne', emoji: '⚡', color: '#fbbf24' },
+  { id: 3, label: 'Basse',   emoji: '🌙', color: '#60a5fa' },
+];
+const priorityMeta = (p) => WANTED_PRIORITIES.find((x) => x.id === p) ?? WANTED_PRIORITIES[1];
+
+const WANTED_ACC = '#fb923c'; // orange « wanted poster », distinct du violet des coffres
+
+function WantedPanel({ ws, slug, items, catalog, iconIndex, idIndex, block3d, toast, confirm }) {
+  const [wanted, setWanted] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+
+  // Formulaire (ajout / édition inline)
+  const [name, setName] = useState('');
+  const [quantity, setQuantity] = useState(64);
+  const [priority, setPriority] = useState(2);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setLoaded(false);
+    ws.minecraft.wanted.list()
+      .then((l) => { if (alive) setWanted(l); })
+      .catch((e) => { if (alive) toast.error(`Wanted : ${e.message}`); })
+      .finally(() => { if (alive) setLoaded(true); });
+    return () => { alive = false; };
+    /* eslint-disable-next-line */
+  }, [slug]);
+
+  // Inventaire courant par nom normalisé (pour la progression possédé/voulu).
+  const haveByName = useMemo(() => {
+    const m = new Map();
+    for (const r of items) {
+      const k = normName(r.name);
+      m.set(k, (m.get(k) || 0) + (r.quantity || 0));
+    }
+    return m;
+  }, [items]);
+
+  const sorted = useMemo(() => [...wanted].sort((a, b) => (
+    (a.done - b.done) || (a.priority - b.priority) || (a.position - b.position) || (a.id - b.id)
+  )), [wanted]);
+  const remaining = wanted.filter((w) => !w.done).length;
+
+  const openAdd = () => { setEditing(null); setName(''); setQuantity(64); setPriority(2); setFormOpen(true); };
+  const openEdit = (w) => { setEditing(w); setName(w.name); setQuantity(w.quantity); setPriority(w.priority); setFormOpen(true); };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      const payload = { name: name.trim(), quantity: Math.max(1, Number(quantity) || 1), priority };
+      const saved = editing
+        ? await ws.minecraft.wanted.update(editing.id, payload)
+        : await ws.minecraft.wanted.create(payload);
+      setWanted((prev) => (editing ? prev.map((w) => (w.id === saved.id ? saved : w)) : [...prev, saved]));
+      setFormOpen(false); setEditing(null);
+      toast.success(editing ? 'Ressource wanted mise à jour' : 'Ajoutée à la liste wanted');
+    } catch (ex) {
+      toast.error(`Échec : ${ex.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleDone = async (w) => {
+    try {
+      const updated = await ws.minecraft.wanted.toggleDone(w.id);
+      setWanted((prev) => prev.map((x) => (x.id === w.id ? updated : x)));
+    } catch (ex) { toast.error(`Échec : ${ex.message}`); }
+  };
+
+  const remove = async (w) => {
+    const ok = await confirm({
+      title: `Retirer « ${w.name} »`,
+      message: 'Cette ressource sera retirée de la liste wanted.',
+      confirmLabel: 'Retirer', danger: true,
+    });
+    if (!ok) return;
+    try {
+      await ws.minecraft.wanted.remove(w.id);
+      setWanted((prev) => prev.filter((x) => x.id !== w.id));
+      toast.success('Retirée de la liste');
+    } catch (ex) { toast.error(`Échec : ${ex.message}`); }
+  };
+
+  return (
+    <div style={{
+      border: '1px solid rgba(251,146,60,0.32)', borderRadius: 12,
+      background: 'linear-gradient(180deg, rgba(60,32,10,0.28), rgba(14,9,28,0.45))',
+      overflow: 'hidden', marginBottom: 16,
+    }}>
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => setCollapsed((v) => !v)} title={collapsed ? 'Déplier' : 'Replier'}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            color: 'rgba(251,190,120,0.8)', fontSize: 12, width: 16,
+          }}
+        >
+          {collapsed ? '▸' : '▾'}
+        </button>
+        <span style={{ fontSize: 20 }}>🎯</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 15, fontWeight: 700, color: '#ffe6c9' }}>
+              Ressources wanted
+            </span>
+            <span style={{
+              padding: '1px 8px', borderRadius: 12, fontSize: 11,
+              background: 'rgba(251,146,60,0.16)', border: '1px solid rgba(251,146,60,0.4)',
+              color: WANTED_ACC, fontFamily: "'Inter',sans-serif",
+            }}>
+              {remaining} à récupérer
+            </span>
+          </div>
+          <div style={{ ...muted, fontSize: 11.5, marginTop: 2 }}>
+            Triées par priorité — coche quand la quantité voulue est récupérée.
+          </div>
+        </div>
+        <button type="button" onClick={openAdd}
+          style={{
+            background: 'rgba(251,146,60,0.14)', border: '1px solid rgba(251,146,60,0.45)',
+            color: WANTED_ACC, borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
+            fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+          }}
+        >
+          ＋ Wanted
+        </button>
+      </div>
+
+      {!collapsed && (
+        <div style={{ padding: '0 14px 14px' }}>
+          {/* ── Formulaire inline (ajout / édition) ── */}
+          {formOpen && (
+            <form onSubmit={submit} style={{
+              display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+              padding: 10, borderRadius: 10, marginBottom: 10,
+              background: 'rgba(20,10,42,0.55)', border: '1px dashed rgba(251,146,60,0.4)',
+            }}>
+              <div style={{ flex: '2 1 200px', minWidth: 180 }}>
+                <BlockPicker value={name} onChange={setName} catalog={catalog} autoFocus />
+              </div>
+              <input
+                type="number" min="1" value={quantity} title="Quantité voulue"
+                onChange={(e) => setQuantity(e.target.value)}
+                style={{
+                  width: 84, boxSizing: 'border-box', background: 'rgba(14,9,28,0.6)',
+                  border: '1px solid rgba(80,50,130,0.28)', borderRadius: 8, padding: '8px 10px',
+                  color: '#ede8f8', fontFamily: "'Inter',sans-serif", fontSize: 14, outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', gap: 6 }}>
+                {WANTED_PRIORITIES.map((p) => {
+                  const active = priority === p.id;
+                  return (
+                    <button key={p.id} type="button" onClick={() => setPriority(p.id)}
+                      title={`Priorité ${p.label.toLowerCase()}`}
+                      style={{
+                        padding: '6px 10px', borderRadius: 14,
+                        background: active ? `${p.color}22` : 'rgba(20,12,40,0.6)',
+                        border: `1px solid ${active ? p.color : 'rgba(80,50,130,0.3)'}`,
+                        color: active ? p.color : 'rgba(180,170,200,0.7)',
+                        fontFamily: "'Inter',sans-serif", fontSize: 12,
+                        fontWeight: active ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {p.emoji} {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <Button type="submit" disabled={saving || !name.trim()}>
+                  {saving ? '…' : (editing ? 'Enregistrer' : 'Ajouter')}
+                </Button>
+                <Button type="button" variant="ghost" disabled={saving}
+                  onClick={() => { setFormOpen(false); setEditing(null); }}>
+                  Annuler
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {/* ── Lignes ── */}
+          {!loaded ? (
+            <p style={{ ...muted, fontSize: 12.5, padding: '4px 0 2px' }}>Chargement…</p>
+          ) : sorted.length === 0 ? (
+            !formOpen && (
+              <p style={{ ...muted, fontSize: 12.5, padding: '4px 0 2px' }}>
+                Aucune ressource recherchée. Clique « ＋ Wanted » pour en ajouter une.
+              </p>
+            )
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {sorted.map((w) => {
+                const p = priorityMeta(w.priority);
+                const have = haveByName.get(normName(w.name)) || 0;
+                const ratio = w.quantity > 0 ? Math.min(1, have / w.quantity) : 0;
+                const ready = !w.done && have >= w.quantity;
+                return (
+                  <div key={w.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                    padding: '9px 12px', borderRadius: 10,
+                    background: w.done ? 'rgba(14,9,28,0.35)' : 'rgba(20,10,42,0.6)',
+                    border: `1px solid ${w.done ? 'rgba(80,50,130,0.18)' : ready ? 'rgba(74,222,128,0.5)' : `${p.color}44`}`,
+                    borderLeft: `3px solid ${w.done ? 'rgba(80,50,130,0.3)' : p.color}`,
+                    opacity: w.done ? 0.55 : 1,
+                  }}>
+                    {/* Coche « récupéré » */}
+                    <button type="button" onClick={() => toggleDone(w)}
+                      title={w.done ? 'Décocher (à re-récupérer)' : 'Cocher : quantité récupérée'}
+                      style={{
+                        width: 24, height: 24, flexShrink: 0, borderRadius: 7, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: w.done ? 'rgba(74,222,128,0.18)' : ready ? 'rgba(74,222,128,0.12)' : 'rgba(14,9,28,0.6)',
+                        border: `1px solid ${w.done || ready ? '#4ade80' : 'rgba(120,80,180,0.45)'}`,
+                        color: '#4ade80', fontSize: 14, lineHeight: 1, padding: 0,
+                      }}
+                    >
+                      {w.done ? '✓' : ready ? <span style={{ opacity: 0.4 }}>✓</span> : ''}
+                    </button>
+
+                    <span style={{
+                      width: 30, height: 30, flexShrink: 0, borderRadius: 6,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(20,10,42,0.85)',
+                    }}>
+                      <ItemIcon name={w.name} iconIndex={iconIndex} idIndex={idIndex} block3d={block3d} size={20} />
+                    </span>
+
+                    <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+                      <div style={{
+                        fontFamily: "'Space Grotesk',sans-serif", fontSize: 14, fontWeight: 700,
+                        color: w.done ? 'rgba(180,170,200,0.6)' : '#ede8f8',
+                        textDecoration: w.done ? 'line-through' : 'none',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        {w.name}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                        <span style={{
+                          padding: '1px 7px', borderRadius: 10, fontSize: 10,
+                          background: `${p.color}1a`, border: `1px solid ${p.color}55`,
+                          color: p.color, fontFamily: "'Inter',sans-serif",
+                        }}>
+                          {p.emoji} {p.label}
+                        </span>
+                        {ready && (
+                          <span style={{
+                            padding: '1px 7px', borderRadius: 10, fontSize: 10,
+                            background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.5)',
+                            color: '#4ade80', fontFamily: "'Inter',sans-serif",
+                          }}>
+                            ✅ Quantité atteinte
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Progression possédé / voulu */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <div style={{ width: 90, height: 6, borderRadius: 4, background: 'rgba(14,9,28,0.8)', overflow: 'hidden' }}>
+                        <div style={{
+                          width: `${Math.round(ratio * 100)}%`, height: '100%', borderRadius: 4,
+                          background: w.done || ready ? '#4ade80' : p.color,
+                          transition: 'width 0.25s',
+                        }} />
+                      </div>
+                      <span style={{
+                        fontFamily: "'Space Grotesk',sans-serif", fontSize: 13, fontWeight: 700,
+                        color: w.done || ready ? '#4ade80' : '#ede8f8', whiteSpace: 'nowrap',
+                      }}>
+                        {have}<span style={{ ...muted, fontWeight: 400 }}> / {w.quantity}</span>
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                      <button type="button" onClick={() => openEdit(w)} title="Modifier"
+                        style={{
+                          background: 'rgba(80,50,130,0.16)', border: '1px solid rgba(80,50,130,0.3)',
+                          color: '#ede8f8', borderRadius: 6, padding: '4px 7px', cursor: 'pointer', fontSize: 13,
+                        }}
+                      >
+                        ✏️
+                      </button>
+                      <button type="button" onClick={() => remove(w)} title="Retirer"
+                        style={{
+                          background: 'rgba(200,50,50,0.1)', border: '1px solid rgba(200,50,50,0.25)',
+                          color: '#f87171', borderRadius: 6, padding: '4px 7px', cursor: 'pointer', fontSize: 13,
+                        }}
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}

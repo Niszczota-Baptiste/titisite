@@ -218,6 +218,28 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_chests_workspace ON minecraft_chests(workspace_id, position);`);
   ensureColumn('minecraft_resources', 'chest_id', 'INTEGER REFERENCES minecraft_chests(id) ON DELETE SET NULL');
 
+  // Ressources « wanted » par workspace : la wishlist au-dessus des coffres.
+  // `quantity` est l'objectif ; l'inventaire courant (minecraft_resources) donne
+  // la progression côté client. `priority` : 1 haute, 2 moyenne, 3 basse.
+  // `done` se coche à la main quand la quantité voulue est récupérée.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_wanted (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      quantity     INTEGER NOT NULL DEFAULT 1,
+      priority     INTEGER NOT NULL DEFAULT 2,
+      note         TEXT NOT NULL DEFAULT '',
+      done         INTEGER NOT NULL DEFAULT 0,
+      done_at      INTEGER,
+      position     INTEGER NOT NULL DEFAULT 0,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_wanted_workspace ON minecraft_wanted(workspace_id, done, priority, position);`);
+
   // Recettes custom Minefield, GLOBALES (les recettes vanilla vivent côté client
   // dans src/data/recipes_vanilla.json). Éditées en admin, lues par le
   // calculateur de craft de chaque projet. `result_id`/`ingredients[].item`
