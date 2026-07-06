@@ -109,7 +109,18 @@ Single-process Node app:
   `server/quests/period.js`) — no cron, no DB mutation, replayable/self-healing.
   **Cockpit MF integration is PULL**: a secret per-user `cockpit_token`
   (iCal-style) serves `GET /api/quests/cockpit/:token.json` for the user's local
-  Python app to poll (opt-in `wants_quest_reminders`). Map points are raw X/Y/Z
+  Python app to poll (opt-in `wants_quest_reminders`). The feed carries
+  inputs/rewards/mapPoints per quest, a **personal** `wanted` list
+  (`cockpit_items`, per-user — NOT the group `minecraft_wanted`) and a
+  per-user follow filter (`cockpit_quest_follows`: no row = send everything).
+  Personal settings live in the « 🛰️ Cockpit » dashboard tab (`CockpitEditor`,
+  also the only `/admin` tab visible to non-admin members with
+  `can_view_quests`), API under `/api/me/cockpit/*`
+  (`server/routes/cockpit-me.js`, `api.cockpit.*`).
+  `GET /api/quests/quests/:id/stock` links quest item inputs to the Minecraft
+  inventories of the caller's accessible workspaces (normalized-name match via
+  `server/codex.js`; chest + world + coords per location) — surfaced in
+  `QuestDetail` as « Où trouver dans les coffres ». Map points are raw X/Y/Z
   on a neutral editable grid (`QuestMap.jsx`); a « Carte » tab
   (`QuestWorldMap.jsx`, pan/zoom) aggregates every quest's points plus
   **standalone POIs** (`quest_map_pois` — buildings, farm zones…, add-by-clicking

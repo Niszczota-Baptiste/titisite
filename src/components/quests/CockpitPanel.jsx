@@ -93,6 +93,13 @@ export function CockpitPanel({ open, onClose }) {
             </span>
             <Button type="button" variant="ghost" onClick={rotate} disabled={busy}>Régénérer le jeton</Button>
           </div>
+
+          <p style={{ margin: '16px 0 0', fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: MUTED }}>
+            ⚙️ Items perso, quêtes suivies et aperçu du flux :{' '}
+            <a href="/admin" style={{ color: ACC, textDecoration: 'none', fontWeight: 600 }}>
+              page « Cockpit » →
+            </a>
+          </p>
         </>
       )}
     </Modal>

@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { api } from '../../api/client';
 import { CodexItem } from '../admin/editors/minecraft/CodexPicker';
 import { QuestMap } from './QuestMap';
 import {
@@ -145,6 +147,9 @@ export function QuestDetail({ quest, byId, factions, onComplete, onUncomplete, o
         </Column>
       </div>
 
+      {/* où trouver les entrées dans les coffres des projets */}
+      {quest.inputs.some((l) => l.kind === 'item') && <StockPanel questId={quest.id} />}
+
       {/* prerequisites */}
       {quest.prerequisites.length > 0 && (
         <Column title="Prérequis" accent="#7bd3e8">
@@ -204,6 +209,107 @@ export function QuestDetail({ quest, byId, factions, onComplete, onUncomplete, o
         </Column>
       )}
     </div>
+  );
+}
+
+// « Où trouver » : pour chaque entrée `item` de la quête, les lignes d'inventaire
+// Minecraft correspondantes dans les projets accessibles (coffre + monde +
+// coordonnées + quantités), via GET /quests/:id/stock. Rapproché par nom
+// normalisé (label de l'entrée et/ou nom codex du ref_code) côté serveur.
+function StockPanel({ questId }) {
+  const [stock, setStock] = useState(null);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    setStock(null); setErr(null);
+    api.quests.stock(questId)
+      .then((s) => { if (alive) setStock(s); })
+      .catch((e) => { if (alive) setErr(e.message); });
+    return () => { alive = false; };
+  }, [questId]);
+
+  if (err) return null; // discret : la fiche reste lisible sans le stock
+  const inputs = stock?.inputs || [];
+
+  return (
+    <Column title="📦 Où trouver dans les coffres" accent="#7be3a8">
+      {!stock ? (
+        <p style={zero}>Recherche dans les projets…</p>
+      ) : inputs.length === 0 ? (
+        <p style={zero}>Aucune entrée de type item.</p>
+      ) : (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {inputs.map((input) => {
+            const enough = input.needed != null && input.totalHave >= input.needed;
+            return (
+              <div key={input.inputId} style={{
+                padding: '8px 10px', borderRadius: 8,
+                background: 'rgba(20,14,38,0.5)', border: '1px solid rgba(80,50,130,0.22)',
+              }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                  fontFamily: "'Inter',sans-serif", fontSize: 13, color: INK,
+                }}>
+                  <span style={{ fontWeight: 600 }}>{input.label || input.refCode}</span>
+                  <span style={{
+                    fontFamily: "'JetBrains Mono',monospace", fontSize: 12, fontWeight: 700,
+                    color: enough ? '#7be3a8' : (input.totalHave > 0 ? GOLD : MUTED),
+                  }}>
+                    {input.totalHave}{input.needed != null ? ` / ${input.needed}` : ''}
+                  </span>
+                  {enough && (
+                    <span style={{
+                      padding: '1px 7px', borderRadius: 10, fontSize: 10.5,
+                      background: 'rgba(123,227,168,0.12)', border: '1px solid rgba(123,227,168,0.45)',
+                      color: '#7be3a8',
+                    }}>✅ en stock</span>
+                  )}
+                </div>
+                {input.locations.length === 0 ? (
+                  <p style={{ ...zero, marginTop: 5 }}>Introuvable dans les coffres des projets.</p>
+                ) : (
+                  <ul style={{ ...listStyle, marginTop: 7 }}>
+                    {input.locations.map((loc, i) => (
+                      <li key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                        padding: '5px 9px', borderRadius: 7,
+                        background: 'rgba(14,9,28,0.5)',
+                        fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: 'rgba(214,206,232,0.9)',
+                      }}>
+                        <span style={{
+                          fontFamily: "'JetBrains Mono',monospace", fontWeight: 700,
+                          color: '#7be3a8', minWidth: 38, textAlign: 'right',
+                        }}>×{loc.quantity}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          {loc.chest ? (
+                            <>🧰 {loc.chest.name}
+                              {loc.chest.world && <span style={{ color: MUTED }}> · {loc.chest.world}</span>}
+                              {(loc.chest.x != null || loc.chest.z != null) && (
+                                <span style={{ color: MUTED, fontFamily: 'monospace', fontSize: 11.5 }}>
+                                  {' '}⛏ {loc.chest.x ?? '?'} {loc.chest.y ?? '?'} {loc.chest.z ?? '?'}
+                                </span>
+                              )}
+                            </>
+                          ) : '📦 Non rangé'}
+                        </span>
+                        <a
+                          href={`/project/${loc.workspaceSlug}/minecraft`}
+                          style={{
+                            color: ACC, textDecoration: 'none', fontSize: 11.5, flexShrink: 0,
+                            border: `1px solid rgba(${ACC_RGB},0.35)`, borderRadius: 8, padding: '2px 8px',
+                          }}
+                        >📁 {loc.workspaceName}</a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Column>
   );
 }
 

@@ -4,6 +4,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { ACC, ACC_RGB, Button } from './ui';
 import { AnalyticsEditor } from './editors/AnalyticsEditor';
+import { CockpitEditor } from './editors/CockpitEditor';
 import { CurrentlyEditor } from './editors/CurrentlyEditor';
 import { EducationEditor } from './editors/EducationEditor';
 import { ExperienceEditor } from './editors/ExperienceEditor';
@@ -17,7 +18,7 @@ import { WritingEditor } from './editors/writing/WritingEditor';
 import { UsersEditor } from './editors/UsersEditor';
 import { WorkspacesEditor } from './editors/WorkspacesEditor';
 
-const TABS = [
+const ADMIN_TABS = [
   { key: 'analytics',  label: 'Fréquentation',          Editor: AnalyticsEditor },
   { key: 'public',     label: 'Page publique',          Editor: PublicSectionsEditor },
   { key: 'projects',   label: 'Portfolio · Projets',    Editor: ProjectsEditor },
@@ -33,15 +34,22 @@ const TABS = [
   { key: 'users',      label: 'Utilisateurs',           Editor: UsersEditor },
 ];
 
+// Réglages perso du cockpit MF : visible par les admins ET par tout membre
+// ayant can_view_quests — pour eux c'est le seul onglet (leurs réglages à eux,
+// pas une gestion de groupe).
+const COCKPIT_TAB = { key: 'cockpit', label: '🛰️ Cockpit', Editor: CockpitEditor };
+
 export function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const mobile = useIsMobile(720);
-  const [active, setActive] = useState('public');
+  const TABS = isAdmin ? [...ADMIN_TABS, COCKPIT_TAB] : [COCKPIT_TAB];
+  const [active, setActive] = useState(isAdmin ? 'public' : 'cockpit');
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => { if (!mobile) setMenuOpen(false); }, [mobile]);
 
-  const ActiveEditor = TABS.find((t) => t.key === active).Editor;
-  const activeLabel = TABS.find((t) => t.key === active).label;
+  const activeTab = TABS.find((t) => t.key === active) ?? TABS[0];
+  const ActiveEditor = activeTab.Editor;
+  const activeLabel = activeTab.label;
 
   const headerLinks = (
     <>

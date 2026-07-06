@@ -1071,6 +1071,42 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_map_pois_map ON quest_map_pois(map_id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_map_points_map ON quest_map_points(map_id);`);
 
+  // ── Cockpit MF : réglages PERSO du flux pull ──
+  // Liste d'items par utilisateur (pas la wishlist de groupe minecraft_wanted) :
+  // envoyée dans la section `wanted` du flux cockpit. `workspace_id` optionnel
+  // rattache l'item à un projet ; x/y/z = coordonnées en jeu optionnelles.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cockpit_items (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      quantity     INTEGER NOT NULL DEFAULT 1,
+      priority     INTEGER NOT NULL DEFAULT 2,
+      note         TEXT NOT NULL DEFAULT '',
+      workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
+      x            INTEGER,
+      y            INTEGER,
+      z            INTEGER,
+      done         INTEGER NOT NULL DEFAULT 0,
+      done_at      INTEGER,
+      position     INTEGER NOT NULL DEFAULT 0,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_cockpit_items_user ON cockpit_items(user_id, done, priority, position);`);
+
+  // Quêtes suivies par utilisateur : aucune ligne = tout est envoyé au cockpit ;
+  // au moins une ligne = seules les quêtes suivies partent dans le flux.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cockpit_quest_follows (
+      user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      quest_id INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      UNIQUE (user_id, quest_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_cockpit_follows_user ON cockpit_quest_follows(user_id);`);
+
   // Guarantee a default map exists, then adopt any pre-existing points/POIs
   // created before the multi-map feature. Runs once (guarded by empty table).
   if (db.prepare('SELECT COUNT(*) AS n FROM quest_maps').get().n === 0) {

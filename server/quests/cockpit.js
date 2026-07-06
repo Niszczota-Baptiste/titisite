@@ -4,7 +4,14 @@
 // cannot receive a push. Instead it polls a secret, per-member token URL
 // (GET /api/quests/cockpit/:token.json, no cookie) and gets everything it needs
 // to display reminders: which recurring quests are available right now (not yet
-// done this period), which deadlines are approaching, and the potential gains.
+// done this period), which deadlines are approaching, the member's personal
+// item list (`wanted`), and the potential gains.
+//
+// Per-member tuning (managed from the « Cockpit » admin page):
+// - cockpit_quest_follows: no row → every quest is sent (default); at least one
+//   row → only followed quests appear in `available` and `deadlines`.
+// - cockpit_items: the member's own wanted list (NOT the per-workspace group
+//   wishlist `minecraft_wanted`).
 //
 // Nothing here mutates state — the feed is a pure read, so it is idempotent and
 // self-healing across resets (period_key is recomputed every poll). A member
@@ -23,10 +30,43 @@ function rewardsBrief(questId) {
   `).all(questId);
 }
 
+function inputsBrief(questId) {
+  return db.prepare(`
+    SELECT kind, label, quantite, ref_code AS refCode, faction_id AS factionId, icon
+    FROM quest_inputs WHERE quest_id = ? ORDER BY ordre, id
+  `).all(questId);
+}
+
+function mapPointsBrief(questId) {
+  return db.prepare(`
+    SELECT label, role, x, y, z FROM quest_map_points WHERE quest_id = ? ORDER BY ordre, id
+  `).all(questId);
+}
+
+// Set of followed quest ids, or null when the member follows nothing (= send
+// everything, the default behaviour before follows existed).
+function followedQuestIds(memberId) {
+  const rows = db.prepare(`SELECT quest_id FROM cockpit_quest_follows WHERE user_id = ?`).all(memberId);
+  return rows.length ? new Set(rows.map((r) => r.quest_id)) : null;
+}
+
+// The member's own not-done items, sorted by priority then position. The
+// linked workspace resolves to its display name (or null).
+function wantedItems(memberId) {
+  return db.prepare(`
+    SELECT i.id, i.name, i.quantity, i.priority, i.note, w.name AS workspace, i.x, i.y, i.z
+    FROM cockpit_items i
+    LEFT JOIN workspaces w ON w.id = i.workspace_id
+    WHERE i.user_id = ? AND i.done = 0
+    ORDER BY i.priority, i.position, i.id
+  `).all(memberId);
+}
+
 export function buildCockpitFeed(member, now = new Date()) {
   const nowS = Math.floor(now.getTime() / 1000);
   const done = memberCurrentDone(member.id);
   const wantsReminders = member.wants_quest_reminders === 1;
+  const follows = followedQuestIds(member.id);
 
   const recurring = db.prepare(`
     SELECT q.id, q.titre, q.occurrence_type, f.nom AS faction_nom, f.couleur AS faction_couleur
@@ -38,6 +78,7 @@ export function buildCockpitFeed(member, now = new Date()) {
   const available = { journaliere: [], hebdomadaire: [], mensuelle: [] };
   for (const q of recurring) {
     if (done[q.id]) continue; // already done this period
+    if (follows && !follows.has(q.id)) continue; // not followed → not sent
     available[q.occurrence_type].push({
       id: q.id,
       titre: q.titre,
@@ -45,7 +86,9 @@ export function buildCockpitFeed(member, now = new Date()) {
       factionCouleur: q.faction_couleur,
       periodKey: currentPeriodKey(q.occurrence_type),
       nextResetAt: nextResetAt(q.occurrence_type),
+      inputs: inputsBrief(q.id),
       rewards: rewardsBrief(q.id),
+      mapPoints: mapPointsBrief(q.id),
     });
   }
 
@@ -56,8 +99,18 @@ export function buildCockpitFeed(member, now = new Date()) {
     ORDER BY q.due_date ASC
   `).all(nowS, nowS + DEADLINE_HORIZON_S);
   const deadlines = deadlineRows
-    .filter((q) => !done[q.id])
-    .map((q) => ({ id: q.id, titre: q.titre, faction: q.faction_nom, dueDate: q.due_date }));
+    .filter((q) => !done[q.id] && (!follows || follows.has(q.id)))
+    .map((q) => ({
+      id: q.id,
+      titre: q.titre,
+      faction: q.faction_nom,
+      dueDate: q.due_date,
+      inputs: inputsBrief(q.id),
+      rewards: rewardsBrief(q.id),
+      mapPoints: mapPointsBrief(q.id),
+    }));
+
+  const wanted = wantedItems(member.id);
 
   const totalAvailable = available.journaliere.length
     + available.hebdomadaire.length + available.mensuelle.length;
@@ -70,9 +123,11 @@ export function buildCockpitFeed(member, now = new Date()) {
     // reference data (gains) is still served so the cockpit can show context.
     available: wantsReminders ? available : { journaliere: [], hebdomadaire: [], mensuelle: [] },
     deadlines: wantsReminders ? deadlines : [],
+    wanted: wantsReminders ? wanted : [],
     counts: {
       availableTotal: wantsReminders ? totalAvailable : 0,
       deadlines: wantsReminders ? deadlines.length : 0,
+      wanted: wantsReminders ? wanted.length : 0,
     },
     potentialGains: potentialGains(),
   };

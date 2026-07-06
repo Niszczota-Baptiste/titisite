@@ -307,6 +307,8 @@ export const api = {
       return request('GET', `/quests/quests${s ? `?${s}` : ''}`);
     },
     get:        (id) => request('GET', `/quests/quests/${id}`),
+    // Où trouver les entrées `item` d'une quête dans les coffres des projets.
+    stock:      (id) => request('GET', `/quests/quests/${id}/stock`),
     mine:       () => request('GET', '/quests/me/quests'),
     complete:   (id) => request('POST', `/quests/quests/${id}/complete`),
     uncomplete: (id) => request('POST', `/quests/quests/${id}/uncomplete`),
@@ -335,6 +337,20 @@ export const api = {
   cockpitInfo:       () => request('GET',  '/me/cockpit-token'),
   rotateCockpit:     () => request('POST', '/me/cockpit-token/rotate'),
   setQuestReminders: (enabled) => request('PUT', '/me/quest-reminders', { enabled }),
+
+  // Réglages perso du cockpit (page admin « Cockpit ») : items envoyés dans la
+  // section `wanted` du flux + quêtes suivies (filtre available/deadlines).
+  cockpit: {
+    items: {
+      list:       () => request('GET',    '/me/cockpit/items'),
+      create:     (b) => request('POST',  '/me/cockpit/items', b),
+      update:     (id, b) => request('PUT', `/me/cockpit/items/${id}`, b),
+      toggleDone: (id) => request('PATCH', `/me/cockpit/items/${id}/done`),
+      remove:     (id) => request('DELETE', `/me/cockpit/items/${id}`),
+    },
+    quests: () => request('GET', '/me/cockpit/quests'),
+    setFollow: (id, followed) => request('PUT', `/me/cockpit/quests/${id}/follow`, { followed }),
+  },
 
   // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.
   minecraftAdmin: {

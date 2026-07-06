@@ -136,7 +136,7 @@ un endpoint secret plutôt que de recevoir un push.
 
 - Chaque membre a un `cockpit_token` (comme le token iCal) : récupérable /
   régénérable depuis le bouton **« 🛰️ Cockpit MF »** de `/quetes`
-  (`GET /api/me/cockpit-token`, `POST …/rotate`).
+  (`GET /api/me/cockpit-token`, `POST …/rotate`) ou la page admin « Cockpit ».
 - Le cockpit poll : `GET /api/quests/cockpit/<token>.json` (sans cookie,
   rate-limité 60/min). Réponse :
 
@@ -145,19 +145,86 @@ un endpoint secret plutôt que de recevoir un push.
     "member": { "id": 1, "name": "…" },
     "generatedAt": 1751700000,
     "remindersEnabled": true,
-    "available": { "journaliere": [ … ], "hebdomadaire": [ … ], "mensuelle": [ … ] },
-    "deadlines": [ { "id": 3, "titre": "…", "dueDate": 1751780000 } ],
-    "counts": { "availableTotal": 4, "deadlines": 1 },
+    "available": {
+      "journaliere": [
+        {
+          "id": 1, "titre": "Livrer 16 pains", "faction": "Bourg",
+          "factionCouleur": "#a78bfa", "periodKey": "d:2026-07-06",
+          "nextResetAt": 1751780000,
+          "inputs":  [ { "kind": "item", "label": "Pain", "quantite": 16, "refCode": null, "factionId": null, "icon": null } ],
+          "rewards": [ { "kind": "pa", "label": "", "quantite": 50, "refCode": null, "factionId": null } ],
+          "mapPoints": [ { "label": "boulangerie", "role": "rendu", "x": 128, "y": 64, "z": -342 } ]
+        }
+      ],
+      "hebdomadaire": [], "mensuelle": []
+    },
+    "deadlines": [
+      { "id": 7, "titre": "…", "faction": "…", "dueDate": 1751780000,
+        "inputs": [], "rewards": [], "mapPoints": [] }
+    ],
+    "wanted": [
+      { "id": 3, "name": "Diamant", "quantity": 64, "priority": 1,
+        "note": "pour la beacon", "workspace": "Base principale",
+        "x": -1204, "y": 11, "z": 356 }
+    ],
+    "counts": { "availableTotal": 4, "deadlines": 1, "wanted": 1 },
     "potentialGains": { "journaliere": { "pa": 50, "reputations": [ … ], "questCount": 2 }, … }
   }
   ```
 
   `available` = quêtes récurrentes **non encore faites** par ce membre pour la
   période courante (= « redevenues disponibles » après un reset). `deadlines` =
-  quêtes à échéance sous 72 h non faites.
+  quêtes à échéance sous 72 h non faites. Chaque quête des deux listes porte
+  ses `inputs` (entrées, triées par `ordre`), `rewards` et `mapPoints`.
+- **`wanted` = liste d'items PERSO** (`cockpit_items`, par utilisateur — pas la
+  wishlist de groupe `minecraft_wanted` des coffres) : items non faits, triés
+  par `priority` (1 haute → 3 basse) puis `position`. Chaque item peut porter
+  une note, un projet lié (`workspace` = nom résolu, sinon `null`) et des
+  coordonnées x/y/z optionnelles.
+- **Quêtes suivies** (`cockpit_quest_follows`, par utilisateur) : tant que le
+  membre ne suit **aucune** quête, tout est envoyé (mode par défaut) ; dès
+  qu'il en suit ≥ 1, seules les quêtes suivies apparaissent dans `available`
+  et `deadlines` (`potentialGains` reste global).
 - **Opt-in** : le membre active/désactive les rappels
   (`PUT /api/me/quest-reminders { enabled }`) — décoché, le flux ne renvoie que
-  `potentialGains` (pas de liste d'actions).
+  `potentialGains` (les listes actionnables, `wanted` compris, sont vidées).
+
+### Page admin « Cockpit » (réglages perso)
+
+Onglet « 🛰️ Cockpit » du dashboard `/admin` — chaque utilisateur y gère
+**uniquement ses propres** réglages ; accessible aux admins et à tout membre
+ayant `can_view_quests` (pour eux c'est le seul onglet visible). Contenu :
+
+- l'URL secrète du flux (copier / régénérer) + l'interrupteur des rappels ;
+- les **items perso** (CRUD + cocher fait) avec nom, quantité, priorité, note,
+  projet lié (select des workspaces accessibles), coordonnées x/y/z ;
+- la liste des **quêtes** groupées par occurrence avec un interrupteur
+  « envoyer au cockpit » par quête + l'état clair du mode (« tout est envoyé »
+  tant que rien n'est suivi) ;
+- un **aperçu du flux** (fetch de l'endpoint avec son jeton, JSON affiché).
+
+API sous `/api/me/cockpit/…` (cookie de session, jamais d'id utilisateur pris
+du client ; accès `can_view_quests`, admins compris) :
+
+```
+GET/POST           /items          liste / création
+PUT/DELETE         /items/:id      édition / suppression
+PATCH              /items/:id/done coche ↔ décoche « récupéré »
+GET                /quests         liste des quêtes + état follow + followedCount
+PUT                /quests/:id/follow { followed: bool }
+```
+
+### Où trouver les entrées d'une quête (lien avec les coffres)
+
+`GET /api/quests/quests/:id/stock` (flag `can_view_quests`) rapproche chaque
+entrée de type `item` de l'inventaire Minecraft (`minecraft_resources`) des
+workspaces accessibles à l'appelant (admin : tous les workspaces minecraft
+actifs ; membre : ses adhésions). Match par **nom normalisé** (accents/casse)
+sur le label de l'entrée et/ou le nom codex du `ref_code`
+(`server/codex.js`). Réponse par entrée : `needed`, `totalHave` et les
+`locations` (workspace, quantité, coffre + monde + X/Y/Z, `chest: null` =
+« non rangé »). La fiche de quête (`QuestDetail`) affiche ces emplacements
+dans la section « 📦 Où trouver dans les coffres ».
 
 Exemple de polling Python :
 

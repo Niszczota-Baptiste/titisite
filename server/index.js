@@ -27,6 +27,7 @@ import { contactRouter } from './routes/contact.js';
 import { documentsRouter } from './routes/documents.js';
 import { featuresRouter } from './routes/features.js';
 import { meRouter } from './routes/me.js';
+import { cockpitMeRouter } from './routes/cockpit-me.js';
 import { meetingsRouter } from './routes/meetings.js';
 import { minecraftRouter } from './routes/minecraft.js';
 import { blueprintsRouter, blueprintsPublicRouter } from './routes/blueprints.js';
@@ -288,6 +289,9 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/stairs', stairsRouter);
 
 // Current-user helpers (e.g. /api/me/events for the cross-project calendar)
+// Réglages perso du cockpit MF (items + quêtes suivies) : monté avant meRouter
+// pour que /api/me/cockpit/* ne tombe pas dans ses handlers génériques.
+app.use('/api/me/cockpit', cockpitMeRouter);
 app.use('/api/me', meRouter);
 
 // Custom Minecraft recipes (read: any auth user — used by the craft calculator;
