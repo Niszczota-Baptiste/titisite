@@ -295,7 +295,8 @@ export const api = {
     chainGraph: (id) => request('GET', `/quests/chains/${id}/graph`),
     gains:      () => request('GET', '/quests/gains'),
     reputation: () => request('GET', '/quests/reputation'),
-    map:        () => request('GET', '/quests/map'),
+    maps:       () => request('GET', '/quests/maps'),
+    map:        (mapId) => request('GET', `/quests/map${mapId ? `?map=${mapId}` : ''}`),
     list:       (params = {}) => {
       const q = new URLSearchParams();
       if (params.faction) q.set('faction', params.faction);
@@ -322,6 +323,9 @@ export const api = {
     createPoi:     (b) => request('POST', '/quests/pois', b),
     updatePoi:     (id, b) => request('PUT', `/quests/pois/${id}`, b),
     deletePoi:     (id) => request('DELETE', `/quests/pois/${id}`),
+    createMap:     (b) => request('POST', '/quests/maps', b),
+    updateMap:     (id, b) => request('PUT', `/quests/maps/${id}`, b),
+    deleteMap:     (id) => request('DELETE', `/quests/maps/${id}`),
     createQuest:   (b) => request('POST', '/quests/quests', b),
     updateQuest:   (id, b) => request('PUT', `/quests/quests/${id}`, b),
     deleteQuest:   (id) => request('DELETE', `/quests/quests/${id}`),

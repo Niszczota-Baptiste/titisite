@@ -49,7 +49,7 @@ function mapPrereq(r) {
 }
 
 function mapPoint(r) {
-  return { id: r.id, label: r.label, role: r.role, x: r.x, y: r.y, z: r.z, ordre: r.ordre };
+  return { id: r.id, label: r.label, role: r.role, x: r.x, y: r.y, z: r.z, mapId: r.map_id, ordre: r.ordre };
 }
 
 // Summary row (list view): quest + resolved faction/chain names + child counts.
@@ -332,10 +332,13 @@ function replacePrereqs(questId, rows) {
 function replacePoints(questId, rows) {
   db.prepare(`DELETE FROM quest_map_points WHERE quest_id = ?`).run(questId);
   const ins = db.prepare(`
-    INSERT INTO quest_map_points (quest_id, label, role, x, y, z, ordre) VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO quest_map_points (quest_id, label, role, x, y, z, map_id, ordre) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const fallbackMap = defaultMapId();
   (rows || []).slice(0, 2).forEach((p, i) => ins.run(
-    questId, p.label || '', p.role || 'autre', Math.trunc(+p.x || 0), Math.trunc(+p.y || 0), Math.trunc(+p.z || 0), i,
+    questId, p.label || '', p.role || 'autre',
+    Math.trunc(+p.x || 0), Math.trunc(+p.y || 0), Math.trunc(+p.z || 0),
+    p.mapId ?? fallbackMap, i,
   ));
 }
 
@@ -509,20 +512,79 @@ export function reputationOverview() {
   });
 }
 
-// ── World map: aggregated quest points + standalone POIs ─────────────────
+// ── Maps (multiple named worlds/regions, each with its own default view) ──
 
-// Every quest's map points, flattened, with the owning quest's title/colour so
-// the map can label them and link back to the quest.
-export function allQuestMapPoints() {
+function mapMap(r) {
+  if (!r) return null;
+  return {
+    id: r.id, nom: r.nom, description: r.description, couleur: r.couleur,
+    centerX: r.center_x, centerZ: r.center_z, defaultSpan: r.default_span, sortOrder: r.sort_order,
+  };
+}
+
+// id of the default (first) map. A NULL map_id on a point/POI resolves here.
+export function defaultMapId() {
+  const r = db.prepare(`SELECT id FROM quest_maps ORDER BY sort_order, id LIMIT 1`).get();
+  return r ? r.id : null;
+}
+
+export function listMaps() {
+  return db.prepare(`SELECT * FROM quest_maps ORDER BY sort_order, id`).all().map(mapMap);
+}
+
+export function createMap(data, userId) {
+  const info = db.prepare(`
+    INSERT INTO quest_maps (nom, description, couleur, center_x, center_z, default_span, sort_order, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_maps), 0), ?, ?)
+  `).run(
+    data.nom, data.description || '', data.couleur || '#c9a8e8',
+    Math.trunc(+data.centerX || 0), Math.trunc(+data.centerZ || 0), Math.max(16, Math.trunc(+data.defaultSpan || 512)),
+    userId, userId,
+  );
+  return mapMap(db.prepare(`SELECT * FROM quest_maps WHERE id = ?`).get(info.lastInsertRowid));
+}
+
+export function updateMap(id, data, userId) {
+  const exists = db.prepare(`SELECT id FROM quest_maps WHERE id = ?`).get(id);
+  if (!exists) return null;
+  db.prepare(`
+    UPDATE quest_maps SET nom = ?, description = ?, couleur = ?, center_x = ?, center_z = ?,
+      default_span = ?, updated_by = ?, updated_at = strftime('%s','now') WHERE id = ?
+  `).run(
+    data.nom, data.description || '', data.couleur || '#c9a8e8',
+    Math.trunc(+data.centerX || 0), Math.trunc(+data.centerZ || 0), Math.max(16, Math.trunc(+data.defaultSpan || 512)),
+    userId, id,
+  );
+  return mapMap(db.prepare(`SELECT * FROM quest_maps WHERE id = ?`).get(id));
+}
+
+// Refuses to delete the last remaining map. Points/POIs of the deleted map fall
+// back to the default map (FK SET NULL + NULL-resolves-to-default read rule).
+export function deleteMap(id) {
+  if (db.prepare(`SELECT COUNT(*) AS n FROM quest_maps`).get().n <= 1) return 'last_map';
+  return db.prepare(`DELETE FROM quest_maps WHERE id = ?`).run(id).changes > 0;
+}
+
+// SQL fragment matching a map column, where the default map also owns NULLs.
+function mapWhere(col, mapId) {
+  if (mapId != null && mapId === defaultMapId()) return { sql: `(${col} = ? OR ${col} IS NULL)`, args: [mapId] };
+  return { sql: `${col} = ?`, args: [mapId] };
+}
+
+// ── World map: aggregated quest points + standalone POIs (per map) ────────
+
+export function allQuestMapPoints(mapId) {
+  const w = mapWhere('p.map_id', mapId);
   return db.prepare(`
-    SELECT p.id, p.quest_id, p.label, p.role, p.x, p.y, p.z,
+    SELECT p.id, p.quest_id, p.label, p.role, p.x, p.y, p.z, p.map_id,
            q.titre AS quest_titre, f.couleur AS faction_couleur
     FROM quest_map_points p
     JOIN quests q ON q.id = p.quest_id
     LEFT JOIN factions f ON f.id = q.faction_id
+    WHERE ${w.sql}
     ORDER BY q.titre, p.ordre
-  `).all().map((r) => ({
-    id: r.id, questId: r.quest_id, questTitre: r.quest_titre,
+  `).all(...w.args).map((r) => ({
+    id: r.id, questId: r.quest_id, questTitre: r.quest_titre, mapId: r.map_id,
     label: r.label, role: r.role, x: r.x, y: r.y, z: r.z, factionCouleur: r.faction_couleur,
   }));
 }
@@ -531,21 +593,24 @@ function mapPoi(r) {
   if (!r) return null;
   return {
     id: r.id, label: r.label, category: r.category, note: r.note, couleur: r.couleur,
-    x: r.x, y: r.y, z: r.z, createdBy: r.created_by, updatedAt: r.updated_at,
+    x: r.x, y: r.y, z: r.z, mapId: r.map_id, createdBy: r.created_by, updatedAt: r.updated_at,
   };
 }
 
-export function listPois() {
-  return db.prepare(`SELECT * FROM quest_map_pois ORDER BY category, label`).all().map(mapPoi);
+export function listPois(mapId) {
+  if (mapId == null) return db.prepare(`SELECT * FROM quest_map_pois ORDER BY category, label`).all().map(mapPoi);
+  const w = mapWhere('map_id', mapId);
+  return db.prepare(`SELECT * FROM quest_map_pois WHERE ${w.sql} ORDER BY category, label`).all(...w.args).map(mapPoi);
 }
 
 export function createPoi(data, userId) {
+  const mapId = data.mapId ?? defaultMapId();
   const info = db.prepare(`
-    INSERT INTO quest_map_pois (label, category, note, couleur, x, y, z, created_by, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO quest_map_pois (label, category, note, couleur, x, y, z, map_id, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.label, data.category || 'autre', data.note || '', data.couleur || '',
-    Math.trunc(+data.x || 0), Math.trunc(+data.y || 0), Math.trunc(+data.z || 0), userId, userId,
+    Math.trunc(+data.x || 0), Math.trunc(+data.y || 0), Math.trunc(+data.z || 0), mapId, userId, userId,
   );
   return mapPoi(db.prepare(`SELECT * FROM quest_map_pois WHERE id = ?`).get(info.lastInsertRowid));
 }
@@ -553,13 +618,14 @@ export function createPoi(data, userId) {
 export function updatePoi(id, data, userId) {
   const exists = db.prepare(`SELECT id FROM quest_map_pois WHERE id = ?`).get(id);
   if (!exists) return null;
+  const mapId = data.mapId ?? defaultMapId();
   db.prepare(`
     UPDATE quest_map_pois SET label = ?, category = ?, note = ?, couleur = ?,
-      x = ?, y = ?, z = ?, updated_by = ?, updated_at = strftime('%s','now')
+      x = ?, y = ?, z = ?, map_id = ?, updated_by = ?, updated_at = strftime('%s','now')
     WHERE id = ?
   `).run(
     data.label, data.category || 'autre', data.note || '', data.couleur || '',
-    Math.trunc(+data.x || 0), Math.trunc(+data.y || 0), Math.trunc(+data.z || 0), userId, id,
+    Math.trunc(+data.x || 0), Math.trunc(+data.y || 0), Math.trunc(+data.z || 0), mapId, userId, id,
   );
   return mapPoi(db.prepare(`SELECT * FROM quest_map_pois WHERE id = ?`).get(id));
 }
@@ -568,9 +634,10 @@ export function deletePoi(id) {
   return db.prepare(`DELETE FROM quest_map_pois WHERE id = ?`).run(id).changes > 0;
 }
 
-// Everything the « Carte » tab needs in one shot.
-export function worldMap() {
-  return { questPoints: allQuestMapPoints(), pois: listPois() };
+// Everything the « Carte » tab needs for one map. Falls back to the default map.
+export function worldMap(mapId) {
+  const id = mapId != null ? mapId : defaultMapId();
+  return { questPoints: allQuestMapPoints(id), pois: listPois(id) };
 }
 
 export { RECURRING };

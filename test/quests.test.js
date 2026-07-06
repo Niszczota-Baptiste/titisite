@@ -257,6 +257,78 @@ describe('quests — map & POIs', () => {
   });
 });
 
+// ── Multiple maps (each with its own centre/span) ───────────────────────────
+describe('quests — multiple maps', () => {
+  let admin;
+  let defaultMap;
+  let nether;
+
+  it('migrate creates a default map; can add more with a custom centre', async () => {
+    admin = await login(ADMIN);
+    const maps = await admin.f.get('/api/quests/maps');
+    assert.equal(maps.status, 200);
+    assert.ok(maps.json.length >= 1, 'default map exists');
+    defaultMap = maps.json[0];
+
+    const created = await admin.f.post('/api/quests/maps', {
+      body: { nom: 'Nether', centerX: 200, centerZ: -300, defaultSpan: 256 },
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.json.centerX, 200);
+    assert.equal(created.json.defaultSpan, 256);
+    nether = created.json;
+  });
+
+  it('points & POIs are scoped to their map', async () => {
+    await admin.f.post('/api/quests/pois', { body: { label: 'Portail', category: 'batiment', mapId: nether.id, x: 210, y: 50, z: -290 } });
+    await admin.f.post('/api/quests/quests', {
+      body: {
+        titre: 'Quête du Nether', occurrenceType: 'simple',
+        mapPoints: [{ label: 'Forteresse', role: 'recuperation', x: 220, y: 40, z: -310, mapId: nether.id }],
+      },
+    });
+
+    const netherMap = await admin.f.get(`/api/quests/map?map=${nether.id}`);
+    assert.ok(netherMap.json.pois.some((p) => p.label === 'Portail'));
+    assert.ok(netherMap.json.questPoints.some((p) => p.label === 'Forteresse'));
+
+    const defMap = await admin.f.get(`/api/quests/map?map=${defaultMap.id}`);
+    assert.ok(!defMap.json.pois.some((p) => p.label === 'Portail'), 'Nether POI not on default map');
+    assert.ok(!defMap.json.questPoints.some((p) => p.label === 'Forteresse'));
+  });
+
+  it('editing a map centre persists', async () => {
+    const upd = await admin.f.put(`/api/quests/maps/${nether.id}`, {
+      body: { nom: 'Nether', centerX: -10, centerZ: 20, defaultSpan: 400 },
+    });
+    assert.equal(upd.status, 200);
+    assert.equal(upd.json.centerX, -10);
+    assert.equal(upd.json.defaultSpan, 400);
+  });
+
+  it('deleting a map moves its content to the default map; last map is protected', async () => {
+    const del = await admin.f.delete(`/api/quests/maps/${nether.id}`);
+    assert.equal(del.status, 204);
+    // Portail (SET NULL) now resolves to the default map.
+    const defMap = await admin.f.get(`/api/quests/map?map=${defaultMap.id}`);
+    assert.ok(defMap.json.pois.some((p) => p.label === 'Portail'), 'orphaned POI shows on default map');
+
+    // Cannot delete the last remaining map.
+    const maps = await admin.f.get('/api/quests/maps');
+    if (maps.json.length === 1) {
+      const bad = await admin.f.delete(`/api/quests/maps/${maps.json[0].id}`);
+      assert.equal(bad.status, 400);
+      assert.equal(bad.json.error, 'cannot_delete_last_map');
+    }
+  });
+
+  it('member without edit flag cannot manage maps', async () => {
+    const member = await login(MEMBER);
+    const r = await member.f.post('/api/quests/maps', { body: { nom: 'X' } });
+    assert.equal(r.status, 403);
+  });
+});
+
 // ── Cockpit pull feed ───────────────────────────────────────────────────────
 describe('cockpit pull feed', () => {
   it('serves a member feed by secret token and honours the reminder opt-in', async () => {

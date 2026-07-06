@@ -57,9 +57,14 @@ membre). Exposés au front en camelCase via `/auth/me`
 - `quest_prerequisites` — `kind` + réf (quête / faction+palier / item / valeur).
 - `quest_map_points` — 1–2 points **X/Y/Z** bruts + `role`.
 - `quest_completions` — `(quest_id, member_id, period_key)` **unique**.
+- `quest_maps` — **plusieurs cartes** nommées (Overworld, Nether, régions…),
+  chacune avec son **centre + zoom** propre (`center_x/center_z/default_span`)
+  car un monde n'est pas toujours centré en 0,0. Éditables, non supprimable s'il
+  n'en reste qu'une.
 - `quest_map_pois` — **points d'intérêt libres** (non liés à une quête) :
-  bâtiments, zones de farm, PNJ… avec catégorie, note et X/Y/Z. Affichés sur
-  l'onglet « Carte » aux côtés des points de quête agrégés.
+  bâtiments, zones de farm, PNJ… avec catégorie, note, X/Y/Z. Les points de
+  quête (`quest_map_points`) et les POI portent un `map_id` (NULL = carte par
+  défaut) ; l'onglet « Carte » agrège les deux, par carte.
 - `quest_groups` + `quest_group_items` — **groupes personnalisés** (many-to-many),
   un axe de rangement libre en plus des factions (origine) et chaînes (séquence).
   Une quête peut appartenir à plusieurs groupes ; gérés dans l'onglet « Groupes »
@@ -96,7 +101,8 @@ GET  /chains                   chaînes
 GET  /chains/:id/graph         { nodes, edges } pour la vue chaîne
 GET  /gains                    gains potentiels « si tu fais tout » par cadence
 GET  /reputation               factions + paliers + quêtes qui en octroient
-GET  /map                      { questPoints, pois } pour l'onglet « Carte »
+GET  /maps                     liste des cartes
+GET  /map?map=<id>             { questPoints, pois } d'une carte (défaut si omis)
 GET  /quests?faction=&chain=&occurrence=   liste (+ `done` du membre)
 GET  /quests/:id               fiche complète (+ `done` + mon historique)
 GET  /me/quests                { done: { questId: true } } (période courante)
@@ -112,6 +118,7 @@ POST|PUT|DELETE  /factions[/:id]     (tiers dans le payload)
 POST|PUT|DELETE  /chains[/:id]
 POST|PUT|DELETE  /groups[/:id]
 POST|PUT|DELETE  /pois[/:id]         (points d'intérêt libres de la carte)
+POST|PUT|DELETE  /maps[/:id]         (cartes ; DELETE refuse la dernière)
 POST|PUT|DELETE  /quests[/:id]
 ```
 

@@ -10,6 +10,7 @@ import {
   listChains,
   listFactions,
   listGroups,
+  listMaps,
   listQuests,
   memberCurrentDone,
   potentialGains,
@@ -41,7 +42,11 @@ questsRouter.get('/chains/:id/graph', READ, (req, res) => {
 });
 questsRouter.get('/gains', READ, (_req, res) => res.json(potentialGains()));
 questsRouter.get('/reputation', READ, (_req, res) => res.json(reputationOverview()));
-questsRouter.get('/map', READ, (_req, res) => res.json(worldMap()));
+questsRouter.get('/maps', READ, (_req, res) => res.json(listMaps()));
+questsRouter.get('/map', READ, (req, res) => {
+  const mapId = req.query.map ? Number(req.query.map) : null;
+  res.json(worldMap(mapId));
+});
 
 // ── Quests ─────────────────────────────────────────────────────────────────
 questsRouter.get('/quests', READ, (req, res) => {

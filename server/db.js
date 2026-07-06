@@ -1009,6 +1009,44 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_map_pois_cat ON quest_map_pois(category);`);
+
+  // Multiple named maps (e.g. Overworld / Nether, or distinct regions). Each map
+  // carries its own default view — center + span — because a server world is
+  // rarely centred on 0,0. Quest map points and free POIs belong to a map.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_maps (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      nom          TEXT NOT NULL,
+      description  TEXT NOT NULL DEFAULT '',
+      couleur      TEXT NOT NULL DEFAULT '#c9a8e8',
+      center_x     INTEGER NOT NULL DEFAULT 0,
+      center_z     INTEGER NOT NULL DEFAULT 0,
+      default_span INTEGER NOT NULL DEFAULT 512,
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_maps_sort ON quest_maps(sort_order, id);`);
+  // A NULL map_id means "the default (first) map" — resolved at read time so
+  // deleting a map (SET NULL) never orphans a point off the map view.
+  ensureColumn('quest_map_pois', 'map_id', 'INTEGER REFERENCES quest_maps(id) ON DELETE SET NULL');
+  ensureColumn('quest_map_points', 'map_id', 'INTEGER REFERENCES quest_maps(id) ON DELETE SET NULL');
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_map_pois_map ON quest_map_pois(map_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_map_points_map ON quest_map_points(map_id);`);
+
+  // Guarantee a default map exists, then adopt any pre-existing points/POIs
+  // created before the multi-map feature. Runs once (guarded by empty table).
+  if (db.prepare('SELECT COUNT(*) AS n FROM quest_maps').get().n === 0) {
+    const def = db.prepare(`
+      INSERT INTO quest_maps (nom, description, center_x, center_z, default_span, sort_order)
+      VALUES ('Monde principal', 'Carte par défaut', 0, 0, 512, 0)
+    `).run();
+    db.prepare('UPDATE quest_map_pois SET map_id = ? WHERE map_id IS NULL').run(def.lastInsertRowid);
+    db.prepare('UPDATE quest_map_points SET map_id = ? WHERE map_id IS NULL').run(def.lastInsertRowid);
+  }
 }
 
 function ensureColumn(table, column, ddl) {

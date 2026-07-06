@@ -4,17 +4,20 @@ import {
   createChain,
   createFaction,
   createGroup,
+  createMap,
   createPoi,
   createQuest,
   deleteChain,
   deleteFaction,
   deleteGroup,
+  deleteMap,
   deletePoi,
   deleteQuest,
   getFaction,
   updateChain,
   updateFaction,
   updateGroup,
+  updateMap,
   updatePoi,
   updateQuest,
 } from '../quests/store.js';
@@ -67,6 +70,10 @@ function validateGroup(b) {
 function validatePoi(b) {
   if (!nonEmpty(b?.label)) throw new Invalid('poi_label_required');
   if (b.category && !POI_CATEGORIES.has(b.category)) throw new Invalid('invalid_poi_category');
+}
+
+function validateMap(b) {
+  if (!nonEmpty(b?.nom)) throw new Invalid('map_nom_required');
 }
 
 function validateQuest(b) {
@@ -175,6 +182,26 @@ questsAdminRouter.put('/pois/:id', handle((req, res) => {
 
 questsAdminRouter.delete('/pois/:id', (req, res) => {
   if (!deletePoi(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Maps (multiple worlds/regions with editable centre + span) ──────────────
+questsAdminRouter.post('/maps', handle((req, res) => {
+  validateMap(req.body);
+  res.status(201).json(createMap(req.body, req.user.id));
+}));
+
+questsAdminRouter.put('/maps/:id', handle((req, res) => {
+  validateMap(req.body);
+  const out = updateMap(Number(req.params.id), req.body, req.user.id);
+  if (!out) return res.status(404).json({ error: 'not_found' });
+  res.json(out);
+}));
+
+questsAdminRouter.delete('/maps/:id', (req, res) => {
+  const out = deleteMap(Number(req.params.id));
+  if (out === 'last_map') return res.status(400).json({ error: 'cannot_delete_last_map' });
+  if (!out) return res.status(404).json({ error: 'not_found' });
   res.status(204).end();
 });
 

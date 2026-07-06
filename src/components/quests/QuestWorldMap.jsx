@@ -12,15 +12,15 @@ import { computeView, gridLines, niceStep } from './mapGrid';
 const CLICK_SLOP = 4; // px of movement below which a drag counts as a click
 
 export function QuestWorldMap({
-  questPoints = [], pois = [], canEdit = false,
-  onOpenQuest, onEditPoi, onAddAt,
+  questPoints = [], pois = [], canEdit = false, initialView = null,
+  onOpenQuest, onEditPoi, onAddAt, onSaveView,
 }) {
   const boxRef = useRef(null);
   const drag = useRef(null);
-  // Initial view fits all points once; the user refits via the button afterwards.
-  const [view, setView] = useState(
-    () => computeView([...questPoints, ...pois], { defaultSpan: 512, padFactor: 1.8, minSpan: 128 }),
-  );
+  const fit = () => computeView([...questPoints, ...pois], { defaultSpan: 512, padFactor: 1.8, minSpan: 128 });
+  // Start from the map's configured centre/span (world isn't always at 0,0);
+  // fall back to auto-fitting the points if the map has no configured view.
+  const [view, setView] = useState(() => (initialView || fit()));
   const [addMode, setAddMode] = useState(false);
   const [showQuests, setShowQuests] = useState(true);
   const [showPois, setShowPois] = useState(true);
@@ -39,7 +39,7 @@ export function QuestWorldMap({
   };
 
   const zoom = (factor) => setView((v) => ({ ...v, span: clamp(v.span * factor, 32, 200000) }));
-  const refit = () => setView(computeView([...questPoints, ...pois], { defaultSpan: 512, padFactor: 1.8, minSpan: 128 }));
+  const recenter = () => setView(initialView || fit());
 
   const onDown = (e) => {
     drag.current = { x0: e.clientX, y0: e.clientY, cx: view.cx, cz: view.cz, moved: 0 };
@@ -76,7 +76,12 @@ export function QuestWorldMap({
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
         <TB onClick={() => zoom(0.75)} title="Zoom avant">＋</TB>
         <TB onClick={() => zoom(1.3333)} title="Zoom arrière">－</TB>
-        <TB onClick={refit}>Recentrer</TB>
+        <TB onClick={recenter} title="Revenir au centre de la carte">Recentrer</TB>
+        <TB onClick={() => setView(fit())} title="Cadrer sur tous les points">Ajuster</TB>
+        {canEdit && onSaveView && (
+          <TB onClick={() => onSaveView(Math.round(view.cx), Math.round(view.cz), Math.round(view.span))}
+            title="Mémoriser la vue actuelle comme centre/zoom par défaut de cette carte">💾 Vue par défaut</TB>
+        )}
         <Toggle on={showQuests} onClick={() => setShowQuests((v) => !v)} color={ACC}>◆ Quêtes ({questPoints.length})</Toggle>
         <Toggle on={showPois} onClick={() => setShowPois((v) => !v)} color="#e8c86a">● Points ({pois.length})</Toggle>
         {canEdit && (

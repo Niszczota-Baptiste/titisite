@@ -1,5 +1,5 @@
 import { db } from './db.js';
-import { createChain, createFaction, createPoi, createQuest, updateQuest } from './quests/store.js';
+import { createChain, createFaction, createMap, createPoi, createQuest, defaultMapId, updateMap, updateQuest } from './quests/store.js';
 
 // Demo seed for the quest tracker, exercising every view end to end: five
 // factions (incl. a « maîtrise »), a branching chain, and quests of each
@@ -169,7 +169,7 @@ const POIS = [
   { label: 'Ferme à blé communautaire', category: 'farm', x: 250, y: 66, z: -95, note: 'Pour l\'offrande de cendres — récolte auto.' },
   { label: 'Mine de fer du Château', category: 'ressource', x: 55, y: 32, z: 40, note: 'Filon riche, proche des cuisines.' },
   { label: 'Grande bibliothèque', category: 'batiment', x: 5, y: 70, z: -20, note: 'Bâtiment notable de la cour.' },
-  { label: 'Farm de Blaze', category: 'farm', x: 305, y: 48, z: -160, note: 'Poudre de Blaze pour le Festival des cendres.' },
+  { label: 'Farm de Blaze', category: 'farm', x: 40, y: 48, z: 20, note: 'Poudre de Blaze pour le Festival des cendres.', map: 'nether' },
 ];
 
 export function seedQuestsIfEmpty() {
@@ -228,7 +228,12 @@ export function seedQuestsIfEmpty() {
     }, uid);
   }
 
-  for (const p of POIS) createPoi(p, uid);
+  // A second example map (the default « Monde principal » is created in migrate).
+  const nether = createMap({ nom: 'Nether', description: 'Dimension du Nether', couleur: '#e0526f', centerX: 0, centerZ: 0, defaultSpan: 256 }, uid);
+  const mainMapId = defaultMapId();
+  // Frame the default map on the seeded overworld points (world isn't at 0,0).
+  updateMap(mainMapId, { nom: 'Monde principal', description: 'Carte par défaut', centerX: -50, centerZ: 100, defaultSpan: 1200 }, uid);
+  for (const p of POIS) createPoi({ ...p, mapId: p.map === 'nether' ? nether.id : mainMapId }, uid);
 
-  return { inserted: { factions: Object.keys(FACTIONS).length, chains: 1, quests: QUESTS.length, pois: POIS.length } };
+  return { inserted: { factions: Object.keys(FACTIONS).length, chains: 1, quests: QUESTS.length, pois: POIS.length, maps: 2 } };
 }

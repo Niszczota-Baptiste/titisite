@@ -21,7 +21,7 @@ const EDITOR_TABS = [
   ['groupes', 'Groupes'],
 ];
 
-export function QuestEditor({ factions, chains, groups = [], quests, byId, catalog, onChanged }) {
+export function QuestEditor({ factions, chains, groups = [], maps = [], quests, byId, catalog, onChanged }) {
   const [tab, setTab] = useState('quetes');
   return (
     <div>
@@ -44,7 +44,7 @@ export function QuestEditor({ factions, chains, groups = [], quests, byId, catal
       {tab === 'groupes' && <GroupsManager groups={groups} onChanged={onChanged} />}
       {tab === 'quetes' && (
         <QuestsManager
-          quests={quests} factions={factions} chains={chains} groups={groups}
+          quests={quests} factions={factions} chains={chains} groups={groups} maps={maps}
           byId={byId} catalog={catalog} onChanged={onChanged}
         />
       )}
@@ -302,7 +302,7 @@ function GroupForm({ group, onDone, onCancel }) {
 }
 
 // ── Quests ──────────────────────────────────────────────────────────────────
-function QuestsManager({ quests, factions, chains, groups, byId, catalog, onChanged }) {
+function QuestsManager({ quests, factions, chains, groups, maps, byId, catalog, onChanged }) {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(null); // 'new' | quest summary | null
 
@@ -320,7 +320,7 @@ function QuestsManager({ quests, factions, chains, groups, byId, catalog, onChan
     return (
       <QuestForm
         quest={editing === 'new' ? null : editing}
-        factions={factions} chains={chains} groups={groups} quests={quests} byId={byId} catalog={catalog}
+        factions={factions} chains={chains} groups={groups} maps={maps} quests={quests} byId={byId} catalog={catalog}
         onDone={() => { setEditing(null); onChanged(); }}
         onCancel={() => setEditing(null)}
       />
@@ -357,7 +357,7 @@ const toDatetimeLocal = (unix) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-function QuestForm({ quest, factions, chains, groups = [], quests, byId, catalog, onDone, onCancel }) {
+function QuestForm({ quest, factions, chains, groups = [], maps = [], quests, byId, catalog, onDone, onCancel }) {
   const [titre, setTitre] = useState(quest?.titre || '');
   const [description, setDescription] = useState(quest?.description || '');
   const [occurrenceType, setOccurrenceType] = useState(quest?.occurrenceType || 'simple');
@@ -368,7 +368,7 @@ function QuestForm({ quest, factions, chains, groups = [], quests, byId, catalog
   const [inputs, setInputs] = useState(quest?.inputs?.map(strip) || []);
   const [rewards, setRewards] = useState(quest?.rewards?.map(strip) || []);
   const [prerequisites, setPrereqs] = useState(quest?.prerequisites?.map(strip) || []);
-  const [mapPoints, setMapPoints] = useState(quest?.mapPoints?.map((p) => ({ label: p.label, role: p.role, x: p.x, y: p.y, z: p.z })) || []);
+  const [mapPoints, setMapPoints] = useState(quest?.mapPoints?.map((p) => ({ label: p.label, role: p.role, x: p.x, y: p.y, z: p.z, mapId: p.mapId })) || []);
   const [groupIds, setGroupIds] = useState(quest?.groups?.map((g) => g.id) || []);
   const [activePoint, setActivePoint] = useState(null);
   const toggleGroup = (id) => setGroupIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
@@ -464,7 +464,7 @@ function QuestForm({ quest, factions, chains, groups = [], quests, byId, catalog
         byId={byId} catalog={catalog} otherQuests={otherQuests}
       />
       <PrereqSection rows={prerequisites} setRows={setPrereqs} factionArr={factionArr} otherQuests={otherQuests} byId={byId} catalog={catalog} />
-      <PointsSection points={mapPoints} setPoints={setMapPoints} active={activePoint} setActive={setActivePoint} />
+      <PointsSection points={mapPoints} setPoints={setMapPoints} maps={maps} active={activePoint} setActive={setActivePoint} />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
         <Button type="button" variant="ghost" onClick={onCancel}>Annuler</Button>
@@ -581,11 +581,11 @@ function PrereqSection({ rows, setRows, factionArr, otherQuests, byId, catalog }
   );
 }
 
-function PointsSection({ points, setPoints, active, setActive }) {
+function PointsSection({ points, setPoints, maps = [], active, setActive }) {
   const set = (i, patch) => setPoints((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
   const add = () => {
     if (points.length >= 2) return;
-    setPoints((ps) => [...ps, { label: '', role: 'recuperation', x: 0, y: 64, z: 0 }]);
+    setPoints((ps) => [...ps, { label: '', role: 'recuperation', x: 0, y: 64, z: 0, mapId: maps[0]?.id }]);
     setActive(points.length);
   };
   return (
@@ -606,6 +606,11 @@ function PointsSection({ points, setPoints, active, setActive }) {
                 <select value={p.role} onChange={(e) => set(i, { role: e.target.value })} style={{ ...selectStyle }}>
                   {Object.entries(POINT_ROLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                 </select>
+                {maps.length > 1 && (
+                  <select value={p.mapId ?? maps[0]?.id ?? ''} onChange={(e) => set(i, { mapId: Number(e.target.value) })} style={{ ...selectStyle }} title="Carte">
+                    {maps.map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}
+                  </select>
+                )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 34px', gap: 6 }}>
                 <Input type="number" value={p.x} placeholder="X" onChange={(e) => set(i, { x: Number(e.target.value) })} />

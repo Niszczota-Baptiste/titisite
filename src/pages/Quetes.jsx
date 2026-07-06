@@ -52,6 +52,7 @@ function QuestsApp({ user }) {
   const [factions, setFactions] = useState(new Map());
   const [chains, setChains] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [maps, setMaps] = useState([]);
   const [quests, setQuests] = useState([]);
   const [doneMap, setDoneMap] = useState({});
   const [filters, setFilters] = useState({ status: 'all' });
@@ -64,12 +65,13 @@ function QuestsApp({ user }) {
   const canEdit = !!user.canEditQuests;
 
   const loadRef = useCallback(async () => {
-    const [fac, ch, gr] = await Promise.all([
-      api.quests.factions(), api.quests.chains(), api.quests.groups(),
+    const [fac, ch, gr, mp] = await Promise.all([
+      api.quests.factions(), api.quests.chains(), api.quests.groups(), api.quests.maps(),
     ]);
     setFactions(new Map(fac.map((f) => [f.id, f])));
     setChains(ch);
     setGroups(gr);
+    setMaps(mp);
   }, []);
 
   const loadQuests = useCallback(async () => {
@@ -153,7 +155,7 @@ function QuestsApp({ user }) {
         {tab === 'reputation' && <ReputationView onOpenQuest={setDetailId} />}
         {tab === 'gains' && <GainsView />}
         {tab === 'editeur' && canEdit && (
-          <QuestEditor factions={factions} chains={chains} groups={groups} quests={quests} byId={byId} catalog={catalog} onChanged={refreshAll} />
+          <QuestEditor factions={factions} chains={chains} groups={groups} maps={maps} quests={quests} byId={byId} catalog={catalog} onChanged={refreshAll} />
         )}
       </div>
 
