@@ -2,12 +2,14 @@ import { Router } from 'express';
 import { requireAuth } from '../auth.js';
 import {
   createChain,
+  createCustomItem,
   createFaction,
   createGroup,
   createMap,
   createPoi,
   createQuest,
   deleteChain,
+  deleteCustomItem,
   deleteFaction,
   deleteGroup,
   deleteMap,
@@ -15,6 +17,7 @@ import {
   deleteQuest,
   getFaction,
   updateChain,
+  updateCustomItem,
   updateFaction,
   updateGroup,
   updateMap,
@@ -74,6 +77,12 @@ function validatePoi(b) {
 
 function validateMap(b) {
   if (!nonEmpty(b?.nom)) throw new Invalid('map_nom_required');
+}
+
+function validateCustomItem(b) {
+  if (!nonEmpty(b?.nom)) throw new Invalid('custom_item_nom_required');
+  if (asStr(b.nom).trim().length > 120) throw new Invalid('custom_item_nom_too_long');
+  if (b.enchantements != null && !Array.isArray(b.enchantements)) throw new Invalid('invalid_enchantements');
 }
 
 function validateQuest(b) {
@@ -202,6 +211,24 @@ questsAdminRouter.delete('/maps/:id', (req, res) => {
   const out = deleteMap(Number(req.params.id));
   if (out === 'last_map') return res.status(400).json({ error: 'cannot_delete_last_map' });
   if (!out) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Custom items (objets renommés + enchantements) ──────────────────────────
+questsAdminRouter.post('/custom-items', handle((req, res) => {
+  validateCustomItem(req.body);
+  res.status(201).json(createCustomItem(req.body, req.user.id));
+}));
+
+questsAdminRouter.put('/custom-items/:id', handle((req, res) => {
+  validateCustomItem(req.body);
+  const out = updateCustomItem(Number(req.params.id), req.body, req.user.id);
+  if (!out) return res.status(404).json({ error: 'not_found' });
+  res.json(out);
+}));
+
+questsAdminRouter.delete('/custom-items/:id', (req, res) => {
+  if (!deleteCustomItem(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
   res.status(204).end();
 });
 

@@ -5,18 +5,17 @@ import { isMember } from '../workspaces.js';
 
 // Réglages PERSO du cockpit MF, sous /api/me/cockpit (cookie de session).
 // Chaque utilisateur ne voit et ne modifie que SES données — l'id utilisateur
-// vient toujours de la session, jamais du client. Accès : admin, ou membre
-// ayant can_view_quests / can_edit_quests (mêmes flags que /quetes).
+// vient toujours de la session, jamais du client. Accès : admin UNIQUEMENT
+// (le cockpit n'est plus ouvert aux membres, même avec can_view_quests).
 export const cockpitMeRouter = Router();
 
-function requireQuestView(req, res, next) {
+function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'not_authenticated' });
-  if (req.user.role === 'admin') return next();
-  if (req.user.can_view_quests === 1 || req.user.can_edit_quests === 1) return next();
-  return res.status(403).json({ error: 'forbidden' });
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  return next();
 }
 
-cockpitMeRouter.use(requireAuth, requireQuestView);
+cockpitMeRouter.use(requireAuth, requireAdmin);
 
 // ── Items perso (section `wanted` du flux) ─────────────────────────────────
 

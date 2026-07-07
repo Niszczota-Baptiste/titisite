@@ -253,6 +253,75 @@ function replaceGroupItems(questId, groupIds) {
   for (const gid of new Set((groupIds || []).map(Number).filter(Boolean))) ins.run(gid, questId);
 }
 
+// ── Custom items (objets renommés + enchantements) ───────────────────────
+// Un item du codex rebaptisé (ex. « Chair de zombie » → « Chair de noyé »),
+// avec une liste libre d'enchantements. Les lignes de quêtes le référencent
+// par ref_code = 'custom:<id>'.
+
+function mapCustomItem(r) {
+  if (!r) return null;
+  let enchantements = [];
+  try {
+    const parsed = JSON.parse(r.enchantements);
+    if (Array.isArray(parsed)) enchantements = parsed.map(String);
+  } catch { /* blob illisible → liste vide */ }
+  return {
+    id: r.id, nom: r.nom, refCode: r.ref_code, enchantements,
+    note: r.note, sortOrder: r.sort_order, updatedAt: r.updated_at,
+  };
+}
+
+const enchantsJson = (list) => JSON.stringify(
+  (Array.isArray(list) ? list : [])
+    .map((e) => String(e).trim().slice(0, 80))
+    .filter(Boolean)
+    .slice(0, 20),
+);
+
+export function listCustomItems() {
+  return db.prepare(`SELECT * FROM quest_custom_items ORDER BY sort_order, id`).all().map(mapCustomItem);
+}
+
+export function getCustomItem(id) {
+  return mapCustomItem(db.prepare(`SELECT * FROM quest_custom_items WHERE id = ?`).get(id));
+}
+
+// Nom custom depuis un ref_code 'custom:<id>' (null si autre forme / inconnu).
+export function customItemNameByRef(refCode) {
+  const m = /^custom:(\d+)$/.exec(String(refCode || ''));
+  if (!m) return null;
+  const r = db.prepare(`SELECT nom FROM quest_custom_items WHERE id = ?`).get(Number(m[1]));
+  return r ? r.nom : null;
+}
+
+export function createCustomItem(data, userId) {
+  const info = db.prepare(`
+    INSERT INTO quest_custom_items (nom, ref_code, enchantements, note, sort_order, created_by, updated_by)
+    VALUES (?, ?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_custom_items), 0), ?, ?)
+  `).run(
+    String(data.nom).trim(), data.refCode || null, enchantsJson(data.enchantements),
+    String(data.note || '').trim().slice(0, 500), userId, userId,
+  );
+  return getCustomItem(info.lastInsertRowid);
+}
+
+export function updateCustomItem(id, data, userId) {
+  const exists = db.prepare(`SELECT id FROM quest_custom_items WHERE id = ?`).get(id);
+  if (!exists) return null;
+  db.prepare(`
+    UPDATE quest_custom_items SET nom = ?, ref_code = ?, enchantements = ?, note = ?,
+      updated_by = ?, updated_at = strftime('%s','now') WHERE id = ?
+  `).run(
+    String(data.nom).trim(), data.refCode || null, enchantsJson(data.enchantements),
+    String(data.note || '').trim().slice(0, 500), userId, id,
+  );
+  return getCustomItem(id);
+}
+
+export function deleteCustomItem(id) {
+  return db.prepare(`DELETE FROM quest_custom_items WHERE id = ?`).run(id).changes > 0;
+}
+
 // ── Quests ───────────────────────────────────────────────────────────────
 
 export function listQuests(filters = {}) {

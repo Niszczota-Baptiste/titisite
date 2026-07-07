@@ -7,9 +7,11 @@ import { findByCockpitToken } from '../users.js';
 import { buildCockpitFeed } from '../quests/cockpit.js';
 import {
   completeQuest,
+  customItemNameByRef,
   getChainGraph,
   getQuest,
   listChains,
+  listCustomItems,
   listFactions,
   listGroups,
   listMaps,
@@ -45,6 +47,7 @@ questsRouter.get('/chains/:id/graph', READ, (req, res) => {
 questsRouter.get('/gains', READ, (_req, res) => res.json(potentialGains()));
 questsRouter.get('/reputation', READ, (_req, res) => res.json(reputationOverview()));
 questsRouter.get('/maps', READ, (_req, res) => res.json(listMaps()));
+questsRouter.get('/custom-items', READ, (_req, res) => res.json(listCustomItems()));
 questsRouter.get('/map', READ, (req, res) => {
   const mapId = req.query.map ? Number(req.query.map) : null;
   res.json(worldMap(mapId));
@@ -111,7 +114,9 @@ questsRouter.get('/quests/:id/stock', READ, (req, res) => {
   const wsById = new Map(workspaces.map((w) => [w.id, w]));
 
   const out = inputs.map((input) => {
-    const candidates = new Set([normName(input.label), normName(codexNameById(input.refCode))]);
+    // ref_code 'custom:<id>' → nom custom (item renommé) ; sinon nom codex.
+    const refName = customItemNameByRef(input.refCode) ?? codexNameById(input.refCode);
+    const candidates = new Set([normName(input.label), normName(refName)]);
     candidates.delete('');
     const locations = resources
       .filter((r) => candidates.has(normName(r.name)))
@@ -171,7 +176,8 @@ questsRouter.get('/cockpit/:token', cockpitLimiter, (req, res) => {
   // Accept an optional .json suffix so the URL reads like a file to the poller.
   const token = String(req.params.token).replace(/\.json$/, '');
   const member = findByCockpitToken(token);
-  if (!member) return res.status(404).json({ error: 'not_found' });
+  // Cockpit admin-only : un jeton émis pour un compte membre ne sert plus rien.
+  if (!member || member.role !== 'admin') return res.status(404).json({ error: 'not_found' });
   res.setHeader('Cache-Control', 'no-store');
   res.json(buildCockpitFeed(member));
 });

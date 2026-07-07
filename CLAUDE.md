@@ -105,6 +105,14 @@ Single-process Node app:
   API via `api.quests.*`. **No reputation score is stored** (in-game) —
   factions/tiers are a reference and rewards only *document* gains. Item lines
   reuse the **codex** catalogue (`CodexPicker`, `ref_code` = codex id, no FK).
+  **Custom items** (`quest_custom_items`, « Items » tab in `/quetes`): a codex
+  item renamed (e.g. chair de zombie → « Chair de noyé ») + free-text enchant
+  list; quest lines reference them as `ref_code = 'custom:<id>'`, they're
+  merged into the picker catalogue via `customCatalogEntries()`
+  (`src/data/minefieldCatalog.js`) both in `/quetes` and in the projects'
+  Minecraft tab (chest autocomplete + icons), and the stock endpoint matches
+  them by normalized **custom name** so a chest row named after the custom
+  item is tracked.
   **Recurring reset is a pure function of `period_key`** (07:00 Europe/Paris,
   `server/quests/period.js`) — no cron, no DB mutation, replayable/self-healing.
   **Cockpit MF integration is PULL**: a secret per-user `cockpit_token`
@@ -113,10 +121,11 @@ Single-process Node app:
   inputs/rewards/mapPoints per quest, a **personal** `wanted` list
   (`cockpit_items`, per-user — NOT the group `minecraft_wanted`) and a
   per-user follow filter (`cockpit_quest_follows`: no row = send everything).
-  Personal settings live in the « 🛰️ Cockpit » dashboard tab (`CockpitEditor`,
-  also the only `/admin` tab visible to non-admin members with
-  `can_view_quests`), API under `/api/me/cockpit/*`
-  (`server/routes/cockpit-me.js`, `api.cockpit.*`).
+  The cockpit is **admin-only**: the « 🛰️ Cockpit » dashboard tab
+  (`CockpitEditor`), the `/quetes` banner button, `/api/me/cockpit-token*`,
+  `/api/me/quest-reminders` and `/api/me/cockpit/*` all require role `admin`,
+  the token feed 404s for non-admin tokens, and `/admin` rejects non-admin
+  members entirely (`server/routes/cockpit-me.js`, `api.cockpit.*`).
   `GET /api/quests/quests/:id/stock` links quest item inputs to the Minecraft
   inventories of the caller's accessible workspaces (normalized-name match via
   `server/codex.js`; chest + world + coords per location) — surfaced in

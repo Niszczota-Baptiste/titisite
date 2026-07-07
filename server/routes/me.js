@@ -118,15 +118,16 @@ function cockpitPayload(req, token) {
   };
 }
 
-meRouter.get('/cockpit-token', requireAuth, requireRole('admin', 'member'), (req, res) => {
+// Cockpit réservé aux admins : jeton, rotation et opt-in rappels compris.
+meRouter.get('/cockpit-token', requireAuth, requireRole('admin'), (req, res) => {
   res.json(cockpitPayload(req, ensureCockpitToken(req.user.id)));
 });
 
-meRouter.post('/cockpit-token/rotate', requireAuth, requireRole('admin', 'member'), (req, res) => {
+meRouter.post('/cockpit-token/rotate', requireAuth, requireRole('admin'), (req, res) => {
   res.json(cockpitPayload(req, rotateCockpitToken(req.user.id)));
 });
 
-meRouter.put('/quest-reminders', requireAuth, requireRole('admin', 'member'), (req, res) => {
+meRouter.put('/quest-reminders', requireAuth, requireRole('admin'), (req, res) => {
   const enabled = req.body?.enabled ? 1 : 0;
   db.prepare(`UPDATE users SET wants_quest_reminders = ? WHERE id = ?`).run(enabled, req.user.id);
   res.json({ wantsReminders: enabled === 1 });

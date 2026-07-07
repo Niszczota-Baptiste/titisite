@@ -11,9 +11,9 @@ export default function Admin() {
   if (loading) return <Loading />;
   if (!user) return <Login title="Admin" subtitle="Espace d'édition du portfolio." />;
 
-  // Les membres ayant accès aux quêtes voient un dashboard réduit au seul
-  // onglet « Cockpit » (leurs réglages perso du flux MF).
-  if (!isAdmin && !user.canViewQuests && !user.canEditQuests) {
+  // Dashboard réservé aux admins — l'onglet « Cockpit » compris (les membres,
+  // même avec can_view_quests, n'y ont plus accès).
+  if (!isAdmin) {
     return <Forbidden />;
   }
 

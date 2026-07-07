@@ -6,8 +6,10 @@ import { useCodex } from '../hooks/useCodex';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { Login } from '../components/admin/Login';
 import { Modal } from '../components/project/shared';
+import { customCatalogEntries } from '../data/minefieldCatalog';
 import { ChainGraph } from '../components/quests/ChainGraph';
 import { CockpitPanel } from '../components/quests/CockpitPanel';
+import { CustomItemsTab } from '../components/quests/CustomItemsTab';
 import { GainsView } from '../components/quests/GainsView';
 import { MapTab } from '../components/quests/MapTab';
 import { QuestDetail } from '../components/quests/QuestDetail';
@@ -40,6 +42,7 @@ export default function Quetes() {
 
 const TABS = [
   ['quetes', 'Quêtes'],
+  ['items', 'Items'],
   ['carte', 'Carte'],
   ['chaines', 'Chaînes'],
   ['reputation', 'Réputation'],
@@ -53,6 +56,7 @@ function QuestsApp({ user }) {
   const [chains, setChains] = useState([]);
   const [groups, setGroups] = useState([]);
   const [maps, setMaps] = useState([]);
+  const [customItems, setCustomItems] = useState([]);
   const [quests, setQuests] = useState([]);
   const [doneMap, setDoneMap] = useState({});
   const [filters, setFilters] = useState({ status: 'all' });
@@ -64,14 +68,27 @@ function QuestsApp({ user }) {
 
   const canEdit = !!user.canEditQuests;
 
+  // Codex augmenté des items custom (id `custom:<n>`, icône de l'item de base) :
+  // les pickers et fiches de quêtes voient ainsi les objets renommés comme des
+  // entrées de catalogue à part entière.
+  const customEntries = useMemo(() => customCatalogEntries(customItems, catalog), [customItems, catalog]);
+  const catalogPlus = useMemo(() => [...customEntries, ...catalog], [customEntries, catalog]);
+  const byIdPlus = useMemo(() => {
+    const m = new Map(byId);
+    for (const e of customEntries) m.set(e.id, e);
+    return m;
+  }, [byId, customEntries]);
+
   const loadRef = useCallback(async () => {
-    const [fac, ch, gr, mp] = await Promise.all([
+    const [fac, ch, gr, mp, ci] = await Promise.all([
       api.quests.factions(), api.quests.chains(), api.quests.groups(), api.quests.maps(),
+      api.quests.customItems(),
     ]);
     setFactions(new Map(fac.map((f) => [f.id, f])));
     setChains(ch);
     setGroups(gr);
     setMaps(mp);
+    setCustomItems(ci);
   }, []);
 
   const loadQuests = useCallback(async () => {
@@ -150,19 +167,22 @@ function QuestsApp({ user }) {
         {tab === 'quetes' && (
           <QuestList quests={quests} factions={factions} chains={chains} groups={groups} filters={filters} setFilters={setFilters} onOpen={setDetailId} />
         )}
+        {tab === 'items' && (
+          <CustomItemsTab items={customItems} catalog={catalog} byId={byId} canEdit={canEdit} onChanged={refreshAll} />
+        )}
         {tab === 'carte' && <MapTab canEdit={canEdit} onOpenQuest={setDetailId} />}
         {tab === 'chaines' && <ChainsTab chains={chains} doneMap={doneMap} onOpen={setDetailId} />}
         {tab === 'reputation' && <ReputationView onOpenQuest={setDetailId} />}
         {tab === 'gains' && <GainsView />}
         {tab === 'editeur' && canEdit && (
-          <QuestEditor factions={factions} chains={chains} groups={groups} maps={maps} quests={quests} byId={byId} catalog={catalog} onChanged={refreshAll} />
+          <QuestEditor factions={factions} chains={chains} groups={groups} maps={maps} quests={quests} byId={byIdPlus} catalog={catalogPlus} onChanged={refreshAll} />
         )}
       </div>
 
       <Modal open={detailId != null} onClose={() => setDetailId(null)} title="" width={720}>
         {detail ? (
           <QuestDetail
-            quest={detail} byId={byId} factions={factions}
+            quest={detail} byId={byIdPlus} factions={factions}
             onComplete={complete} onUncomplete={uncomplete} busy={busy}
             onOpenQuest={(id) => setDetailId(id)}
           />
@@ -214,6 +234,7 @@ function ChainsTab({ chains, doneMap, onOpen }) {
 }
 
 function Banner({ user, canEdit, onCockpit }) {
+  const isAdmin = user.role === 'admin'; // le cockpit MF est réservé aux admins
   return (
     <div style={{
       position: 'relative', overflow: 'hidden', marginBottom: 28,
@@ -237,14 +258,16 @@ function Banner({ user, canEdit, onCockpit }) {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button
-            type="button" onClick={onCockpit}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 10,
-              cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600,
-              background: 'rgba(14,9,28,0.72)', color: GOLD, border: `1px solid ${GOLD}`,
-            }}
-          >🛰️ Cockpit MF</button>
+          {isAdmin && (
+            <button
+              type="button" onClick={onCockpit}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 10,
+                cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600,
+                background: 'rgba(14,9,28,0.72)', color: GOLD, border: `1px solid ${GOLD}`,
+              }}
+            >🛰️ Cockpit MF</button>
+          )}
           <Link to="/" style={{ color: MUTED, textDecoration: 'none', fontFamily: "'Inter',sans-serif", fontSize: 13 }}>← Site</Link>
         </div>
       </div>

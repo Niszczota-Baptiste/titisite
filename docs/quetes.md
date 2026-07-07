@@ -56,6 +56,14 @@ membre). Exposés au front en camelCase via `/auth/me`
 - `quest_inputs` / `quest_rewards` — `kind` + `ref_code` (id **codex**, pas de FK :
   le référentiel est le catalogue JSON `public/codex` + `codex_vanilla.json`),
   `faction_id`, `quantite`, `label` (surcharge/affichage), `icon`.
+- `quest_custom_items` — **items custom** (onglet « Items » de `/quetes`) : un
+  item du codex rebaptisé (ex. « Chair de zombie » → « Chair de noyé »), avec
+  `ref_code` (item de base, pour l'icône), `enchantements` (JSON array de
+  textes libres) et une note. Les lignes de quêtes (entrées / récompenses /
+  prérequis `item_possede`) les référencent via `ref_code = 'custom:<id>'` —
+  côté front, `customCatalogEntries()` (`src/data/minefieldCatalog.js`) les
+  injecte dans le codex des pickers (`/quetes` ET l'onglet ⛏️ Minecraft des
+  projets, pour l'autocomplete et les icônes des coffres).
 - `quest_prerequisites` — `kind` + réf (quête / faction+palier / item / valeur).
 - `quest_map_points` — 1–2 points **X/Y/Z** bruts + `role`.
 - `quest_completions` — `(quest_id, member_id, period_key)` **unique**.
@@ -108,6 +116,7 @@ GET  /gains                    gains potentiels « si tu fais tout » par cadenc
 GET  /reputation               factions + paliers + quêtes qui en octroient
 GET  /maps                     liste des cartes
 GET  /map?map=<id>             { questPoints, pois } d'une carte (défaut si omis)
+GET  /custom-items             items custom (nom, refCode base, enchantements)
 GET  /quests?faction=&chain=&occurrence=   liste (+ `done` du membre)
 GET  /quests/:id               fiche complète (+ `done` + mon historique)
 GET  /me/quests                { done: { questId: true } } (période courante)
@@ -124,6 +133,7 @@ POST|PUT|DELETE  /chains[/:id]
 POST|PUT|DELETE  /groups[/:id]
 POST|PUT|DELETE  /pois[/:id]         (points d'intérêt libres de la carte)
 POST|PUT|DELETE  /maps[/:id]         (cartes ; DELETE refuse la dernière)
+POST|PUT|DELETE  /custom-items[/:id] (items custom : nom, refCode, enchantements)
 POST|PUT|DELETE  /quests[/:id]
 ```
 
@@ -136,7 +146,13 @@ Toutes les entrées sont validées côté serveur (`quests-admin.js`) : enums,
 Le cockpit est une **app Python locale** (pas d'URL publique) : elle **interroge**
 un endpoint secret plutôt que de recevoir un push.
 
-- Chaque membre a un `cockpit_token` (comme le token iCal) : récupérable /
+**Accès : admins uniquement.** Le bouton « 🛰️ Cockpit MF » de `/quetes`,
+l'onglet « Cockpit » du dashboard, les endpoints `/api/me/cockpit-token*`,
+`/api/me/quest-reminders` et `/api/me/cockpit/*` exigent le rôle `admin`, et le
+flux `GET /api/quests/cockpit/<token>.json` répond 404 si le jeton appartient
+à un compte non admin (un jeton émis avant la restriction devient inerte).
+
+- Chaque admin a un `cockpit_token` (comme le token iCal) : récupérable /
   régénérable depuis le bouton **« 🛰️ Cockpit MF »** de `/quetes`
   (`GET /api/me/cockpit-token`, `POST …/rotate`) ou la page admin « Cockpit ».
 - Le cockpit poll : `GET /api/quests/cockpit/<token>.json` (sans cookie,
@@ -193,9 +209,9 @@ un endpoint secret plutôt que de recevoir un push.
 
 ### Page admin « Cockpit » (réglages perso)
 
-Onglet « 🛰️ Cockpit » du dashboard `/admin` — chaque utilisateur y gère
-**uniquement ses propres** réglages ; accessible aux admins et à tout membre
-ayant `can_view_quests` (pour eux c'est le seul onglet visible). Contenu :
+Onglet « 🛰️ Cockpit » du dashboard `/admin` — chaque admin y gère
+**uniquement ses propres** réglages ; réservé aux admins (les membres, même
+avec `can_view_quests`, n'ont plus accès au dashboard). Contenu :
 
 - l'URL secrète du flux (copier / régénérer) + l'interrupteur des rappels ;
 - les **items perso** (CRUD + cocher fait) avec nom, quantité, priorité, note,
@@ -206,7 +222,7 @@ ayant `can_view_quests` (pour eux c'est le seul onglet visible). Contenu :
 - un **aperçu du flux** (fetch de l'endpoint avec son jeton, JSON affiché).
 
 API sous `/api/me/cockpit/…` (cookie de session, jamais d'id utilisateur pris
-du client ; accès `can_view_quests`, admins compris) :
+du client ; accès admin uniquement) :
 
 ```
 GET/POST           /items          liste / création
@@ -222,8 +238,11 @@ PUT                /quests/:id/follow { followed: bool }
 entrée de type `item` de l'inventaire Minecraft (`minecraft_resources`) des
 workspaces accessibles à l'appelant (admin : tous les workspaces minecraft
 actifs ; membre : ses adhésions). Match par **nom normalisé** (accents/casse)
-sur le label de l'entrée et/ou le nom codex du `ref_code`
-(`server/codex.js`). Réponse par entrée : `needed`, `totalHave` et les
+sur le label de l'entrée et/ou le nom résolu du `ref_code` — nom codex
+(`server/codex.js`), ou **nom custom** si `ref_code = 'custom:<id>'`
+(`quest_custom_items`) : il suffit donc de ranger l'objet dans un coffre sous
+son nom custom pour que le suivi le retrouve. Réponse par entrée :
+`needed`, `totalHave` et les
 `locations` (workspace, quantité, coffre + monde + X/Y/Z, `chest: null` =
 « non rangé »). La fiche de quête (`QuestDetail`) affiche ces emplacements
 dans la section « 📦 Où trouver dans les coffres ».

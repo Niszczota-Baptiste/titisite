@@ -4,6 +4,8 @@ import { bootServer, fetcher } from './harness.js';
 
 // Cockpit MF : flux enrichi (inputs/rewards/mapPoints), items perso (section
 // `wanted`), filtre des quêtes suivies, et endpoint « où trouver » (stock).
+// Le cockpit est réservé aux ADMINS : les réglages perso passent par le compte
+// admin, et un membre (même avec can_view_quests) est refusé partout.
 
 let server;
 const ADMIN = { email: 'admin@test.local', password: 'adminpw1-strong' };
@@ -26,7 +28,7 @@ describe('cockpit — flux enrichi + items perso + follows', () => {
   let anon;
   let dailyId;
   let deadlineId;
-  let memberToken;
+  let adminToken;
 
   it('setup : quêtes + accès quêtes pour le membre', async () => {
     admin = await login(ADMIN);
@@ -57,12 +59,13 @@ describe('cockpit — flux enrichi + items perso + follows', () => {
     assert.equal(dl.status, 201);
     deadlineId = dl.json.id;
 
-    const info = await member.f.get('/api/me/cockpit-token');
-    memberToken = info.json.token;
+    const info = await admin.f.get('/api/me/cockpit-token');
+    assert.equal(info.status, 200);
+    adminToken = info.json.token;
   });
 
   it('le flux porte inputs/rewards/mapPoints sur available ET deadlines', async () => {
-    const feed = await anon.get(`/api/quests/cockpit/${memberToken}.json`);
+    const feed = await anon.get(`/api/quests/cockpit/${adminToken}.json`);
     assert.equal(feed.status, 200);
 
     const q = feed.json.available.journaliere.find((x) => x.id === dailyId);
@@ -81,110 +84,103 @@ describe('cockpit — flux enrichi + items perso + follows', () => {
   });
 
   it('items perso : CRUD + section wanted (done exclu, tri par priorité)', async () => {
-    const a = await member.f.post('/api/me/cockpit/items', {
+    const a = await admin.f.post('/api/me/cockpit/items', {
       body: { name: 'Diamant', quantity: 64, priority: 1, note: 'pour la beacon' },
     });
     assert.equal(a.status, 201);
-    const b = await member.f.post('/api/me/cockpit/items', {
+    const b = await admin.f.post('/api/me/cockpit/items', {
       body: { name: 'Laine', quantity: 32, priority: 3 },
     });
-    const c = await member.f.post('/api/me/cockpit/items', {
+    const c = await admin.f.post('/api/me/cockpit/items', {
       body: { name: 'Fer', quantity: 128, priority: 2, x: -1204, y: 11, z: 356 },
     });
     assert.equal(c.json.x, -1204);
 
     // Cocher « Laine » → exclue du flux.
-    const done = await member.f.patch(`/api/me/cockpit/items/${b.json.id}/done`);
+    const done = await admin.f.patch(`/api/me/cockpit/items/${b.json.id}/done`);
     assert.equal(done.json.done, true);
 
-    const feed = await anon.get(`/api/quests/cockpit/${memberToken}.json`);
+    const feed = await anon.get(`/api/quests/cockpit/${adminToken}.json`);
     assert.deepEqual(feed.json.wanted.map((w) => w.name), ['Diamant', 'Fer']);
     assert.equal(feed.json.counts.wanted, 2);
     assert.equal(feed.json.wanted[0].note, 'pour la beacon');
     assert.equal(feed.json.wanted[1].x, -1204);
 
     // Édition (priorité) réordonne le flux.
-    await member.f.put(`/api/me/cockpit/items/${c.json.id}`, { body: { priority: 1, quantity: 200 } });
-    const feed2 = await anon.get(`/api/quests/cockpit/${memberToken}.json`);
+    await admin.f.put(`/api/me/cockpit/items/${c.json.id}`, { body: { priority: 1, quantity: 200 } });
+    const feed2 = await anon.get(`/api/quests/cockpit/${adminToken}.json`);
     assert.equal(feed2.json.wanted.find((w) => w.name === 'Fer').quantity, 200);
 
     // Suppression.
-    const del = await member.f.delete(`/api/me/cockpit/items/${a.json.id}`);
+    const del = await admin.f.delete(`/api/me/cockpit/items/${a.json.id}`);
     assert.equal(del.status, 204);
   });
 
   it('wanted lié à un projet : nom du workspace résolu, projet inconnu → null', async () => {
     const ws = await admin.f.get('/api/workspaces');
     const principal = ws.json.find((w) => w.slug === 'projet-principal');
-    const linked = await member.f.post('/api/me/cockpit/items', {
+    const linked = await admin.f.post('/api/me/cockpit/items', {
       body: { name: 'Obsidienne', quantity: 10, priority: 2, workspaceId: principal.id },
     });
     assert.equal(linked.json.workspaceName, principal.name);
 
-    const feed = await anon.get(`/api/quests/cockpit/${memberToken}.json`);
+    const feed = await anon.get(`/api/quests/cockpit/${adminToken}.json`);
     assert.equal(feed.json.wanted.find((w) => w.name === 'Obsidienne').workspace, principal.name);
 
     // Un workspace inexistant est ignoré (SET NULL côté validation).
-    const bogus = await member.f.post('/api/me/cockpit/items', {
+    const bogus = await admin.f.post('/api/me/cockpit/items', {
       body: { name: 'X', workspaceId: 99999 },
     });
     assert.equal(bogus.json.workspaceId, null);
   });
 
-  it('isolation : un membre ne voit ni ne modifie les items d\'un autre', async () => {
-    const mine = await admin.f.post('/api/me/cockpit/items', { body: { name: 'Item admin' } });
-    const memberList = await member.f.get('/api/me/cockpit/items');
-    assert.ok(!memberList.json.some((i) => i.name === 'Item admin'));
-
-    const put = await member.f.put(`/api/me/cockpit/items/${mine.json.id}`, { body: { name: 'pwned' } });
-    assert.equal(put.status, 404);
-    const del = await member.f.delete(`/api/me/cockpit/items/${mine.json.id}`);
-    assert.equal(del.status, 404);
-    const tick = await member.f.patch(`/api/me/cockpit/items/${mine.json.id}/done`);
-    assert.equal(tick.status, 404);
-  });
-
   it('follows : aucune ligne = tout envoyé ; sinon seules les suivies', async () => {
     // Par défaut : les deux quêtes sont dans le flux.
-    const feed = await anon.get(`/api/quests/cockpit/${memberToken}.json`);
+    const feed = await anon.get(`/api/quests/cockpit/${adminToken}.json`);
     assert.ok(feed.json.available.journaliere.some((q) => q.id === dailyId));
     assert.ok(feed.json.deadlines.some((q) => q.id === deadlineId));
 
-    // Le membre suit uniquement la journalière → la deadline disparaît.
-    const follow = await member.f.put(`/api/me/cockpit/quests/${dailyId}/follow`, { body: { followed: true } });
+    // L'admin suit uniquement la journalière → la deadline disparaît.
+    const follow = await admin.f.put(`/api/me/cockpit/quests/${dailyId}/follow`, { body: { followed: true } });
     assert.equal(follow.json.followedCount, 1);
-    const feed2 = await anon.get(`/api/quests/cockpit/${memberToken}.json`);
+    const feed2 = await anon.get(`/api/quests/cockpit/${adminToken}.json`);
     assert.ok(feed2.json.available.journaliere.some((q) => q.id === dailyId));
     assert.equal(feed2.json.deadlines.length, 0);
     // Les gains restent globaux.
     assert.ok(feed2.json.potentialGains);
 
     // GET /quests reflète l'état de follow.
-    const list = await member.f.get('/api/me/cockpit/quests');
+    const list = await admin.f.get('/api/me/cockpit/quests');
     assert.equal(list.json.followedCount, 1);
     assert.equal(list.json.quests.find((q) => q.id === dailyId).followed, true);
 
     // Ne plus rien suivre → tout revient.
-    await member.f.put(`/api/me/cockpit/quests/${dailyId}/follow`, { body: { followed: false } });
-    const feed3 = await anon.get(`/api/quests/cockpit/${memberToken}.json`);
+    await admin.f.put(`/api/me/cockpit/quests/${dailyId}/follow`, { body: { followed: false } });
+    const feed3 = await anon.get(`/api/quests/cockpit/${adminToken}.json`);
     assert.ok(feed3.json.deadlines.some((q) => q.id === deadlineId));
   });
 
   it('opt-out des rappels vide wanted (et le reste), gains conservés', async () => {
-    await member.f.put('/api/me/quest-reminders', { body: { enabled: false } });
-    const feed = await anon.get(`/api/quests/cockpit/${memberToken}.json`);
+    await admin.f.put('/api/me/quest-reminders', { body: { enabled: false } });
+    const feed = await anon.get(`/api/quests/cockpit/${adminToken}.json`);
     assert.equal(feed.json.counts.wanted, 0);
     assert.deepEqual(feed.json.wanted, []);
     assert.equal(feed.json.counts.availableTotal, 0);
     assert.ok(feed.json.potentialGains);
-    await member.f.put('/api/me/quest-reminders', { body: { enabled: true } });
+    await admin.f.put('/api/me/quest-reminders', { body: { enabled: true } });
   });
 
-  it('accès : un membre sans can_view_quests est refusé sur /api/me/cockpit', async () => {
-    await admin.f.put(`/api/users/${member.user.id}`, { body: { canViewQuests: false } });
-    const r = await member.f.get('/api/me/cockpit/items');
-    assert.equal(r.status, 403);
-    await admin.f.put(`/api/users/${member.user.id}`, { body: { canViewQuests: true } });
+  it('accès : le cockpit est refusé aux membres, même avec can_view_quests', async () => {
+    // Le membre a can_view_quests (posé au setup) : /quetes lui est ouvert…
+    const quests = await member.f.get('/api/quests/quests');
+    assert.equal(quests.status, 200);
+    // …mais tout le cockpit répond 403.
+    assert.equal((await member.f.get('/api/me/cockpit-token')).status, 403);
+    assert.equal((await member.f.post('/api/me/cockpit-token/rotate')).status, 403);
+    assert.equal((await member.f.put('/api/me/quest-reminders', { body: { enabled: true } })).status, 403);
+    assert.equal((await member.f.get('/api/me/cockpit/items')).status, 403);
+    assert.equal((await member.f.post('/api/me/cockpit/items', { body: { name: 'X' } })).status, 403);
+    assert.equal((await member.f.get('/api/me/cockpit/quests')).status, 403);
   });
 });
 

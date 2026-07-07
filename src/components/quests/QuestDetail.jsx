@@ -19,11 +19,16 @@ function Chip({ children, color = ACC, title }) {
 }
 
 // One input/reward line. Items show the codex icon; reputation shows the faction
-// colour; everything else falls back to the kind emoji + label.
+// colour; everything else falls back to the kind emoji + label. Custom items
+// (refCode 'custom:<id>', injectés dans byId par Quetes.jsx) affichent en plus
+// leurs enchantements.
 function Line({ line, kinds, byId, factions }) {
   const meta = kinds[line.kind] || {};
   const faction = line.factionId ? factions.get(line.factionId) : null;
   const qty = line.quantite != null ? line.quantite : null;
+  const enchants = (line.kind === 'item' && line.refCode)
+    ? (byId?.get(line.refCode)?.enchantements || [])
+    : [];
   return (
     <li style={{
       display: 'flex', alignItems: 'center', gap: 9, padding: '7px 10px',
@@ -39,6 +44,11 @@ function Line({ line, kinds, byId, factions }) {
         {line.label || meta.label || line.kind}
         {faction && (
           <span style={{ color: faction.couleur, marginLeft: 6, fontWeight: 600 }}>· {faction.nom}</span>
+        )}
+        {enchants.length > 0 && (
+          <span title={enchants.join(' · ')} style={{ color: GOLD, marginLeft: 6, fontSize: 11.5, fontWeight: 600 }}>
+            ⚡ {enchants.join(' · ')}
+          </span>
         )}
       </span>
       {qty != null && (

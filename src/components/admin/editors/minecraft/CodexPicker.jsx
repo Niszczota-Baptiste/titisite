@@ -114,7 +114,7 @@ export function CodexPicker({ catalog, byId, value, onChange, placeholder = 'Rec
             >
               <CodexItem byId={byId} id={e.id} size={20} />
               <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5 }}>
-                {e.source === 'minefield' ? 'MF' : 'MC'}
+                {e.source === 'custom' ? '★' : e.source === 'minefield' ? 'MF' : 'MC'}
               </span>
             </button>
           ))}

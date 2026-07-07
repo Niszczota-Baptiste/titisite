@@ -297,6 +297,9 @@ export const api = {
     reputation: () => request('GET', '/quests/reputation'),
     maps:       () => request('GET', '/quests/maps'),
     map:        (mapId) => request('GET', `/quests/map${mapId ? `?map=${mapId}` : ''}`),
+    // Items custom : objets du codex renommés (+ enchantements), référencés
+    // dans les lignes de quêtes via refCode 'custom:<id>'.
+    customItems:      () => request('GET', '/quests/custom-items'),
     list:       (params = {}) => {
       const q = new URLSearchParams();
       if (params.faction) q.set('faction', params.faction);
@@ -331,6 +334,9 @@ export const api = {
     createQuest:   (b) => request('POST', '/quests/quests', b),
     updateQuest:   (id, b) => request('PUT', `/quests/quests/${id}`, b),
     deleteQuest:   (id) => request('DELETE', `/quests/quests/${id}`),
+    createCustomItem: (b) => request('POST', '/quests/custom-items', b),
+    updateCustomItem: (id, b) => request('PUT', `/quests/custom-items/${id}`, b),
+    deleteCustomItem: (id) => request('DELETE', `/quests/custom-items/${id}`),
   },
 
   // Cockpit MF pull feed: secret per-user token + reminder opt-in.

@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { searchBlocks } from '../../data/minecraftBlocks';
 import {
-  buildIconIndex, buildIdIndex, loadMinefieldCatalog, matchCatalogName, normName, searchCatalog,
+  buildIconIndex, buildIdIndex, customCatalogEntries, loadMinefieldCatalog, matchCatalogName,
+  normName, searchCatalog,
 } from '../../data/minefieldCatalog';
 import { Block3D } from './block3d/Block3D';
 import { useBlockThumbnail } from '../../hooks/useBlockThumbnail';
@@ -221,7 +222,16 @@ export function MinecraftTab() {
 
   useEffect(() => {
     let alive = true;
-    loadMinefieldCatalog().then((c) => { if (alive) setCatalog(c); });
+    // Items custom du module Quêtes (objets renommés, ex. « Chair de noyé ») :
+    // fusionnés en tête du catalogue pour que l'autocomplete des ressources et
+    // les icônes des coffres les connaissent sous leur nom custom. Silencieux
+    // si le compte n'a pas accès aux quêtes (403 → liste vide).
+    Promise.all([
+      loadMinefieldCatalog(),
+      api.quests.customItems().catch(() => []),
+    ]).then(([c, custom]) => {
+      if (alive) setCatalog([...customCatalogEntries(custom, c), ...c]);
+    });
     return () => { alive = false; };
   }, []);
 

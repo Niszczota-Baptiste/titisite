@@ -1071,6 +1071,29 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_map_pois_map ON quest_map_pois(map_id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_map_points_map ON quest_map_points(map_id);`);
 
+  // Items custom (« liste d'objets custom ») : un item Minecraft/Minefield du
+  // codex renommé (ex. « Chair de zombie » → « Chair de noyé »), avec des
+  // enchantements libres (JSON array de textes). ref_code = id de codex de
+  // l'item de base (pas de FK — le référentiel est un catalogue JSON). Les
+  // lignes de quêtes y font référence via ref_code = 'custom:<id>' ; le
+  // rapprochement avec les coffres (minecraft_resources) se fait par nom
+  // normalisé sur le nom custom.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_custom_items (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      nom           TEXT NOT NULL,
+      ref_code      TEXT,
+      enchantements TEXT NOT NULL DEFAULT '[]',
+      note          TEXT NOT NULL DEFAULT '',
+      sort_order    INTEGER NOT NULL DEFAULT 0,
+      created_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_custom_items_sort ON quest_custom_items(sort_order, id);`);
+
   // ── Cockpit MF : réglages PERSO du flux pull ──
   // Liste d'items par utilisateur (pas la wishlist de groupe minecraft_wanted) :
   // envoyée dans la section `wanted` du flux cockpit. `workspace_id` optionnel

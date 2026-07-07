@@ -79,6 +79,34 @@ export function loadMinefieldCatalog() {
 }
 
 /**
+ * Convertit les items custom du module Quêtes ({ id, nom, refCode,
+ * enchantements }) en entrées de catalogue prêtes pour searchCatalog /
+ * buildIconIndex / CodexPicker : id technique `custom:<id>`, icône héritée de
+ * l'item de base (refCode), source 'custom'. À placer AVANT le catalogue de
+ * base pour que le nom custom gagne les index en cas de collision.
+ */
+export function customCatalogEntries(customItems, catalog) {
+  if (!Array.isArray(customItems) || customItems.length === 0) return [];
+  const byId = new Map();
+  for (const e of catalog || []) if (e.id && !byId.has(e.id)) byId.set(e.id, e);
+  return customItems.map((c) => {
+    const base = c.refCode ? byId.get(c.refCode) : null;
+    return {
+      type: 'custom',
+      id: `custom:${c.id}`,
+      nomFr: c.nom,
+      categorie: base?.categorie || '',
+      source: 'custom',
+      icon: base?.icon || null,
+      _key: normName(c.nom),
+      enchantements: c.enchantements || [],
+      baseId: c.refCode || null,
+      baseNomFr: base?.nomFr || null,
+    };
+  });
+}
+
+/**
  * Rapproche un nom libre (ex. sortie de la lecture IA d'un screenshot) d'une
  * entrée du catalogue : essai exact sur le nom normalisé, puis inclusion lâche
  * dans un sens ou l'autre. Renvoie l'entrée ou null.

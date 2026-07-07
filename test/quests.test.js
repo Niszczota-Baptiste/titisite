@@ -352,13 +352,90 @@ describe('quests — multiple maps', () => {
 });
 
 // ── Cockpit pull feed ───────────────────────────────────────────────────────
-describe('cockpit pull feed', () => {
-  it('serves a member feed by secret token and honours the reminder opt-in', async () => {
-    const admin = await login(ADMIN);
-    const member = await login(MEMBER);
-    await admin.f.put(`/api/users/${member.user.id}`, { body: { canViewQuests: true } });
+// ── Custom items (objets renommés + enchantements) ──────────────────────────
+describe('quests — custom items', () => {
+  let admin;
+  let member;
+  let itemId;
 
-    const info = await member.f.get('/api/me/cockpit-token');
+  it('admin creates / updates a custom item (enchantements nettoyés)', async () => {
+    admin = await login(ADMIN);
+    member = await login(MEMBER);
+    const r = await admin.f.post('/api/quests/custom-items', {
+      body: {
+        nom: 'Chair de noyé', refCode: 'minecraft:rotten_flesh',
+        enchantements: ['Tranchant V', '  ', 'Solidité III'], note: 'drop des noyés',
+      },
+    });
+    assert.equal(r.status, 201);
+    itemId = r.json.id;
+    assert.deepEqual(r.json.enchantements, ['Tranchant V', 'Solidité III']); // vides filtrés
+    const u = await admin.f.put(`/api/quests/custom-items/${itemId}`, {
+      body: { nom: 'Chair de noyé', refCode: 'minecraft:rotten_flesh', enchantements: ['Tranchant V'] },
+    });
+    assert.equal(u.status, 200);
+    assert.deepEqual(u.json.enchantements, ['Tranchant V']);
+  });
+
+  it('validation : nom requis, enchantements = tableau', async () => {
+    const r1 = await admin.f.post('/api/quests/custom-items', { body: { nom: '  ' } });
+    assert.equal(r1.status, 400);
+    assert.equal(r1.json.error, 'custom_item_nom_required');
+    const r2 = await admin.f.post('/api/quests/custom-items', { body: { nom: 'ok', enchantements: 'nope' } });
+    assert.equal(r2.status, 400);
+    assert.equal(r2.json.error, 'invalid_enchantements');
+  });
+
+  it('membre : lecture avec can_view_quests, édition refusée', async () => {
+    const read = await member.f.get('/api/quests/custom-items');
+    assert.equal(read.status, 200);
+    assert.equal(read.json.length, 1);
+    const edit = await member.f.post('/api/quests/custom-items', { body: { nom: 'Nope' } });
+    assert.equal(edit.status, 403);
+  });
+
+  it('stock : une entrée refCode custom:<id> matche le nom custom en coffre', async () => {
+    // Workspace minecraft + coffre + ressource nommée avec le nom custom
+    // (casse/accents différents → normName).
+    const ws = await admin.f.post('/api/workspaces', {
+      body: { name: 'Port des noyés', isMinecraft: true, memberIds: [admin.user.id] },
+    });
+    const chest = await admin.f.post(`/api/workspaces/${ws.json.slug}/minecraft/chests`, {
+      body: { name: 'Coffre du port', world: 'overworld', x: 5, y: 64, z: 9 },
+    });
+    await admin.f.post(`/api/workspaces/${ws.json.slug}/minecraft`, {
+      body: { name: 'chair de NOYE', quantity: 8, chestId: chest.json.id },
+    });
+
+    // Le label de l'entrée ne matche PAS → seule la résolution custom:<id> lie.
+    const q = await admin.f.post('/api/quests/quests', {
+      body: {
+        titre: 'Ravitailler le pêcheur',
+        inputs: [{ kind: 'item', refCode: `custom:${itemId}`, quantite: 5, label: 'Pour le PNJ' }],
+      },
+    });
+    assert.equal(q.status, 201);
+
+    const stock = await admin.f.get(`/api/quests/quests/${q.json.id}/stock`);
+    assert.equal(stock.status, 200);
+    const input = stock.json.inputs[0];
+    assert.equal(input.totalHave, 8);
+    assert.equal(input.locations.length, 1);
+    assert.equal(input.locations[0].chest.name, 'Coffre du port');
+  });
+
+  it('delete : l\'item disparaît de la liste', async () => {
+    const d = await admin.f.delete(`/api/quests/custom-items/${itemId}`);
+    assert.equal(d.status, 204);
+    const list = await admin.f.get('/api/quests/custom-items');
+    assert.deepEqual(list.json, []);
+  });
+});
+
+describe('cockpit pull feed', () => {
+  it('serves the ADMIN feed by secret token and honours the reminder opt-in', async () => {
+    const admin = await login(ADMIN);
+    const info = await admin.f.get('/api/me/cockpit-token');
     assert.equal(info.status, 200);
     const token = info.json.token;
     assert.match(info.json.feedUrl, /\/api\/quests\/cockpit\//);
@@ -367,11 +444,11 @@ describe('cockpit pull feed', () => {
     const anon = fetcher(server.base);
     const feed = await anon.get(`/api/quests/cockpit/${token}.json`);
     assert.equal(feed.status, 200);
-    assert.ok(feed.json.counts.availableTotal >= 1, 'member has an available daily quest');
+    assert.ok(feed.json.counts.availableTotal >= 1, 'admin has an available daily quest');
     assert.ok(feed.json.potentialGains, 'gains always present');
 
     // Opt out → actionable lists emptied, gains still served.
-    await member.f.put('/api/me/quest-reminders', { body: { enabled: false } });
+    await admin.f.put('/api/me/quest-reminders', { body: { enabled: false } });
     const feed2 = await anon.get(`/api/quests/cockpit/${token}.json`);
     assert.equal(feed2.json.counts.availableTotal, 0);
     assert.ok(feed2.json.potentialGains);
@@ -379,5 +456,14 @@ describe('cockpit pull feed', () => {
     // Bad token → 404.
     const bad = await anon.get('/api/quests/cockpit/deadbeef.json');
     assert.equal(bad.status, 404);
+  });
+
+  it('cockpit admin-only : token et rappels refusés à un membre', async () => {
+    const admin = await login(ADMIN);
+    const member = await login(MEMBER);
+    await admin.f.put(`/api/users/${member.user.id}`, { body: { canViewQuests: true } });
+    assert.equal((await member.f.get('/api/me/cockpit-token')).status, 403);
+    assert.equal((await member.f.post('/api/me/cockpit-token/rotate')).status, 403);
+    assert.equal((await member.f.put('/api/me/quest-reminders', { body: { enabled: false } })).status, 403);
   });
 });

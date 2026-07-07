@@ -34,16 +34,15 @@ const ADMIN_TABS = [
   { key: 'users',      label: 'Utilisateurs',           Editor: UsersEditor },
 ];
 
-// Réglages perso du cockpit MF : visible par les admins ET par tout membre
-// ayant can_view_quests — pour eux c'est le seul onglet (leurs réglages à eux,
-// pas une gestion de groupe).
+// Réglages perso du cockpit MF : réservé aux admins (comme tout le dashboard —
+// Admin.jsx bloque les non-admins avant même de monter ce composant).
 const COCKPIT_TAB = { key: 'cockpit', label: '🛰️ Cockpit', Editor: CockpitEditor };
 
 export function Dashboard() {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout } = useAuth();
   const mobile = useIsMobile(720);
-  const TABS = isAdmin ? [...ADMIN_TABS, COCKPIT_TAB] : [COCKPIT_TAB];
-  const [active, setActive] = useState(isAdmin ? 'public' : 'cockpit');
+  const TABS = [...ADMIN_TABS, COCKPIT_TAB];
+  const [active, setActive] = useState('public');
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => { if (!mobile) setMenuOpen(false); }, [mobile]);
 
