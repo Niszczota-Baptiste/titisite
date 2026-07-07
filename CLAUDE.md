@@ -70,16 +70,33 @@ Single-process Node app:
   « Ressources wanted » wishlist card (`minecraft_wanted`, workspace-scoped)
   sits above the chests: priority 1–3 (sorted, done last), progress computed
   client-side from the inventory by normalized name, checkbox when the wanted
-  quantity is collected (`…/minecraft/wanted/*`, `WantedPanel` in
-  `src/components/project/Minecraft.jsx`). All under
-  `server/routes/minecraft.js` + `api.ws(slug).minecraft.*`.
+  quantity is collected, optional `assigned_to` (member-validated like the
+  Kanban assignee; « À moi / Non assignés » filter). `POST …/wanted/bulk`
+  merges by normalized name (goal = max, priority = highest, done rows
+  reopened) — fed by the « manquant → wanted » buttons of the craft
+  calculator and the blueprint BOM. Sibling workspace-scoped modules, all in
+  `server/routes/minecraft.js` + `api.ws(slug).minecraft.*`:
+  `minecraft_stock_history` (one point per name_norm/day upserted on every
+  inventory mutation, absent names drop to 0, boot purge 400 d → « 📈
+  Tendances » sparklines in the Résumé, which also shows a « 👥 Qui a fait
+  quoi » per-member contributions card), `minecraft_gear` (« ⚔️ Stuff
+  nommé » panel on the chests page: renamed tools + free-text enchants,
+  owner member or common, stored chest or on-body), `minecraft_villagers` +
+  `minecraft_villager_trades` (🧑‍🌾 page: profession, coords, trades with
+  normal price + per-player discounted price `discount_user_id`), and
+  `minecraft_map_pois` (🗺️ project map: pan/zoom grid reusing
+  `src/components/quests/mapGrid.js`, world filter, markers for chests /
+  villagers / free POIs, click-to-add). `custom_recipes.type` also accepts
+  `'brewing'` (⚗️ no grid, free ingredient list in the admin editor).
   A second flag `minecraft_only` (« Projet 100 % Minecraft » in
   `WorkspacesEditor`, implies `is_minecraft` at read time) hides the classic
   tabs (Vue d'ensemble → Réunions) and splits the Minecraft page into
   separate tabs: 📊 Résumé (`MinecraftResume.jsx` — stats, wanted progress,
   latest additions, computed client-side), 📦 Coffres (`/minecraft`),
-  🎯 Wanted, 🏗️ Builds 3D, 🧮 Calculateur (all `MinecraftTab mode=…`) + a
-  📜 Quêtes tab-link to `/quetes`. `tabsFor`/`projectHome`/
+  🎯 Wanted, 🗺️ Carte (`ProjectMap.jsx`), 🧑‍🌾 Villageois (`Villagers.jsx`),
+  🏗️ Builds 3D, 🧮 Calculateur (`MinecraftTab mode=…`) + a
+  📜 Quêtes tab-link to `/quetes`; mixed projects reach Carte/Villageois via
+  tool-links in the ⛏️ Minecraft action bar. `tabsFor`/`projectHome`/
   `MINECRAFT_ONLY_TABS` in `ProjectLayout.jsx` drive the tab bar; hidden-tab
   URLs redirect to `/resume`, where Home cards and the switcher also land.
   Mixed projects keep the single ⛏️ Minecraft page (`mode="full"`).
