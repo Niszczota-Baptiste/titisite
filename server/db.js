@@ -246,6 +246,45 @@ export function migrate() {
   // « Qui s'en occupe » : membre du workspace chargé de récolter la ressource.
   ensureColumn('minecraft_wanted', 'assigned_to', 'INTEGER REFERENCES users(id) ON DELETE SET NULL');
 
+  // Historique du stock : UN point par (workspace, nom normalisé, jour), upserté
+  // à chaque mutation de l'inventaire (server/routes/minecraft.js#snapshotStock).
+  // Alimente les tendances/sparklines du Résumé ; purgé au boot (400 j).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_stock_history (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name_norm    TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      day          TEXT NOT NULL,
+      quantity     INTEGER NOT NULL DEFAULT 0,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      UNIQUE (workspace_id, name_norm, day)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_history_ws ON minecraft_stock_history(workspace_id, day);`);
+  db.prepare(`DELETE FROM minecraft_stock_history WHERE day < date('now', '-400 day')`).run();
+
+  // Équipement nommé (« stuff ») : outils/armes/armures renommés avec leurs
+  // enchantements (texte libre), un propriétaire (membre) et un rangement
+  // (coffre, ou NULL = sur soi / non rangé).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_gear (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      item_name    TEXT NOT NULL DEFAULT '',
+      enchants     TEXT NOT NULL DEFAULT '',
+      owner_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      chest_id     INTEGER REFERENCES minecraft_chests(id) ON DELETE SET NULL,
+      note         TEXT NOT NULL DEFAULT '',
+      position     INTEGER NOT NULL DEFAULT 0,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_gear_workspace ON minecraft_gear(workspace_id, position);`);
+
   // Recettes custom Minefield, GLOBALES (les recettes vanilla vivent côté client
   // dans src/data/recipes_vanilla.json). Éditées en admin, lues par le
   // calculateur de craft de chaque projet. `result_id`/`ingredients[].item`

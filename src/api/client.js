@@ -433,6 +433,15 @@ export const api = {
         toggleDone: (id) => request('PATCH', `/workspaces/${slug}/minecraft/wanted/${id}/done`),
         remove:     (id) => request('DELETE', `/workspaces/${slug}/minecraft/wanted/${id}`),
       },
+      // Historique du stock (un point par nom normalisé et par jour).
+      history: (days = 30) => request('GET', `/workspaces/${slug}/minecraft/history?days=${days}`),
+      // Équipement nommé (« stuff » : outils renommés + enchants + rangement).
+      gear: {
+        list:   () => request('GET',    `/workspaces/${slug}/minecraft/gear`),
+        create: (b) => request('POST',  `/workspaces/${slug}/minecraft/gear`, b),
+        update: (id, b) => request('PUT', `/workspaces/${slug}/minecraft/gear/${id}`, b),
+        remove: (id) => request('DELETE', `/workspaces/${slug}/minecraft/gear/${id}`),
+      },
       // Coffres (containers) + flux screenshot → items.
       chests: {
         list:   () => request('GET',    `/workspaces/${slug}/minecraft/chests`),

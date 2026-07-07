@@ -97,6 +97,46 @@ function listResources(workspaceId) {
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 
+// Fige le total du jour pour chaque ressource (nom normalisé) du workspace —
+// appelé après chaque mutation d'inventaire (un point par jour, upsert). Les
+// noms encore suivis récemment mais absents de l'inventaire retombent à 0 pour
+// que les tendances du Résumé reflètent les épuisements. Best-effort : une
+// erreur d'historique ne doit jamais faire échouer la mutation.
+function snapshotStock(workspaceId) {
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const rows = db.prepare(`SELECT name, quantity FROM minecraft_resources WHERE workspace_id = ?`).all(workspaceId);
+    const totals = new Map(); // norm -> { name, qty }
+    for (const r of rows) {
+      const k = norm(r.name);
+      if (!k) continue;
+      const e = totals.get(k);
+      if (e) e.qty += r.quantity;
+      else totals.set(k, { name: r.name, qty: r.quantity });
+    }
+    const up = db.prepare(`
+      INSERT INTO minecraft_stock_history (workspace_id, name_norm, name, day, quantity)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (workspace_id, name_norm, day)
+      DO UPDATE SET quantity = excluded.quantity, name = excluded.name
+    `);
+    const tx = db.transaction(() => {
+      for (const e of totals.values()) up.run(workspaceId, norm(e.name), e.name, day, e.qty);
+      const known = db.prepare(`
+        SELECT name_norm, MAX(name) AS name FROM minecraft_stock_history
+        WHERE workspace_id = ? AND day >= date('now', '-45 day')
+        GROUP BY name_norm
+      `).all(workspaceId);
+      for (const k of known) {
+        if (!totals.has(k.name_norm)) up.run(workspaceId, k.name_norm, k.name, day, 0);
+      }
+    });
+    tx();
+  } catch (e) {
+    console.error('[minecraft] stock snapshot failed:', e?.message || e);
+  }
+}
+
 // ── Resources ─────────────────────────────────────────────────────────────────
 
 minecraftRouter.get('/', (req, res) => {
@@ -132,6 +172,7 @@ minecraftRouter.post('/', (req, res) => {
     pos,
     req.user.id,
   );
+  snapshotStock(req.workspace.id);
   const row = db.prepare(`${SELECT} WHERE m.id = ?`).get(result.lastInsertRowid);
   res.status(201).json(rowToResource(row));
 });
@@ -177,6 +218,7 @@ minecraftRouter.put('/:id', (req, res) => {
     chest,
     id,
   );
+  snapshotStock(req.workspace.id);
   const row = db.prepare(`${SELECT} WHERE m.id = ?`).get(id);
   res.json(rowToResource(row));
 });
@@ -194,6 +236,7 @@ minecraftRouter.post('/:id/adjust', (req, res) => {
   db.prepare(`
     UPDATE minecraft_resources SET quantity = ?, updated_at = strftime('%s','now') WHERE id = ?
   `).run(next, id);
+  snapshotStock(req.workspace.id);
   const row = db.prepare(`${SELECT} WHERE m.id = ?`).get(id);
   res.json(rowToResource(row));
 });
@@ -218,6 +261,7 @@ minecraftRouter.delete('/:id', (req, res) => {
   const r = db.prepare(`DELETE FROM minecraft_resources WHERE id = ? AND workspace_id = ?`)
     .run(id, req.workspace.id);
   if (r.changes === 0) return res.status(404).json({ error: 'not_found' });
+  snapshotStock(req.workspace.id);
   res.status(204).end();
 });
 
@@ -533,6 +577,7 @@ minecraftRouter.post('/chests/:id/apply', (req, res) => {
     }
   });
   tx();
+  snapshotStock(req.workspace.id);
   res.json(listResources(req.workspace.id));
 });
 
@@ -587,7 +632,121 @@ minecraftRouter.post('/craft/apply', (req, res) => {
     }
   });
   tx();
+  snapshotStock(wsId);
   res.json(listResources(wsId));
+});
+
+// ── Historique du stock (tendances / sparklines du Résumé) ──────────────────
+
+minecraftRouter.get('/history', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const days = Math.min(120, Math.max(2, Math.floor(Number(req.query.days) || 30)));
+  const rows = db.prepare(`
+    SELECT name_norm, name, day, quantity FROM minecraft_stock_history
+    WHERE workspace_id = ? AND day >= date('now', ?)
+    ORDER BY name_norm, day
+  `).all(req.workspace.id, `-${days} day`);
+  res.json(rows.map((r) => ({ nameNorm: r.name_norm, name: r.name, day: r.day, quantity: r.quantity })));
+});
+
+// ── Équipement nommé (« stuff » : outils/armes renommés + enchants) ─────────
+
+function rowToGear(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    name: r.name,
+    itemName: r.item_name || '',
+    enchants: r.enchants || '',
+    ownerId: r.owner_id ?? null,
+    ownerName: r.owner_name || null,
+    chestId: r.chest_id ?? null,
+    note: r.note || '',
+    position: r.position,
+    createdBy: r.created_by,
+    createdByName: r.created_by_name,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+const GEAR_SELECT = `
+  SELECT g.*, u.name AS created_by_name, o.name AS owner_name
+  FROM minecraft_gear g
+  LEFT JOIN users u ON u.id = g.created_by
+  LEFT JOIN users o ON o.id = g.owner_id
+`;
+
+minecraftRouter.get('/gear', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const rows = db.prepare(`${GEAR_SELECT} WHERE g.workspace_id = ? ORDER BY g.position, g.id`)
+    .all(req.workspace.id);
+  res.json(rows.map(rowToGear));
+});
+
+minecraftRouter.post('/gear', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const { name, itemName, enchants, ownerId, chestId, note } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'missing_name' });
+  const pos = db.prepare(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM minecraft_gear WHERE workspace_id = ?`,
+  ).get(req.workspace.id).n;
+  const result = db.prepare(`
+    INSERT INTO minecraft_gear (workspace_id, name, item_name, enchants, owner_id, chest_id, note, position, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.workspace.id,
+    String(name).trim(),
+    String(itemName || '').trim(),
+    String(enchants || '').trim(),
+    resolveAssignee(req.workspace.id, ownerId),
+    resolveChestId(req.workspace.id, chestId),
+    String(note || '').trim(),
+    pos,
+    req.user.id,
+  );
+  const row = db.prepare(`${GEAR_SELECT} WHERE g.id = ?`).get(result.lastInsertRowid);
+  res.status(201).json(rowToGear(row));
+});
+
+minecraftRouter.put('/gear/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const id = Number(req.params.id);
+  const existing = db.prepare(`SELECT * FROM minecraft_gear WHERE id = ? AND workspace_id = ?`)
+    .get(id, req.workspace.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  const body = req.body || {};
+  const { name, itemName, enchants, ownerId, chestId, note } = body;
+  db.prepare(`
+    UPDATE minecraft_gear SET
+      name       = COALESCE(?, name),
+      item_name  = COALESCE(?, item_name),
+      enchants   = COALESCE(?, enchants),
+      owner_id   = ?,
+      chest_id   = ?,
+      note       = COALESCE(?, note),
+      updated_at = strftime('%s','now')
+    WHERE id = ?
+  `).run(
+    name === undefined ? null : String(name).trim(),
+    itemName === undefined ? null : String(itemName).trim(),
+    enchants === undefined ? null : String(enchants).trim(),
+    ('ownerId' in body) ? resolveAssignee(req.workspace.id, ownerId) : existing.owner_id,
+    ('chestId' in body) ? resolveChestId(req.workspace.id, chestId) : existing.chest_id,
+    note === undefined ? null : String(note).trim(),
+    id,
+  );
+  const row = db.prepare(`${GEAR_SELECT} WHERE g.id = ?`).get(id);
+  res.json(rowToGear(row));
+});
+
+minecraftRouter.delete('/gear/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const r = db.prepare(`DELETE FROM minecraft_gear WHERE id = ? AND workspace_id = ?`)
+    .run(Number(req.params.id), req.workspace.id);
+  if (r.changes === 0) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
 });
 
 // ── Screenshot → items (vision IA, hybride : 200 {available:false} sans clé) ──

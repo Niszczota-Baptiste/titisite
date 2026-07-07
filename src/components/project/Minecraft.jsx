@@ -12,6 +12,7 @@ import { useBlockThumbnail } from '../../hooks/useBlockThumbnail';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { CraftCalculator } from './CraftCalculator';
+import { GearPanel } from './GearPanel';
 import { BuildsView } from './builds/BuildsView';
 import { useConfirm } from '../../ui/ConfirmProvider';
 import { useToast } from '../../ui/ToastProvider';
@@ -115,7 +116,7 @@ export function stacksInfo(qty) {
 
 // Icône d'un item : vraie texture Minefield (PNG pixel-art) si le nom correspond
 // à une entrée du codex, sinon repli sur l'emoji déduit du nom/de la catégorie.
-function ItemIcon({ name, category, iconIndex, idIndex, block3d = false, size = 24 }) {
+export function ItemIcon({ name, category, iconIndex, idIndex, block3d = false, size = 24 }) {
   const url = iconIndex?.get(normName(name));
   const [hover, setHover] = useState(false);
   const id = block3d ? idIndex?.get(normName(name)) : null;
@@ -494,6 +495,15 @@ export function MinecraftTab({ mode = 'full' }) {
       {mode === 'full' && !loading && (
         <WantedPanel
           ws={ws} slug={workspace.slug} items={items} catalog={catalog}
+          iconIndex={iconIndex} idIndex={idIndex} block3d={block3d}
+          toast={toast} confirm={confirm}
+        />
+      )}
+
+      {/* ── Stuff nommé (équipement : enchants, propriétaire, rangement) ── */}
+      {!loading && (
+        <GearPanel
+          ws={ws} slug={workspace.slug} chests={chests} catalog={catalog}
           iconIndex={iconIndex} idIndex={idIndex} block3d={block3d}
           toast={toast} confirm={confirm}
         />
@@ -2075,7 +2085,7 @@ function ScreenshotModal({ chest, onClose, ws, catalog, iconIndex, onApplied, to
 
 // ── BlockPicker — combobox over the Minecraft 1.18.2 block catalogue ──────────
 
-function BlockPicker({ value, onChange, catalog, autoFocus }) {
+export function BlockPicker({ value, onChange, catalog, autoFocus }) {
   const [open, setOpen]           = useState(false);
   const [highlight, setHighlight] = useState(0);
   const wrapperRef = useRef(null);

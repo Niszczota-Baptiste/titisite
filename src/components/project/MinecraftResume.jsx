@@ -21,6 +21,7 @@ export function MinecraftResumeTab() {
   const [chests, setChests] = useState([]);
   const [wanted, setWanted] = useState([]);
   const [builds, setBuilds] = useState([]);
+  const [history, setHistory] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
@@ -33,10 +34,11 @@ export function MinecraftResumeTab() {
       ws.minecraft.chests.list(),
       ws.minecraft.wanted.list(),
       ws.blueprints.list().catch(() => []),
+      ws.minecraft.history(8).catch(() => []),
     ])
-      .then(([its, chs, wtd, bps]) => {
+      .then(([its, chs, wtd, bps, hist]) => {
         if (!alive) return;
-        setItems(its); setChests(chs); setWanted(wtd); setBuilds(bps);
+        setItems(its); setChests(chs); setWanted(wtd); setBuilds(bps); setHistory(hist);
       })
       .catch((e) => { if (alive) setErr(e.message); })
       .finally(() => { if (alive) setLoading(false); });
@@ -83,6 +85,27 @@ export function MinecraftResumeTab() {
     for (const w of wanted) bump(w.createdByName, 'wanted');
     return [...m.values()].sort((a, b) => (b.items + b.chests + b.wanted) - (a.items + a.chests + a.wanted));
   }, [items, chests, wanted]);
+
+  // Tendances 7 jours : par nom normalisé, série day→quantité ; delta entre le
+  // premier et le dernier point de la fenêtre. Il faut au moins 2 jours de
+  // points (l'historique se remplit à chaque mutation de l'inventaire).
+  const trends = useMemo(() => {
+    const byName = new Map();
+    for (const h of history) {
+      if (!byName.has(h.nameNorm)) byName.set(h.nameNorm, { name: h.name, points: [] });
+      const e = byName.get(h.nameNorm);
+      e.name = h.name;
+      e.points.push(h.quantity);
+    }
+    const out = [];
+    for (const e of byName.values()) {
+      if (e.points.length < 2) continue;
+      const delta = e.points[e.points.length - 1] - e.points[0];
+      if (delta !== 0) out.push({ ...e, delta });
+    }
+    out.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+    return out.slice(0, 8);
+  }, [history]);
 
   // Fil des derniers ajouts, toutes sources confondues (12 max).
   const recent = useMemo(() => {
@@ -210,6 +233,33 @@ export function MinecraftResumeTab() {
           )}
         </div>
 
+        {/* ── Tendances du stock (7 jours) ── */}
+        {trends.length > 0 && (
+          <div style={{ ...card, padding: 16 }}>
+            <PanelTitle emoji="📈" title="Tendances (7 jours)" />
+            <div style={{ display: 'grid', gap: 8 }}>
+              {trends.map((t) => (
+                <div key={t.name} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  fontFamily: "'Inter',sans-serif", fontSize: 13, color: '#ede8f8',
+                }}>
+                  <ItemMiniIcon name={t.name} iconIndex={iconIndex} />
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {t.name}
+                  </span>
+                  <Sparkline points={t.points} color={t.delta > 0 ? '#4ade80' : '#f87171'} />
+                  <span style={{
+                    fontFamily: "'JetBrains Mono',monospace", fontSize: 12, fontWeight: 700,
+                    color: t.delta > 0 ? '#4ade80' : '#f87171', minWidth: 48, textAlign: 'right',
+                  }}>
+                    {t.delta > 0 ? '▲ +' : '▼ '}{t.delta}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Qui a fait quoi (contributions par personne) ── */}
         {contributions.length > 0 && (
           <div style={{ ...card, padding: 16 }}>
@@ -280,6 +330,24 @@ function Stat({ label, value, emoji, sub, to, accent }) {
       }}>{value}</div>
       {sub && <div style={{ ...muted, fontSize: 11 }}>{sub}</div>}
     </Link>
+  );
+}
+
+// Mini-courbe inline (SVG) d'une série de quantités — pas d'axe, juste la forme.
+function Sparkline({ points, color, width = 64, height = 18 }) {
+  if (!points || points.length < 2) return null;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const step = width / (points.length - 1);
+  const d = points
+    .map((v, i) => `${(i * step).toFixed(1)},${(height - 2 - ((v - min) / span) * (height - 4)).toFixed(1)}`)
+    .join(' ');
+  return (
+    <svg width={width} height={height} style={{ flexShrink: 0 }} aria-hidden="true">
+      <polyline points={d} fill="none" stroke={color} strokeWidth="1.6"
+        strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+    </svg>
   );
 }
 
