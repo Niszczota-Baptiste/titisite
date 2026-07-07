@@ -13,6 +13,8 @@ import { MinecraftTab } from '../components/project/Minecraft';
 import { MinecraftResumeTab } from '../components/project/MinecraftResume';
 import { OverviewTab } from '../components/project/Overview';
 import { ProjectLayout } from '../components/project/ProjectLayout';
+import { ProjectMapTab } from '../components/project/ProjectMap';
+import { VillagersTab } from '../components/project/Villagers';
 import { useWorkspace } from '../hooks/useWorkspace';
 
 // L'onglet d'atterrissage dépend du projet : « resume » pour un projet
@@ -81,6 +83,8 @@ export default function Project() {
         {/* Pages séparées des projets 100 % Minecraft */}
         <Route path="resume"      element={<MinecraftResumeTab />} />
         <Route path="wanted"      element={<MinecraftTab mode="wanted" />} />
+        <Route path="carte"       element={<ProjectMapTab />} />
+        <Route path="villageois"  element={<VillagersTab />} />
         <Route path="builds3d"    element={<MinecraftTab mode="builds" />} />
         <Route path="calculateur" element={<MinecraftTab mode="calc" />} />
         <Route path="*"           element={<ProjectIndexRedirect />} />

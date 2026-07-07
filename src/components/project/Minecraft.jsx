@@ -474,6 +474,13 @@ export function MinecraftTab({ mode = 'full' }) {
       actions={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {mode === 'full' && questsLink}
+          {/* Projets mixtes : carte et villageois n'ont pas d'onglet dédié — liens ici. */}
+          {mode === 'full' && (
+            <>
+              <Link to={`/project/${workspace.slug}/carte`} style={toolLink} title="Carte du projet (coffres, villageois, POI)">🗺️ Carte</Link>
+              <Link to={`/project/${workspace.slug}/villageois`} style={toolLink} title="Villageois & trades">🧑‍🌾 Villageois</Link>
+            </>
+          )}
           {mode === 'full' && subNav}
           {mode === 'full' && (
             <Button variant="ghost" onClick={() => setCalcOpen(true)}>🧮 Calculateur</Button>
@@ -776,6 +783,14 @@ export function MinecraftTab({ mode = 'full' }) {
     </Section>
   );
 }
+
+// Lien-outil de la barre d'actions (carte, villageois) des projets mixtes.
+const toolLink = {
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+  padding: '7px 12px', borderRadius: 8, textDecoration: 'none',
+  background: 'rgba(80,50,130,0.12)', border: '1px solid rgba(80,50,130,0.35)',
+  color: 'rgba(220,210,240,0.85)', fontFamily: "'Inter',sans-serif", fontSize: 13, whiteSpace: 'nowrap',
+};
 
 // ── Lien vers le journal de quêtes (/quetes) ──────────────────────────────────
 

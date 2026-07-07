@@ -285,6 +285,65 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_gear_workspace ON minecraft_gear(workspace_id, position);`);
 
+  // POI de la carte du projet (bases, portails, fermes…) — la carte affiche
+  // aussi les coffres (minecraft_chests) et les villageois, qui ont déjà des
+  // coordonnées. x/z requis pour être posé sur la carte, y optionnel.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_map_pois (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      category     TEXT NOT NULL DEFAULT 'autre',
+      world        TEXT NOT NULL DEFAULT 'overworld',
+      x            INTEGER,
+      y            INTEGER,
+      z            INTEGER,
+      note         TEXT NOT NULL DEFAULT '',
+      position     INTEGER NOT NULL DEFAULT 0,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_map_pois_ws ON minecraft_map_pois(workspace_id, position);`);
+
+  // Villageois du projet : métier, coordonnées, et trades intéressants. Un trade
+  // a un prix normal + éventuellement un prix réduit pour UN joueur (réputation
+  // de zombie soigné / Héros du village étant par-joueur en jeu).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_villagers (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      profession   TEXT NOT NULL DEFAULT '',
+      world        TEXT NOT NULL DEFAULT 'overworld',
+      x            INTEGER,
+      y            INTEGER,
+      z            INTEGER,
+      note         TEXT NOT NULL DEFAULT '',
+      position     INTEGER NOT NULL DEFAULT 0,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_villagers_ws ON minecraft_villagers(workspace_id, position);`);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_villager_trades (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      villager_id      INTEGER NOT NULL REFERENCES minecraft_villagers(id) ON DELETE CASCADE,
+      item_name        TEXT NOT NULL,
+      price            TEXT NOT NULL DEFAULT '',
+      discount_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      discount_price   TEXT NOT NULL DEFAULT '',
+      note             TEXT NOT NULL DEFAULT '',
+      position         INTEGER NOT NULL DEFAULT 0,
+      created_at       INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at       INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_vtrades_villager ON minecraft_villager_trades(villager_id, position);`);
+
   // Recettes custom Minefield, GLOBALES (les recettes vanilla vivent côté client
   // dans src/data/recipes_vanilla.json). Éditées en admin, lues par le
   // calculateur de craft de chaque projet. `result_id`/`ingredients[].item`

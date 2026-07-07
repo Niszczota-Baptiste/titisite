@@ -749,6 +749,306 @@ minecraftRouter.delete('/gear/:id', (req, res) => {
   res.status(204).end();
 });
 
+// ── Villageois (métier, coords, trades avec prix réduit par joueur) ─────────
+
+function rowToTrade(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    villagerId: r.villager_id,
+    itemName: r.item_name,
+    price: r.price || '',
+    discountUserId: r.discount_user_id ?? null,
+    discountUserName: r.discount_user_name || null,
+    discountPrice: r.discount_price || '',
+    note: r.note || '',
+    position: r.position,
+  };
+}
+
+function rowToVillager(r, trades = []) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    name: r.name,
+    profession: r.profession || '',
+    world: r.world || 'overworld',
+    x: r.x,
+    y: r.y,
+    z: r.z,
+    note: r.note || '',
+    position: r.position,
+    createdBy: r.created_by,
+    createdByName: r.created_by_name,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    trades,
+  };
+}
+
+const VILLAGER_SELECT = `
+  SELECT v.*, u.name AS created_by_name
+  FROM minecraft_villagers v
+  LEFT JOIN users u ON u.id = v.created_by
+`;
+const TRADE_SELECT = `
+  SELECT t.*, d.name AS discount_user_name
+  FROM minecraft_villager_trades t
+  LEFT JOIN users d ON d.id = t.discount_user_id
+`;
+
+// Villageois + trades imbriqués (une requête trades pour tout le workspace).
+function listVillagers(workspaceId) {
+  const villagers = db.prepare(`${VILLAGER_SELECT} WHERE v.workspace_id = ? ORDER BY v.position, v.id`)
+    .all(workspaceId);
+  const trades = db.prepare(`
+    ${TRADE_SELECT}
+    WHERE t.villager_id IN (SELECT id FROM minecraft_villagers WHERE workspace_id = ?)
+    ORDER BY t.position, t.id
+  `).all(workspaceId);
+  const byVillager = new Map();
+  for (const t of trades) {
+    if (!byVillager.has(t.villager_id)) byVillager.set(t.villager_id, []);
+    byVillager.get(t.villager_id).push(rowToTrade(t));
+  }
+  return villagers.map((v) => rowToVillager(v, byVillager.get(v.id) || []));
+}
+
+function findVillager(workspaceId, id) {
+  return db.prepare(`SELECT * FROM minecraft_villagers WHERE id = ? AND workspace_id = ?`)
+    .get(Number(id), workspaceId);
+}
+
+minecraftRouter.get('/villagers', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  res.json(listVillagers(req.workspace.id));
+});
+
+minecraftRouter.post('/villagers', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const { name, profession, world, x, y, z, note } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'missing_name' });
+  const pos = db.prepare(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM minecraft_villagers WHERE workspace_id = ?`,
+  ).get(req.workspace.id).n;
+  const result = db.prepare(`
+    INSERT INTO minecraft_villagers (workspace_id, name, profession, world, x, y, z, note, position, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.workspace.id,
+    String(name).trim(),
+    String(profession || '').trim().slice(0, 64),
+    String(world || 'overworld').trim().slice(0, 64) || 'overworld',
+    parseCoord(x), parseCoord(y), parseCoord(z),
+    String(note || '').trim(),
+    pos,
+    req.user.id,
+  );
+  const row = db.prepare(`${VILLAGER_SELECT} WHERE v.id = ?`).get(result.lastInsertRowid);
+  res.status(201).json(rowToVillager(row, []));
+});
+
+minecraftRouter.put('/villagers/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const existing = findVillager(req.workspace.id, req.params.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  const body = req.body || {};
+  const { name, profession, world, x, y, z, note } = body;
+  db.prepare(`
+    UPDATE minecraft_villagers SET
+      name       = COALESCE(?, name),
+      profession = COALESCE(?, profession),
+      world      = COALESCE(?, world),
+      x = ?, y = ?, z = ?,
+      note       = COALESCE(?, note),
+      updated_at = strftime('%s','now')
+    WHERE id = ?
+  `).run(
+    name === undefined ? null : String(name).trim(),
+    profession === undefined ? null : String(profession).trim().slice(0, 64),
+    world === undefined ? null : (String(world).trim().slice(0, 64) || 'overworld'),
+    'x' in body ? parseCoord(x) : existing.x,
+    'y' in body ? parseCoord(y) : existing.y,
+    'z' in body ? parseCoord(z) : existing.z,
+    note === undefined ? null : String(note).trim(),
+    existing.id,
+  );
+  const row = db.prepare(`${VILLAGER_SELECT} WHERE v.id = ?`).get(existing.id);
+  const trades = db.prepare(`${TRADE_SELECT} WHERE t.villager_id = ? ORDER BY t.position, t.id`)
+    .all(existing.id).map(rowToTrade);
+  res.json(rowToVillager(row, trades));
+});
+
+minecraftRouter.delete('/villagers/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const existing = findVillager(req.workspace.id, req.params.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM minecraft_villager_trades WHERE villager_id = ?`).run(existing.id);
+    db.prepare(`DELETE FROM minecraft_villagers WHERE id = ?`).run(existing.id);
+  });
+  tx();
+  res.status(204).end();
+});
+
+// Trades d'un villageois. Le prix réduit est par joueur (soin de zombie /
+// Héros du village) : discountUserId désigne QUI a la réduction.
+minecraftRouter.post('/villagers/:id/trades', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const villager = findVillager(req.workspace.id, req.params.id);
+  if (!villager) return res.status(404).json({ error: 'not_found' });
+  const { itemName, price, discountUserId, discountPrice, note } = req.body || {};
+  if (!itemName || !String(itemName).trim()) return res.status(400).json({ error: 'missing_item' });
+  const pos = db.prepare(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM minecraft_villager_trades WHERE villager_id = ?`,
+  ).get(villager.id).n;
+  const result = db.prepare(`
+    INSERT INTO minecraft_villager_trades (villager_id, item_name, price, discount_user_id, discount_price, note, position)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    villager.id,
+    String(itemName).trim(),
+    String(price || '').trim().slice(0, 120),
+    resolveAssignee(req.workspace.id, discountUserId),
+    String(discountPrice || '').trim().slice(0, 120),
+    String(note || '').trim(),
+    pos,
+  );
+  const row = db.prepare(`${TRADE_SELECT} WHERE t.id = ?`).get(result.lastInsertRowid);
+  res.status(201).json(rowToTrade(row));
+});
+
+minecraftRouter.put('/villagers/:id/trades/:tradeId', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const villager = findVillager(req.workspace.id, req.params.id);
+  if (!villager) return res.status(404).json({ error: 'not_found' });
+  const existing = db.prepare(`SELECT * FROM minecraft_villager_trades WHERE id = ? AND villager_id = ?`)
+    .get(Number(req.params.tradeId), villager.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  const body = req.body || {};
+  const { itemName, price, discountUserId, discountPrice, note } = body;
+  db.prepare(`
+    UPDATE minecraft_villager_trades SET
+      item_name        = COALESCE(?, item_name),
+      price            = COALESCE(?, price),
+      discount_user_id = ?,
+      discount_price   = COALESCE(?, discount_price),
+      note             = COALESCE(?, note),
+      updated_at       = strftime('%s','now')
+    WHERE id = ?
+  `).run(
+    itemName === undefined ? null : String(itemName).trim(),
+    price === undefined ? null : String(price).trim().slice(0, 120),
+    ('discountUserId' in body) ? resolveAssignee(req.workspace.id, discountUserId) : existing.discount_user_id,
+    discountPrice === undefined ? null : String(discountPrice).trim().slice(0, 120),
+    note === undefined ? null : String(note).trim(),
+    existing.id,
+  );
+  const row = db.prepare(`${TRADE_SELECT} WHERE t.id = ?`).get(existing.id);
+  res.json(rowToTrade(row));
+});
+
+minecraftRouter.delete('/villagers/:id/trades/:tradeId', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const villager = findVillager(req.workspace.id, req.params.id);
+  if (!villager) return res.status(404).json({ error: 'not_found' });
+  const r = db.prepare(`DELETE FROM minecraft_villager_trades WHERE id = ? AND villager_id = ?`)
+    .run(Number(req.params.tradeId), villager.id);
+  if (r.changes === 0) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── POI de la carte du projet (bases, portails, fermes…) ────────────────────
+
+function rowToPoi(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    name: r.name,
+    category: r.category || 'autre',
+    world: r.world || 'overworld',
+    x: r.x,
+    y: r.y,
+    z: r.z,
+    note: r.note || '',
+    position: r.position,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+minecraftRouter.get('/map-pois', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const rows = db.prepare(`SELECT * FROM minecraft_map_pois WHERE workspace_id = ? ORDER BY position, id`)
+    .all(req.workspace.id);
+  res.json(rows.map(rowToPoi));
+});
+
+minecraftRouter.post('/map-pois', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const { name, category, world, x, y, z, note } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'missing_name' });
+  const px = parseCoord(x); const pz = parseCoord(z);
+  if (px === null || pz === null) return res.status(400).json({ error: 'missing_coords' });
+  const pos = db.prepare(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM minecraft_map_pois WHERE workspace_id = ?`,
+  ).get(req.workspace.id).n;
+  const result = db.prepare(`
+    INSERT INTO minecraft_map_pois (workspace_id, name, category, world, x, y, z, note, position, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.workspace.id,
+    String(name).trim(),
+    String(category || 'autre').trim().slice(0, 32),
+    String(world || 'overworld').trim().slice(0, 64) || 'overworld',
+    px, parseCoord(y), pz,
+    String(note || '').trim(),
+    pos,
+    req.user.id,
+  );
+  res.status(201).json(rowToPoi(db.prepare(`SELECT * FROM minecraft_map_pois WHERE id = ?`).get(result.lastInsertRowid)));
+});
+
+minecraftRouter.put('/map-pois/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const existing = db.prepare(`SELECT * FROM minecraft_map_pois WHERE id = ? AND workspace_id = ?`)
+    .get(Number(req.params.id), req.workspace.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  const body = req.body || {};
+  const { name, category, world, x, y, z, note } = body;
+  db.prepare(`
+    UPDATE minecraft_map_pois SET
+      name       = COALESCE(?, name),
+      category   = COALESCE(?, category),
+      world      = COALESCE(?, world),
+      x = ?, y = ?, z = ?,
+      note       = COALESCE(?, note),
+      updated_at = strftime('%s','now')
+    WHERE id = ?
+  `).run(
+    name === undefined ? null : String(name).trim(),
+    category === undefined ? null : String(category).trim().slice(0, 32),
+    world === undefined ? null : (String(world).trim().slice(0, 64) || 'overworld'),
+    'x' in body ? parseCoord(x) : existing.x,
+    'y' in body ? parseCoord(y) : existing.y,
+    'z' in body ? parseCoord(z) : existing.z,
+    note === undefined ? null : String(note).trim(),
+    existing.id,
+  );
+  res.json(rowToPoi(db.prepare(`SELECT * FROM minecraft_map_pois WHERE id = ?`).get(existing.id)));
+});
+
+minecraftRouter.delete('/map-pois/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const r = db.prepare(`DELETE FROM minecraft_map_pois WHERE id = ? AND workspace_id = ?`)
+    .run(Number(req.params.id), req.workspace.id);
+  if (r.changes === 0) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
 // ── Screenshot → items (vision IA, hybride : 200 {available:false} sans clé) ──
 
 minecraftRouter.post('/scan-screenshot', uploadScreenshotMemory.single('image'), async (req, res) => {

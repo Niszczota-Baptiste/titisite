@@ -22,6 +22,8 @@ const MINECRAFT_TABS = [
   { to: 'resume',      label: '📊 Résumé' },
   { to: 'minecraft',   label: '📦 Coffres' },
   { to: 'wanted',      label: '🎯 Wanted' },
+  { to: 'carte',       label: '🗺️ Carte' },
+  { to: 'villageois',  label: '🧑‍🌾 Villageois' },
   { to: 'builds3d',    label: '🏗️ Builds 3D' },
   { to: 'calculateur', label: '🧮 Calculateur' },
 ];

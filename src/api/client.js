@@ -442,6 +442,25 @@ export const api = {
         update: (id, b) => request('PUT', `/workspaces/${slug}/minecraft/gear/${id}`, b),
         remove: (id) => request('DELETE', `/workspaces/${slug}/minecraft/gear/${id}`),
       },
+      // Villageois (métier, coords, trades avec prix réduit par joueur).
+      villagers: {
+        list:   () => request('GET',    `/workspaces/${slug}/minecraft/villagers`),
+        create: (b) => request('POST',  `/workspaces/${slug}/minecraft/villagers`, b),
+        update: (id, b) => request('PUT', `/workspaces/${slug}/minecraft/villagers/${id}`, b),
+        remove: (id) => request('DELETE', `/workspaces/${slug}/minecraft/villagers/${id}`),
+        trades: {
+          create: (vid, b) => request('POST', `/workspaces/${slug}/minecraft/villagers/${vid}/trades`, b),
+          update: (vid, id, b) => request('PUT', `/workspaces/${slug}/minecraft/villagers/${vid}/trades/${id}`, b),
+          remove: (vid, id) => request('DELETE', `/workspaces/${slug}/minecraft/villagers/${vid}/trades/${id}`),
+        },
+      },
+      // POI de la carte du projet (bases, portails, fermes…).
+      mapPois: {
+        list:   () => request('GET',    `/workspaces/${slug}/minecraft/map-pois`),
+        create: (b) => request('POST',  `/workspaces/${slug}/minecraft/map-pois`, b),
+        update: (id, b) => request('PUT', `/workspaces/${slug}/minecraft/map-pois/${id}`, b),
+        remove: (id) => request('DELETE', `/workspaces/${slug}/minecraft/map-pois/${id}`),
+      },
       // Coffres (containers) + flux screenshot → items.
       chests: {
         list:   () => request('GET',    `/workspaces/${slug}/minecraft/chests`),
