@@ -8,7 +8,8 @@ import {
   buildIconIndex, buildIdIndex, customCatalogEntries, loadMinefieldCatalog,
 } from '../../data/minefieldCatalog';
 import { BlockPicker, ItemIcon, WORLDS } from './Minecraft';
-import { Button, Empty, ErrorBanner, Modal, Section, card, muted } from './shared';
+import { TagsInput } from './TagsInput';
+import { Button, Empty, ErrorBanner, Modal, Section, Tag, card, muted } from './shared';
 
 // Métiers vanilla, pour l'autocomplete et l'emoji des cartes (champ libre :
 // un métier Minefield inconnu retombe sur 🧑).
@@ -55,6 +56,7 @@ export function VillagersTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
+  const [tagFilter, setTagFilter] = useState(''); // '' = tous
 
   const iconIndex = useMemo(() => buildIconIndex(catalog), [catalog]);
   const idIndex = useMemo(() => buildIdIndex(catalog), [catalog]);
@@ -85,15 +87,34 @@ export function VillagersTab() {
     /* eslint-disable-next-line */
   }, [workspace?.id]);
 
+  // Tags en usage (dédupliqués, insensible à la casse) pour la rangée de filtres.
+  const allTags = useMemo(() => {
+    const seen = new Map();
+    for (const v of villagers) {
+      for (const t of v.tags || []) {
+        const k = t.toLowerCase();
+        if (!seen.has(k)) seen.set(k, t);
+      }
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b, 'fr'));
+  }, [villagers]);
+
   const displayed = useMemo(() => {
-    if (!search.trim()) return villagers;
-    const q = search.trim().toLowerCase();
-    return villagers.filter((v) => (
-      v.name.toLowerCase().includes(q)
-      || (v.profession || '').toLowerCase().includes(q)
-      || v.trades.some((t) => t.itemName.toLowerCase().includes(q))
-    ));
-  }, [villagers, search]);
+    let list = villagers;
+    if (tagFilter) {
+      list = list.filter((v) => (v.tags || []).some((t) => t.toLowerCase() === tagFilter.toLowerCase()));
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((v) => (
+        v.name.toLowerCase().includes(q)
+        || (v.profession || '').toLowerCase().includes(q)
+        || (v.tags || []).some((t) => t.toLowerCase().includes(q))
+        || v.trades.some((t) => t.itemName.toLowerCase().includes(q))
+      ));
+    }
+    return list;
+  }, [villagers, search, tagFilter]);
 
   const replaceVillager = (saved) => setVillagers((prev) => (
     prev.some((v) => v.id === saved.id)
@@ -134,14 +155,36 @@ export function VillagersTab() {
       {villagers.length > 3 && (
         <input
           value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="🔍 Rechercher un villageois, un métier, un item…"
+          placeholder="🔍 Rechercher un villageois, un métier, un tag, un item…"
           style={{
-            width: '100%', maxWidth: 420, boxSizing: 'border-box', marginBottom: 14,
+            width: '100%', maxWidth: 420, boxSizing: 'border-box', marginBottom: 10,
             background: 'rgba(14,9,28,0.6)', border: '1px solid rgba(80,50,130,0.28)',
             borderRadius: 10, padding: '9px 12px', color: '#ede8f8',
             fontFamily: "'Inter',sans-serif", fontSize: 14, outline: 'none',
           }}
         />
+      )}
+
+      {/* Filtre par tag (union des tags posés sur les villageois) */}
+      {allTags.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+          {['', ...allTags].map((t) => {
+            const active = tagFilter.toLowerCase() === t.toLowerCase();
+            return (
+              <button key={t || '__all'} type="button" onClick={() => setTagFilter(active && t ? '' : t)}
+                style={{
+                  padding: '4px 11px', borderRadius: 12, cursor: 'pointer',
+                  background: active ? 'rgba(201,168,232,0.16)' : 'rgba(20,12,40,0.5)',
+                  border: `1px solid ${active ? '#c9a8e8' : 'rgba(80,50,130,0.3)'}`,
+                  color: active ? '#c9a8e8' : 'rgba(180,170,200,0.7)',
+                  fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: active ? 600 : 400,
+                }}
+              >
+                {t === '' ? 'Tous' : `# ${t}`}
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {loading ? (
@@ -204,6 +247,11 @@ function VillagerCard({ v, ws, user, members, catalog, iconIndex, idIndex, toast
             </span>
           </div>
           {v.note && <div style={{ ...muted, fontSize: 11.5, marginTop: 3 }}>{v.note}</div>}
+          {(v.tags || []).length > 0 && (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 5 }}>
+              {v.tags.map((t) => <Tag key={t} name={t} />)}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
           <button type="button" onClick={onEdit} title="Modifier" style={iconBtn}>✏️</button>
@@ -380,6 +428,7 @@ function VillagerModal({ open, onClose, editing, ws, toast, onSaved }) {
   const [world, setWorld] = useState('overworld');
   const [x, setX] = useState(''); const [y, setY] = useState(''); const [z, setZ] = useState('');
   const [note, setNote] = useState('');
+  const [tags, setTags] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -389,6 +438,7 @@ function VillagerModal({ open, onClose, editing, ws, toast, onSaved }) {
     setWorld(editing?.world || 'overworld');
     setX(editing?.x ?? ''); setY(editing?.y ?? ''); setZ(editing?.z ?? '');
     setNote(editing?.note || '');
+    setTags(editing?.tags || []);
   }, [open, editing]);
 
   const submit = async (e) => {
@@ -396,7 +446,7 @@ function VillagerModal({ open, onClose, editing, ws, toast, onSaved }) {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const payload = { name: name.trim(), profession: profession.trim(), world, x, y, z, note: note.trim() };
+      const payload = { name: name.trim(), profession: profession.trim(), world, x, y, z, note: note.trim(), tags };
       const saved = editing
         ? await ws.minecraft.villagers.update(editing.id, payload)
         : await ws.minecraft.villagers.create(payload);
@@ -430,6 +480,7 @@ function VillagerModal({ open, onClose, editing, ws, toast, onSaved }) {
         </div>
         <input value={note} onChange={(e) => setNote(e.target.value)}
           placeholder="Note (ex. dans le hall, cellule 3)" style={inp} />
+        <TagsInput value={tags} onChange={setTags} placeholder="Tags (ex. hall, spawn…), puis Entrée" />
         <div style={{ display: 'flex', gap: 8 }}>
           <Button type="submit" disabled={saving || !name.trim()}>
             {saving ? 'Enregistrement…' : (editing ? 'Enregistrer' : 'Ajouter')}

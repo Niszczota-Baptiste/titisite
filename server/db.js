@@ -328,6 +328,9 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_villagers_ws ON minecraft_villagers(workspace_id, position);`);
+  // Tags libres (JSON array) pour filtrer la page Villageois (ex. « hall »,
+  // « spawn », « à soigner »).
+  ensureColumn('minecraft_villagers', 'tags', "TEXT NOT NULL DEFAULT '[]'");
   db.exec(`
     CREATE TABLE IF NOT EXISTS minecraft_villager_trades (
       id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1106,6 +1109,10 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_groups_sort ON quest_groups(sort_order, id);`);
+  // Groupes PRIVÉS : owner_id NULL = groupe partagé (historique), sinon le
+  // groupe n'est visible/gérable que par son propriétaire (sélections perso
+  // pour la projection de gains).
+  ensureColumn('quest_groups', 'owner_id', 'INTEGER REFERENCES users(id) ON DELETE CASCADE');
   db.exec(`
     CREATE TABLE IF NOT EXISTS quest_group_items (
       group_id INTEGER NOT NULL REFERENCES quest_groups(id) ON DELETE CASCADE,
@@ -1197,6 +1204,9 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_custom_items_sort ON quest_custom_items(sort_order, id);`);
+  // Stats libres de l'item (JSON array de textes, ex. « Dégâts +10 »,
+  // « Vitesse +20 % ») — même modèle que les enchantements.
+  ensureColumn('quest_custom_items', 'stats', "TEXT NOT NULL DEFAULT '[]'");
 
   // ── Cockpit MF : réglages PERSO du flux pull ──
   // Liste d'items par utilisateur (pas la wishlist de groupe minecraft_wanted) :

@@ -293,7 +293,15 @@ export const api = {
     chains:     () => request('GET', '/quests/chains'),
     groups:     () => request('GET', '/quests/groups'),
     chainGraph: (id) => request('GET', `/quests/chains/${id}/graph`),
-    gains:      () => request('GET', '/quests/gains'),
+    gains:      (groupId) => request('GET', `/quests/gains${groupId ? `?group=${groupId}` : ''}`),
+    // Groupes privés (sélections perso pour la projection de gains).
+    myGroups: {
+      create:    (b) => request('POST', '/quests/my-groups', b),
+      update:    (id, b) => request('PUT', `/quests/my-groups/${id}`, b),
+      remove:    (id) => request('DELETE', `/quests/my-groups/${id}`),
+      questIds:  (id) => request('GET', `/quests/my-groups/${id}/quests`),
+      setQuests: (id, questIds) => request('PUT', `/quests/my-groups/${id}/quests`, { questIds }),
+    },
     reputation: () => request('GET', '/quests/reputation'),
     maps:       () => request('GET', '/quests/maps'),
     map:        (mapId) => request('GET', `/quests/map${mapId ? `?map=${mapId}` : ''}`),

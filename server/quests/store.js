@@ -190,22 +190,60 @@ function mapGroup(r) {
   return {
     id: r.id, nom: r.nom, couleur: r.couleur, description: r.description,
     sortOrder: r.sort_order, questCount: r.quest_count ?? undefined,
+    prive: r.owner_id != null, ownerId: r.owner_id ?? null,
   };
 }
 
-export function listGroups() {
+// Groupes visibles par un utilisateur : les partagés (owner_id NULL) + LES
+// SIENS. Sans userId (usages internes historiques) : partagés seulement.
+export function listGroups(userId = null) {
   return db.prepare(`
     SELECT g.*, (SELECT COUNT(*) FROM quest_group_items i WHERE i.group_id = g.id) AS quest_count
-    FROM quest_groups g ORDER BY g.sort_order, g.id
-  `).all().map(mapGroup);
+    FROM quest_groups g
+    WHERE g.owner_id IS NULL OR g.owner_id = ?
+    ORDER BY g.owner_id IS NOT NULL, g.sort_order, g.id
+  `).all(userId).map(mapGroup);
 }
 
-export function createGroup(data, userId) {
+// Un groupe est lisible s'il est partagé ou possédé par l'appelant.
+export function groupVisibleBy(groupId, userId) {
+  const g = db.prepare(`SELECT owner_id FROM quest_groups WHERE id = ?`).get(groupId);
+  if (!g) return false;
+  return g.owner_id == null || g.owner_id === userId;
+}
+
+export function createGroup(data, userId, ownerId = null) {
   const info = db.prepare(`
-    INSERT INTO quest_groups (nom, couleur, description, sort_order, created_by, updated_by)
-    VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_groups), 0), ?, ?)
-  `).run(data.nom, data.couleur || '#c9a8e8', data.description || '', userId, userId);
+    INSERT INTO quest_groups (nom, couleur, description, owner_id, sort_order, created_by, updated_by)
+    VALUES (?, ?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_groups), 0), ?, ?)
+  `).run(data.nom, data.couleur || '#c9a8e8', data.description || '', ownerId, userId, userId);
   return mapGroup(db.prepare(`SELECT * FROM quest_groups WHERE id = ?`).get(info.lastInsertRowid));
+}
+
+// ── Groupes privés (sélections perso pour la projection de gains) ─────────
+
+export function getGroupOwner(groupId) {
+  const g = db.prepare(`SELECT owner_id FROM quest_groups WHERE id = ?`).get(groupId);
+  return g ? (g.owner_id ?? null) : undefined; // undefined = groupe inconnu
+}
+
+// Remplace la liste des quêtes d'un groupe (picker à cases cochées).
+export function setGroupQuests(groupId, questIds) {
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM quest_group_items WHERE group_id = ?`).run(groupId);
+    const ins = db.prepare(`INSERT OR IGNORE INTO quest_group_items (group_id, quest_id) VALUES (?, ?)`);
+    for (const qid of new Set((questIds || []).map(Number).filter(Boolean))) {
+      if (db.prepare(`SELECT id FROM quests WHERE id = ?`).get(qid)) ins.run(groupId, qid);
+    }
+  });
+  tx();
+  return db.prepare(`SELECT quest_id FROM quest_group_items WHERE group_id = ?`).all(groupId)
+    .map((r) => r.quest_id);
+}
+
+export function groupQuestIds(groupId) {
+  return db.prepare(`SELECT quest_id FROM quest_group_items WHERE group_id = ?`).all(groupId)
+    .map((r) => r.quest_id);
 }
 
 export function updateGroup(id, data, userId) {
@@ -222,12 +260,14 @@ export function deleteGroup(id) {
   return db.prepare(`DELETE FROM quest_groups WHERE id = ?`).run(id).changes > 0;
 }
 
-// Groups a single quest belongs to (light: id/nom/couleur for chips).
+// Groups a single quest belongs to (light: id/nom/couleur for chips). Les
+// groupes privés sont exclus des chips — ces fonctions n'ont pas de contexte
+// utilisateur et une sélection perso ne doit pas fuiter chez l'autre.
 function groupsForQuest(questId) {
   return db.prepare(`
     SELECT g.id, g.nom, g.couleur FROM quest_group_items i
     JOIN quest_groups g ON g.id = i.group_id
-    WHERE i.quest_id = ? ORDER BY g.sort_order, g.id
+    WHERE i.quest_id = ? AND g.owner_id IS NULL ORDER BY g.sort_order, g.id
   `).all(questId);
 }
 
@@ -238,7 +278,7 @@ function groupsForQuests(ids) {
   const rows = db.prepare(`
     SELECT i.quest_id, g.id, g.nom, g.couleur FROM quest_group_items i
     JOIN quest_groups g ON g.id = i.group_id
-    WHERE i.quest_id IN (${ph}) ORDER BY g.sort_order, g.id
+    WHERE i.quest_id IN (${ph}) AND g.owner_id IS NULL ORDER BY g.sort_order, g.id
   `).all(...ids);
   const out = {};
   for (const r of rows) {
@@ -260,13 +300,16 @@ function replaceGroupItems(questId, groupIds) {
 
 function mapCustomItem(r) {
   if (!r) return null;
-  let enchantements = [];
-  try {
-    const parsed = JSON.parse(r.enchantements);
-    if (Array.isArray(parsed)) enchantements = parsed.map(String);
-  } catch { /* blob illisible → liste vide */ }
+  const parseList = (blob) => {
+    try {
+      const parsed = JSON.parse(blob);
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch { return []; /* blob illisible → liste vide */ }
+  };
   return {
-    id: r.id, nom: r.nom, refCode: r.ref_code, enchantements,
+    id: r.id, nom: r.nom, refCode: r.ref_code,
+    enchantements: parseList(r.enchantements),
+    stats: parseList(r.stats),
     note: r.note, sortOrder: r.sort_order, updatedAt: r.updated_at,
   };
 }
@@ -296,10 +339,11 @@ export function customItemNameByRef(refCode) {
 
 export function createCustomItem(data, userId) {
   const info = db.prepare(`
-    INSERT INTO quest_custom_items (nom, ref_code, enchantements, note, sort_order, created_by, updated_by)
-    VALUES (?, ?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_custom_items), 0), ?, ?)
+    INSERT INTO quest_custom_items (nom, ref_code, enchantements, stats, note, sort_order, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_custom_items), 0), ?, ?)
   `).run(
-    String(data.nom).trim(), data.refCode || null, enchantsJson(data.enchantements),
+    String(data.nom).trim(), data.refCode || null,
+    enchantsJson(data.enchantements), enchantsJson(data.stats),
     String(data.note || '').trim().slice(0, 500), userId, userId,
   );
   return getCustomItem(info.lastInsertRowid);
@@ -309,10 +353,11 @@ export function updateCustomItem(id, data, userId) {
   const exists = db.prepare(`SELECT id FROM quest_custom_items WHERE id = ?`).get(id);
   if (!exists) return null;
   db.prepare(`
-    UPDATE quest_custom_items SET nom = ?, ref_code = ?, enchantements = ?, note = ?,
+    UPDATE quest_custom_items SET nom = ?, ref_code = ?, enchantements = ?, stats = ?, note = ?,
       updated_by = ?, updated_at = strftime('%s','now') WHERE id = ?
   `).run(
-    String(data.nom).trim(), data.refCode || null, enchantsJson(data.enchantements),
+    String(data.nom).trim(), data.refCode || null,
+    enchantsJson(data.enchantements), enchantsJson(data.stats),
     String(data.note || '').trim().slice(0, 500), userId, id,
   );
   return getCustomItem(id);
@@ -541,23 +586,35 @@ export function questHistory(questId, memberId = null) {
 // per faction if every quest of that cadence is completed once. No score is
 // stored — this is a pure read-time sum documenting the ceiling per period.
 
-export function potentialGains() {
+// Gains potentiels par cadence — sur toutes les quêtes, ou restreints à un
+// groupe (partagé ou privé) quand `groupId` est fourni.
+export function potentialGains(groupId = null) {
+  const groupJoin = groupId != null ? 'JOIN quest_group_items gi ON gi.quest_id = q.id AND gi.group_id = ?' : '';
+  const groupArgs = groupId != null ? [groupId] : [];
   const out = {};
   for (const occ of ['journaliere', 'hebdomadaire', 'mensuelle', 'simple']) {
     const pa = db.prepare(`
       SELECT COALESCE(SUM(r.quantite), 0) AS n FROM quest_rewards r
       JOIN quests q ON q.id = r.quest_id
+      ${groupJoin}
       WHERE q.occurrence_type = ? AND r.kind = 'pa'
-    `).get(occ).n;
+    `).get(...groupArgs, occ).n;
     const reputations = db.prepare(`
       SELECT r.faction_id, f.nom, f.couleur, COALESCE(SUM(r.quantite), 0) AS total
       FROM quest_rewards r
       JOIN quests q ON q.id = r.quest_id
+      ${groupJoin}
       LEFT JOIN factions f ON f.id = r.faction_id
       WHERE q.occurrence_type = ? AND r.kind = 'reputation' AND r.faction_id IS NOT NULL
       GROUP BY r.faction_id ORDER BY total DESC
-    `).all(occ).map((x) => ({ factionId: x.faction_id, nom: x.nom, couleur: x.couleur, total: x.total }));
-    const questCount = db.prepare(`SELECT COUNT(*) AS n FROM quests WHERE occurrence_type = ?`).get(occ).n;
+    `).all(...groupArgs, occ).map((x) => ({ factionId: x.faction_id, nom: x.nom, couleur: x.couleur, total: x.total }));
+    const questCount = groupId != null
+      ? db.prepare(`
+          SELECT COUNT(*) AS n FROM quests q
+          JOIN quest_group_items gi ON gi.quest_id = q.id AND gi.group_id = ?
+          WHERE q.occurrence_type = ?
+        `).get(groupId, occ).n
+      : db.prepare(`SELECT COUNT(*) AS n FROM quests WHERE occurrence_type = ?`).get(occ).n;
     // eslint-disable-next-line security/detect-object-injection -- `occ` iterates a hardcoded occurrence list
     out[occ] = { pa, reputations, questCount };
   }

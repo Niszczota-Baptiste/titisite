@@ -100,6 +100,7 @@ export function customCatalogEntries(customItems, catalog) {
       icon: base?.icon || null,
       _key: normName(c.nom),
       enchantements: c.enchantements || [],
+      stats: c.stats || [],
       baseId: c.refCode || null,
       baseNomFr: base?.nomFr || null,
     };

@@ -768,6 +768,11 @@ function rowToTrade(r) {
 
 function rowToVillager(r, trades = []) {
   if (!r) return null;
+  let tags = [];
+  try {
+    const parsed = JSON.parse(r.tags);
+    if (Array.isArray(parsed)) tags = parsed.map(String);
+  } catch { /* blob illisible → liste vide */ }
   return {
     id: r.id,
     workspaceId: r.workspace_id,
@@ -778,6 +783,7 @@ function rowToVillager(r, trades = []) {
     y: r.y,
     z: r.z,
     note: r.note || '',
+    tags,
     position: r.position,
     createdBy: r.created_by,
     createdByName: r.created_by_name,
@@ -785,6 +791,20 @@ function rowToVillager(r, trades = []) {
     updatedAt: r.updated_at,
     trades,
   };
+}
+
+// Tags libres : dédupliqués (insensible casse), bornés en nombre et longueur.
+function tagsJson(list) {
+  const seen = new Set();
+  const out = [];
+  for (const t of Array.isArray(list) ? list : []) {
+    const v = String(t).trim().slice(0, 32);
+    if (!v || seen.has(v.toLowerCase())) continue;
+    seen.add(v.toLowerCase());
+    out.push(v);
+    if (out.length >= 10) break;
+  }
+  return JSON.stringify(out);
 }
 
 const VILLAGER_SELECT = `
@@ -827,14 +847,14 @@ minecraftRouter.get('/villagers', (req, res) => {
 
 minecraftRouter.post('/villagers', (req, res) => {
   if (!ensureMinecraftWorkspace(req, res)) return;
-  const { name, profession, world, x, y, z, note } = req.body || {};
+  const { name, profession, world, x, y, z, note, tags } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'missing_name' });
   const pos = db.prepare(
     `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM minecraft_villagers WHERE workspace_id = ?`,
   ).get(req.workspace.id).n;
   const result = db.prepare(`
-    INSERT INTO minecraft_villagers (workspace_id, name, profession, world, x, y, z, note, position, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO minecraft_villagers (workspace_id, name, profession, world, x, y, z, note, tags, position, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     req.workspace.id,
     String(name).trim(),
@@ -842,6 +862,7 @@ minecraftRouter.post('/villagers', (req, res) => {
     String(world || 'overworld').trim().slice(0, 64) || 'overworld',
     parseCoord(x), parseCoord(y), parseCoord(z),
     String(note || '').trim(),
+    tagsJson(tags),
     pos,
     req.user.id,
   );
@@ -854,7 +875,7 @@ minecraftRouter.put('/villagers/:id', (req, res) => {
   const existing = findVillager(req.workspace.id, req.params.id);
   if (!existing) return res.status(404).json({ error: 'not_found' });
   const body = req.body || {};
-  const { name, profession, world, x, y, z, note } = body;
+  const { name, profession, world, x, y, z, note, tags } = body;
   db.prepare(`
     UPDATE minecraft_villagers SET
       name       = COALESCE(?, name),
@@ -862,6 +883,7 @@ minecraftRouter.put('/villagers/:id', (req, res) => {
       world      = COALESCE(?, world),
       x = ?, y = ?, z = ?,
       note       = COALESCE(?, note),
+      tags       = COALESCE(?, tags),
       updated_at = strftime('%s','now')
     WHERE id = ?
   `).run(
@@ -872,6 +894,7 @@ minecraftRouter.put('/villagers/:id', (req, res) => {
     'y' in body ? parseCoord(y) : existing.y,
     'z' in body ? parseCoord(z) : existing.z,
     note === undefined ? null : String(note).trim(),
+    tags === undefined ? null : tagsJson(tags),
     existing.id,
   );
   const row = db.prepare(`${VILLAGER_SELECT} WHERE v.id = ?`).get(existing.id);

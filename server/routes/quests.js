@@ -7,9 +7,14 @@ import { findByCockpitToken } from '../users.js';
 import { buildCockpitFeed } from '../quests/cockpit.js';
 import {
   completeQuest,
+  createGroup,
   customItemNameByRef,
+  deleteGroup,
   getChainGraph,
+  getGroupOwner,
   getQuest,
+  groupQuestIds,
+  groupVisibleBy,
   listChains,
   listCustomItems,
   listFactions,
@@ -20,7 +25,9 @@ import {
   potentialGains,
   questHistory,
   reputationOverview,
+  setGroupQuests,
   uncompleteQuest,
+  updateGroup,
   worldMap,
 } from '../quests/store.js';
 
@@ -40,11 +47,78 @@ const READ = [requireAuth, requireQuestView];
 // ── Reference data ─────────────────────────────────────────────────────────
 questsRouter.get('/factions', READ, (_req, res) => res.json(listFactions()));
 questsRouter.get('/chains', READ, (_req, res) => res.json(listChains()));
-questsRouter.get('/groups', READ, (_req, res) => res.json(listGroups()));
+// Groupes partagés + les groupes privés de l'appelant.
+questsRouter.get('/groups', READ, (req, res) => res.json(listGroups(req.user.id)));
 questsRouter.get('/chains/:id/graph', READ, (req, res) => {
   res.json(getChainGraph(Number(req.params.id)));
 });
-questsRouter.get('/gains', READ, (_req, res) => res.json(potentialGains()));
+// Gains potentiels — globaux, ou restreints à un groupe visible (?group=N).
+questsRouter.get('/gains', READ, (req, res) => {
+  const groupId = req.query.group ? Number(req.query.group) : null;
+  if (groupId != null) {
+    if (!Number.isFinite(groupId) || !groupVisibleBy(groupId, req.user.id)) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+  }
+  res.json(potentialGains(groupId));
+});
+
+// ── Groupes privés (sélections perso, gérables par tout lecteur de quêtes) ──
+// Un groupe privé appartient à son créateur : lui seul le voit, le modifie,
+// choisit ses quêtes ou le supprime. Les groupes partagés restent gérés par
+// l'admin d'édition (quests-admin).
+
+function ownPrivateGroup(req, res) {
+  const id = Number(req.params.id);
+  const owner = getGroupOwner(id);
+  if (owner === undefined) { res.status(404).json({ error: 'not_found' }); return null; }
+  if (owner === null || owner !== req.user.id) { res.status(403).json({ error: 'forbidden' }); return null; }
+  return id;
+}
+
+questsRouter.post('/my-groups', READ, (req, res) => {
+  const nom = String(req.body?.nom || '').trim();
+  if (!nom) return res.status(400).json({ error: 'nom_required' });
+  const group = createGroup({
+    nom: nom.slice(0, 80),
+    couleur: req.body?.couleur,
+    description: String(req.body?.description || '').slice(0, 300),
+  }, req.user.id, req.user.id);
+  res.status(201).json(group);
+});
+
+questsRouter.put('/my-groups/:id', READ, (req, res) => {
+  const id = ownPrivateGroup(req, res);
+  if (id == null) return;
+  const nom = String(req.body?.nom || '').trim();
+  if (!nom) return res.status(400).json({ error: 'nom_required' });
+  res.json(updateGroup(id, {
+    nom: nom.slice(0, 80),
+    couleur: req.body?.couleur,
+    description: String(req.body?.description || '').slice(0, 300),
+  }, req.user.id));
+});
+
+questsRouter.delete('/my-groups/:id', READ, (req, res) => {
+  const id = ownPrivateGroup(req, res);
+  if (id == null) return;
+  deleteGroup(id);
+  res.status(204).end();
+});
+
+// Quêtes du groupe : lecture (ids) + remplacement complet (picker à cases).
+questsRouter.get('/my-groups/:id/quests', READ, (req, res) => {
+  const id = ownPrivateGroup(req, res);
+  if (id == null) return;
+  res.json({ questIds: groupQuestIds(id) });
+});
+
+questsRouter.put('/my-groups/:id/quests', READ, (req, res) => {
+  const id = ownPrivateGroup(req, res);
+  if (id == null) return;
+  if (!Array.isArray(req.body?.questIds)) return res.status(400).json({ error: 'quest_ids_required' });
+  res.json({ questIds: setGroupQuests(id, req.body.questIds) });
+});
 questsRouter.get('/reputation', READ, (_req, res) => res.json(reputationOverview()));
 questsRouter.get('/maps', READ, (_req, res) => res.json(listMaps()));
 questsRouter.get('/custom-items', READ, (_req, res) => res.json(listCustomItems()));
@@ -58,7 +132,12 @@ questsRouter.get('/quests', READ, (req, res) => {
   const filters = {};
   if (req.query.faction) filters.factionId = Number(req.query.faction);
   if (req.query.chain) filters.chainId = Number(req.query.chain);
-  if (req.query.group) filters.groupId = Number(req.query.group);
+  if (req.query.group) {
+    const gid = Number(req.query.group);
+    // Un groupe privé d'un autre membre ne filtre rien (pas de fuite).
+    if (groupVisibleBy(gid, req.user.id)) filters.groupId = gid;
+    else return res.status(404).json({ error: 'not_found' });
+  }
   if (req.query.occurrence) filters.occurrence = String(req.query.occurrence);
   const done = memberCurrentDone(req.user.id);
   const quests = listQuests(filters).map((q) => ({ ...q, done: !!done[q.id] }));
@@ -99,7 +178,16 @@ questsRouter.get('/quests/:id/stock', READ, (req, res) => {
         WHERE m.user_id = ? AND w.is_minecraft = 1 AND w.status = 'active'
       `).all(req.user.id);
   if (workspaces.length === 0) {
-    return res.json({ inputs: inputs.map((i) => ({ inputId: i.id, label: i.label, refCode: i.refCode, needed: i.quantite, totalHave: 0, locations: [] })) });
+    return res.json({
+      inputs: inputs.map((i) => ({
+        inputId: i.id,
+        label: i.label || customItemNameByRef(i.refCode) || codexNameById(i.refCode) || i.refCode,
+        refCode: i.refCode,
+        needed: i.quantite,
+        totalHave: 0,
+        locations: [],
+      })),
+    });
   }
 
   const ph = workspaces.map(() => '?').join(',');
@@ -136,7 +224,9 @@ questsRouter.get('/quests/:id/stock', READ, (req, res) => {
       .sort((a, b) => b.quantity - a.quantity);
     return {
       inputId: input.id,
-      label: input.label,
+      // Libellé affichable : label saisi, sinon nom custom/codex résolu — le
+      // client ne doit jamais retomber sur le ref_code brut (« custom:1 »).
+      label: input.label || refName || input.refCode,
       refCode: input.refCode,
       needed: input.quantite,
       totalHave: locations.reduce((s, l) => s + l.quantity, 0),

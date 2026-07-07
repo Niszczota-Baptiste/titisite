@@ -83,6 +83,7 @@ function validateCustomItem(b) {
   if (!nonEmpty(b?.nom)) throw new Invalid('custom_item_nom_required');
   if (asStr(b.nom).trim().length > 120) throw new Invalid('custom_item_nom_too_long');
   if (b.enchantements != null && !Array.isArray(b.enchantements)) throw new Invalid('invalid_enchantements');
+  if (b.stats != null && !Array.isArray(b.stats)) throw new Invalid('invalid_stats');
 }
 
 function validateQuest(b) {

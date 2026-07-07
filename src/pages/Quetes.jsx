@@ -180,7 +180,7 @@ function QuestsApp({ user }) {
         {tab === 'carte' && <MapTab canEdit={canEdit} onOpenQuest={setDetailId} />}
         {tab === 'chaines' && <ChainsTab chains={chains} doneMap={doneMap} onOpen={setDetailId} />}
         {tab === 'reputation' && <ReputationView onOpenQuest={setDetailId} />}
-        {tab === 'gains' && <GainsView />}
+        {tab === 'gains' && <GainsView groups={groups} onGroupsChanged={() => refreshAll().catch(() => {})} />}
         {tab === 'editeur' && canEdit && (
           <QuestEditor factions={factions} chains={chains} groups={groups} maps={maps} quests={quests} byId={byIdPlus} catalog={catalogPlus} onChanged={refreshAll} />
         )}

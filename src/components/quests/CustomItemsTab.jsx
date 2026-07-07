@@ -84,14 +84,21 @@ function CustomItemCard({ item, byId, canEdit, onEdit, onRemove }) {
             </span>
           )}
         </div>
-        {item.enchantements.length > 0 && (
+        {(item.enchantements.length > 0 || (item.stats || []).length > 0) && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
             {item.enchantements.map((e, i) => (
-              <span key={i} style={{
+              <span key={`e${i}`} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px',
                 borderRadius: 999, fontSize: 11, fontFamily: "'Inter',sans-serif", fontWeight: 600,
                 background: 'rgba(232,200,106,0.1)', color: GOLD, border: '1px solid rgba(232,200,106,0.35)',
               }}>⚡ {e}</span>
+            ))}
+            {(item.stats || []).map((st, i) => (
+              <span key={`s${i}`} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px',
+                borderRadius: 999, fontSize: 11, fontFamily: "'Inter',sans-serif", fontWeight: 600,
+                background: 'rgba(123,211,232,0.1)', color: '#7bd3e8', border: '1px solid rgba(123,211,232,0.35)',
+              }}>📊 {st}</span>
             ))}
           </div>
         )}
@@ -115,16 +122,23 @@ function CustomItemForm({ item, catalog, byId, onDone, onCancel }) {
   const [nom, setNom] = useState(item?.nom || '');
   const [refCode, setRefCode] = useState(item?.refCode || '');
   const [enchantements, setEnchantements] = useState(item?.enchantements || []);
+  const [stats, setStats] = useState(item?.stats || []);
   const [note, setNote] = useState(item?.note || '');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
 
   const setEnchant = (i, v) => setEnchantements((es) => es.map((x, j) => (j === i ? v : x)));
+  const setStat = (i, v) => setStats((ss) => ss.map((x, j) => (j === i ? v : x)));
 
   const save = async () => {
     setSaving(true); setErr(null);
     try {
-      const body = { nom, refCode: refCode || null, enchantements: enchantements.filter((e) => e.trim()), note };
+      const body = {
+        nom, refCode: refCode || null,
+        enchantements: enchantements.filter((e) => e.trim()),
+        stats: stats.filter((s) => s.trim()),
+        note,
+      };
       if (item) await api.quests.updateCustomItem(item.id, body);
       else await api.quests.createCustomItem(body);
       onDone();
@@ -160,6 +174,23 @@ function CustomItemForm({ item, catalog, byId, onDone, onCancel }) {
         </div>
         <Button type="button" variant="ghost" style={{ marginTop: 6 }}
           onClick={() => setEnchantements((es) => [...es, ''])}>+ Enchantement</Button>
+      </div>
+
+      <div style={{ marginTop: 6 }}>
+        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px', color: '#7bd3e8', marginBottom: 6, fontWeight: 600 }}>
+          📊 Stats (comme en jeu)
+        </div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {stats.map((st, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 34px', gap: 6 }}>
+              <Input value={st} placeholder="Dégâts +10, Vitesse +20 %…" onChange={(ev) => setStat(i, ev.target.value)} />
+              <Button type="button" variant="danger" style={{ padding: '6px 8px' }}
+                onClick={() => setStats((ss) => ss.filter((_, j) => j !== i))}>×</Button>
+            </div>
+          ))}
+        </div>
+        <Button type="button" variant="ghost" style={{ marginTop: 6 }}
+          onClick={() => setStats((ss) => [...ss, ''])}>+ Stat</Button>
       </div>
 
       <Field label="Note (optionnel)">

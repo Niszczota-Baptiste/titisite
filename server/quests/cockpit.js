@@ -17,24 +17,32 @@
 // self-healing across resets (period_key is recomputed every poll). A member
 // with wants_quest_reminders = 0 gets an empty reminder set.
 
+import { codexNameById } from '../codex.js';
 import { db } from '../db.js';
 import { currentPeriodKey, nextResetAt } from './period.js';
-import { memberCurrentDone, potentialGains } from './store.js';
+import { customItemNameByRef, memberCurrentDone, potentialGains } from './store.js';
 
 const DEADLINE_HORIZON_S = 72 * 3600; // surface a due date within 72 h
+
+// Label affichable : saisi, sinon nom custom/codex du ref_code — le cockpit ne
+// doit jamais afficher un ref brut (« custom:1 »).
+const withName = (l) => ({
+  ...l,
+  label: l.label || customItemNameByRef(l.refCode) || codexNameById(l.refCode) || l.label,
+});
 
 function rewardsBrief(questId) {
   return db.prepare(`
     SELECT kind, label, quantite, faction_id AS factionId, ref_code AS refCode FROM quest_rewards
     WHERE quest_id = ? ORDER BY ordre, id
-  `).all(questId);
+  `).all(questId).map(withName);
 }
 
 function inputsBrief(questId) {
   return db.prepare(`
     SELECT kind, label, quantite, ref_code AS refCode, faction_id AS factionId, icon
     FROM quest_inputs WHERE quest_id = ? ORDER BY ordre, id
-  `).all(questId);
+  `).all(questId).map(withName);
 }
 
 function mapPointsBrief(questId) {

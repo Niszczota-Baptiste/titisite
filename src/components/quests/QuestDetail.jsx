@@ -26,9 +26,9 @@ function Line({ line, kinds, byId, factions }) {
   const meta = kinds[line.kind] || {};
   const faction = line.factionId ? factions.get(line.factionId) : null;
   const qty = line.quantite != null ? line.quantite : null;
-  const enchants = (line.kind === 'item' && line.refCode)
-    ? (byId?.get(line.refCode)?.enchantements || [])
-    : [];
+  const custom = (line.kind === 'item' && line.refCode) ? byId?.get(line.refCode) : null;
+  const enchants = custom?.enchantements || [];
+  const stats = custom?.stats || [];
   return (
     <li style={{
       display: 'flex', alignItems: 'center', gap: 9, padding: '7px 10px',
@@ -41,13 +41,20 @@ function Line({ line, kinds, byId, factions }) {
         <span style={{ fontSize: 17, width: 22, textAlign: 'center' }}>{meta.icon || '•'}</span>
       )}
       <span style={{ flex: 1, minWidth: 0 }}>
-        {line.label || meta.label || line.kind}
+        {/* Nom affiché : label saisi, sinon nom codex/custom du ref_code —
+            jamais le générique « Objet » quand l'item est identifiable. */}
+        {line.label || (line.refCode && byId?.get(line.refCode)?.nomFr) || meta.label || line.kind}
         {faction && (
           <span style={{ color: faction.couleur, marginLeft: 6, fontWeight: 600 }}>· {faction.nom}</span>
         )}
         {enchants.length > 0 && (
           <span title={enchants.join(' · ')} style={{ color: GOLD, marginLeft: 6, fontSize: 11.5, fontWeight: 600 }}>
             ⚡ {enchants.join(' · ')}
+          </span>
+        )}
+        {stats.length > 0 && (
+          <span title={stats.join(' · ')} style={{ color: '#7bd3e8', marginLeft: 6, fontSize: 11.5, fontWeight: 600 }}>
+            📊 {stats.join(' · ')}
           </span>
         )}
       </span>
