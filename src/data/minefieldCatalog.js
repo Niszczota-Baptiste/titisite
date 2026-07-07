@@ -123,19 +123,26 @@ export function matchCatalogName(catalog, name) {
 
 /**
  * Filtre le catalogue par nom FR (tous les tokens doivent matcher, tolérant aux
- * accents/casse). `limit` borne la liste pour garder le menu utile.
+ * accents/casse). Les noms qui COMMENCENT par la requête passent devant les
+ * simples inclusions — sinon taper « h » noie « Hache » sous les ~30 premières
+ * entrées alphabétiques contenant un h (« Affiche… »). `limit` borne la liste.
  */
 export function searchCatalog(catalog, query, limit = 40) {
   if (!Array.isArray(catalog) || catalog.length === 0) return [];
   const tokens = normName(query).split(/\s+/).filter(Boolean);
-  const out = [];
+  if (tokens.length === 0) return catalog.slice(0, limit);
+  const starts = [];
+  const contains = [];
   for (const e of catalog) {
-    if (tokens.length === 0 || tokens.every((t) => e._key.includes(t))) {
-      out.push(e);
-      if (out.length >= limit) break;
+    if (!tokens.every((t) => e._key.includes(t))) continue;
+    if (e._key.startsWith(tokens[0])) {
+      starts.push(e);
+      if (starts.length >= limit) break;
+    } else if (contains.length < limit) {
+      contains.push(e);
     }
   }
-  return out;
+  return [...starts, ...contains].slice(0, limit);
 }
 
 /**

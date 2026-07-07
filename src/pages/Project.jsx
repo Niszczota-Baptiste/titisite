@@ -12,6 +12,15 @@ import { MeetingsTab } from '../components/project/Meetings';
 import { MinecraftTab } from '../components/project/Minecraft';
 import { OverviewTab } from '../components/project/Overview';
 import { ProjectLayout } from '../components/project/ProjectLayout';
+import { useWorkspace } from '../hooks/useWorkspace';
+
+// L'onglet d'atterrissage dépend du projet : « minecraft » pour un projet
+// 100 % Minecraft, « overview » sinon. Rendu sous ProjectLayout, donc le
+// workspace est déjà chargé dans le contexte.
+function ProjectIndexRedirect() {
+  const { workspace } = useWorkspace();
+  return <Navigate to={workspace.minecraftOnly ? 'minecraft' : 'overview'} replace />;
+}
 
 export default function Project() {
   const { user, loading, isMember } = useAuth();
@@ -52,7 +61,7 @@ export default function Project() {
       <Route index              element={<Home />} />
       <Route path="discussion"  element={<DiscussionPage />} />
       <Route path=":slug" element={<ProjectLayout />}>
-        <Route index              element={<Navigate to="overview" replace />} />
+        <Route index              element={<ProjectIndexRedirect />} />
         <Route path="overview"    element={<OverviewTab />} />
         <Route path="kanban"      element={<KanbanTab />} />
         <Route path="calendar"    element={<CalendarTab />} />
@@ -60,7 +69,7 @@ export default function Project() {
         <Route path="builds"      element={<BuildsTab />} />
         <Route path="meetings"    element={<MeetingsTab />} />
         <Route path="minecraft"   element={<MinecraftTab />} />
-        <Route path="*"           element={<Navigate to="overview" replace />} />
+        <Route path="*"           element={<ProjectIndexRedirect />} />
       </Route>
       <Route path="*" element={<Navigate to="/project" replace />} />
     </Routes>

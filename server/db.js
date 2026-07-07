@@ -82,6 +82,10 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_workspaces_status ON workspaces(status);`);
   ensureColumn('workspaces', 'is_minecraft', 'INTEGER NOT NULL DEFAULT 0');
+  // Projet « 100 % Minecraft » : masque les onglets classiques (Vue d'ensemble
+  // → Réunions) et fait de la page ⛏️ Minecraft l'unique entrée du projet.
+  // Implique is_minecraft à la lecture (rowToWorkspace).
+  ensureColumn('workspaces', 'minecraft_only', 'INTEGER NOT NULL DEFAULT 0');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS workspace_members (

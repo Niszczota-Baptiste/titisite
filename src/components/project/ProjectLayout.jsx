@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, useParams } from 'react-router-dom';
+import { Link, NavLink, Navigate, Outlet, useLocation, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -17,9 +17,18 @@ const BASE_TABS = [
 ];
 
 function tabsFor(workspace) {
+  // Projet 100 % Minecraft : les onglets classiques (Vue d'ensemble → Réunions)
+  // disparaissent — tout se passe sur la page ⛏️ Minecraft (coffres, builds 3D,
+  // calculateur, lien Quêtes).
+  if (workspace?.minecraftOnly) return [{ to: 'minecraft', label: '⛏️ Minecraft' }];
   const tabs = [...BASE_TABS];
   if (workspace?.isMinecraft) tabs.push({ to: 'minecraft', label: '⛏️ Minecraft' });
   return tabs;
+}
+
+// Route d'atterrissage d'un projet (utilisée aussi par le switcher et Home).
+export function projectHome(workspace) {
+  return `/project/${workspace.slug}/${workspace.minecraftOnly ? 'minecraft' : 'overview'}`;
 }
 
 /**
@@ -28,6 +37,7 @@ function tabsFor(workspace) {
  */
 export function ProjectLayout() {
   const { slug } = useParams();
+  const location = useLocation();
   const { user, logout, isAdmin } = useAuth();
   const [workspace, setWorkspace] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
@@ -82,6 +92,13 @@ export function ProjectLayout() {
         </div>
       </Shell>
     );
+  }
+
+  // Projet 100 % Minecraft : toute URL d'un onglet masqué ramène à la page
+  // Minecraft (les liens directs vers /kanban, /documents… deviennent inertes).
+  const currentTab = location.pathname.split('/')[3] || '';
+  if (workspace.minecraftOnly && currentTab && currentTab !== 'minecraft') {
+    return <Navigate to={`/project/${slug}/minecraft`} replace />;
   }
 
   return (
@@ -331,7 +348,7 @@ function ProjectSwitcher({ current, all }) {
           {all.filter((w) => w.status === 'active').map((w) => (
             <Link
               key={w.id}
-              to={`/project/${w.slug}/overview`}
+              to={projectHome(w)}
               onClick={() => setOpen(false)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,

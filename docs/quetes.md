@@ -146,15 +146,19 @@ Toutes les entrées sont validées côté serveur (`quests-admin.js`) : enums,
 Le cockpit est une **app Python locale** (pas d'URL publique) : elle **interroge**
 un endpoint secret plutôt que de recevoir un push.
 
-**Accès : admins uniquement.** Le bouton « 🛰️ Cockpit MF » de `/quetes`,
-l'onglet « Cockpit » du dashboard, les endpoints `/api/me/cockpit-token*`,
-`/api/me/quest-reminders` et `/api/me/cockpit/*` exigent le rôle `admin`, et le
-flux `GET /api/quests/cockpit/<token>.json` répond 404 si le jeton appartient
+**Accès : admins uniquement.** L'onglet « Cockpit » du dashboard, les
+endpoints `/api/me/cockpit-token*`, `/api/me/quest-reminders` et
+`/api/me/cockpit/*` exigent le rôle `admin`, et le flux
+`GET /api/quests/cockpit/<token>.json` répond 404 si le jeton appartient
 à un compte non admin (un jeton émis avant la restriction devient inerte).
+Le cockpit ne s'atteint QUE depuis `/admin` — le bandeau de `/quetes` porte à
+la place un bouton « ⛏️ ← Retour au projet » vers l'onglet Minecraft du projet
+d'origine (le lien « 📜 Quêtes » passe `?projet=<slug>`, mémorisé en
+sessionStorage).
 
 - Chaque admin a un `cockpit_token` (comme le token iCal) : récupérable /
-  régénérable depuis le bouton **« 🛰️ Cockpit MF »** de `/quetes`
-  (`GET /api/me/cockpit-token`, `POST …/rotate`) ou la page admin « Cockpit ».
+  régénérable depuis la page admin « Cockpit »
+  (`GET /api/me/cockpit-token`, `POST …/rotate`).
 - Le cockpit poll : `GET /api/quests/cockpit/<token>.json` (sans cookie,
   rate-limité 60/min). Réponse :
 

@@ -26,7 +26,10 @@ export function rowToWorkspace(r) {
     endDate: r.end_date,
     tags: parseTags(r.tags),
     status: r.status,
-    isMinecraft: !!r.is_minecraft,
+    // minecraft_only implique le mode minecraft (une seule source de vérité
+    // côté lecteurs : les gardes serveur et l'UI testent isMinecraft).
+    isMinecraft: !!(r.is_minecraft || r.minecraft_only),
+    minecraftOnly: !!r.minecraft_only,
     createdBy: r.created_by,
     createdByName: r.created_by_name,
     createdAt: r.created_at,
@@ -133,6 +136,7 @@ export function createWorkspace(input, createdBy) {
     tags = [],
     status = 'active',
     isMinecraft = false,
+    minecraftOnly = false,
     memberIds = [],
   } = input || {};
 
@@ -143,15 +147,16 @@ export function createWorkspace(input, createdBy) {
 
   const result = db.prepare(`
     INSERT INTO workspaces
-      (slug, name, description, color, icon, start_date, end_date, tags, status, is_minecraft, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (slug, name, description, color, icon, start_date, end_date, tags, status, is_minecraft, minecraft_only, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     slug, name.trim(), (description || '').trim(),
     color, icon,
     parseUnix(startDate), parseUnix(endDate),
     JSON.stringify(Array.isArray(tags) ? tags : []),
     status === 'archived' ? 'archived' : 'active',
-    isMinecraft ? 1 : 0,
+    (isMinecraft || minecraftOnly) ? 1 : 0,
+    minecraftOnly ? 1 : 0,
     createdBy,
   );
 
@@ -165,7 +170,7 @@ export function updateWorkspace(id, input) {
 
   const {
     name, slug, description, color, icon, startDate, endDate, tags, status,
-    isMinecraft, memberIds,
+    isMinecraft, minecraftOnly, memberIds,
   } = input || {};
 
   let newSlug = existing.slug;
@@ -185,6 +190,7 @@ export function updateWorkspace(id, input) {
       tags         = COALESCE(?, tags),
       status       = COALESCE(?, status),
       is_minecraft = COALESCE(?, is_minecraft),
+      minecraft_only = COALESCE(?, minecraft_only),
       updated_at   = strftime('%s','now')
     WHERE id = ?
   `).run(
@@ -197,7 +203,8 @@ export function updateWorkspace(id, input) {
     endDate !== undefined ? parseUnix(endDate) : existing.endDate,
     Array.isArray(tags) ? JSON.stringify(tags) : null,
     status && ['active', 'archived'].includes(status) ? status : null,
-    isMinecraft === undefined ? null : (isMinecraft ? 1 : 0),
+    isMinecraft === undefined ? null : ((isMinecraft || minecraftOnly) ? 1 : 0),
+    minecraftOnly === undefined ? null : (minecraftOnly ? 1 : 0),
     id,
   );
   if (Array.isArray(memberIds)) setMembers(id, memberIds);

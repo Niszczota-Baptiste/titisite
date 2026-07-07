@@ -156,7 +156,7 @@ function ProjectsGrid({ workspaces, isAdmin, activity = {} }) {
 function ProjectCard({ w, archived, newCount = 0 }) {
   return (
     <Link
-      to={`/project/${w.slug}/overview`}
+      to={`/project/${w.slug}/${w.minecraftOnly ? 'minecraft' : 'overview'}`}
       style={{
         textDecoration: 'none', color: 'inherit',
         ...card, padding: 0, overflow: 'hidden',

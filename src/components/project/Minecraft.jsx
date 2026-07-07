@@ -402,7 +402,7 @@ export function MinecraftTab() {
   const subNav = <MinecraftSubNav view={view} setView={setView} />;
   // Lien vers le journal de quêtes global (Nostra/Minefield) — vit ici plutôt
   // que dans le footer du site public.
-  const questsLink = <QuestsLink />;
+  const questsLink = <QuestsLink slug={workspace.slug} />;
 
   if (view === 'builds') {
     return (
@@ -719,10 +719,10 @@ export function MinecraftTab() {
 
 // ── Lien vers le journal de quêtes (/quetes) ──────────────────────────────────
 
-function QuestsLink() {
+function QuestsLink({ slug }) {
   return (
     <Link
-      to="/quetes"
+      to={`/quetes?projet=${slug}`}
       title="Journal de quêtes Nostra / Minefield"
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -1321,7 +1321,7 @@ function WantedPanel({ ws, slug, items, catalog, iconIndex, idIndex, block3d, to
               padding: 10, borderRadius: 10, marginBottom: 10,
               background: 'rgba(20,10,42,0.55)', border: '1px dashed rgba(251,146,60,0.4)',
             }}>
-              <div style={{ flex: '2 1 200px', minWidth: 180 }}>
+              <div style={{ flex: '2 1 260px', minWidth: 240 }}>
                 <BlockPicker value={name} onChange={setName} catalog={catalog} autoFocus />
               </div>
               <input
@@ -2013,7 +2013,9 @@ function BlockPicker({ value, onChange, catalog, autoFocus }) {
             border: '1px solid rgba(80,50,130,0.35)',
             borderRadius: 10,
             boxShadow: '0 18px 36px rgba(0,0,0,0.55)',
-            maxHeight: 280, overflowY: 'auto',
+            // Liste haute (~60 % de l'écran) : on choisit un item au milieu de
+            // milliers d'entrées, un dropdown de 5 lignes ne suffit pas.
+            maxHeight: 'min(480px, 60vh)', overflowY: 'auto',
             padding: 4,
           }}
         >
@@ -2032,21 +2034,21 @@ function BlockPicker({ value, onChange, catalog, autoFocus }) {
                   width: '100%', textAlign: 'left',
                   display: 'flex', justifyContent: 'space-between',
                   alignItems: 'center', gap: 12,
-                  padding: '7px 10px', borderRadius: 6,
+                  padding: '10px 12px', borderRadius: 6,
                   background: active ? `rgba(${ACC_RGB},0.14)` : 'transparent',
                   border: 'none', cursor: 'pointer',
                   color: active ? ACC : '#ede8f8',
-                  fontFamily: "'Inter',sans-serif", fontSize: 13,
+                  fontFamily: "'Inter',sans-serif", fontSize: 13.5,
                 }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                   {s.icon ? (
                     <img
-                      src={s.icon} alt="" width={18} height={18} loading="lazy" draggable={false}
+                      src={s.icon} alt="" width={24} height={24} loading="lazy" draggable={false}
                       style={{ imageRendering: 'pixelated', objectFit: 'contain', flexShrink: 0 }}
                     />
                   ) : (
-                    <span style={{ fontSize: 15, width: 18, textAlign: 'center', flexShrink: 0 }}>
+                    <span style={{ fontSize: 18, width: 24, textAlign: 'center', flexShrink: 0 }}>
                       {getItemEmoji(s.name, s.category)}
                     </span>
                   )}

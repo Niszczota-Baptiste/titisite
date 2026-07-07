@@ -8,7 +8,6 @@ import { Login } from '../components/admin/Login';
 import { Modal } from '../components/project/shared';
 import { customCatalogEntries } from '../data/minefieldCatalog';
 import { ChainGraph } from '../components/quests/ChainGraph';
-import { CockpitPanel } from '../components/quests/CockpitPanel';
 import { CustomItemsTab } from '../components/quests/CustomItemsTab';
 import { GainsView } from '../components/quests/GainsView';
 import { MapTab } from '../components/quests/MapTab';
@@ -63,8 +62,16 @@ function QuestsApp({ user }) {
   const [detailId, setDetailId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [cockpitOpen, setCockpitOpen] = useState(false);
   const [err, setErr] = useState(null);
+
+  // Projet d'origine (lien « 📜 Quêtes » de l'onglet Minecraft → ?projet=<slug>),
+  // mémorisé en session pour survivre aux rechargements sans le paramètre.
+  const fromProject = useMemo(() => {
+    const raw = new URLSearchParams(window.location.search).get('projet');
+    const slug = raw && /^[a-z0-9-]{1,64}$/.test(raw) ? raw : null;
+    if (slug) sessionStorage.setItem('quetes_from_project', slug);
+    return slug || sessionStorage.getItem('quetes_from_project');
+  }, []);
 
   const canEdit = !!user.canEditQuests;
 
@@ -136,7 +143,7 @@ function QuestsApp({ user }) {
 
   return (
     <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at 50% -10%, #17102e, #070512 60%)', paddingBottom: 60 }}>
-      <Banner user={user} canEdit={canEdit} onCockpit={() => setCockpitOpen(true)} />
+      <Banner backSlug={fromProject} />
 
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: '0 20px' }}>
         {/* tabs */}
@@ -188,8 +195,6 @@ function QuestsApp({ user }) {
           />
         ) : <p style={{ color: MUTED }}>Chargement…</p>}
       </Modal>
-
-      <CockpitPanel open={cockpitOpen} onClose={() => setCockpitOpen(false)} />
     </div>
   );
 }
@@ -233,8 +238,7 @@ function ChainsTab({ chains, doneMap, onOpen }) {
   );
 }
 
-function Banner({ user, canEdit, onCockpit }) {
-  const isAdmin = user.role === 'admin'; // le cockpit MF est réservé aux admins
+function Banner({ backSlug }) {
   return (
     <div style={{
       position: 'relative', overflow: 'hidden', marginBottom: 28,
@@ -258,15 +262,15 @@ function Banner({ user, canEdit, onCockpit }) {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {isAdmin && (
-            <button
-              type="button" onClick={onCockpit}
+          {backSlug && (
+            <Link
+              to={`/project/${backSlug}/minecraft`}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 10,
-                cursor: 'pointer', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600,
+                textDecoration: 'none', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600,
                 background: 'rgba(14,9,28,0.72)', color: GOLD, border: `1px solid ${GOLD}`,
               }}
-            >🛰️ Cockpit MF</button>
+            >⛏️ ← Retour au projet</Link>
           )}
           <Link to="/" style={{ color: MUTED, textDecoration: 'none', fontFamily: "'Inter',sans-serif", fontSize: 13 }}>← Site</Link>
         </div>

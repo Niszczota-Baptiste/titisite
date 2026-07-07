@@ -196,6 +196,7 @@ function WorkspaceForm({ workspace, users, onSaved, onCancel }) {
   const [memberIds, setMemberIds] = useState(workspace?.memberIds || []);
   const [status, setStatus] = useState(workspace?.status || 'active');
   const [isMinecraft, setIsMinecraft] = useState(!!workspace?.isMinecraft);
+  const [minecraftOnly, setMinecraftOnly] = useState(!!workspace?.minecraftOnly);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -210,7 +211,8 @@ function WorkspaceForm({ workspace, users, onSaved, onCancel }) {
         endDate: endDate || null,
         tags,
         status,
-        isMinecraft,
+        isMinecraft: isMinecraft || minecraftOnly,
+        minecraftOnly,
         memberIds,
       };
       if (isEdit) await api.workspaces.update(workspace.id, payload);
@@ -335,8 +337,14 @@ function WorkspaceForm({ workspace, users, onSaved, onCancel }) {
 
       <CheckboxField
         label="⛏️ Mode Minecraft (page de gestion des ressources)"
-        value={isMinecraft}
-        onChange={setIsMinecraft}
+        value={isMinecraft || minecraftOnly}
+        onChange={(v) => { setIsMinecraft(v); if (!v) setMinecraftOnly(false); }}
+      />
+
+      <CheckboxField
+        label="⛏️ Projet 100 % Minecraft (masque Vue d'ensemble → Réunions, tout se passe sur la page Minecraft)"
+        value={minecraftOnly}
+        onChange={(v) => { setMinecraftOnly(v); if (v) setIsMinecraft(true); }}
       />
 
       {isEdit && (

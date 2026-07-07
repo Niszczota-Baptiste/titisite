@@ -73,6 +73,11 @@ Single-process Node app:
   quantity is collected (`…/minecraft/wanted/*`, `WantedPanel` in
   `src/components/project/Minecraft.jsx`). All under
   `server/routes/minecraft.js` + `api.ws(slug).minecraft.*`.
+  A second flag `minecraft_only` (« Projet 100 % Minecraft » in
+  `WorkspacesEditor`, implies `is_minecraft` at read time) hides the classic
+  tabs (Vue d'ensemble → Réunions): `tabsFor`/`projectHome` in
+  `ProjectLayout.jsx` keep only ⛏️ Minecraft, hidden-tab URLs redirect there,
+  and Home cards / the project switcher land on `/minecraft`.
 - **Imported builds + WorldEdit** (`minecraft_blueprints`, workspace-scoped):
   `.mca`/`region.zip` imported → parsed to a **sparse artifact** (`data_file`)
   for the 3D viewer; the **source file is kept** (`source_file`) so the server
@@ -121,11 +126,14 @@ Single-process Node app:
   inputs/rewards/mapPoints per quest, a **personal** `wanted` list
   (`cockpit_items`, per-user — NOT the group `minecraft_wanted`) and a
   per-user follow filter (`cockpit_quest_follows`: no row = send everything).
-  The cockpit is **admin-only**: the « 🛰️ Cockpit » dashboard tab
-  (`CockpitEditor`), the `/quetes` banner button, `/api/me/cockpit-token*`,
-  `/api/me/quest-reminders` and `/api/me/cockpit/*` all require role `admin`,
-  the token feed 404s for non-admin tokens, and `/admin` rejects non-admin
-  members entirely (`server/routes/cockpit-me.js`, `api.cockpit.*`).
+  The cockpit is **admin-only** and lives ONLY in the dashboard (« 🛰️ Cockpit »
+  tab, `CockpitEditor`): `/api/me/cockpit-token*`, `/api/me/quest-reminders`
+  and `/api/me/cockpit/*` all require role `admin`, the token feed 404s for
+  non-admin tokens, and `/admin` rejects non-admin members entirely
+  (`server/routes/cockpit-me.js`, `api.cockpit.*`). The `/quetes` banner has
+  no cockpit button — instead a « ⛏️ ← Retour au projet » link back to the
+  origin project's Minecraft tab (`QuestsLink` passes `?projet=<slug>`,
+  kept in sessionStorage).
   `GET /api/quests/quests/:id/stock` links quest item inputs to the Minecraft
   inventories of the caller's accessible workspaces (normalized-name match via
   `server/codex.js`; chest + world + coords per location) — surfaced in
