@@ -427,6 +427,8 @@ export const api = {
       wanted: {
         list:       () => request('GET',    `/workspaces/${slug}/minecraft/wanted`),
         create:     (b) => request('POST',  `/workspaces/${slug}/minecraft/wanted`, b),
+        // Ajout en masse (manquant du calculateur / BOM) : fusion par nom normalisé.
+        bulk:       (b) => request('POST',  `/workspaces/${slug}/minecraft/wanted/bulk`, b),
         update:     (id, b) => request('PUT', `/workspaces/${slug}/minecraft/wanted/${id}`, b),
         toggleDone: (id) => request('PATCH', `/workspaces/${slug}/minecraft/wanted/${id}/done`),
         remove:     (id) => request('DELETE', `/workspaces/${slug}/minecraft/wanted/${id}`),

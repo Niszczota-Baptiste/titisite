@@ -57,6 +57,26 @@ export function CraftCalculator({ items, chests, ws, onApplied, toast }) {
 
   const canCraft = plan && plan.missing.size === 0 && (plan.steps.length > 0 || plan.consume.size > 0);
 
+  // Manquant → liste wanted : l'objectif est possédé + manquant, pour que la
+  // progression (possédé / voulu) de la wishlist parte de l'inventaire actuel.
+  const [addingWanted, setAddingWanted] = useState(false);
+  const addMissingToWanted = async () => {
+    if (!plan || plan.missing.size === 0) return;
+    setAddingWanted(true);
+    try {
+      const list = [...plan.missing].map(([id, amount]) => ({
+        name: byId.get(id)?.nomFr || id,
+        quantity: (inventory.get(id) || 0) + amount,
+      }));
+      await ws.minecraft.wanted.bulk({
+        items: list,
+        note: `Pour craft : ${byId.get(targetId)?.nomFr || targetId}`,
+      });
+      toast?.success?.(`${list.length} ressource${list.length > 1 ? 's' : ''} ajoutée${list.length > 1 ? 's' : ''} aux wanted`);
+    } catch (e) { setErr(e.message || 'Ajout aux wanted impossible.'); }
+    finally { setAddingWanted(false); }
+  };
+
   // Répartit la conso d'un item sur ses lignes (FIFO) → deltas par ligne + détail coffres.
   const distribute = (id, amount) => {
     const out = [];
@@ -122,6 +142,7 @@ export function CraftCalculator({ items, chests, ws, onApplied, toast }) {
         <PlanView
           plan={plan} byId={byId} chestById={chestById} distribute={distribute}
           targetId={targetId} qty={qty} index={index}
+          onAddMissing={addMissingToWanted} addingMissing={addingWanted}
         />
       )}
 
@@ -150,7 +171,7 @@ export function CraftCalculator({ items, chests, ws, onApplied, toast }) {
   );
 }
 
-function PlanView({ plan, byId, chestById, distribute, targetId, qty, index }) {
+function PlanView({ plan, byId, chestById, distribute, targetId, qty, index, onAddMissing, addingMissing }) {
   const target = byId.get(targetId);
   const targetSurplus = (() => {
     // rab dû à l'arrondi sur la cible (info seulement)
@@ -193,6 +214,18 @@ function PlanView({ plan, byId, chestById, distribute, targetId, qty, index }) {
               <strong style={{ color: '#fb923c' }}>×{amount}</strong>
             </div>
           ))}
+          {onAddMissing && (
+            <button type="button" onClick={onAddMissing} disabled={addingMissing}
+              title="Ajoute chaque matière manquante à la liste wanted (fusionnée si déjà présente)"
+              style={{
+                marginTop: 8, padding: '7px 12px', borderRadius: 8, cursor: 'pointer',
+                background: 'rgba(251,146,60,0.14)', border: '1px solid rgba(251,146,60,0.45)',
+                color: '#fb923c', fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 600,
+              }}
+            >
+              {addingMissing ? 'Ajout…' : '🎯 Ajouter le manquant aux wanted'}
+            </button>
+          )}
         </SectionCard>
       )}
 

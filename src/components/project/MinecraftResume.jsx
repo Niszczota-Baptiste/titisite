@@ -134,6 +134,13 @@ export function MinecraftResumeTab() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: "'Inter',sans-serif", fontSize: 13, color: '#ede8f8' }}>
                       <ItemMiniIcon name={w.name} iconIndex={iconIndex} />
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.name}</span>
+                      {w.assignedToName && (
+                        <span title={`${w.assignedToName} s'en occupe`} style={{
+                          padding: '0 6px', borderRadius: 9, fontSize: 10, flexShrink: 0,
+                          background: 'rgba(80,50,130,0.2)', border: '1px solid rgba(120,80,180,0.4)',
+                          color: 'rgba(200,190,220,0.85)',
+                        }}>🙋 {w.assignedToName}</span>
+                      )}
                       <span style={{
                         fontFamily: "'JetBrains Mono',monospace", fontSize: 12, fontWeight: 700,
                         color: ready ? '#4ade80' : (have > 0 ? '#fb923c' : 'rgba(180,170,200,0.55)'),

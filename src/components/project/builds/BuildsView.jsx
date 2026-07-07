@@ -433,7 +433,8 @@ function BlueprintViewer({ ws, slug, id, isMobile, items, chests, onExtracted })
           <ShareControls ws={ws} id={id} initialToken={detail?.shareToken || null} />
           <SharesPanel ws={ws} id={id} />
           {detail?.bom && (
-            <BlueprintBom bom={detail.bom} codex={codex} items={items} chests={chests} />
+            <BlueprintBom bom={detail.bom} codex={codex} items={items} chests={chests}
+              ws={ws} buildName={detail?.name} toast={toast} />
           )}
         </>
       )}

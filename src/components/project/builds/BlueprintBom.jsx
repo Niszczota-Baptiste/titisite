@@ -48,10 +48,11 @@ function downloadCsv(filename, rows) {
 //  • « Items finaux » : les blocs tels que posés (croisés avec les coffres).
 //  • « Matières de base » : tout décomposé en matières premières via le moteur de
 //    craft, avec la liste des crafts à faire en dessous.
-export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = false }) {
+export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = false, ws = null, buildName = '', toast = null }) {
   const { byId, idSet } = useCodex();
   const [mode, setMode] = useState('final'); // 'final' | 'base'
   const [rawIndex, setRawIndex] = useState(null);
+  const [addingWanted, setAddingWanted] = useState(false);
 
   const chestById = useMemo(() => new Map(chests.map((c) => [c.id, c])), [chests]);
 
@@ -108,6 +109,25 @@ export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = f
     };
   }, [mode, rawIndex, bom, idSet]);
 
+  // Manquant → wanted : objectif = quantité totale du build (la progression de
+  // la wishlist repart de l'inventaire courant). Fusion par nom côté serveur.
+  const addMissingToWanted = async () => {
+    const missing = rows.filter((r) => r.missing > 0);
+    if (!ws || missing.length === 0) return;
+    setAddingWanted(true);
+    try {
+      await ws.minecraft.wanted.bulk({
+        items: missing.map((r) => ({ name: r.entry.nomFr, quantity: r.count })),
+        note: buildName ? `Pour build : ${buildName}` : 'Pour build 3D',
+      });
+      toast?.success?.(`${missing.length} bloc${missing.length > 1 ? 's' : ''} manquant${missing.length > 1 ? 's' : ''} ajouté${missing.length > 1 ? 's' : ''} aux wanted`);
+    } catch (e) {
+      toast?.error?.(`Ajout aux wanted impossible : ${e.message}`);
+    } finally {
+      setAddingWanted(false);
+    }
+  };
+
   const exportCsv = () => {
     if (mode === 'base' && baseData) {
       const header = ['matière', 'id', 'quantité', 'stacks', 'boîtes_shulker'];
@@ -143,6 +163,13 @@ export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = f
             style={{ padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontFamily: "'Inter',sans-serif", background: 'transparent', border: '1px solid rgba(80,50,130,0.28)', color: '#ede8f8' }}>
             ⬇ CSV
           </button>
+          {!readOnly && ws && mode === 'final' && totalMissing > 0 && (
+            <button type="button" onClick={addMissingToWanted} disabled={addingWanted}
+              title="Ajoute chaque bloc manquant à la liste wanted du projet (fusionné si déjà présent)"
+              style={{ padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontFamily: "'Inter',sans-serif", background: 'rgba(251,146,60,0.14)', border: '1px solid rgba(251,146,60,0.45)', color: '#fb923c', fontWeight: 600 }}>
+              {addingWanted ? 'Ajout…' : '🎯 Manquant → wanted'}
+            </button>
+          )}
         </div>
       </div>
 

@@ -243,6 +243,8 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_wanted_workspace ON minecraft_wanted(workspace_id, done, priority, position);`);
+  // « Qui s'en occupe » : membre du workspace chargé de récolter la ressource.
+  ensureColumn('minecraft_wanted', 'assigned_to', 'INTEGER REFERENCES users(id) ON DELETE SET NULL');
 
   // Recettes custom Minefield, GLOBALES (les recettes vanilla vivent côté client
   // dans src/data/recipes_vanilla.json). Éditées en admin, lues par le

@@ -7,6 +7,7 @@ import {
   normName, searchCatalog,
 } from '../../data/minefieldCatalog';
 import { Block3D } from './block3d/Block3D';
+import { useAuth } from '../../auth/AuthContext';
 import { useBlockThumbnail } from '../../hooks/useBlockThumbnail';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
@@ -1235,16 +1236,21 @@ const priorityMeta = (p) => WANTED_PRIORITIES.find((x) => x.id === p) ?? WANTED_
 const WANTED_ACC = '#fb923c'; // orange « wanted poster », distinct du violet des coffres
 
 function WantedPanel({ ws, slug, items, catalog, iconIndex, idIndex, block3d, toast, confirm }) {
+  const { workspace } = useWorkspace();
+  const { user } = useAuth();
   const [wanted, setWanted] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [members, setMembers] = useState([]); // membres du projet (assignation)
+  const [whoFilter, setWhoFilter] = useState('all'); // 'all' | 'me' | 'none'
 
   // Formulaire (ajout / édition inline)
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState(64);
   const [priority, setPriority] = useState(2);
+  const [assignedTo, setAssignedTo] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -1258,6 +1264,20 @@ function WantedPanel({ ws, slug, items, catalog, iconIndex, idIndex, block3d, to
     /* eslint-disable-next-line */
   }, [slug]);
 
+  // Assignables : les membres du workspace (mêmes règles que l'assignee Kanban).
+  useEffect(() => {
+    let alive = true;
+    api.users()
+      .then((us) => {
+        if (!alive) return;
+        const ids = new Set(workspace?.memberIds || []);
+        setMembers(us.filter((u) => u.role === 'admin' || ids.has(u.id)));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+    /* eslint-disable-next-line */
+  }, [workspace?.id]);
+
   // Inventaire courant par nom normalisé (pour la progression possédé/voulu).
   const haveByName = useMemo(() => {
     const m = new Map();
@@ -1268,20 +1288,28 @@ function WantedPanel({ ws, slug, items, catalog, iconIndex, idIndex, block3d, to
     return m;
   }, [items]);
 
-  const sorted = useMemo(() => [...wanted].sort((a, b) => (
-    (a.done - b.done) || (a.priority - b.priority) || (a.position - b.position) || (a.id - b.id)
-  )), [wanted]);
+  const sorted = useMemo(() => {
+    let list = [...wanted];
+    if (whoFilter === 'me')   list = list.filter((w) => w.assignedTo === user?.id);
+    if (whoFilter === 'none') list = list.filter((w) => w.assignedTo == null);
+    return list.sort((a, b) => (
+      (a.done - b.done) || (a.priority - b.priority) || (a.position - b.position) || (a.id - b.id)
+    ));
+  }, [wanted, whoFilter, user?.id]);
   const remaining = wanted.filter((w) => !w.done).length;
 
-  const openAdd = () => { setEditing(null); setName(''); setQuantity(64); setPriority(2); setFormOpen(true); };
-  const openEdit = (w) => { setEditing(w); setName(w.name); setQuantity(w.quantity); setPriority(w.priority); setFormOpen(true); };
+  const openAdd = () => { setEditing(null); setName(''); setQuantity(64); setPriority(2); setAssignedTo(''); setFormOpen(true); };
+  const openEdit = (w) => { setEditing(w); setName(w.name); setQuantity(w.quantity); setPriority(w.priority); setAssignedTo(w.assignedTo ? String(w.assignedTo) : ''); setFormOpen(true); };
 
   const submit = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const payload = { name: name.trim(), quantity: Math.max(1, Number(quantity) || 1), priority };
+      const payload = {
+        name: name.trim(), quantity: Math.max(1, Number(quantity) || 1), priority,
+        assignedTo: assignedTo === '' ? null : Number(assignedTo),
+      };
       const saved = editing
         ? await ws.minecraft.wanted.update(editing.id, payload)
         : await ws.minecraft.wanted.create(payload);
@@ -1402,6 +1430,20 @@ function WantedPanel({ ws, slug, items, catalog, iconIndex, idIndex, block3d, to
                   );
                 })}
               </div>
+              {/* Qui s'en occupe (membres du projet) */}
+              <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}
+                title="Qui s'en occupe ?"
+                style={{
+                  background: 'rgba(14,9,28,0.6)', border: '1px solid rgba(80,50,130,0.28)',
+                  borderRadius: 8, padding: '8px 10px', color: '#ede8f8',
+                  fontFamily: "'Inter',sans-serif", fontSize: 13, outline: 'none', maxWidth: 160,
+                }}
+              >
+                <option value="">👤 Personne</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>🙋 {m.name || `#${m.id}`}</option>
+                ))}
+              </select>
               <div style={{ display: 'flex', gap: 6 }}>
                 <Button type="submit" disabled={saving || !name.trim()}>
                   {saving ? '…' : (editing ? 'Enregistrer' : 'Ajouter')}
@@ -1412,6 +1454,28 @@ function WantedPanel({ ws, slug, items, catalog, iconIndex, idIndex, block3d, to
                 </Button>
               </div>
             </form>
+          )}
+
+          {/* ── Filtre « qui » (utile surtout à deux) ── */}
+          {wanted.some((w) => w.assignedTo != null) && (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+              {[['all', 'Tous'], ['me', '🙋 À moi'], ['none', '👤 Non assignés']].map(([id, lbl]) => {
+                const active = whoFilter === id;
+                return (
+                  <button key={id} type="button" onClick={() => setWhoFilter(id)}
+                    style={{
+                      padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
+                      background: active ? 'rgba(251,146,60,0.16)' : 'rgba(20,12,40,0.5)',
+                      border: `1px solid ${active ? 'rgba(251,146,60,0.5)' : 'rgba(80,50,130,0.3)'}`,
+                      color: active ? WANTED_ACC : 'rgba(180,170,200,0.7)',
+                      fontFamily: "'Inter',sans-serif", fontSize: 11.5, fontWeight: active ? 600 : 400,
+                    }}
+                  >
+                    {lbl}
+                  </button>
+                );
+              })}
+            </div>
           )}
 
           {/* ── Lignes ── */}
@@ -1478,6 +1542,17 @@ function WantedPanel({ ws, slug, items, catalog, iconIndex, idIndex, block3d, to
                         }}>
                           {p.emoji} {p.label}
                         </span>
+                        {w.assignedTo != null && (
+                          <span title={`${w.assignedToName || '?'} s'en occupe`} style={{
+                            padding: '1px 7px', borderRadius: 10, fontSize: 10,
+                            background: w.assignedTo === user?.id ? 'rgba(96,165,250,0.14)' : 'rgba(80,50,130,0.2)',
+                            border: `1px solid ${w.assignedTo === user?.id ? 'rgba(96,165,250,0.55)' : 'rgba(120,80,180,0.4)'}`,
+                            color: w.assignedTo === user?.id ? '#60a5fa' : 'rgba(200,190,220,0.85)',
+                            fontFamily: "'Inter',sans-serif",
+                          }}>
+                            🙋 {w.assignedTo === user?.id ? 'Moi' : (w.assignedToName || '?')}
+                          </span>
+                        )}
                         {ready && (
                           <span style={{
                             padding: '1px 7px', borderRadius: 10, fontSize: 10,
