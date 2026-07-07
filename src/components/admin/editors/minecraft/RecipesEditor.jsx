@@ -11,11 +11,14 @@ import { CraftGrid } from './CraftGrid';
 const TYPES = [
   { id: 'crafting', label: '🛠️ Établi' },
   { id: 'smelting', label: '🔥 Fourneau' },
+  { id: 'brewing',  label: '⚗️ Alambic' },
 ];
 
 const emptyGrid = () => Array(9).fill('');
 const emptyForm = () => ({
   id: null, resultId: '', resultCount: 1, type: 'crafting', grid: emptyGrid(), note: '', station: '',
+  // Brassage : pas de grille — liste libre d'ingrédients (fioles + ingrédient).
+  ingredients: [{ item: '', count: 1 }],
   variants: { enabled: false, cell: null, rows: [{ item: '', result: '' }] },
 });
 
@@ -48,10 +51,24 @@ export function RecipesEditor() {
 
   const save = async () => {
     if (!form.resultId) { setErr('Choisis l\'item produit.'); return; }
-    if (form.grid.every((c) => !c)) { setErr('Pose au moins un ingrédient dans la grille.'); return; }
+    const brewing = form.type === 'brewing';
+    const cleanIngredients = (form.ingredients || []).filter((i) => i.item);
+    if (brewing && cleanIngredients.length === 0) { setErr('Ajoute au moins un ingrédient.'); return; }
+    if (!brewing && form.grid.every((c) => !c)) { setErr('Pose au moins un ingrédient dans la grille.'); return; }
     const base = { resultCount: form.resultCount, type: form.type, note: form.note, station: form.station };
     setSaving(true); setErr('');
     try {
+      if (brewing) {
+        // Pas de grille pour l'alambic : ingrédients envoyés tels quels.
+        const payload = { ...base, resultId: form.resultId, grid: [], ingredients: cleanIngredients };
+        if (form.id) await api.recipes.update(form.id, payload);
+        else await api.recipes.create(payload);
+        toast?.success?.('Recette enregistrée.');
+        setForm(null);
+        await load();
+        setSaving(false);
+        return;
+      }
       const v = form.variants;
       if (!form.id && v.enabled) {
         // Multi-variantes : une recette par ligne, en changeant la case variable.
@@ -79,10 +96,15 @@ export function RecipesEditor() {
 
   const edit = (r) => {
     setErr('');
+    const brewing = r.type === 'brewing';
     setForm({
       id: r.id, resultId: r.resultId, resultCount: r.resultCount, type: r.type,
-      grid: r.grid?.length ? Array.from({ length: 9 }, (_, i) => r.grid[i] || '') : gridFromIngredients(r.ingredients),
+      grid: brewing ? emptyGrid()
+        : (r.grid?.length ? Array.from({ length: 9 }, (_, i) => r.grid[i] || '') : gridFromIngredients(r.ingredients)),
       note: r.note || '', station: r.station || '',
+      ingredients: r.ingredients?.length
+        ? r.ingredients.map((i) => ({ item: i.item, count: i.count }))
+        : [{ item: '', count: 1 }],
       variants: { enabled: false, cell: null, rows: [{ item: '', result: '' }] },
     });
   };
@@ -156,14 +178,45 @@ function RecipeForm({ form, catalog, byId, saving, setField, onSave, onCancel })
       borderRadius: 14, padding: 18, marginBottom: 18,
     }}>
       <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
-        {/* Grille d'établi */}
-        <div>
-          <div style={{ fontSize: 12, letterSpacing: '0.4px', textTransform: 'uppercase', color: 'rgba(180,170,200,0.55)', marginBottom: 8 }}>
-            Grille d'établi
+        {/* Grille d'établi — remplacée par la liste d'ingrédients pour l'alambic */}
+        {form.type === 'brewing' ? (
+          <div style={{ flex: '1 1 260px', minWidth: 240 }}>
+            <div style={{ fontSize: 12, letterSpacing: '0.4px', textTransform: 'uppercase', color: 'rgba(180,170,200,0.55)', marginBottom: 8 }}>
+              Ingrédients (fioles + ingrédient de brassage)
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(form.ingredients || []).map((ing, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <CodexPicker catalog={catalog} byId={byId} value={ing.item}
+                      onChange={(id) => setField('ingredients', form.ingredients.map((x, j) => (j === idx ? { ...x, item: id } : x)))}
+                      placeholder="ex. Fiole d'eau, Verrue du Nether…" />
+                  </div>
+                  <Input type="number" min={1} value={ing.count} style={{ width: 70 }}
+                    onChange={(e) => setField('ingredients', form.ingredients.map((x, j) => (j === idx ? { ...x, count: Math.max(1, Number(e.target.value) || 1) } : x)))} />
+                  <button type="button" title="Retirer"
+                    onClick={() => setField('ingredients', form.ingredients.filter((_, j) => j !== idx))}
+                    style={{
+                      flexShrink: 0, width: 34, height: 34, borderRadius: 8, cursor: 'pointer',
+                      background: 'rgba(220,60,60,0.12)', border: '1px solid rgba(220,60,60,0.3)', color: '#f87171', fontSize: 16,
+                    }}>×</button>
+                </div>
+              ))}
+              <button type="button" style={dashedBtn}
+                onClick={() => setField('ingredients', [...(form.ingredients || []), { item: '', count: 1 }])}>
+                + Ingrédient
+              </button>
+            </div>
           </div>
-          <CraftGrid editable grid={form.grid} byId={byId} catalog={catalog}
-            onChange={(g) => setField('grid', g)} />
-        </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: '0.4px', textTransform: 'uppercase', color: 'rgba(180,170,200,0.55)', marginBottom: 8 }}>
+              Grille d'établi
+            </div>
+            <CraftGrid editable grid={form.grid} byId={byId} catalog={catalog}
+              onChange={(g) => setField('grid', g)} />
+          </div>
+        )}
 
         {/* Paramètres */}
         <div style={{ flex: '1 1 240px', minWidth: 220, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -210,8 +263,8 @@ function RecipeForm({ form, catalog, byId, saving, setField, onSave, onCancel })
         </div>
       </div>
 
-      {/* Multi-variantes (création seulement) : un bloc qui change + son résultat. */}
-      {!form.id && (
+      {/* Multi-variantes (création seulement, grille uniquement) : un bloc qui change + son résultat. */}
+      {!form.id && form.type !== 'brewing' && (
         <div style={{ marginTop: 16, borderTop: '1px solid rgba(80,50,130,0.2)', paddingTop: 14 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#ede8f8' }}>
             <input type="checkbox" checked={v.enabled} onChange={(e) => setV({ enabled: e.target.checked })} />
@@ -312,7 +365,7 @@ function RecipeRow({ r, byId, onEdit, onRemove }) {
           ? (r.station
             ? <><CodexItem byId={byId} id={r.station} size={14} showName={false} /> {byId.get(r.station)?.nomFr || 'Fourneau'}</>
             : '🔥 Fourneau')
-          : '🛠️ Établi'}
+          : r.type === 'brewing' ? '⚗️ Alambic' : '🛠️ Établi'}
       </span>
       {!hasGrid && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>

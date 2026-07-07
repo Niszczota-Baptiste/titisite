@@ -226,7 +226,7 @@ export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = f
                     <span style={{ fontSize: 13, color: '#ede8f8', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       {s.station
                         ? <CodexItem byId={byId} id={s.station} size={16} showName={false} />
-                        : (s.type === 'smelting' ? '🔥' : s.type === 'stonecutting' ? '🪚' : '🛠️')}
+                        : (s.type === 'smelting' ? '🔥' : s.type === 'stonecutting' ? '🪚' : s.type === 'brewing' ? '⚗️' : '🛠️')}
                       Crafter {s.times.toLocaleString('fr-FR')}×
                       <CodexItem byId={byId} id={s.id} size={18} />
                       <span style={muted}>(produit {s.produced})</span>

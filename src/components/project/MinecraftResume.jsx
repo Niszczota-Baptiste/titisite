@@ -69,6 +69,21 @@ export function MinecraftResumeTab() {
       .sort((a, b) => (a.priority - b.priority) || (a.position - b.position))
   ), [wanted]);
 
+  // Contributions par personne (items ajoutés, unités, coffres, wanted créés) —
+  // dérivées des createdBy existants, aucune donnée nouvelle.
+  const contributions = useMemo(() => {
+    const m = new Map();
+    const bump = (name, key, n = 1) => {
+      if (!name) return;
+      if (!m.has(name)) m.set(name, { name, items: 0, units: 0, chests: 0, wanted: 0 });
+      m.get(name)[key] += n;
+    };
+    for (const r of items) { bump(r.createdByName, 'items'); bump(r.createdByName, 'units', r.quantity || 0); }
+    for (const c of chests) bump(c.createdByName, 'chests');
+    for (const w of wanted) bump(w.createdByName, 'wanted');
+    return [...m.values()].sort((a, b) => (b.items + b.chests + b.wanted) - (a.items + a.chests + a.wanted));
+  }, [items, chests, wanted]);
+
   // Fil des derniers ajouts, toutes sources confondues (12 max).
   const recent = useMemo(() => {
     const feed = [
@@ -194,6 +209,39 @@ export function MinecraftResumeTab() {
             </div>
           )}
         </div>
+
+        {/* ── Qui a fait quoi (contributions par personne) ── */}
+        {contributions.length > 0 && (
+          <div style={{ ...card, padding: 16 }}>
+            <PanelTitle emoji="👥" title="Qui a fait quoi" />
+            <div style={{ display: 'grid', gap: 10 }}>
+              {(() => {
+                const maxItems = Math.max(1, ...contributions.map((c) => c.items));
+                return contributions.map((c) => (
+                  <div key={c.name}>
+                    <div style={{
+                      display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap',
+                      fontFamily: "'Inter',sans-serif", fontSize: 13, color: '#ede8f8',
+                    }}>
+                      <strong style={{ fontFamily: "'Space Grotesk',sans-serif" }}>🙋 {c.name}</strong>
+                      <span style={{ ...muted, fontSize: 11.5 }}>
+                        {c.items} item{c.items > 1 ? 's' : ''} · {c.units} unité{c.units > 1 ? 's' : ''}
+                        {c.chests > 0 && ` · ${c.chests} coffre${c.chests > 1 ? 's' : ''}`}
+                        {c.wanted > 0 && ` · ${c.wanted} wanted`}
+                      </span>
+                    </div>
+                    <div style={{ height: 5, borderRadius: 4, background: 'rgba(80,50,130,0.25)', marginTop: 4, overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${Math.round((c.items / maxItems) * 100)}%`, height: '100%',
+                        borderRadius: 4, background: `rgba(${ACC_RGB},0.85)`,
+                      }} />
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
       </div>
     </Section>
   );

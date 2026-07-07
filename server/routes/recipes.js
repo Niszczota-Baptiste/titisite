@@ -6,7 +6,7 @@ import { db } from '../db.js';
 // (le calculateur de craft des projets en a besoin) ; écriture admin only.
 export const recipesRouter = Router();
 
-const TYPES = new Set(['crafting', 'smelting']);
+const TYPES = new Set(['crafting', 'smelting', 'brewing']);
 
 function rowToRecipe(r) {
   if (!r) return null;

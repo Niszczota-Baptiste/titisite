@@ -242,7 +242,7 @@ function PlanView({ plan, byId, chestById, distribute, targetId, qty, index, onA
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     {station
                       ? <CodexItem byId={byId} id={station} size={16} showName={false} />
-                      : (s.type === 'smelting' ? '🔥' : s.type === 'stonecutting' ? '🪚' : '🛠️')}
+                      : (s.type === 'smelting' ? '🔥' : s.type === 'stonecutting' ? '🪚' : s.type === 'brewing' ? '⚗️' : '🛠️')}
                     Crafter {s.times}× <CodexItem byId={byId} id={s.id} size={18} />
                     <span style={muted}>(produit {s.produced})</span>
                   </span>
