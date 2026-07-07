@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import { searchBlocks } from '../../data/minecraftBlocks';
 import {
@@ -160,8 +160,12 @@ function ItemIcon({ name, category, iconIndex, idIndex, block3d = false, size = 
 }
 
 // ── MinecraftTab — state + effects ────────────────────────────────────────────
+// `mode` : 'full' (page unique historique, projets mixtes) ou une des pages
+// séparées des projets 100 % Minecraft — 'chests' (coffres seuls, sans wanted
+// ni sous-nav), 'wanted', 'builds', 'calc'. Les pages séparées partagent le
+// même état/chargement, seul le rendu change.
 
-export function MinecraftTab() {
+export function MinecraftTab({ mode = 'full' }) {
   const { workspace } = useWorkspace();
   const ws = api.ws(workspace.slug);
   const confirm = useConfirm();
@@ -181,7 +185,9 @@ export function MinecraftTab() {
   const [calcOpen, setCalcOpen] = useState(false); // calculateur de craft
   // Deep-link : ?view=builds&build=<id> (ouvert depuis « Extraire la zone »).
   const initialQuery = useMemo(() => new URLSearchParams(window.location.search), []);
-  const [view, setView] = useState(() => (initialQuery.get('view') === 'builds' ? 'builds' : 'chests')); // 'chests' | 'builds'
+  const [view, setView] = useState(() => (
+    (mode === 'builds' || (mode === 'full' && initialQuery.get('view') === 'builds')) ? 'builds' : 'chests'
+  )); // 'chests' | 'builds'
   const initialBuildId = Number(initialQuery.get('build')) || null;
 
   // Coffres (containers) + organisation de la vue
@@ -404,16 +410,56 @@ export function MinecraftTab() {
   // que dans le footer du site public.
   const questsLink = <QuestsLink slug={workspace.slug} />;
 
+  // Projets 100 % Minecraft : ancien deep-link /minecraft?view=builds&build=N
+  // (« Extraire la zone ») → la page Builds 3D dédiée.
+  if (mode === 'chests' && initialQuery.get('view') === 'builds') {
+    const b = initialQuery.get('build');
+    return <Navigate to={`/project/${workspace.slug}/builds3d${b ? `?build=${b}` : ''}`} replace />;
+  }
+
+  if (mode === 'wanted') {
+    return (
+      <Section title="🎯 Ressources wanted">
+        <ErrorBanner error={err} onDismiss={() => setErr(null)} />
+        {loading ? (
+          <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>
+        ) : (
+          <WantedPanel
+            ws={ws} slug={workspace.slug} items={items} catalog={catalog}
+            iconIndex={iconIndex} idIndex={idIndex} block3d={block3d}
+            toast={toast} confirm={confirm}
+          />
+        )}
+      </Section>
+    );
+  }
+
+  if (mode === 'calc') {
+    return (
+      <Section title="🧮 Calculateur de craft">
+        <ErrorBanner error={err} onDismiss={() => setErr(null)} />
+        {loading ? (
+          <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>
+        ) : (
+          <CraftCalculator
+            items={items} chests={chests} ws={ws} toast={toast}
+            onApplied={(updated) => { setItems(updated); }}
+          />
+        )}
+      </Section>
+    );
+  }
+
   if (view === 'builds') {
     return (
       <Section
         title="🏗️ Builds 3D importés"
-        actions={
+        actions={mode === 'full' ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {questsLink}
             {subNav}
           </div>
-        }
+        ) : null}
       >
         <BuildsView ws={ws} slug={workspace.slug} items={items} chests={chests} initialOpenId={initialBuildId} />
       </Section>
@@ -422,12 +468,14 @@ export function MinecraftTab() {
 
   return (
     <Section
-      title="⛏️ Ressources Minecraft"
+      title={mode === 'chests' ? '📦 Coffres & ressources' : '⛏️ Ressources Minecraft'}
       actions={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {questsLink}
-          {subNav}
-          <Button variant="ghost" onClick={() => setCalcOpen(true)}>🧮 Calculateur</Button>
+          {mode === 'full' && questsLink}
+          {mode === 'full' && subNav}
+          {mode === 'full' && (
+            <Button variant="ghost" onClick={() => setCalcOpen(true)}>🧮 Calculateur</Button>
+          )}
           <Button variant="ghost" onClick={() => { setEditingChest(null); setChestModalOpen(true); }}>
             + Coffre
           </Button>
@@ -441,7 +489,8 @@ export function MinecraftTab() {
       <ErrorBanner error={err} onDismiss={() => setErr(null)} />
 
       {/* ── Ressources wanted (wishlist du projet, triée par priorité) ── */}
-      {!loading && (
+      {/* En mode pages séparées, la wishlist a sa propre page « Wanted ». */}
+      {mode === 'full' && !loading && (
         <WantedPanel
           ws={ws} slug={workspace.slug} items={items} catalog={catalog}
           iconIndex={iconIndex} idIndex={idIndex} block3d={block3d}

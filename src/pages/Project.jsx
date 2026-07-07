@@ -10,16 +10,25 @@ import { Home } from '../components/project/Home';
 import { KanbanTab } from '../components/project/Kanban';
 import { MeetingsTab } from '../components/project/Meetings';
 import { MinecraftTab } from '../components/project/Minecraft';
+import { MinecraftResumeTab } from '../components/project/MinecraftResume';
 import { OverviewTab } from '../components/project/Overview';
 import { ProjectLayout } from '../components/project/ProjectLayout';
 import { useWorkspace } from '../hooks/useWorkspace';
 
-// L'onglet d'atterrissage dépend du projet : « minecraft » pour un projet
+// L'onglet d'atterrissage dépend du projet : « resume » pour un projet
 // 100 % Minecraft, « overview » sinon. Rendu sous ProjectLayout, donc le
 // workspace est déjà chargé dans le contexte.
 function ProjectIndexRedirect() {
   const { workspace } = useWorkspace();
-  return <Navigate to={workspace.minecraftOnly ? 'minecraft' : 'overview'} replace />;
+  return <Navigate to={workspace.minecraftOnly ? 'resume' : 'overview'} replace />;
+}
+
+// /minecraft : page unique historique pour un projet mixte, page « Coffres »
+// seule (le wanted, les builds et le calculateur ont leurs onglets) pour un
+// projet 100 % Minecraft.
+function MinecraftRoute() {
+  const { workspace } = useWorkspace();
+  return <MinecraftTab mode={workspace.minecraftOnly ? 'chests' : 'full'} />;
 }
 
 export default function Project() {
@@ -68,7 +77,12 @@ export default function Project() {
         <Route path="documents"   element={<DocumentsTab />} />
         <Route path="builds"      element={<BuildsTab />} />
         <Route path="meetings"    element={<MeetingsTab />} />
-        <Route path="minecraft"   element={<MinecraftTab />} />
+        <Route path="minecraft"   element={<MinecraftRoute />} />
+        {/* Pages séparées des projets 100 % Minecraft */}
+        <Route path="resume"      element={<MinecraftResumeTab />} />
+        <Route path="wanted"      element={<MinecraftTab mode="wanted" />} />
+        <Route path="builds3d"    element={<MinecraftTab mode="builds" />} />
+        <Route path="calculateur" element={<MinecraftTab mode="calc" />} />
         <Route path="*"           element={<ProjectIndexRedirect />} />
       </Route>
       <Route path="*" element={<Navigate to="/project" replace />} />

@@ -75,9 +75,14 @@ Single-process Node app:
   `server/routes/minecraft.js` + `api.ws(slug).minecraft.*`.
   A second flag `minecraft_only` (« Projet 100 % Minecraft » in
   `WorkspacesEditor`, implies `is_minecraft` at read time) hides the classic
-  tabs (Vue d'ensemble → Réunions): `tabsFor`/`projectHome` in
-  `ProjectLayout.jsx` keep only ⛏️ Minecraft, hidden-tab URLs redirect there,
-  and Home cards / the project switcher land on `/minecraft`.
+  tabs (Vue d'ensemble → Réunions) and splits the Minecraft page into
+  separate tabs: 📊 Résumé (`MinecraftResume.jsx` — stats, wanted progress,
+  latest additions, computed client-side), 📦 Coffres (`/minecraft`),
+  🎯 Wanted, 🏗️ Builds 3D, 🧮 Calculateur (all `MinecraftTab mode=…`) + a
+  📜 Quêtes tab-link to `/quetes`. `tabsFor`/`projectHome`/
+  `MINECRAFT_ONLY_TABS` in `ProjectLayout.jsx` drive the tab bar; hidden-tab
+  URLs redirect to `/resume`, where Home cards and the switcher also land.
+  Mixed projects keep the single ⛏️ Minecraft page (`mode="full"`).
 - **Imported builds + WorldEdit** (`minecraft_blueprints`, workspace-scoped):
   `.mca`/`region.zip` imported → parsed to a **sparse artifact** (`data_file`)
   for the 3D viewer; the **source file is kept** (`source_file`) so the server

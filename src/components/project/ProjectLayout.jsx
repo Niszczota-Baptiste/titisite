@@ -16,11 +16,23 @@ const BASE_TABS = [
   { to: 'meetings',  label: 'Réunions' },
 ];
 
+// Pages séparées des projets 100 % Minecraft — chaque outil a son onglet, le
+// Résumé (stats + derniers ajouts) sert de page d'accueil.
+const MINECRAFT_TABS = [
+  { to: 'resume',      label: '📊 Résumé' },
+  { to: 'minecraft',   label: '📦 Coffres' },
+  { to: 'wanted',      label: '🎯 Wanted' },
+  { to: 'builds3d',    label: '🏗️ Builds 3D' },
+  { to: 'calculateur', label: '🧮 Calculateur' },
+];
+export const MINECRAFT_ONLY_TABS = new Set(MINECRAFT_TABS.map((t) => t.to));
+
 function tabsFor(workspace) {
   // Projet 100 % Minecraft : les onglets classiques (Vue d'ensemble → Réunions)
-  // disparaissent — tout se passe sur la page ⛏️ Minecraft (coffres, builds 3D,
-  // calculateur, lien Quêtes).
-  if (workspace?.minecraftOnly) return [{ to: 'minecraft', label: '⛏️ Minecraft' }];
+  // disparaissent au profit des pages Minecraft + un lien vers /quetes.
+  if (workspace?.minecraftOnly) {
+    return [...MINECRAFT_TABS, { href: `/quetes?projet=${workspace.slug}`, label: '📜 Quêtes' }];
+  }
   const tabs = [...BASE_TABS];
   if (workspace?.isMinecraft) tabs.push({ to: 'minecraft', label: '⛏️ Minecraft' });
   return tabs;
@@ -28,7 +40,7 @@ function tabsFor(workspace) {
 
 // Route d'atterrissage d'un projet (utilisée aussi par le switcher et Home).
 export function projectHome(workspace) {
-  return `/project/${workspace.slug}/${workspace.minecraftOnly ? 'minecraft' : 'overview'}`;
+  return `/project/${workspace.slug}/${workspace.minecraftOnly ? 'resume' : 'overview'}`;
 }
 
 /**
@@ -94,11 +106,11 @@ export function ProjectLayout() {
     );
   }
 
-  // Projet 100 % Minecraft : toute URL d'un onglet masqué ramène à la page
-  // Minecraft (les liens directs vers /kanban, /documents… deviennent inertes).
+  // Projet 100 % Minecraft : toute URL d'un onglet masqué ramène au Résumé
+  // (les liens directs vers /kanban, /documents… deviennent inertes).
   const currentTab = location.pathname.split('/')[3] || '';
-  if (workspace.minecraftOnly && currentTab && currentTab !== 'minecraft') {
-    return <Navigate to={`/project/${slug}/minecraft`} replace />;
+  if (workspace.minecraftOnly && currentTab && !MINECRAFT_ONLY_TABS.has(currentTab)) {
+    return <Navigate to={`/project/${slug}/resume`} replace />;
   }
 
   return (
@@ -163,25 +175,47 @@ function TabsBar({ workspace, activity }) {
       WebkitOverflowScrolling: 'touch',
     }}>
       {tabs.map((t) => (
-        <NavLink
-          key={t.to}
-          to={t.to}
-          style={({ isActive }) => ({
-            padding: mobile ? '9px 12px' : '10px 18px',
-            textDecoration: 'none',
-            color: isActive ? ACC : 'rgba(180,170,200,0.6)',
-            fontFamily: "'Space Grotesk',sans-serif",
-            fontSize: mobile ? 12.5 : 13.5,
-            fontWeight: isActive ? 700 : 500,
-            letterSpacing: '-0.2px',
-            borderBottom: `2px solid ${isActive ? ACC : 'transparent'}`,
-            marginBottom: -1,
-            whiteSpace: 'nowrap',
-          })}
-        >
-          {t.label}
-          <ActivityBadge count={badgeFor(t.to, activity)} style={{ marginLeft: 6 }} />
-        </NavLink>
+        t.href ? (
+          // Lien externe au projet (ex. /quetes) rendu comme un onglet, jamais actif.
+          <Link
+            key={t.href}
+            to={t.href}
+            style={{
+              padding: mobile ? '9px 12px' : '10px 18px',
+              textDecoration: 'none',
+              color: 'rgba(180,170,200,0.6)',
+              fontFamily: "'Space Grotesk',sans-serif",
+              fontSize: mobile ? 12.5 : 13.5,
+              fontWeight: 500,
+              letterSpacing: '-0.2px',
+              borderBottom: '2px solid transparent',
+              marginBottom: -1,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {t.label}
+          </Link>
+        ) : (
+          <NavLink
+            key={t.to}
+            to={t.to}
+            style={({ isActive }) => ({
+              padding: mobile ? '9px 12px' : '10px 18px',
+              textDecoration: 'none',
+              color: isActive ? ACC : 'rgba(180,170,200,0.6)',
+              fontFamily: "'Space Grotesk',sans-serif",
+              fontSize: mobile ? 12.5 : 13.5,
+              fontWeight: isActive ? 700 : 500,
+              letterSpacing: '-0.2px',
+              borderBottom: `2px solid ${isActive ? ACC : 'transparent'}`,
+              marginBottom: -1,
+              whiteSpace: 'nowrap',
+            })}
+          >
+            {t.label}
+            <ActivityBadge count={badgeFor(t.to, activity)} style={{ marginLeft: 6 }} />
+          </NavLink>
+        )
       ))}
     </nav>
   );
