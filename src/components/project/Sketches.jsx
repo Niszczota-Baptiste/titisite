@@ -124,7 +124,9 @@ function SketchEditor({ sketch, ws, toast, onClose, onSaved }) {
   const [strokes, setStrokes] = useState(sketch?.strokes || []);
   const [color, setColor] = useState('#ff4d4d');
   const [width, setWidth] = useState(4);
-  const [eraser, setEraser] = useState(false);
+  // Outil actif : dessin libre, formes (ligne/carré/rond), ou gomme.
+  const [tool, setTool] = useState('pen'); // 'pen' | 'line' | 'rect' | 'circle' | 'eraser'
+  const eraser = tool === 'eraser';
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
   const [bgDim, setBgDim] = useState(null);
@@ -171,16 +173,26 @@ function SketchEditor({ sketch, ws, toast, onClose, onSaved }) {
   const start = (e) => {
     e.preventDefault();
     const [x, y] = ptAt(e);
-    // Gomme = trait de la couleur du fond « papier » (blanc) plus large ; sur un
-    // fond image on efface en repassant en semi-transparent sombre translucide.
-    drawing.current = { color: eraser ? '__erase__' : color, width: eraser ? width * 2.5 : width, points: [x, y] };
+    // Gomme = « __erase__ » (retire les traits au relâché). Le point de départ
+    // sert aux formes (ligne/carré/rond) tracées jusqu'au point courant.
+    drawing.current = {
+      color: eraser ? '__erase__' : color,
+      width: eraser ? width * 2.5 : width,
+      points: [x, y],
+      _tool: tool, _start: [x, y],
+    };
     redraw();
   };
   const move = (e) => {
     if (!drawing.current) return;
     e.preventDefault();
     const [x, y] = ptAt(e);
-    drawing.current.points.push(x, y);
+    const d = drawing.current;
+    if (d._tool === 'pen' || d._tool === 'eraser') {
+      d.points.push(x, y); // main levée : on suit le curseur
+    } else {
+      d.points = shapePoints(d._tool, d._start, [x, y]); // forme : recalcul depuis le coin de départ
+    }
     redraw();
   };
   const end = () => {
@@ -191,7 +203,8 @@ function SketchEditor({ sketch, ws, toast, onClose, onSaved }) {
       const rad = drawing.current.width / 2 / (canvasRef.current?.width || 1);
       setStrokes((prev) => prev.filter((s) => !strokeHitByEraser(s, erasePts, Math.max(0.01, rad))));
     } else if (drawing.current.points.length >= 4) {
-      setStrokes((prev) => [...prev, drawing.current]);
+      const { color: c, width: w, points } = drawing.current; // on ne garde pas les champs _tool/_start
+      setStrokes((prev) => [...prev, { color: c, width: w, points }]);
     }
     drawing.current = null;
     redraw();
@@ -226,7 +239,7 @@ function SketchEditor({ sketch, ws, toast, onClose, onSaved }) {
         {/* Barre d'outils de dessin */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {PALETTE.map((c) => (
-            <button key={c} type="button" onClick={() => { setColor(c); setEraser(false); }}
+            <button key={c} type="button" onClick={() => { setColor(c); if (tool === 'eraser') setTool('pen'); }}
               title={c} style={{
                 width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', background: c,
                 border: (!eraser && color === c) ? '3px solid #ede8f8' : '1px solid rgba(255,255,255,0.3)',
@@ -245,7 +258,12 @@ function SketchEditor({ sketch, ws, toast, onClose, onSaved }) {
             </button>
           ))}
           <span style={{ width: 1, height: 22, background: 'rgba(120,90,180,0.3)' }} />
-          <TBtn active={eraser} onClick={() => setEraser((v) => !v)}>🧽 Gomme</TBtn>
+          <TBtn active={tool === 'pen'} onClick={() => setTool('pen')} title="Dessin à main levée">✏️ Libre</TBtn>
+          <TBtn active={tool === 'line'} onClick={() => setTool('line')} title="Ligne droite (glisse d'un point à l'autre)">╱ Ligne</TBtn>
+          <TBtn active={tool === 'rect'} onClick={() => setTool('rect')} title="Rectangle (glisse en diagonale)">▭ Carré</TBtn>
+          <TBtn active={tool === 'circle'} onClick={() => setTool('circle')} title="Cercle / ellipse (glisse en diagonale)">◯ Rond</TBtn>
+          <TBtn active={eraser} onClick={() => setTool('eraser')} title="Effacer des traits">🧽 Gomme</TBtn>
+          <span style={{ width: 1, height: 22, background: 'rgba(120,90,180,0.3)' }} />
           <TBtn onClick={undo} disabled={strokes.length === 0}>↶ Annuler</TBtn>
           <TBtn onClick={clearAll} disabled={strokes.length === 0}>Effacer tout</TBtn>
           <span style={{ ...muted, fontSize: 11.5, marginLeft: 'auto' }}>{strokes.length} trait{strokes.length > 1 ? 's' : ''}</span>
@@ -327,6 +345,24 @@ function strokeHitByEraser(stroke, erasePts, rad) {
     }
   }
   return false;
+}
+
+// Génère les points (fractions 0..1) d'une forme depuis deux coins opposés :
+// ligne = 2 points, carré/rectangle = 4 coins fermés, rond = ellipse inscrite
+// dans la boîte (échantillonnée en polyligne fermée). Même format que le dessin
+// libre → aucun changement de stockage ni de rendu.
+function shapePoints(tool, [sx, sy], [ex, ey]) {
+  if (tool === 'line') return [sx, sy, ex, ey];
+  if (tool === 'rect') return [sx, sy, ex, sy, ex, ey, sx, ey, sx, sy];
+  const cx = (sx + ex) / 2, cy = (sy + ey) / 2;
+  const rx = Math.abs(ex - sx) / 2, ry = Math.abs(ey - sy) / 2;
+  const N = 48;
+  const pts = [];
+  for (let i = 0; i <= N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    pts.push(cx + rx * Math.cos(a), cy + ry * Math.sin(a));
+  }
+  return pts;
 }
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
