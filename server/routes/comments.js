@@ -6,7 +6,7 @@ import { isMember } from '../workspaces.js';
 export const commentsRouter = Router();
 
 const PROJECT = requireRole('admin', 'member');
-const TARGETS = ['document', 'feature', 'discussion'];
+const TARGETS = ['document', 'feature', 'discussion', 'thread'];
 
 const SELECT = `
   SELECT c.*, u.name AS author_name, u.email AS author_email, u.role AS author_role
@@ -43,6 +43,8 @@ function canAccessTarget(user, targetType, targetId) {
     workspaceId = db.prepare(`SELECT workspace_id FROM features WHERE id = ?`).get(targetId)?.workspace_id;
   } else if (targetType === 'document') {
     workspaceId = db.prepare(`SELECT workspace_id FROM documents WHERE id = ?`).get(targetId)?.workspace_id;
+  } else if (targetType === 'thread') {
+    workspaceId = db.prepare(`SELECT workspace_id FROM workspace_threads WHERE id = ?`).get(targetId)?.workspace_id;
   }
   if (!workspaceId) return false;
   return isMember(workspaceId, user.id);

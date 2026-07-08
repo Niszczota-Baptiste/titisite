@@ -5,7 +5,9 @@ import { ACC, ACC_RGB } from './ui';
 // Shared image uploader (POST /images → { url, filename }). Used by the projects
 // editor and the writing-space editors. Renders an aspect-ratio preview with a
 // Supprimer button, or a dashed drop target with an upload progress bar.
-export function ImageUploadField({ value, onChange, label, aspect = '16/9' }) {
+// `uploadFn(file)` overrides the default admin `/images` endpoint (e.g. a
+// member-scoped project uploader) — it must resolve to { url, filename }.
+export function ImageUploadField({ value, onChange, label, aspect = '16/9', uploadFn = null }) {
   const [progress, setProgress] = useState(null);
   const [err, setErr] = useState(null);
   const inputRef = useRef();
@@ -13,12 +15,17 @@ export function ImageUploadField({ value, onChange, label, aspect = '16/9' }) {
   const handleFile = async (file) => {
     setErr(null);
     setProgress(0);
-    const fd = new FormData();
-    fd.append('file', file);
     try {
-      const result = await uploadFile('/images', fd, {
-        onProgress: (p) => setProgress(Math.round(p * 100)),
-      });
+      let result;
+      if (uploadFn) {
+        result = await uploadFn(file);
+      } else {
+        const fd = new FormData();
+        fd.append('file', file);
+        result = await uploadFile('/images', fd, {
+          onProgress: (p) => setProgress(Math.round(p * 100)),
+        });
+      }
       onChange(result.url, result);
     } catch (e) {
       setErr(e.message || 'Erreur lors de l\'upload');
@@ -28,7 +35,9 @@ export function ImageUploadField({ value, onChange, label, aspect = '16/9' }) {
   };
 
   const handleRemove = async () => {
-    if (value?.startsWith('/api/images/')) {
+    // Scoped (member) uploads can't call the admin DELETE — just drop the
+    // reference; the orphaned file is harmless (UUID-named, unreferenced).
+    if (!uploadFn && value?.startsWith('/api/images/')) {
       const filename = value.split('/').pop();
       try { await api.del(`/images/${filename}`); } catch { /* ignore if already gone */ }
     }

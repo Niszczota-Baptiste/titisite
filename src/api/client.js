@@ -469,6 +469,35 @@ export const api = {
         update: (id, b) => request('PUT', `/workspaces/${slug}/minecraft/map-pois/${id}`, b),
         remove: (id) => request('DELETE', `/workspaces/${slug}/minecraft/map-pois/${id}`),
       },
+      // Cartes nommées du projet (vue + image de fond calibrée, comme les quêtes).
+      maps: {
+        list:   () => request('GET',    `/workspaces/${slug}/minecraft/maps`),
+        create: (b) => request('POST',  `/workspaces/${slug}/minecraft/maps`, b),
+        update: (id, b) => request('PUT', `/workspaces/${slug}/minecraft/maps/${id}`, b),
+        remove: (id) => request('DELETE', `/workspaces/${slug}/minecraft/maps/${id}`),
+      },
+      // Schémas / croquis (dessin libre sur capture ou feuille blanche).
+      sketches: {
+        list:   () => request('GET',    `/workspaces/${slug}/minecraft/sketches`),
+        get:    (id) => request('GET',  `/workspaces/${slug}/minecraft/sketches/${id}`),
+        create: (b) => request('POST',  `/workspaces/${slug}/minecraft/sketches`, b),
+        update: (id, b) => request('PUT', `/workspaces/${slug}/minecraft/sketches/${id}`, b),
+        remove: (id) => request('DELETE', `/workspaces/${slug}/minecraft/sketches/${id}`),
+      },
+      // Fils de discussion / RP du projet (commentaires via api.comments 'thread').
+      threads: {
+        list:   () => request('GET',    `/workspaces/${slug}/minecraft/threads`),
+        get:    (id) => request('GET',  `/workspaces/${slug}/minecraft/threads/${id}`),
+        create: (b) => request('POST',  `/workspaces/${slug}/minecraft/threads`, b),
+        update: (id, b) => request('PUT', `/workspaces/${slug}/minecraft/threads/${id}`, b),
+        remove: (id) => request('DELETE', `/workspaces/${slug}/minecraft/threads/${id}`),
+      },
+      // Upload d'image scopé membre (fond de carte, capture de schéma).
+      uploadImage: (file) => {
+        const fd = new FormData();
+        fd.append('file', file);
+        return uploadFile(`/workspaces/${slug}/minecraft/upload-image`, fd);
+      },
       // Coffres (containers) + flux screenshot → items.
       chests: {
         list:   () => request('GET',    `/workspaces/${slug}/minecraft/chests`),

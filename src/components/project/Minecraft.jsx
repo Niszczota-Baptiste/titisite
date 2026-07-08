@@ -479,6 +479,8 @@ export function MinecraftTab({ mode = 'full' }) {
             <>
               <Link to={`/project/${workspace.slug}/carte`} style={toolLink} title="Carte du projet (coffres, villageois, POI)">🗺️ Carte</Link>
               <Link to={`/project/${workspace.slug}/villageois`} style={toolLink} title="Villageois & trades">🧑‍🌾 Villageois</Link>
+              <Link to={`/project/${workspace.slug}/schemas`} style={toolLink} title="Schémas de la base (croquis)">✏️ Schémas</Link>
+              <Link to={`/project/${workspace.slug}/discussions`} style={toolLink} title="Discussions & RP du projet">💬 Discussions</Link>
             </>
           )}
           {mode === 'full' && subNav}

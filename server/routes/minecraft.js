@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
-import { uploadScreenshotMemory } from '../uploads.js';
+import { processAndStoreImage } from '../images.js';
+import { uploadImage, uploadScreenshotMemory } from '../uploads.js';
 import { scanChestScreenshot, visionAvailable } from '../minecraftVision.js';
 import { canAccessWorkspace } from '../workspaces.js';
 
@@ -1069,6 +1070,339 @@ minecraftRouter.delete('/map-pois/:id', (req, res) => {
   const r = db.prepare(`DELETE FROM minecraft_map_pois WHERE id = ? AND workspace_id = ?`)
     .run(Number(req.params.id), req.workspace.id);
   if (r.changes === 0) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Upload d'image scopé membre (fonds de carte, captures de schémas) ───────
+// POST /api/images est admin-only ; ici on autorise les membres du workspace à
+// uploader dans le même pipeline (project_images), pour leurs cartes/schémas.
+
+minecraftRouter.post('/upload-image', uploadImage.single('file'), async (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  if (!req.file) return res.status(400).json({ error: 'missing_file' });
+  try {
+    res.status(201).json(await processAndStoreImage(req.file));
+  } catch (e) {
+    console.error('[minecraft] image upload failed:', e?.message || e);
+    res.status(500).json({ error: 'upload_failed' });
+  }
+});
+
+// ── Cartes nommées du projet (vue + image de fond calibrée) ─────────────────
+
+// Extrait un nom de fichier depuis un UUID nu ou une URL /api/images/<f>.
+function imageFilenameOf(v) {
+  if (!v) return null;
+  const s = String(v);
+  const m = s.match(/\/api\/images\/([\w.-]+)$/);
+  return m ? m[1] : (/^[\w.-]+$/.test(s) ? s : null);
+}
+
+function rowToMap(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    nom: r.nom,
+    world: r.world || 'overworld',
+    couleur: r.couleur,
+    centerX: r.center_x,
+    centerZ: r.center_z,
+    defaultSpan: r.default_span,
+    imageFilename: r.image_filename || null,
+    imageUrl: r.image_filename ? `/api/images/${r.image_filename}` : null,
+    imgCenterX: r.img_center_x,
+    imgCenterZ: r.img_center_z,
+    imgSpan: r.img_span,
+    position: r.position,
+  };
+}
+
+minecraftRouter.get('/maps', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const rows = db.prepare(`SELECT * FROM minecraft_maps WHERE workspace_id = ? ORDER BY position, id`)
+    .all(req.workspace.id);
+  res.json(rows.map(rowToMap));
+});
+
+minecraftRouter.post('/maps', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const b = req.body || {};
+  if (!b.nom || !String(b.nom).trim()) return res.status(400).json({ error: 'missing_name' });
+  const pos = db.prepare(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM minecraft_maps WHERE workspace_id = ?`,
+  ).get(req.workspace.id).n;
+  const result = db.prepare(`
+    INSERT INTO minecraft_maps
+      (workspace_id, nom, world, couleur, center_x, center_z, default_span,
+       image_filename, img_center_x, img_center_z, img_span, position, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.workspace.id,
+    String(b.nom).trim().slice(0, 80),
+    String(b.world || 'overworld').trim().slice(0, 64) || 'overworld',
+    String(b.couleur || '#c9a8e8').slice(0, 16),
+    parseCoord(b.centerX) ?? 0, parseCoord(b.centerZ) ?? 0,
+    Math.max(16, Math.floor(Number(b.defaultSpan) || 512)),
+    imageFilenameOf(b.imageFilename),
+    parseCoord(b.imgCenterX) ?? 0, parseCoord(b.imgCenterZ) ?? 0,
+    Math.max(16, Math.floor(Number(b.imgSpan) || 512)),
+    pos,
+    req.user.id,
+  );
+  res.status(201).json(rowToMap(db.prepare(`SELECT * FROM minecraft_maps WHERE id = ?`).get(result.lastInsertRowid)));
+});
+
+minecraftRouter.put('/maps/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const existing = db.prepare(`SELECT * FROM minecraft_maps WHERE id = ? AND workspace_id = ?`)
+    .get(Number(req.params.id), req.workspace.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  const b = req.body || {};
+  db.prepare(`
+    UPDATE minecraft_maps SET
+      nom = COALESCE(?, nom), world = COALESCE(?, world), couleur = COALESCE(?, couleur),
+      center_x = ?, center_z = ?, default_span = ?,
+      image_filename = ?, img_center_x = ?, img_center_z = ?, img_span = ?,
+      updated_at = strftime('%s','now')
+    WHERE id = ?
+  `).run(
+    b.nom === undefined ? null : String(b.nom).trim().slice(0, 80),
+    b.world === undefined ? null : (String(b.world).trim().slice(0, 64) || 'overworld'),
+    b.couleur === undefined ? null : String(b.couleur).slice(0, 16),
+    'centerX' in b ? (parseCoord(b.centerX) ?? 0) : existing.center_x,
+    'centerZ' in b ? (parseCoord(b.centerZ) ?? 0) : existing.center_z,
+    'defaultSpan' in b ? Math.max(16, Math.floor(Number(b.defaultSpan) || 512)) : existing.default_span,
+    'imageFilename' in b ? imageFilenameOf(b.imageFilename) : existing.image_filename,
+    'imgCenterX' in b ? (parseCoord(b.imgCenterX) ?? 0) : existing.img_center_x,
+    'imgCenterZ' in b ? (parseCoord(b.imgCenterZ) ?? 0) : existing.img_center_z,
+    'imgSpan' in b ? Math.max(16, Math.floor(Number(b.imgSpan) || 512)) : existing.img_span,
+    existing.id,
+  );
+  res.json(rowToMap(db.prepare(`SELECT * FROM minecraft_maps WHERE id = ?`).get(existing.id)));
+});
+
+minecraftRouter.delete('/maps/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const r = db.prepare(`DELETE FROM minecraft_maps WHERE id = ? AND workspace_id = ?`)
+    .run(Number(req.params.id), req.workspace.id);
+  if (r.changes === 0) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Schémas / croquis du projet (dessin libre sur capture ou feuille) ───────
+
+function rowToSketch(r, withStrokes = true) {
+  if (!r) return null;
+  const out = {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    title: r.title,
+    note: r.note || '',
+    backgroundFilename: r.background_filename || null,
+    backgroundUrl: r.background_filename ? `/api/images/${r.background_filename}` : null,
+    position: r.position,
+    createdBy: r.created_by,
+    createdByName: r.created_by_name,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+  if (withStrokes) {
+    try { out.strokes = JSON.parse(r.strokes) || []; } catch { out.strokes = []; }
+    if (!Array.isArray(out.strokes)) out.strokes = [];
+  }
+  return out;
+}
+
+const SKETCH_SELECT = `
+  SELECT s.*, u.name AS created_by_name
+  FROM minecraft_sketches s
+  LEFT JOIN users u ON u.id = s.created_by
+`;
+
+// Normalise/borne les traits : [{ color, width, points:[x,y,...] }]. Coordonnées
+// stockées en fraction 0..1 (indépendantes de la taille d'affichage).
+function cleanStrokes(input) {
+  if (!Array.isArray(input)) return [];
+  return input.slice(0, 4000).map((s) => {
+    const pts = Array.isArray(s?.points) ? s.points.slice(0, 4000).map(Number).filter(Number.isFinite) : [];
+    return {
+      color: /^#[0-9a-fA-F]{3,8}$/.test(s?.color) ? s.color : '#ff4d4d',
+      width: Math.max(0.5, Math.min(40, Number(s?.width) || 3)),
+      points: pts,
+    };
+  }).filter((s) => s.points.length >= 4 && s.points.length % 2 === 0);
+}
+
+minecraftRouter.get('/sketches', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const rows = db.prepare(`${SKETCH_SELECT} WHERE s.workspace_id = ? ORDER BY s.position, s.id`)
+    .all(req.workspace.id);
+  res.json(rows.map((r) => rowToSketch(r, false)));
+});
+
+minecraftRouter.get('/sketches/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const row = db.prepare(`${SKETCH_SELECT} WHERE s.id = ? AND s.workspace_id = ?`)
+    .get(Number(req.params.id), req.workspace.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  res.json(rowToSketch(row, true));
+});
+
+minecraftRouter.post('/sketches', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const b = req.body || {};
+  if (!b.title || !String(b.title).trim()) return res.status(400).json({ error: 'missing_title' });
+  const pos = db.prepare(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM minecraft_sketches WHERE workspace_id = ?`,
+  ).get(req.workspace.id).n;
+  const result = db.prepare(`
+    INSERT INTO minecraft_sketches (workspace_id, title, note, background_filename, strokes, position, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.workspace.id,
+    String(b.title).trim().slice(0, 120),
+    String(b.note || '').trim().slice(0, 500),
+    imageFilenameOf(b.backgroundFilename),
+    JSON.stringify(cleanStrokes(b.strokes)),
+    pos,
+    req.user.id,
+  );
+  const row = db.prepare(`${SKETCH_SELECT} WHERE s.id = ?`).get(result.lastInsertRowid);
+  res.status(201).json(rowToSketch(row, true));
+});
+
+minecraftRouter.put('/sketches/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const existing = db.prepare(`SELECT * FROM minecraft_sketches WHERE id = ? AND workspace_id = ?`)
+    .get(Number(req.params.id), req.workspace.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  const b = req.body || {};
+  db.prepare(`
+    UPDATE minecraft_sketches SET
+      title = COALESCE(?, title), note = COALESCE(?, note),
+      background_filename = ?, strokes = COALESCE(?, strokes),
+      updated_at = strftime('%s','now')
+    WHERE id = ?
+  `).run(
+    b.title === undefined ? null : String(b.title).trim().slice(0, 120),
+    b.note === undefined ? null : String(b.note).trim().slice(0, 500),
+    'backgroundFilename' in b ? imageFilenameOf(b.backgroundFilename) : existing.background_filename,
+    b.strokes === undefined ? null : JSON.stringify(cleanStrokes(b.strokes)),
+    existing.id,
+  );
+  const row = db.prepare(`${SKETCH_SELECT} WHERE s.id = ?`).get(existing.id);
+  res.json(rowToSketch(row, true));
+});
+
+minecraftRouter.delete('/sketches/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const r = db.prepare(`DELETE FROM minecraft_sketches WHERE id = ? AND workspace_id = ?`)
+    .run(Number(req.params.id), req.workspace.id);
+  if (r.changes === 0) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Fils de discussion / RP du projet ───────────────────────────────────────
+
+function rowToThread(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    title: r.title,
+    body: r.body || '',
+    kind: r.kind === 'rp' ? 'rp' : 'discussion',
+    pinned: r.pinned === 1,
+    commentCount: r.comment_count ?? undefined,
+    createdBy: r.created_by,
+    createdByName: r.created_by_name,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+const THREAD_SELECT = `
+  SELECT t.*, u.name AS created_by_name,
+    (SELECT COUNT(*) FROM comments c WHERE c.target_type = 'thread' AND c.target_id = t.id) AS comment_count
+  FROM workspace_threads t
+  LEFT JOIN users u ON u.id = t.created_by
+`;
+
+minecraftRouter.get('/threads', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const rows = db.prepare(`${THREAD_SELECT} WHERE t.workspace_id = ? ORDER BY t.pinned DESC, t.updated_at DESC, t.id DESC`)
+    .all(req.workspace.id);
+  res.json(rows.map(rowToThread));
+});
+
+minecraftRouter.get('/threads/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const row = db.prepare(`${THREAD_SELECT} WHERE t.id = ? AND t.workspace_id = ?`)
+    .get(Number(req.params.id), req.workspace.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  res.json(rowToThread(row));
+});
+
+minecraftRouter.post('/threads', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const b = req.body || {};
+  if (!b.title || !String(b.title).trim()) return res.status(400).json({ error: 'missing_title' });
+  const result = db.prepare(`
+    INSERT INTO workspace_threads (workspace_id, title, body, kind, pinned, created_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    req.workspace.id,
+    String(b.title).trim().slice(0, 160),
+    String(b.body || '').trim().slice(0, 20000),
+    b.kind === 'rp' ? 'rp' : 'discussion',
+    b.pinned ? 1 : 0,
+    req.user.id,
+  );
+  const row = db.prepare(`${THREAD_SELECT} WHERE t.id = ?`).get(result.lastInsertRowid);
+  res.status(201).json(rowToThread(row));
+});
+
+minecraftRouter.put('/threads/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const existing = db.prepare(`SELECT * FROM workspace_threads WHERE id = ? AND workspace_id = ?`)
+    .get(Number(req.params.id), req.workspace.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  // Auteur ou admin uniquement (les commentaires restent ouverts à tous).
+  if (existing.created_by !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const b = req.body || {};
+  db.prepare(`
+    UPDATE workspace_threads SET
+      title = COALESCE(?, title), body = COALESCE(?, body),
+      kind = COALESCE(?, kind), pinned = ?, updated_at = strftime('%s','now')
+    WHERE id = ?
+  `).run(
+    b.title === undefined ? null : String(b.title).trim().slice(0, 160),
+    b.body === undefined ? null : String(b.body).trim().slice(0, 20000),
+    b.kind === undefined ? null : (b.kind === 'rp' ? 'rp' : 'discussion'),
+    'pinned' in b ? (b.pinned ? 1 : 0) : existing.pinned,
+    existing.id,
+  );
+  const row = db.prepare(`${THREAD_SELECT} WHERE t.id = ?`).get(existing.id);
+  res.json(rowToThread(row));
+});
+
+minecraftRouter.delete('/threads/:id', (req, res) => {
+  if (!ensureMinecraftWorkspace(req, res)) return;
+  const existing = db.prepare(`SELECT created_by FROM workspace_threads WHERE id = ? AND workspace_id = ?`)
+    .get(Number(req.params.id), req.workspace.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  if (existing.created_by !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const id = Number(req.params.id);
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM comments WHERE target_type = 'thread' AND target_id = ?`).run(id);
+    db.prepare(`DELETE FROM workspace_threads WHERE id = ?`).run(id);
+  });
+  tx();
   res.status(204).end();
 });
 

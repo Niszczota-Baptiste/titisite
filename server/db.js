@@ -347,6 +347,69 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_vtrades_villager ON minecraft_villager_trades(villager_id, position);`);
 
+  // Cartes nommées du projet (comme quest_maps mais scopées par workspace) :
+  // une vue nommée d'un monde, avec vue par défaut (centre/zoom) et une image
+  // de fond 2D optionnelle calibrée aux coordonnées monde. Les marqueurs
+  // (coffres, villageois, POI) affichés sont ceux du `world` de la carte.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_maps (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id   INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      nom            TEXT NOT NULL,
+      world          TEXT NOT NULL DEFAULT 'overworld',
+      couleur        TEXT NOT NULL DEFAULT '#c9a8e8',
+      center_x       INTEGER NOT NULL DEFAULT 0,
+      center_z       INTEGER NOT NULL DEFAULT 0,
+      default_span   INTEGER NOT NULL DEFAULT 512,
+      image_filename TEXT,
+      img_center_x   INTEGER NOT NULL DEFAULT 0,
+      img_center_z   INTEGER NOT NULL DEFAULT 0,
+      img_span       INTEGER NOT NULL DEFAULT 512,
+      position       INTEGER NOT NULL DEFAULT 0,
+      created_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_maps_ws ON minecraft_maps(workspace_id, position);`);
+
+  // Schémas / croquis du projet : un dessin libre (traits vectoriels JSON)
+  // au-dessus d'une capture d'écran ou d'une feuille blanche, pour expliquer
+  // les plans à deux. `strokes` = JSON [{ color, width, points:[x,y,...] }].
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS minecraft_sketches (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id       INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      title              TEXT NOT NULL,
+      note               TEXT NOT NULL DEFAULT '',
+      background_filename TEXT,
+      strokes            TEXT NOT NULL DEFAULT '[]',
+      position           INTEGER NOT NULL DEFAULT 0,
+      created_by         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at         INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at         INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mc_sketches_ws ON minecraft_sketches(workspace_id, position);`);
+
+  // Fils de discussion / RP du projet (scopés par workspace). `kind` = 'rp'
+  // (lore, journal du projet) ou 'discussion' (échanges). Les commentaires
+  // réutilisent la table `comments` avec target_type = 'thread'.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS workspace_threads (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      title        TEXT NOT NULL,
+      body         TEXT NOT NULL DEFAULT '',
+      kind         TEXT NOT NULL DEFAULT 'discussion',
+      pinned       INTEGER NOT NULL DEFAULT 0,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_ws_threads_ws ON workspace_threads(workspace_id, pinned, updated_at);`);
+
   // Recettes custom Minefield, GLOBALES (les recettes vanilla vivent côté client
   // dans src/data/recipes_vanilla.json). Éditées en admin, lues par le
   // calculateur de craft de chaque projet. `result_id`/`ingredients[].item`

@@ -1,9 +1,8 @@
-import crypto from 'node:crypto';
 import { Router } from 'express';
-import sharp from 'sharp';
 import { requireAuth, requireRole } from '../auth.js';
 import { db } from '../db.js';
-import { safeUnlink, uploadImage, uploadPath } from '../uploads.js';
+import { processAndStoreImage } from '../images.js';
+import { safeUnlink, uploadImage } from '../uploads.js';
 
 export const imagesRouter = Router();
 
@@ -20,34 +19,7 @@ imagesRouter.post(
   async (req, res) => {
     const f = req.file;
     if (!f) return res.status(400).json({ error: 'missing_file' });
-
-    let { filename, mimetype, size } = f;
-    if (mimetype !== 'image/gif') {
-      try {
-        const out = `${crypto.randomUUID()}.webp`;
-        const info = await sharp(uploadPath(filename))
-          .rotate()
-          .resize({ width: 3840, height: 3840, fit: 'inside', withoutEnlargement: true })
-          .webp({ quality: 82 })
-          .toFile(uploadPath(out));
-        safeUnlink(filename);
-        filename = out;
-        mimetype = 'image/webp';
-        size = info.size;
-      } catch { /* fichier illisible par sharp → original conservé */ }
-    }
-
-    db.prepare(`
-      INSERT INTO project_images (filename, original_name, mime_type, size)
-      VALUES (?, ?, ?, ?)
-    `).run(filename, f.originalname, mimetype, size);
-    res.status(201).json({
-      filename,
-      url: `/api/images/${filename}`,
-      originalName: f.originalname,
-      mimeType: mimetype,
-      size,
-    });
+    res.status(201).json(await processAndStoreImage(f));
   },
 );
 
