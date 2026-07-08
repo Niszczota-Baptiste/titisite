@@ -84,19 +84,32 @@ Single-process Node app:
   owner member or common, stored chest or on-body), `minecraft_villagers` +
   `minecraft_villager_trades` (🧑‍🌾 page: profession, coords, trades with
   normal price + per-player discounted price `discount_user_id`), and
-  `minecraft_map_pois` (🗺️ project map: pan/zoom grid reusing
-  `src/components/quests/mapGrid.js`, world filter, markers for chests /
-  villagers / free POIs, click-to-add). `custom_recipes.type` also accepts
-  `'brewing'` (⚗️ no grid, free ingredient list in the admin editor).
+  `minecraft_map_pois` (🗺️ project map, `ProjectMap.jsx`) and `minecraft_maps`
+  (named maps per world with a default view + calibrated 2D background image,
+  like `quest_maps` — same UX as the quest map: map selector, image opacity,
+  grid toggle, Recentrer, 💾 Vue par défaut; base worlds are synthetic
+  always-present maps). `minecraft_sketches` (✏️ Schémas, `Sketches.jsx`:
+  freehand vector drawing — strokes as 0..1 fractions — over a screenshot or
+  blank sheet; canvas editor with palette/width/eraser/undo). `workspace_threads`
+  (💬 Discussions/RP, `Discussions.jsx`: RP/lore + discussion threads,
+  pinnable, comments reuse the `comments` table with `target_type = 'thread'`
+  gated by workspace membership in `comments.js`). `custom_recipes.type` also
+  accepts `'brewing'` (⚗️ no grid, free ingredient list in the admin editor).
+  Member-scoped image upload: `POST …/minecraft/upload-image` reuses the
+  sharp/WebP pipeline (`server/images.js`, extracted from `routes/images.js`
+  whose `POST /api/images` stays admin-only) so project members can add map
+  backgrounds and sketch screenshots. `ImageUploadField` takes an optional
+  `uploadFn` to target it.
   A second flag `minecraft_only` (« Projet 100 % Minecraft » in
   `WorkspacesEditor`, implies `is_minecraft` at read time) hides the classic
   tabs (Vue d'ensemble → Réunions) and splits the Minecraft page into
   separate tabs: 📊 Résumé (`MinecraftResume.jsx` — stats, wanted progress,
   latest additions, computed client-side), 📦 Coffres (`/minecraft`),
   🎯 Wanted, 🗺️ Carte (`ProjectMap.jsx`), 🧑‍🌾 Villageois (`Villagers.jsx`),
+  ✏️ Schémas (`Sketches.jsx`), 💬 Discussions (`Discussions.jsx`),
   🏗️ Builds 3D, 🧮 Calculateur (`MinecraftTab mode=…`) + a
-  📜 Quêtes tab-link to `/quetes`; mixed projects reach Carte/Villageois via
-  tool-links in the ⛏️ Minecraft action bar. `tabsFor`/`projectHome`/
+  📜 Quêtes tab-link to `/quetes`; mixed projects reach Carte/Villageois/
+  Schémas/Discussions via tool-links in the ⛏️ Minecraft action bar. `tabsFor`/`projectHome`/
   `MINECRAFT_ONLY_TABS` in `ProjectLayout.jsx` drive the tab bar; hidden-tab
   URLs redirect to `/resume`, where Home cards and the switcher also land.
   Mixed projects keep the single ⛏️ Minecraft page (`mode="full"`).
