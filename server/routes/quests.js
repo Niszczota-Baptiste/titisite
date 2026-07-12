@@ -5,6 +5,7 @@ import { codexNameById, normName } from '../codex.js';
 import { db } from '../db.js';
 import { findByCockpitToken } from '../users.js';
 import { buildCockpitFeed } from '../quests/cockpit.js';
+import { normalizePosition, parseF3C, savePosition } from '../quests/position.js';
 import {
   completeQuest,
   customItemNameByRef,
@@ -180,4 +181,16 @@ questsRouter.get('/cockpit/:token', cockpitLimiter, (req, res) => {
   if (!member || member.role !== 'admin') return res.status(404).json({ error: 'not_found' });
   res.setHeader('Cache-Control', 'no-store');
   res.json(buildCockpitFeed(member));
+});
+
+// ── Position in-game (boussole 🧭) — poussée par l'app cockpit locale ────────
+// Même credential que le flux : le jeton secret dans l'URL, pas de cookie.
+// Corps : { raw: "<ligne F3+C>" } ou { world, x, y, z, yaw?, pitch? }.
+questsRouter.post('/cockpit/:token/position', cockpitLimiter, (req, res) => {
+  const member = findByCockpitToken(String(req.params.token));
+  if (!member || member.role !== 'admin') return res.status(404).json({ error: 'not_found' });
+  const body = req.body || {};
+  const pos = body.raw !== undefined ? parseF3C(body.raw) : normalizePosition(body);
+  if (!pos) return res.status(400).json({ error: 'invalid_position' });
+  res.json(savePosition(member.id, pos));
 });

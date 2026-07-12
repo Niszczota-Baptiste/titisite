@@ -356,6 +356,8 @@ export const api = {
     },
     quests: () => request('GET', '/me/cockpit/quests'),
     setFollow: (id, followed) => request('PUT', `/me/cockpit/quests/${id}/follow`, { followed }),
+    // Dernière position in-game poussée par l'app cockpit (boussole 🧭).
+    position: () => request('GET', '/me/cockpit/position'),
   },
 
   // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.

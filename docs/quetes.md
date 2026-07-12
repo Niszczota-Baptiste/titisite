@@ -236,6 +236,25 @@ GET                /quests         liste des quêtes + état follow + followedCo
 PUT                /quests/:id/follow { followed: bool }
 ```
 
+### Boussole 🧭 (position F3+C poussée par le cockpit)
+
+En jeu, **F3+C** copie la position dans le presse-papiers
+(`/execute in <monde> run tp @s X Y Z yaw pitch`). Le script
+`scripts/cockpit-position.py` (stdlib seule, à intégrer dans l'app cockpit)
+surveille le presse-papiers et POSTe la ligne brute :
+
+```
+POST /api/quests/cockpit/<token>/position   { raw } ou { world, x, y, z, yaw?, pitch? }
+GET  /api/me/cockpit/position               dernière position (admin, cookie)
+```
+
+Une ligne par joueur (`player_positions`, UPSERT). La boussole du site
+(`src/components/project/Compass.jsx` — bouton 🧭 sur les coffres à
+coordonnées et sur les emplacements « Où trouver dans les coffres ») affiche
+cap/distance/ΔY vers la cible, le virage relatif quand le yaw est connu, la
+conversion ×8/÷8 si un seul des deux mondes est le Nether ; repli : collage
+manuel F3+C ou « x y z » (localStorage), disponible pour tous les comptes.
+
 ### Où trouver les entrées d'une quête (lien avec les coffres)
 
 `GET /api/quests/quests/:id/stock` (flag `can_view_quests`) rapproche chaque

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { CodexItem } from '../admin/editors/minecraft/CodexPicker';
+import { CompassModal } from '../project/Compass';
 import { QuestMap } from './QuestMap';
 import {
   ACC, ACC_RGB, CRIMSON, GOLD, INK, MUTED, OCCURRENCES, PREREQ_KINDS, REWARD_KINDS,
@@ -229,6 +230,7 @@ export function QuestDetail({ quest, byId, factions, onComplete, onUncomplete, o
 function StockPanel({ questId }) {
   const [stock, setStock] = useState(null);
   const [err, setErr] = useState(null);
+  const [compassTarget, setCompassTarget] = useState(null); // coffre à rejoindre 🧭
 
   useEffect(() => {
     let alive = true;
@@ -303,6 +305,21 @@ function StockPanel({ questId }) {
                             </>
                           ) : '📦 Non rangé'}
                         </span>
+                        {loc.chest && (loc.chest.x != null && loc.chest.z != null) && (
+                          <button
+                            type="button"
+                            title="Boussole : m'y guider"
+                            onClick={() => setCompassTarget({
+                              label: `${loc.chest.name} (${input.label || 'item'})`,
+                              world: loc.chest.world, x: loc.chest.x, y: loc.chest.y, z: loc.chest.z,
+                            })}
+                            style={{
+                              cursor: 'pointer', flexShrink: 0, fontSize: 12,
+                              background: 'rgba(232,200,106,0.08)', border: '1px solid rgba(232,200,106,0.4)',
+                              color: GOLD, borderRadius: 8, padding: '2px 8px',
+                            }}
+                          >🧭</button>
+                        )}
                         <a
                           href={`/project/${loc.workspaceSlug}/minecraft`}
                           style={{
@@ -319,6 +336,12 @@ function StockPanel({ questId }) {
           })}
         </div>
       )}
+
+      <CompassModal
+        open={compassTarget != null}
+        onClose={() => setCompassTarget(null)}
+        target={compassTarget}
+      />
     </Column>
   );
 }

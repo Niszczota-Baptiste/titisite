@@ -1123,6 +1123,22 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_cockpit_items_user ON cockpit_items(user_id, done, priority, position);`);
 
+  // Dernière position in-game connue par utilisateur (boussole 🧭). Poussée
+  // par l'app cockpit locale via le jeton (F3+C → presse-papiers → POST) ;
+  // une seule ligne par joueur, écrasée à chaque envoi.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS player_positions (
+      user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      world      TEXT NOT NULL DEFAULT '',
+      x          REAL NOT NULL,
+      y          REAL NOT NULL,
+      z          REAL NOT NULL,
+      yaw        REAL,
+      pitch      REAL,
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+
   // Quêtes suivies par utilisateur : aucune ligne = tout est envoyé au cockpit ;
   // au moins une ligne = seules les quêtes suivies partent dans le flux.
   db.exec(`

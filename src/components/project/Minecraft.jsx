@@ -7,6 +7,7 @@ import {
   normName, searchCatalog,
 } from '../../data/minefieldCatalog';
 import { Block3D } from './block3d/Block3D';
+import { CompassModal } from './Compass';
 import { useBlockThumbnail } from '../../hooks/useBlockThumbnail';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useWorkspace } from '../../hooks/useWorkspace';
@@ -204,6 +205,7 @@ export function MinecraftTab({ mode = 'full' }) {
   const [chestModalOpen, setChestModalOpen] = useState(false);
   const [editingChest, setEditingChest] = useState(null);
   const [shotChest, setShotChest] = useState(null); // coffre cible du scan, ou null
+  const [compassTarget, setCompassTarget] = useState(null); // cible 🧭, ou null
 
   // Busy state for adjust buttons
   const [busyId, setBusyId] = useState(null);
@@ -696,6 +698,9 @@ export function MinecraftTab({ mode = 'full' }) {
                   onEditChest={() => { setEditingChest(chest); setChestModalOpen(true); }}
                   onDeleteChest={() => removeChest(chest)}
                   onScan={() => setShotChest(chest)}
+                  onCompass={(chest.x != null && chest.z != null)
+                    ? () => setCompassTarget({ label: chest.name, world: chest.world, x: chest.x, y: chest.y, z: chest.z })
+                    : null}
                   itemHandlers={itemHandlers}
                 />
               ))}
@@ -754,6 +759,12 @@ export function MinecraftTab({ mode = 'full' }) {
         iconIndex={iconIndex}
         onApplied={handleApplied}
         toast={toast}
+      />
+
+      <CompassModal
+        open={compassTarget != null}
+        onClose={() => setCompassTarget(null)}
+        target={compassTarget}
       />
 
       <p style={{
@@ -1152,7 +1163,7 @@ function PanelBtn({ onClick, title, danger, children }) {
 
 function ChestPanel({
   chest, unsortedGroup, items, collapsed, onToggle,
-  onAddItem, onEditChest, onDeleteChest, onScan, itemHandlers,
+  onAddItem, onEditChest, onDeleteChest, onScan, onCompass, itemHandlers,
 }) {
   const meta = unsortedGroup ? { emoji: '📦', label: 'Non rangé' } : worldMeta(chest.world);
   const coords = unsortedGroup ? null : formatCoords(chest);
@@ -1200,6 +1211,7 @@ function ChestPanel({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {onCompass && <PanelBtn onClick={onCompass} title="Boussole : m'y guider">🧭</PanelBtn>}
           {!unsortedGroup && <PanelBtn onClick={onScan} title="Mettre à jour depuis un screenshot">📷</PanelBtn>}
           <PanelBtn onClick={onAddItem} title="Ajouter un item">＋</PanelBtn>
           {!unsortedGroup && <PanelBtn onClick={onEditChest} title="Éditer le coffre">✏️</PanelBtn>}

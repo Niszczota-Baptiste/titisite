@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
 import { db } from '../db.js';
+import { getPosition } from '../quests/position.js';
 import { isMember } from '../workspaces.js';
 
 // Réglages PERSO du cockpit MF, sous /api/me/cockpit (cookie de session).
@@ -16,6 +17,14 @@ function requireAdmin(req, res, next) {
 }
 
 cockpitMeRouter.use(requireAuth, requireAdmin);
+
+// ── Position in-game (boussole 🧭) ─────────────────────────────────────────
+// Dernière position poussée par l'app cockpit (F3+C → presse-papiers → POST
+// /api/quests/cockpit/:token/position). null si jamais envoyée.
+cockpitMeRouter.get('/position', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(getPosition(req.user.id));
+});
 
 // ── Items perso (section `wanted` du flux) ─────────────────────────────────
 

@@ -139,6 +139,12 @@ Single-process Node app:
   no cockpit button — instead a « ⛏️ ← Retour au projet » link back to the
   origin project's Minecraft tab (`QuestsLink` passes `?projet=<slug>`,
   kept in sessionStorage).
+  **Compass 🧭**: the local cockpit app relays the vanilla F3+C clipboard line
+  to `POST /api/quests/cockpit/:token/position` (`player_positions`, one row
+  per user; `scripts/cockpit-position.py`); `GET /api/me/cockpit/position`
+  (admin) feeds `src/components/project/Compass.jsx` — bearing/distance/ΔY,
+  relative turn when yaw is known, Nether ×8/÷8 — opened via 🧭 buttons on
+  chests and on quest stock locations; manual F3+C paste works for everyone.
   `GET /api/quests/quests/:id/stock` links quest item inputs to the Minecraft
   inventories of the caller's accessible workspaces (normalized-name match via
   `server/codex.js`; chest + world + coords per location) — surfaced in

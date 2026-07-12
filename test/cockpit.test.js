@@ -184,6 +184,43 @@ describe('cockpit — flux enrichi + items perso + follows', () => {
   });
 });
 
+describe('cockpit — position in-game (boussole 🧭)', () => {
+  it('push F3+C par jeton admin, lecture via /api/me/cockpit/position', async () => {
+    const admin = await login(ADMIN);
+    const token = (await admin.f.get('/api/me/cockpit-token')).json.token;
+    const anon = fetcher(server.base);
+
+    const raw = '/execute in minecraft:overworld run tp @s 812.50 62.00 -1044.30 45.0 12.0';
+    const push = await anon.post(`/api/quests/cockpit/${token}/position`, { body: { raw } });
+    assert.equal(push.status, 200);
+    assert.equal(push.json.world, 'minecraft:overworld');
+    assert.equal(push.json.x, 812.5);
+    assert.equal(push.json.yaw, 45);
+
+    const read = await admin.f.get('/api/me/cockpit/position');
+    assert.equal(read.status, 200);
+    assert.equal(read.json.z, -1044.3);
+    assert.ok(read.json.updatedAt > 0);
+
+    // Payload structuré accepté aussi (yaw optionnel) — écrase la ligne.
+    const p2 = await anon.post(`/api/quests/cockpit/${token}/position`, {
+      body: { world: 'minecraft:the_nether', x: 101, y: 64, z: -130 },
+    });
+    assert.equal(p2.status, 200);
+    assert.equal((await admin.f.get('/api/me/cockpit/position')).json.world, 'minecraft:the_nether');
+  });
+
+  it('rejets : texte non reconnu → 400, jeton inconnu → 404, membre → 403', async () => {
+    const admin = await login(ADMIN);
+    const token = (await admin.f.get('/api/me/cockpit-token')).json.token;
+    const anon = fetcher(server.base);
+    assert.equal((await anon.post(`/api/quests/cockpit/${token}/position`, { body: { raw: 'coucou' } })).status, 400);
+    assert.equal((await anon.post('/api/quests/cockpit/deadbeef/position', { body: { raw: 'x' } })).status, 404);
+    const member = await login(MEMBER);
+    assert.equal((await member.f.get('/api/me/cockpit/position')).status, 403);
+  });
+});
+
 describe('cockpit — où trouver les entrées d\'une quête (stock)', () => {
   let admin;
   let member;
