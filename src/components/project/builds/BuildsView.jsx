@@ -60,6 +60,7 @@ export function BuildsView({ ws, slug, items = [], chests = [], initialOpenId = 
   const [err, setErr] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [showBlank, setShowBlank] = useState(false);
+  const [showMapart, setShowMapart] = useState(false);
 
   const load = () => ws.blueprints.list().then(setList).catch(() => setErr('Chargement impossible.'));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
@@ -79,15 +80,21 @@ export function BuildsView({ ws, slug, items = [], chests = [], initialOpenId = 
     <div>
       <ErrorBanner error={err} onDismiss={() => setErr('')} />
 
-      {!showForm && !showBlank && (
+      {!showForm && !showBlank && !showMapart && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
           <Button onClick={() => setShowForm(true)}>+ Importer un build</Button>
+          <Button variant="ghost" onClick={() => setShowMapart(true)}>🗺️ Carte depuis une image</Button>
           <Button variant="ghost" onClick={() => setShowBlank(true)}>+ Build vierge (.mca neuf)</Button>
         </div>
       )}
       {showForm && (
         <UploadForm ws={ws} toast={toast} onDone={() => { setShowForm(false); load(); }}
           onCancel={() => setShowForm(false)} onError={setErr} />
+      )}
+      {showMapart && (
+        <MapArtForm ws={ws} toast={toast}
+          onDone={(created) => { setShowMapart(false); load().then(() => created && setOpenId(created.id)); }}
+          onCancel={() => setShowMapart(false)} onError={setErr} />
       )}
       {showBlank && (
         <BlankForm ws={ws} slug={slug} toast={toast} onDone={() => { setShowBlank(false); load(); }}
@@ -321,6 +328,146 @@ function BlankForm({ ws, slug, toast, onDone, onCancel, onError }) {
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14 }}>
         <Button onClick={submit} disabled={busy}>{busy ? 'Création…' : 'Créer le build vierge'}</Button>
         <Button variant="ghost" onClick={onCancel} disabled={busy}>Annuler</Button>
+      </div>
+    </div>
+  );
+}
+
+const MAPART_ERRORS = {
+  missing_file: 'Choisis une image à convertir.',
+  too_tall: 'Un mur ne peut pas dépasser 3 cartes de haut (limite de hauteur du monde). Passe en « Sol » ou réduis les lignes.',
+  image_unreadable: 'Image illisible — réessaie avec un PNG/JPG.',
+  empty_image: 'Image entièrement transparente — rien à poser.',
+  mapart_failed: 'Génération impossible.',
+};
+const MAPART_PRESETS = [
+  { cols: 1, rows: 1, label: '1 carte' },
+  { cols: 2, rows: 1, label: '2×1' },
+  { cols: 1, rows: 2, label: '1×2' },
+  { cols: 2, rows: 2, label: '2×2' },
+  { cols: 3, rows: 3, label: '3×3' },
+];
+const MAPART_SEL = {
+  background: 'rgba(14,9,28,0.6)', border: '1px solid rgba(80,50,130,0.28)', borderRadius: 10,
+  padding: '9px 12px', color: '#ede8f8', fontSize: 14, fontFamily: "'Inter',sans-serif",
+};
+
+// Screenshot → carte en blocs : on choisit la taille (grille de cartes 128×128),
+// l'orientation (mur vertical / sol à plat) et le cadrage, puis le serveur crée
+// un build plat coloré (map-art) visible dans le générateur 3D et exportable .mca.
+function MapArtForm({ ws, toast, onDone, onCancel, onError }) {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState('');
+  const [name, setName] = useState('');
+  const [cols, setCols] = useState(1);
+  const [rows, setRows] = useState(1);
+  const [orientation, setOrientation] = useState('wall');
+  const [fit, setFit] = useState('cover');
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  // Aperçu de l'image choisie (objectURL révoqué au changement/démontage).
+  useEffect(() => {
+    if (!file) { setPreview(''); return undefined; }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  // Un mur est vertical → borné à 3 cartes de haut (hauteur du monde).
+  const maxRows = orientation === 'wall' ? 3 : 4;
+  const clampRows = (r) => Math.max(1, Math.min(maxRows, r || 1));
+  const clampCols = (c) => Math.max(1, Math.min(4, c || 1));
+  const setOrient = (o) => { setOrientation(o); if (o === 'wall') setRows((r) => Math.min(3, r)); };
+
+  const submit = async () => {
+    if (!file) { onError('Choisis une image à convertir.'); return; }
+    setBusy(true); setProgress(0);
+    try {
+      const created = await ws.blueprints.fromImage(file, {
+        cols: String(clampCols(cols)), rows: String(clampRows(rows)), orientation, fit, name,
+      }, setProgress);
+      toast?.success?.(`Carte créée : « ${created.name} »`);
+      onDone(created);
+    } catch (e) {
+      onError(MAPART_ERRORS[e?.message] || MAPART_ERRORS[e?.body?.error] || 'Génération impossible.');
+    } finally { setBusy(false); }
+  };
+
+  const blocks = cols * 128 * rows * 128;
+
+  return (
+    <div style={{ ...card, padding: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 260px', minWidth: 220 }}>
+          <Field label="Image (screenshot, photo…)">
+            <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)}
+              style={{ color: '#ede8f8', fontSize: 13 }} />
+          </Field>
+          <Field label="Nom de la carte">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={`Carte ${cols}×${rows}`} />
+          </Field>
+        </div>
+        {preview && (
+          <img src={preview} alt="aperçu" style={{
+            width: 120, height: 120, flexShrink: 0, objectFit: fit === 'contain' ? 'contain' : 'cover',
+            borderRadius: 8, border: '1px solid rgba(80,50,130,0.3)', background: 'rgba(14,9,28,0.6)',
+          }} />
+        )}
+      </div>
+
+      <div style={{ ...muted, fontSize: 12, margin: '10px 0 6px' }}>Taille (une carte Minecraft = 128×128 blocs)</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        {MAPART_PRESETS.filter((p) => orientation !== 'wall' || p.rows <= 3).map((p) => {
+          const on = p.cols === cols && p.rows === rows;
+          return (
+            <button key={p.label} type="button" onClick={() => { setCols(p.cols); setRows(clampRows(p.rows)); }}
+              style={{
+                padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontFamily: "'Inter',sans-serif",
+                background: on ? 'rgba(150,110,220,0.28)' : 'rgba(14,9,28,0.6)',
+                border: `1px solid ${on ? 'rgba(150,110,220,0.6)' : 'rgba(80,50,130,0.28)'}`, color: '#ede8f8',
+              }}>{p.label}</button>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ ...muted, fontSize: 11 }}>Colonnes</span>
+          <Input type="number" min={1} max={4} value={cols}
+            onChange={(e) => setCols(clampCols(Math.round(Number(e.target.value))))} style={{ width: 84 }} />
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ ...muted, fontSize: 11 }}>Lignes</span>
+          <Input type="number" min={1} max={maxRows} value={rows}
+            onChange={(e) => setRows(clampRows(Math.round(Number(e.target.value))))} style={{ width: 84 }} />
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ ...muted, fontSize: 11 }}>Orientation</span>
+          <select value={orientation} onChange={(e) => setOrient(e.target.value)} style={MAPART_SEL}>
+            <option value="wall">Mur (vertical)</option>
+            <option value="floor">Sol (à plat)</option>
+          </select>
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ ...muted, fontSize: 11 }}>Cadrage</span>
+          <select value={fit} onChange={(e) => setFit(e.target.value)} style={MAPART_SEL}>
+            <option value="cover">Remplir (recadre)</option>
+            <option value="contain">Entier (bords vides)</option>
+            <option value="fill">Étirer</option>
+          </select>
+        </label>
+      </div>
+
+      <p style={{ ...muted, fontSize: 12, margin: '12px 0 0' }}>
+        {cols * 128}×{rows * 128} blocs ({cols * rows} carte{cols * rows > 1 ? 's' : ''}, {blocks.toLocaleString('fr-FR')} blocs).
+        Chaque bloc reprend la couleur de carte la plus proche du pixel — visible dans le générateur 3D
+        et exportable en <code>.mca</code> pour la refaire en jeu.
+      </p>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14 }}>
+        <Button onClick={submit} disabled={busy || !file}>{busy ? `Génération… ${Math.round(progress * 100)}%` : 'Générer la carte'}</Button>
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>Annuler</Button>
+        {busy && <span style={{ ...muted, fontSize: 12 }}>Conversion en blocs…</span>}
       </div>
     </div>
   );

@@ -529,6 +529,14 @@ export const api = {
         for (const [k, v] of Object.entries(fields || {})) fd.append(k, v);
         return uploadFile(`/workspaces/${slug}/blueprints`, fd, { onProgress });
       },
+      // Screenshot → nouvelle carte en blocs (map-art) : image + taille de grille
+      // (cols/rows) + orientation → build plat créé, visible dans le générateur 3D.
+      fromImage: (file, fields, onProgress) => {
+        const fd = new FormData();
+        fd.append('image', file);
+        for (const [k, v] of Object.entries(fields || {})) fd.append(k, v);
+        return uploadFile(`/workspaces/${slug}/blueprints/mapart`, fd, { onProgress });
+      },
       // Liens de partage scopés (view/edit) — gestion réservée au propriétaire.
       shares: {
         list:   (id) => request('GET',    `/workspaces/${slug}/blueprints/${id}/shares`),

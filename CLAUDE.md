@@ -127,6 +127,16 @@ Single-process Node app:
   opened at `/we/:token`. UI in `src/components/project/builds/` (`WorldEditPanel`,
   `SharesPanel`). Block-state table + invariants are in `docs/worldedit.md`. The
   Anvil round-trip is **lossless** (unmodified chunks re-emitted byte-for-byte).
+  A **screenshot → carte en blocs** entry point (`POST …/blueprints/mapart`,
+  `MapArtForm` in `BuildsView.jsx`, `ws.blueprints.fromImage`) creates a NEW flat
+  build directly from an image at a chosen **map grid** (each Minecraft map =
+  128×128 blocks: 1×1, 2×1, 3×3…), as a vertical **mur** or a flat **sol**. It
+  resizes with sharp, maps each pixel to the nearest **flat map-color block**
+  (`mapColors.js#imageToMapBlocks`), then reuses the blank-build path
+  (`staging.js#buildPlaneFromNames`: `blankRegions` + `RegionStore` + `deriveSparse`)
+  so the result is a first-class build — visible in the 3D generator, with a BOM,
+  WorldEdit-editable and `.mca`-exportable (walls are capped at 3 maps tall by the
+  world height → `too_tall`).
 - **Music playback** is global: `src/music/MusicPlayerContext.jsx` owns the
   single `<audio>` (30 s public clip cap) and `MiniPlayer.jsx` floats across
   routes — hidden on /admin and in the reader, which pauses it (ReaderAudio

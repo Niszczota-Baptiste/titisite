@@ -746,6 +746,53 @@ export function blankRegions({ template, dataVersion, origin, size }) {
   return regionBuffersFromChunks(chunks);
 }
 
+// Map-art autonome : construit un build PLAT (une couche) depuis une grille de
+// noms de blocs — un mur (plan XY, flat=Z) ou un sol (plan XZ, flat=Y) selon la
+// forme de `size`. Réutilise le chemin blankRegions + RegionStore que le build
+// vierge / l'export empruntent déjà, puis dérive l'artefact 3D. Renvoie
+// `{ regions:[{regionX,regionZ,buffer}], sparse }` : la source .mca (exportable
+// / éditable WorldEdit) et l'artefact sparse (rendu 3D + BOM), cohérents entre
+// eux car issus du même store. `names` est indexé v*w+u (v=0 en haut du plan,
+// null = laissé en air). Le mapping (u,v)→(x,y,z) reprend `panelPlane`.
+export async function buildPlaneFromNames({ template, origin, size, names }) {
+  const bbox = {
+    min: { x: origin.x, y: origin.y, z: origin.z },
+    max: { x: origin.x + size.x - 1, y: origin.y + size.y - 1, z: origin.z + size.z - 1 },
+  };
+  const { flat, uAxis, vAxis, invertV, w, h } = panelPlane(bbox);
+  if (!names || names.length < w * h) throw new Error('bad_plane');
+
+  const regions = blankRegions({ template, origin, size });
+  const store = new RegionStore(regions);
+  await store.warmup(bbox);
+
+  const cache = new Map();
+  let count = 0;
+  for (let v = 0; v < h; v++) {
+    for (let u = 0; u < w; u++) {
+      const name = names[v * w + u];
+      if (!name) continue;
+      let block = cache.get(name);
+      if (!block) { block = { Name: name, Properties: null }; cache.set(name, block); }
+      const pos = { x: 0, y: 0, z: 0 };
+      pos[uAxis] = bbox.min[uAxis] + u;
+      pos[vAxis] = invertV ? bbox.max[vAxis] - v : bbox.min[vAxis] + v;
+      pos[flat] = bbox.min[flat];
+      store.setBlock(pos.x, pos.y, pos.z, block);
+      count++;
+    }
+    if ((v & 15) === 0) await tick();
+  }
+  if (!count) throw new Error('empty_plane');
+
+  const outRegions = [...store.commit({ touchedOnly: false })].map(([key, buffer]) => {
+    const [rx, rz] = key.split(',').map(Number);
+    return { regionX: rx, regionZ: rz, buffer };
+  });
+  const sparse = store.deriveSparse(bbox, CROP_MAX_BLOCKS);
+  return { regions: outRegions, sparse };
+}
+
 // Baguette magique : remplit en 6-connexité depuis (seed) tous les blocs de même
 // type (bornés à l'emprise du build, plafonné). Renvoie la boîte englobante.
 const WAND_MAX = Number(process.env.WORLDEDIT_WAND_MAX || 250_000);

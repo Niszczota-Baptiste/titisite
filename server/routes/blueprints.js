@@ -1,11 +1,13 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import zlib from 'node:zlib';
+import sharp from 'sharp';
 import { Router } from 'express';
 import { db } from '../db.js';
-import { safeUnlink, uploadPath, uploadWorld } from '../uploads.js';
+import { safeUnlink, uploadPath, uploadWorld, uploadScreenshotMemory } from '../uploads.js';
 import { parseWorldFile } from '../minecraftWorld/index.js';
-import { removeStaging, cropBuild, buildLimits, validateSelection, blankRegions, validateRegions, templateChunk } from '../worldedit/staging.js';
+import { removeStaging, cropBuild, buildLimits, validateSelection, blankRegions, validateRegions, templateChunk, buildPlaneFromNames } from '../worldedit/staging.js';
+import { imageToMapBlocks } from '../worldedit/mapColors.js';
 import { makeZip } from '../worldedit/zipWriter.js';
 import { regionFileName } from '../anvil/index.js';
 import { worldeditScopedRouter } from './worldedit.js';
@@ -230,6 +232,99 @@ blueprintsRouter.post('/blank', async (req, res) => {
     dataFile, sourceFile, sourceName, req.user.id,
   );
   res.status(201).json(detail(db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ?').get(r.lastInsertRowid)));
+});
+
+// Screenshot → nouvelle CARTE EN BLOCS (map-art) : l'image est redimensionnée au
+// gabarit de la grille de cartes choisie (chaque « carte » Minecraft = 128×128
+// blocs), chaque pixel devient le bloc plat dont la couleur de carte l'approche
+// (mapColors.js), puis on crée un build PLAT — un mur (vertical) ou un sol (à
+// plat) — exactement comme un build importé : source .mca (exportable / éditable
+// WorldEdit) + artefact 3D + BOM. Visible dans le générateur 3D, et le .mca se
+// colle en jeu pour refaire la carte. Accessible à tout membre du workspace.
+const MAP_UNIT = 128;                          // côté d'une carte Minecraft (blocs)
+const MAP_MAX_COLS = 4, MAP_MAX_ROWS = 4;      // garde-fou (4×4 = 512×512 = 262 k blocs)
+const WORLD_MIN_Y = -64, WORLD_MAX_Y = 319;    // hauteur monde 1.18 (== worldedit/staging)
+
+blueprintsRouter.post('/mapart', uploadScreenshotMemory.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'missing_file' });
+  const clampI = (v, lo, hi, d) => Math.max(lo, Math.min(hi, Math.round(Number(v)) || d));
+  const cols = clampI(req.body?.cols, 1, MAP_MAX_COLS, 1);
+  const rows = clampI(req.body?.rows, 1, MAP_MAX_ROWS, 1);
+  const orientation = req.body?.orientation === 'floor' ? 'floor' : 'wall';
+  const fit = ['cover', 'contain', 'fill'].includes(req.body?.fit) ? req.body.fit : 'cover';
+  const w = cols * MAP_UNIT, h = rows * MAP_UNIT;
+
+  // Un mur est vertical → borné par la hauteur du monde (384). Au-delà : sol seul.
+  if (orientation === 'wall' && h > (WORLD_MAX_Y - WORLD_MIN_Y + 1)) {
+    return res.status(422).json({ error: 'too_tall' });
+  }
+
+  // Emprise du build : sol = plan XZ (1 bloc en Y) ; mur = plan XY (1 bloc en Z),
+  // posé assez bas pour tenir dans la hauteur du monde.
+  let origin, size;
+  if (orientation === 'floor') {
+    origin = { x: 0, y: 64, z: 0 };
+    size = { x: w, y: 1, z: h };
+  } else {
+    const oy = Math.max(WORLD_MIN_Y, Math.min(64, WORLD_MAX_Y - h + 1));
+    origin = { x: 0, y: oy, z: 0 };
+    size = { x: w, y: h, z: 1 };
+  }
+
+  const name = String(req.body?.name || `Carte ${cols}×${rows}`).trim().slice(0, 120) || `Carte ${cols}×${rows}`;
+
+  let names;
+  try {
+    const { data, info } = await sharp(req.file.buffer)
+      .resize(w, h, { fit, background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    names = imageToMapBlocks(data, w, h, info.channels || 4);
+  } catch (e) {
+    console.error('[blueprints] mapart resize failed:', e?.message || e);
+    return res.status(422).json({ error: 'image_unreadable' });
+  }
+
+  // Modèle de chunk repris d'un build existant du workspace (version Minecraft de
+  // l'utilisateur), sinon synthétique.
+  const tpl = db.prepare('SELECT * FROM minecraft_blueprints WHERE workspace_id = ? AND source_file IS NOT NULL ORDER BY id DESC LIMIT 1')
+    .get(req.workspace.id);
+  let template = null;
+  if (tpl) { try { template = await templateChunk(tpl); } catch { /* repli synthétique */ } }
+
+  let regions, sparse;
+  try {
+    ({ regions, sparse } = await buildPlaneFromNames({ template, origin, size, names }));
+  } catch (e) {
+    const code = e?.message === 'empty_plane' ? 'empty_image' : 'mapart_failed';
+    if (code === 'mapart_failed') console.error('[blueprints] mapart build failed:', e?.message || e);
+    return res.status(422).json({ error: code });
+  }
+
+  let sourceFile, sourceName;
+  if (regions.length === 1) {
+    sourceName = regionFileName(regions[0].regionX, regions[0].regionZ);
+    sourceFile = `${crypto.randomUUID()}.mca`;
+    fs.writeFileSync(uploadPath(sourceFile), regions[0].buffer);
+  } else {
+    sourceName = `mapart-${Date.now()}.zip`;
+    sourceFile = `${crypto.randomUUID()}.zip`;
+    fs.writeFileSync(uploadPath(sourceFile), makeZip(regions.map((r) => ({ name: `region/${regionFileName(r.regionX, r.regionZ)}`, data: r.buffer }))));
+  }
+
+  const dataFile = `${crypto.randomUUID()}.json.gz`;
+  fs.writeFileSync(uploadPath(dataFile), zlib.gzipSync(Buffer.from(JSON.stringify(sparse))));
+
+  const row = db.prepare(`
+    INSERT INTO minecraft_blueprints
+      (workspace_id, name, min_x, min_y, min_z, size_x, size_y, size_z,
+       block_count, palette, bom, data_file, source_file, source_name, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.workspace.id, name,
+    sparse.min.x, sparse.min.y, sparse.min.z, sparse.size.x, sparse.size.y, sparse.size.z,
+    sparse.count, JSON.stringify(sparse.palette), JSON.stringify(sparse.bom), dataFile, sourceFile, sourceName, req.user.id,
+  );
+  res.status(201).json(detail(db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ?').get(row.lastInsertRowid)));
 });
 
 // Extrait une zone (sélection) en un NOUVEAU build, éditable et léger (régions

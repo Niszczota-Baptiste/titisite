@@ -222,6 +222,19 @@ Repère **+X=Est, +Z=Sud, +Y=Haut**. Détail testé dans `test/worldedit.test.js
   (`mapColors.js#imageToMapBlocks` + table `baseId→bloc`). Posé à plat dans la
   sélection → on refait la **carte en jeu** (tenir une carte vierge au-dessus),
   sans `.dat`. Les blocs nécessaires sortent dans la liste de matériaux du build.
+- **Screenshot → NOUVELLE carte en blocs** (`POST …/blueprints/mapart`,
+  `staging.js#buildPlaneFromNames`) : entrée autonome (pas besoin d'un build ni
+  d'une sélection préalable). On choisit une **grille de cartes** (chaque carte =
+  128×128 blocs : `cols`×`rows`, 1×1…4×4) et une orientation **mur** (plan XY,
+  1 bloc d'épaisseur) ou **sol** (plan XZ). L'image est redimensionnée
+  (sharp, cadrage `cover`/`contain`/`fill`), convertie via `imageToMapBlocks`,
+  puis on crée un build PLAT via le même chemin que le build vierge
+  (`blankRegions` + `RegionStore` + `deriveSparse`) → source `.mca` + artefact 3D
+  + BOM cohérents. Un mur est borné à **3 cartes de haut** (hauteur du monde
+  384 → `too_tall` au-delà) ; le sol n'a pas cette limite. UI : `MapArtForm`
+  (bouton « 🗺️ Carte depuis une image » dans `BuildsView`), client
+  `ws.blueprints.fromImage`. Le build ouvert affiche le rendu 3D et s'exporte en
+  `.mca` pour coller la carte dans le monde.
 - **Aperçu PNG** (`POST …/worldedit/render-preview`) : renvoie le rendu 256×256
   du texte/image pour **vérifier les caractères** avant de générer. Le client
   l'affiche en live (debounce) dans `TextPanelTool`.
