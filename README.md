@@ -176,6 +176,12 @@ Hébergeurs validés : **Railway, Render, Fly.io, VPS** — n'importe quel runti
 Volumes persistants requis pour :
 - `data.sqlite` (DB) → pointer `DB_PATH` dessus
 - `uploads/` (fichiers) → pointer `UPLOADS_DIR` dessus
+- `server/data/recipes_minefield.json` (recettes custom du serveur Minefield) —
+  **confidentiel**, hors git : à déposer à la main au même endroit que
+  `data.sqlite`/`uploads`. Chargé en mémoire au boot, exposé uniquement en vues
+  ciblées via `/api/craft/*` derrière authentification (jamais dans `public/`
+  ni dans le bundle Vite). S'il est absent, le calculateur de craft retombe sur
+  les recettes vanilla + celles saisies en admin.
 
 Caps à connaître :
 - **Cloudflare gratuit** : 100 Mo max par requête → utiliser le champ "lien externe" pour les builds plus gros

@@ -30,6 +30,10 @@ Thumbs.db
 /data.sqlite-shm
 /uploads/
 
+# recettes du serveur Minefield — CONFIDENTIEL : à déposer à la main sur le
+# serveur (comme data.sqlite / uploads), jamais commité ni servi en statique
+/server/data/recipes_minefield.json
+
 # logs
 *.log
 npm-debug.log*

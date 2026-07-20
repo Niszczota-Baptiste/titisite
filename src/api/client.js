@@ -286,6 +286,22 @@ export const api = {
     remove: (id) => request('DELETE', `/recipes/${id}`),
   },
 
+  // Craft Minefield (vraies recettes du serveur, confidentielles côté back) :
+  // recherche paginée, recette(s) d'un item, plan développé CÔTÉ SERVEUR
+  // (croisé avec les coffres du workspace passé en body). Auth requise.
+  craft: {
+    recipes: (params = {}) => {
+      const q = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined && v !== null && v !== '') q.set(k, v);
+      }
+      const s = q.toString();
+      return request('GET', `/craft/recipes${s ? `?${s}` : ''}`);
+    },
+    recipe: (itemId) => request('GET', `/craft/recipe/${encodeURIComponent(itemId)}`),
+    plan:   (b) => request('POST', '/craft/plan', b),
+  },
+
   // Quest tracker (« Quêtes » — Nostra / Minefield). Global module: read gated
   // by canViewQuests, edit by canEditQuests. Completion is per-member.
   quests: {

@@ -36,6 +36,7 @@ import { minecraftAdminRouter } from './routes/minecraft-admin.js';
 import { questsRouter } from './routes/quests.js';
 import { questsAdminRouter } from './routes/quests-admin.js';
 import { recipesRouter } from './routes/recipes.js';
+import { craftRouter } from './routes/craft.js';
 import { settingsRouter } from './routes/settings.js';
 import { sitemapRouter } from './routes/sitemap.js';
 import { stairsRouter } from './routes/stairs.js';
@@ -297,6 +298,11 @@ app.use('/api/me', meRouter);
 // Custom Minecraft recipes (read: any auth user — used by the craft calculator;
 // write: admin). Vanilla recipes live client-side in src/data/recipes_vanilla.json.
 app.use('/api/recipes', recipesRouter);
+
+// Craft Minefield : recherche/recettes/plan serveur sur le dump CONFIDENTIEL
+// server/data/recipes_minefield.json (hors git, jamais servi en statique —
+// uniquement ces vues ciblées, derrière requireAuth).
+app.use('/api/craft', craftRouter);
 
 // Quest tracker (« Quêtes » — Nostra / Minefield). Global module: read gated by
 // can_view_quests, edit by can_edit_quests (admins bypass). The cockpit pull

@@ -444,7 +444,7 @@ export function MinecraftTab({ mode = 'full' }) {
           <p style={{ ...muted, fontSize: 13 }}>Chargement…</p>
         ) : (
           <CraftCalculator
-            items={items} chests={chests} ws={ws} toast={toast}
+            items={items} chests={chests} ws={ws} slug={workspace.slug} toast={toast}
             onApplied={(updated) => { setItems(updated); }}
           />
         )}
@@ -761,6 +761,7 @@ export function MinecraftTab({ mode = 'full' }) {
           items={items}
           chests={chests}
           ws={ws}
+          slug={workspace.slug}
           toast={toast}
           onApplied={(updated) => { setItems(updated); }}
         />

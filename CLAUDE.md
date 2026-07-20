@@ -95,6 +95,24 @@ Single-process Node app:
   pinnable, comments reuse the `comments` table with `target_type = 'thread'`
   gated by workspace membership in `comments.js`). `custom_recipes.type` also
   accepts `'brewing'` (⚗️ no grid, free ingredient list in the admin editor).
+  **Minefield craft engine** (`server/craft/` + `server/routes/craft.js`):
+  the real server recipe dump lives at `server/data/recipes_minefield.json`
+  (**CONFIDENTIAL** — gitignored, deploy by hand like `data.sqlite`; never in
+  `public/` or `src/data/`), loaded in memory at first use; only recipes
+  `enabled && visible && !deprecated` are used. Namespaced ids resolve to the
+  codex (`minefield:` → `public/codex/codex.json`, `minecraft:` →
+  `src/data/codex_vanilla.json`, with cross-namespace fallback). Endpoints all
+  behind `requireAuth` (`api.craft.*`): `GET /api/craft/recipes` (paginated
+  search + crafter facet — never the whole dump), `GET /api/craft/recipe/:itemId`,
+  `POST /api/craft/plan { item, qty, workspace?, choices? }` — server-side
+  recursive tree (Minefield > admin `custom_recipes` > vanilla, cycles cut,
+  default = least-deep viable recipe; pure-cycle families peel their base
+  material — `_ingot` & co — into a raw leaf whose reverse recipes stay
+  forceable via `choices`, incl. the special `'raw'` value), crossed with the
+  workspace's chests (FIFO rows → consume/missing/surplus + per-chest
+  breakdown). `CraftCalculator.jsx` consumes it (grid 3×3 from the dump's
+  `"row,col"` grid, station badge, alternative picker) and still applies via
+  `ws.minecraft.craftApply`.
   Member-scoped image upload: `POST …/minecraft/upload-image` reuses the
   sharp/WebP pipeline (`server/images.js`, extracted from `routes/images.js`
   whose `POST /api/images` stays admin-only) so project members can add map
