@@ -120,12 +120,32 @@ craftRouter.get('/recipe/:itemId', (req, res) => {
 });
 
 // ── Plan de craft serveur, croisé avec les coffres d'un workspace ───────────
-// POST /api/craft/plan { item, qty, workspace?, choices? }
+// POST /api/craft/plan { item, qty, workspace?, choices? }  (une cible)
+//   ou { items: [{ item, qty }], … }  (BOM d'un build : plusieurs cibles en un
+//   appel, restes partagés ; les ids inconnus du codex — états de blocs, eau… —
+//   sont tolérés et ressortent en matières premières telles quelles)
 craftRouter.post('/plan', (req, res) => {
   const body = req.body || {};
-  const targetId = resolveNamespacedId(body.item);
-  if (!targetId) return res.status(400).json({ error: 'unknown_item' });
-  const qty = Math.min(1_000_000, Math.max(1, Math.floor(Number(body.qty) || 1)));
+  const clampQty = (q) => Math.min(1_000_000, Math.max(1, Math.floor(Number(q) || 1)));
+  const stripNs = (s) => { const i = s.indexOf(':'); return i === -1 ? s : s.slice(i + 1); };
+
+  let targets;
+  let single = null;
+  if (Array.isArray(body.items)) {
+    targets = body.items.slice(0, 1000)
+      .map((it) => {
+        const raw = String(it?.item || '').trim();
+        if (!raw) return null;
+        return { id: resolveNamespacedId(raw) || stripNs(raw), qty: clampQty(it?.qty) };
+      })
+      .filter(Boolean);
+    if (targets.length === 0) return res.status(400).json({ error: 'unknown_item' });
+  } else {
+    const targetId = resolveNamespacedId(body.item);
+    if (!targetId) return res.status(400).json({ error: 'unknown_item' });
+    single = { id: targetId, qty: clampQty(body.qty) };
+    targets = [single];
+  }
   const choices = {};
   if (body.choices && typeof body.choices === 'object') {
     for (const [k, v] of Object.entries(body.choices)) {
@@ -166,7 +186,7 @@ craftRouter.post('/plan', (req, res) => {
   }
 
   const index = craftIndex();
-  const plan = planCraftServer({ index, inventory, targetId, qty, choices });
+  const plan = planCraftServer({ index, inventory, targets, choices });
 
   // Répartit la conso d'un item sur ses lignes (FIFO) → quoi sortir de quel coffre.
   const distribute = (id, amount) => {
@@ -202,8 +222,9 @@ craftRouter.post('/plan', (req, res) => {
   });
 
   res.json({
-    target: { id: targetId, name: craftNameOf(targetId), qty },
-    known: index.has(targetId),
+    target: single ? { id: single.id, name: craftNameOf(single.id), qty: single.qty } : null,
+    targets: targets.map((t) => ({ id: t.id, name: craftNameOf(t.id), qty: t.qty })),
+    known: single ? index.has(single.id) : true,
     workspace: wsRow ? wsRow.slug : null,
     steps,
     consume: [...plan.consume].map(([id, total]) => ({

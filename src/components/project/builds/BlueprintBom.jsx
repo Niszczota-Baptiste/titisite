@@ -51,7 +51,7 @@ function downloadCsv(filename, rows) {
 export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = false, ws = null, buildName = '', toast = null }) {
   const { byId, idSet } = useCodex();
   const [mode, setMode] = useState('final'); // 'final' | 'base'
-  const [rawIndex, setRawIndex] = useState(null);
+  const [baseData, setBaseData] = useState(null);
   const [addingWanted, setAddingWanted] = useState(false);
 
   const chestById = useMemo(() => new Map(chests.map((c) => [c.id, c])), [chests]);
@@ -79,35 +79,59 @@ export function BlueprintBom({ bom, codex, items = [], chests = [], readOnly = f
   const totalNeeded = rows.reduce((s, r) => s + r.count, 0);
   const totalMissing = rows.reduce((s, r) => s + r.missing, 0);
 
-  // Charge l'index de recettes à la première bascule sur « base ».
-  useEffect(() => {
-    if (mode === 'base' && !rawIndex) {
-      api.recipes.list().catch(() => [])
-        .then((custom) => buildRecipeIndex(custom))
-        .then(setRawIndex);
-    }
-  }, [mode, rawIndex]);
-
   // Décomposition complète du BOM → matières de base + crafts agrégés.
-  const baseData = useMemo(() => {
-    if (mode !== 'base' || !rawIndex) return null;
-    const raws = new Map();
-    const steps = new Map(); // id -> { times, produced, type, station, grid }
-    for (const b of bom) {
-      const plan = planCraft({ index: rawIndex, inventory: new Map(), idSet, targetId: strip(b.blockId), qty: b.count });
-      for (const [id, n] of plan.missing) raws.set(id, (raws.get(id) || 0) + n);
-      for (const s of plan.steps) {
-        const r = rawIndex.get(s.id);
-        const e = steps.get(s.id) || { times: 0, produced: 0, type: s.type, station: r?.station || '', grid: r?.grid || [] };
-        e.times += s.times; e.produced += s.produced;
-        steps.set(s.id, e);
-      }
-    }
-    return {
+  // Contexte projet (authentifié) : plan calculé CÔTÉ SERVEUR en un appel,
+  // avec les vraies recettes Minefield. Vue partagée par token (sans compte)
+  // ou erreur : repli sur l'index client (vanilla + recettes admin) — les
+  // recettes du serveur restent derrière l'authentification.
+  useEffect(() => {
+    if (mode !== 'base') return undefined;
+    let alive = true;
+    setBaseData(null);
+
+    const aggregate = (raws, steps) => ({
       raws: [...raws.entries()].map(([id, n]) => ({ id, n })).sort((a, b) => b.n - a.n),
       steps: [...steps.entries()].map(([id, e]) => ({ id, ...e })),
-    };
-  }, [mode, rawIndex, bom, idSet]);
+    });
+
+    const fromServer = () => api.craft
+      .plan({ items: bom.map((b) => ({ item: b.blockId, qty: b.count })) })
+      .then((plan) => {
+        const raws = new Map();
+        for (const m of plan.missing) raws.set(m.id, (raws.get(m.id) || 0) + m.count);
+        const steps = new Map(); // id -> { times, produced, type, station, grid }
+        for (const s of plan.steps) {
+          const e = steps.get(s.itemId)
+            || { times: 0, produced: 0, type: s.type, station: s.station?.id || '', grid: s.grid || [] };
+          e.times += s.times; e.produced += s.produced;
+          steps.set(s.itemId, e);
+        }
+        return aggregate(raws, steps);
+      });
+
+    const fromClient = () => api.recipes.list().catch(() => [])
+      .then((custom) => buildRecipeIndex(custom))
+      .then((index) => {
+        const raws = new Map();
+        const steps = new Map();
+        for (const b of bom) {
+          const plan = planCraft({ index, inventory: new Map(), idSet, targetId: strip(b.blockId), qty: b.count });
+          for (const [id, n] of plan.missing) raws.set(id, (raws.get(id) || 0) + n);
+          for (const s of plan.steps) {
+            const r = index.get(s.id);
+            const e = steps.get(s.id)
+              || { times: 0, produced: 0, type: s.type, station: r?.station || '', grid: r?.grid || [] };
+            e.times += s.times; e.produced += s.produced;
+            steps.set(s.id, e);
+          }
+        }
+        return aggregate(raws, steps);
+      });
+
+    (readOnly ? fromClient() : fromServer().catch(fromClient))
+      .then((d) => { if (alive) setBaseData(d); });
+    return () => { alive = false; };
+  }, [mode, bom, readOnly, idSet]);
 
   // Manquant → wanted : objectif = quantité totale du build (la progression de
   // la wishlist repart de l'inventaire courant). Fusion par nom côté serveur.

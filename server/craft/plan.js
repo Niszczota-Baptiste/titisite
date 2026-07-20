@@ -5,6 +5,8 @@
 // dans la pile d'expansion est traité comme une feuille (matière première).
 //
 // `index`  : Map<id, entrées[]> (buildCraftIndex — 1re entrée = défaut)
+// `targets`: [{ id, qty }] — une cible (calculateur) ou plusieurs (BOM d'un
+//            build) ; les restes d'arrondis sont partagés entre cibles.
 // `choices`: { [itemId]: key } — recette alternative imposée par l'utilisateur
 // Sortie   : { steps, consume, missing, surplus, alternatives, chosen }
 //   - steps        : crafts dans l'ordre d'exécution (matières d'abord)
@@ -18,7 +20,7 @@ import { resolveTagCandidates, codexIdSet } from './data.js';
 
 const MAX_DEPTH = 64;
 
-export function planCraftServer({ index, inventory, targetId, qty, choices = {} }) {
+export function planCraftServer({ index, inventory, targets, choices = {} }) {
   const idSet = codexIdSet();
   const inv = new Map(inventory); // copie mutable (inventaire réel restant)
   const extra = new Map();        // restes de craft réutilisables
@@ -121,11 +123,15 @@ export function planCraftServer({ index, inventory, targetId, qty, choices = {} 
     steps.push({ id, recipe, times, produced, consumed });
   };
 
-  need(targetId, Math.max(1, Math.floor(qty) || 1), new Set(), 0);
+  const targetIds = new Set();
+  for (const t of targets) {
+    targetIds.add(t.id);
+    need(t.id, Math.max(1, Math.floor(t.qty) || 1), new Set(), 0);
+  }
 
-  // surplus final = restes non réutilisés (hors la cible elle-même)
+  // surplus final = restes non réutilisés (hors les cibles elles-mêmes)
   const surplus = new Map();
-  for (const [id, n] of extra) if (n > 0 && id !== targetId) surplus.set(id, n);
+  for (const [id, n] of extra) if (n > 0 && !targetIds.has(id)) surplus.set(id, n);
 
   return { steps, consume, missing, surplus, alternatives, chosen };
 }
