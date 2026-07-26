@@ -55,6 +55,10 @@ export function migrate() {
   // Admins bypass both. can_edit_quests implies read access.
   ensureColumn('users', 'can_view_quests', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('users', 'can_edit_quests', 'INTEGER NOT NULL DEFAULT 0');
+  // Atelier « Salle des coffres » (plans de rangement) — même patron que
+  // can_view_quests : le flag ouvre la section, la propriété du plan décide
+  // ensuite de ce que le compte voit. Les admins passent outre.
+  ensureColumn('users', 'can_view_vault', 'INTEGER NOT NULL DEFAULT 0');
   // Secret token for the Minefield cockpit pull feed (no cookie, like ical_token).
   ensureColumn('users', 'cockpit_token', 'TEXT');
   // Per-member opt-in: include quest reminders in that member's cockpit feed.
@@ -1317,6 +1321,87 @@ export function migrate() {
     db.prepare('UPDATE quest_map_pois SET map_id = ? WHERE map_id IS NULL').run(def.lastInsertRowid);
     db.prepare('UPDATE quest_map_points SET map_id = ? WHERE map_id IS NULL').run(def.lastInsertRowid);
   }
+
+  // ── Atelier « Salle des coffres » (plans de rangement Minefield) ──
+  // Un plan = un gabarit (dims) + un document JSON (étages, zones, coffres,
+  // circulation). Le document est édité et autosauvé d'un bloc côté client,
+  // donc il vit dans une colonne unique ; les métadonnées restent en colonnes
+  // scalaires pour lister les plans sans parser le document.
+  //
+  // `revision` porte le verrou optimiste : la sauvegarde est un UPDATE
+  // conditionnel (… WHERE id = ? AND revision = ?), pas un read-then-write —
+  // deux éditeurs simultanés ne peuvent donc pas s'écraser sans 409.
+  //
+  // Le module ne stocke AUCUNE ressource ni quantité : un coffre est une case
+  // et un type (simple/double), jamais un inventaire.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS vault_plans (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      mc_version TEXT NOT NULL DEFAULT '1.21',
+      dim_x      INTEGER NOT NULL DEFAULT 125,
+      dim_y      INTEGER NOT NULL DEFAULT 200,
+      dim_z      INTEGER NOT NULL DEFAULT 125,
+      origin_x   INTEGER,
+      origin_y   INTEGER,
+      origin_z   INTEGER,
+      data       TEXT NOT NULL DEFAULT '{}',
+      revision   INTEGER NOT NULL DEFAULT 1,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_plans_owner ON vault_plans(created_by, updated_at);`);
+
+  // Partage d'un plan avec un autre compte : droits d'édition complets (la v1
+  // ne prévoit pas de lecture seule). La suppression reste au propriétaire.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS vault_plan_shares (
+      plan_id    INTEGER NOT NULL REFERENCES vault_plans(id) ON DELETE CASCADE,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      PRIMARY KEY (plan_id, user_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_shares_user ON vault_plan_shares(user_id);`);
+
+  // Snapshots : copie figée du document, du gabarit ET des catégories
+  // référencées (elles vivent dans une table globale, donc un snapshot doit
+  // embarquer sa propre copie pour rester cohérent des mois plus tard).
+  // Restaurer = dupliquer dans un NOUVEAU plan ; l'original n'est jamais écrasé.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS vault_plan_versions (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id    INTEGER NOT NULL REFERENCES vault_plans(id) ON DELETE CASCADE,
+      label      TEXT NOT NULL,
+      data       TEXT NOT NULL,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_versions_plan ON vault_plan_versions(plan_id, id);`);
+
+  // Catégories de rangement — table GLOBALE partagée par tous les plans
+  // (« Redstone », « Construction »…). `item_ids` est un tableau JSON d'ids de
+  // codex, purement descriptif : il documente ce qui va dans la catégorie, sans
+  // aucune quantité. Une zone référence des catégories par id ; un id supprimé
+  // est simplement ignoré à la lecture côté client (pas de FK dans le document).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS vault_categories (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      color      TEXT NOT NULL DEFAULT '#c9a8e8',
+      item_ids   TEXT NOT NULL DEFAULT '[]',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_categories_sort ON vault_categories(sort_order, id);`);
 }
 
 function ensureColumn(table, column, ddl) {

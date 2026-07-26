@@ -1,0 +1,70 @@
+// Capacité d'un plan de salle des coffres — purement structurelle.
+//
+// « Disponible » = ce que les coffres posés offrent (27 slots pour un simple,
+// 54 pour un double). « Besoin » = la réserve manuelle saisie sur la zone, en
+// slots. Aucun item, aucune quantité, aucun stock n'entre dans ce calcul : le
+// module conçoit la salle, il ne suit pas son contenu.
+//
+// Les zones marquées `reserved` (tampon pour une future MàJ Minecraft) sont
+// exclues des totaux et comptées à part.
+
+export const CHEST_SLOTS = { single: 27, double: 54 };
+
+export const chestSlots = (chest) => (chest?.kind === 'double' ? CHEST_SLOTS.double : CHEST_SLOTS.single);
+
+export const zoneArea = (zone) => {
+  const r = zone?.rect;
+  if (!r) return 0;
+  return (r.x1 - r.x0 + 1) * (r.z1 - r.z0 + 1);
+};
+
+/** Résumé d'un plan — sert les cartes de la liste et le tableau de bord. */
+export function planStats(doc, dims) {
+  const floors = Array.isArray(doc?.floors) ? doc.floors : [];
+  const zones = Array.isArray(doc?.zones) ? doc.zones : [];
+  const chests = Array.isArray(doc?.chests) ? doc.chests : [];
+
+  const floorById = new Map(floors.map((f) => [f.id, f]));
+  const zoneById = new Map(zones.map((z) => [z.id, z]));
+
+  let slots = 0;
+  let doubles = 0;
+  for (const c of chests) {
+    // Un coffre posé dans une zone réservée ne compte pas dans la capacité
+    // utile — la zone est censée rester vide jusqu'à la MàJ.
+    const zone = c.zoneId ? zoneById.get(c.zoneId) : null;
+    if (zone?.reserved) continue;
+    if (c.kind === 'double') doubles += 1;
+    slots += chestSlots(c);
+  }
+
+  let reservedSlots = 0;
+  let reservedZones = 0;
+  let reservedVolume = 0;
+  for (const z of zones) {
+    if (z.reserved) {
+      reservedZones += 1;
+      const f = floorById.get(z.floorId);
+      const height = f ? f.yMax - f.yMin + 1 : 1;
+      reservedVolume += zoneArea(z) * height;
+      continue;
+    }
+    reservedSlots += z.reservedSlots || 0;
+  }
+
+  const volume = dims ? dims.x * dims.y * dims.z : 0;
+  return {
+    floors: floors.length,
+    zones: zones.length,
+    chests: chests.length,
+    doubles,
+    singles: chests.length - doubles,
+    slots,
+    reservedSlots,
+    // > 0 = il manque des coffres pour couvrir la réserve annoncée.
+    deficit: Math.max(0, reservedSlots - slots),
+    reservedZones,
+    reservedVolume,
+    reservedVolumePct: volume > 0 ? Math.round((reservedVolume / volume) * 1000) / 10 : 0,
+  };
+}

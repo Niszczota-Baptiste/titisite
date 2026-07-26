@@ -5,6 +5,7 @@ import { COLLECTIONS, count, insert, migrate } from './db.js';
 import { ensureSeedUsers } from './users.js';
 import { seedWritingIfEmpty } from './seed-writing.js';
 import { seedQuestsIfEmpty } from './seed-quests.js';
+import { seedVaultCategoriesIfEmpty } from './vault/seed-categories.js';
 import { migrateOrphansToDefault } from './workspaces.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +49,7 @@ export async function seedIfEmpty({ force = false } = {}) {
 
   results.writing = seedWritingIfEmpty();
   results.quests = seedQuestsIfEmpty();
+  results.vaultCategories = seedVaultCategoriesIfEmpty();
 
   return results;
 }

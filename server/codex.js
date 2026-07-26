@@ -15,9 +15,11 @@ const CODEX_FILES = [
 ];
 
 let byId = null;
+let byCategory = null;
 
 function load() {
   byId = new Map();
+  byCategory = new Map();
   for (const file of CODEX_FILES) {
     try {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- CODEX_FILES est une liste codée en dur relative au repo
@@ -25,6 +27,12 @@ function load() {
       if (!Array.isArray(entries)) continue;
       for (const e of entries) {
         if (e?.id && e?.nomFr && !byId.has(e.id)) byId.set(e.id, e.nomFr);
+        // Seules les entrées Minefield portent une catégorie ; le vanilla n'en
+        // a pas (d'où la table éditable de l'atelier « Salle des coffres »).
+        if (e?.id && e?.categorie) {
+          if (!byCategory.has(e.categorie)) byCategory.set(e.categorie, []);
+          byCategory.get(e.categorie).push(e.id);
+        }
       }
     } catch { /* codex absent/corrompu : dégrade sur le label */ }
   }
@@ -34,6 +42,12 @@ export function codexNameById(id) {
   if (!id) return null;
   if (!byId) load();
   return byId.get(String(id)) || null;
+}
+
+/** Map<catégorie du codex, ids d'items>. Vide si le codex est absent. */
+export function codexIdsByCategory() {
+  if (!byCategory) load();
+  return byCategory;
 }
 
 // Normalisation de nom partagée avec le module Minecraft (accents, casse).
