@@ -1,0 +1,305 @@
+import assert from 'node:assert/strict';
+import { after, before, describe, it } from 'node:test';
+import { bootServer, fetcher } from './harness.js';
+import { chestCells, normalizeDims, normalizeDoc, VaultValidationError } from '../server/vault/validate.js';
+import { planStats } from '../server/vault/capacity.js';
+
+let server;
+const ADMIN = { email: 'admin@test.local', password: 'adminpw1-strong' };
+const MEMBER = { email: 'member@test.local', password: 'memberpw1-strong' };
+
+before(async () => { server = await bootServer(); });
+after(async () => { await server.stop(); });
+
+function login(creds) {
+  const f = fetcher(server.base);
+  return f.post('/api/auth/login', { body: creds }).then((r) => {
+    assert.equal(r.status, 200, `login ${creds.email} → ${r.status}`);
+    return { f, user: r.json.user };
+  });
+}
+
+const DIMS = { x: 125, y: 200, z: 125 };
+const FLOOR = { id: 'f1', name: 'Rez — Entrée & tri', yMin: 0, yMax: 5, color: '#c8a24a' };
+const ZONE = {
+  id: 'z1', floorId: 'f1', rect: { x0: 4, z0: 4, x1: 40, z1: 30 },
+  name: 'Redstone', color: '#b02e2e', categoryIds: [], reservedSlots: 0, reserved: false, notes: '',
+};
+
+const docWith = (over = {}) => ({
+  floors: [FLOOR], zones: [ZONE], chests: [], circulation: [], ...over,
+});
+
+// ── Unités : normalisation du document ─────────────────────────────────────
+describe('vault/validate — normalisation', () => {
+  it('refuse des dimensions hors bornes', () => {
+    assert.throws(() => normalizeDims({ x: 0, y: 200, z: 125 }), VaultValidationError);
+    assert.throws(() => normalizeDims({ x: 125, y: 99999, z: 125 }), VaultValidationError);
+    assert.deepEqual(normalizeDims(DIMS), DIMS);
+  });
+
+  it('refuse deux étages qui se chevauchent', () => {
+    const doc = docWith({
+      floors: [FLOOR, { id: 'f2', name: 'R+1', yMin: 5, yMax: 12 }],
+      zones: [],
+    });
+    assert.throws(() => normalizeDoc(doc, DIMS), (e) => e.code === 'floors_overlap');
+  });
+
+  it('accepte des tranches Y libres tant qu\'elles ne se touchent pas', () => {
+    const doc = docWith({
+      floors: [FLOOR, { id: 'f2', name: 'R+1', yMin: 6, yMax: 40 }],
+      zones: [],
+    });
+    assert.equal(normalizeDoc(doc, DIMS).floors.length, 2);
+  });
+
+  it('refuse une référence d\'étage inconnue et un id dupliqué', () => {
+    assert.throws(
+      () => normalizeDoc(docWith({ zones: [{ ...ZONE, floorId: 'nope' }] }), DIMS),
+      (e) => e.code === 'unknown_floor',
+    );
+    assert.throws(
+      () => normalizeDoc(docWith({ zones: [ZONE, { ...ZONE }] }), DIMS),
+      (e) => e.code === 'duplicate_id',
+    );
+  });
+
+  it('refuse un coffre hors gabarit, paire du double comprise', () => {
+    const chest = { id: 'c1', zoneId: 'z1', x: 124, y: 1, z: 8, kind: 'double', facing: 'south' };
+    // facing sud → paire le long de X → la seconde case tombe en x=125.
+    assert.throws(
+      () => normalizeDoc(docWith({ chests: [chest] }), DIMS),
+      (e) => e.code === 'chest_out_of_bounds',
+    );
+    // Même coffre tourné : la paire part le long de Z, donc ça rentre.
+    const rotated = normalizeDoc(docWith({ chests: [{ ...chest, facing: 'east' }] }), DIMS);
+    assert.deepEqual(chestCells(rotated.chests[0]), [[124, 8], [124, 9]]);
+  });
+
+  it('détache un coffre dont la zone a disparu au lieu de bloquer la sauvegarde', () => {
+    const doc = normalizeDoc(
+      { ...docWith(), zones: [], chests: [{ id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8, kind: 'single', facing: 'south' }] },
+      DIMS,
+    );
+    assert.equal(doc.chests[0].zoneId, null);
+  });
+
+  it('nettoie la circulation : cases hors gabarit et doublons éliminés', () => {
+    const doc = normalizeDoc(docWith({
+      circulation: [
+        { id: 'p1', kind: 'couloir', floorId: 'f1', cells: [[5, 3], [5, 3], [999, 3], [6, 3]] },
+        { id: 'e1', kind: 'entree', floorId: 'f1', cell: [0, 15], label: 'Entrée principale' },
+      ],
+    }), DIMS);
+    assert.deepEqual(doc.circulation[0].cells, [[5, 3], [6, 3]]);
+    assert.equal(doc.circulation[1].label, 'Entrée principale');
+  });
+
+  it('refuse un escalier qui ne relie pas deux étages distincts', () => {
+    const doc = docWith({
+      floors: [FLOOR, { id: 'f2', name: 'R+1', yMin: 6, yMax: 12 }],
+      circulation: [{ id: 's1', kind: 'escalier', cell: [10, 3], fromFloorId: 'f1', toFloorId: 'f1' }],
+    });
+    assert.throws(() => normalizeDoc(doc, DIMS), (e) => e.code === 'stair_same_floor');
+  });
+
+  it('supprime les champs parasites (le stockage reste canonique)', () => {
+    const doc = normalizeDoc(docWith({
+      chests: [{ id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8, kind: 'double', facing: 'south', items: [{ itemId: 'x', stacks: 10 }] }],
+    }), DIMS);
+    // Le module ne stocke aucune ressource : `items` ne survit pas.
+    assert.equal(doc.chests[0].items, undefined);
+    assert.deepEqual(Object.keys(doc.chests[0]).sort(), ['facing', 'id', 'kind', 'label', 'x', 'y', 'z', 'zoneId']);
+  });
+});
+
+// ── Unités : capacité ──────────────────────────────────────────────────────
+describe('vault/capacity — capacité structurelle', () => {
+  it('compte 27 slots par coffre simple, 54 par double', () => {
+    const doc = normalizeDoc(docWith({
+      chests: [
+        { id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8, kind: 'double', facing: 'south' },
+        { id: 'c2', zoneId: 'z1', x: 10, y: 1, z: 8, kind: 'single', facing: 'south' },
+      ],
+    }), DIMS);
+    const s = planStats(doc, DIMS);
+    assert.equal(s.slots, 54 + 27);
+    assert.equal(s.doubles, 1);
+    assert.equal(s.singles, 1);
+  });
+
+  it('compte la réserve manuelle en besoin et signale le déficit', () => {
+    const doc = normalizeDoc(docWith({
+      zones: [{ ...ZONE, reservedSlots: 100 }],
+      chests: [{ id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8, kind: 'double', facing: 'south' }],
+    }), DIMS);
+    const s = planStats(doc, DIMS);
+    assert.equal(s.reservedSlots, 100);
+    assert.equal(s.deficit, 100 - 54);
+  });
+
+  it('exclut les zones réservées MàJ de la capacité et les compte à part', () => {
+    const doc = normalizeDoc(docWith({
+      zones: [{ ...ZONE, id: 'z2', reserved: true, reservedSlots: 999 }],
+      chests: [{ id: 'c1', zoneId: 'z2', x: 6, y: 1, z: 8, kind: 'double', facing: 'south' }],
+    }), DIMS);
+    const s = planStats(doc, DIMS);
+    assert.equal(s.slots, 0);
+    assert.equal(s.reservedSlots, 0);
+    assert.equal(s.reservedZones, 1);
+    assert.ok(s.reservedVolumePct > 0);
+  });
+});
+
+// ── API ────────────────────────────────────────────────────────────────────
+describe('vault — API plans, partage, snapshots', () => {
+  let admin;
+  let member;
+  let planId;
+
+  it('un membre sans le flag n\'atteint pas l\'atelier', async () => {
+    admin = await login(ADMIN);
+    member = await login(MEMBER);
+    assert.equal(member.user.canViewVault, false);
+    assert.equal((await member.f.get('/api/vault-plans')).status, 403);
+    // L'admin passe outre le flag.
+    assert.equal(admin.user.canViewVault, true);
+    assert.equal((await admin.f.get('/api/vault-plans')).status, 200);
+  });
+
+  it('les catégories sont amorcées depuis le codex', async () => {
+    const r = await admin.f.get('/api/vault-categories');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.length, 9);
+    const redstone = r.json.find((c) => c.name === 'Redstone');
+    assert.ok(redstone.itemIds.length > 0, 'la catégorie Redstone est pré-remplie');
+  });
+
+  it('crée un plan 125×200×125', async () => {
+    const r = await admin.f.post('/api/vault-plans', {
+      body: { name: 'Salle des coffres — Fédération', mcVersion: '1.21', dims: DIMS, worldOrigin: { x: -1200, y: -60, z: 3400 } },
+    });
+    assert.equal(r.status, 201);
+    planId = r.json.id;
+    assert.deepEqual(r.json.dims, DIMS);
+    assert.deepEqual(r.json.worldOrigin, { x: -1200, y: -60, z: 3400 });
+    assert.equal(r.json.revision, 1);
+    assert.equal(r.json.role, 'owner');
+  });
+
+  it('sauvegarde un document et incrémente la révision', async () => {
+    const r = await admin.f.put(`/api/vault-plans/${planId}`, {
+      body: {
+        revision: 1,
+        ...docWith({
+          chests: [{ id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8, kind: 'double', facing: 'south' }],
+          circulation: [{ id: 'p1', kind: 'couloir', floorId: 'f1', cells: [[5, 3], [6, 3]] }],
+        }),
+      },
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.revision, 2);
+    assert.equal(r.json.chests.length, 1);
+    assert.equal(r.json.stats.slots, 54);
+  });
+
+  it('rejette un document structurellement incohérent en 422', async () => {
+    const r = await admin.f.put(`/api/vault-plans/${planId}`, {
+      body: { revision: 2, ...docWith({ zones: [{ ...ZONE, rect: { x0: 4, z0: 4, x1: 400, z1: 30 } }] }) },
+    });
+    assert.equal(r.status, 422);
+    assert.equal(r.json.error, 'zone_out_of_bounds');
+  });
+
+  it('renvoie 409 sur une révision périmée, avec de quoi remplir la modale', async () => {
+    const r = await admin.f.put(`/api/vault-plans/${planId}`, { body: { revision: 1, ...docWith() } });
+    assert.equal(r.status, 409);
+    assert.equal(r.json.serverRevision, 2);
+    assert.ok(r.json.updatedAt > 0);
+    assert.ok('updatedBy' in r.json);
+    // Le plan serveur n'a pas bougé.
+    assert.equal((await admin.f.get(`/api/vault-plans/${planId}`)).json.revision, 2);
+  });
+
+  it('« Écraser » force la sauvegarde malgré la révision périmée', async () => {
+    const r = await admin.f.put(`/api/vault-plans/${planId}`, {
+      body: { revision: 1, force: true, ...docWith({ zones: [{ ...ZONE, name: 'Redstone (écrasé)' }] }) },
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.revision, 3);
+    assert.equal(r.json.zones[0].name, 'Redstone (écrasé)');
+  });
+
+  it('un plan reste invisible tant qu\'il n\'est pas partagé', async () => {
+    await admin.f.put('/api/users/2', { body: { canViewVault: true } });
+    const relogged = await login(MEMBER);
+    member = relogged;
+    assert.equal(member.user.canViewVault, true);
+    assert.deepEqual((await member.f.get('/api/vault-plans')).json, []);
+    // Ni lecture, ni existence : 404, pas 403.
+    assert.equal((await member.f.get(`/api/vault-plans/${planId}`)).status, 404);
+    assert.equal((await member.f.put(`/api/vault-plans/${planId}`, { body: { revision: 3, ...docWith() } })).status, 404);
+  });
+
+  it('le partage ouvre l\'édition complète au binôme', async () => {
+    const r = await admin.f.post(`/api/vault-plans/${planId}/share`, { body: { userId: member.user.id } });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.sharedWith.length, 1);
+    assert.equal(r.json.sharedWith[0].canViewVault, true);
+
+    const list = await member.f.get('/api/vault-plans');
+    assert.equal(list.json.length, 1);
+    assert.equal(list.json[0].role, 'shared');
+
+    const saved = await member.f.put(`/api/vault-plans/${planId}`, {
+      body: { revision: 3, ...docWith({ zones: [{ ...ZONE, name: 'Redstone (binôme)' }] }) },
+    });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.json.revision, 4);
+  });
+
+  it('seul le propriétaire partage et supprime', async () => {
+    assert.equal((await member.f.post(`/api/vault-plans/${planId}/share`, { body: { userId: 1 } })).status, 403);
+    assert.equal((await member.f.delete(`/api/vault-plans/${planId}`)).status, 403);
+    assert.equal((await admin.f.post(`/api/vault-plans/${planId}/share`, { body: { userId: 1 } })).status, 400);
+    assert.equal((await admin.f.post(`/api/vault-plans/${planId}/share`, { body: { userId: 9999 } })).status, 404);
+  });
+
+  it('un snapshot fige le plan et se restaure en NOUVEAU plan', async () => {
+    const cat = (await admin.f.get('/api/vault-categories')).json.find((c) => c.name === 'Redstone');
+    await admin.f.put(`/api/vault-plans/${planId}`, {
+      body: { revision: 4, ...docWith({ zones: [{ ...ZONE, categoryIds: [cat.id] }] }) },
+    });
+
+    const snap = await admin.f.post(`/api/vault-plans/${planId}/snapshots`, { body: { label: 'v1.21 — avant MàJ été' } });
+    assert.equal(snap.status, 201);
+    assert.equal(snap.json.label, 'v1.21 — avant MàJ été');
+    // Le snapshot embarque une copie de la catégorie référencée.
+    assert.equal(snap.json.categories.length, 1);
+    assert.equal((await admin.f.get(`/api/vault-plans/${planId}/snapshots`)).json.length, 1);
+
+    // La catégorie disparaît : la restauration doit la recréer et remapper.
+    assert.equal((await admin.f.delete(`/api/vault-categories/${cat.id}`)).status, 204);
+    const restored = await admin.f.post(`/api/vault-plans/${planId}/snapshots/${snap.json.id}/restore`);
+    assert.equal(restored.status, 201);
+    assert.notEqual(restored.json.id, planId, 'restaurer duplique, n\'écrase pas');
+    assert.match(restored.json.name, /v1\.21/);
+    assert.equal(restored.json.revision, 1);
+
+    const newCatId = restored.json.zones[0].categoryIds[0];
+    assert.notEqual(newCatId, cat.id);
+    const recreated = (await admin.f.get('/api/vault-categories')).json.find((c) => c.id === newCatId);
+    assert.equal(recreated.name, 'Redstone');
+
+    // L'original est intact.
+    assert.equal((await admin.f.get(`/api/vault-plans/${planId}`)).json.revision, 5);
+    await admin.f.delete(`/api/vault-plans/${restored.json.id}`);
+  });
+
+  it('le propriétaire supprime, le plan disparaît des deux côtés', async () => {
+    assert.equal((await admin.f.delete(`/api/vault-plans/${planId}`)).status, 204);
+    assert.deepEqual((await member.f.get('/api/vault-plans')).json, []);
+    assert.equal((await admin.f.get(`/api/vault-plans/${planId}`)).status, 404);
+  });
+});

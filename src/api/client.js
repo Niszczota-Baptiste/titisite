@@ -382,6 +382,35 @@ export const api = {
     setFollow: (id, followed) => request('PUT', `/me/cockpit/quests/${id}/follow`, { followed }),
   },
 
+  // Atelier « Salle des coffres » : plans de rangement Minefield. Module global
+  // gated par canViewVault ; un plan appartient à un compte et se partage
+  // explicitement. Le module ne manipule jamais de ressource ni de quantité.
+  vault: {
+    list:   () => request('GET', '/vault-plans'),
+    get:    (id) => request('GET', `/vault-plans/${id}`),
+    create: (b) => request('POST', '/vault-plans', b),
+    // `plan` porte le document complet + la révision attendue. Rejette une
+    // erreur `status === 409` (corps : { updatedBy, updatedAt, serverRevision })
+    // quand le plan a bougé côté serveur — voir la modale de conflit.
+    save:   (id, plan) => request('PUT', `/vault-plans/${id}`, plan),
+    // « Écraser » depuis la modale de conflit : saute la vérification de révision.
+    overwrite: (id, plan) => request('PUT', `/vault-plans/${id}`, { ...plan, force: true }),
+    remove: (id) => request('DELETE', `/vault-plans/${id}`),
+    share:   (id, userId) => request('POST', `/vault-plans/${id}/share`, { userId }),
+    unshare: (id, userId) => request('DELETE', `/vault-plans/${id}/share/${userId}`),
+    snapshots: {
+      list:    (id) => request('GET',  `/vault-plans/${id}/snapshots`),
+      create:  (id, label) => request('POST', `/vault-plans/${id}/snapshots`, { label }),
+      restore: (id, sid) => request('POST', `/vault-plans/${id}/snapshots/${sid}/restore`),
+    },
+    categories: {
+      list:   () => request('GET', '/vault-categories'),
+      create: (b) => request('POST', '/vault-categories', b),
+      update: (id, b) => request('PUT', `/vault-categories/${id}`, b),
+      remove: (id) => request('DELETE', `/vault-categories/${id}`),
+    },
+  },
+
   // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.
   minecraftAdmin: {
     overview:    () => request('GET', '/minecraft-admin/overview'),

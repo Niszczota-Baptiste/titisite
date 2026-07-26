@@ -66,9 +66,7 @@ export function normalizeDims(input) {
     y: asInt(src.y, 200),
     z: asInt(src.z, 125),
   };
-  for (const axis of ['x', 'y', 'z']) {
-    // eslint-disable-next-line security/detect-object-injection -- axis vient d'une liste littérale
-    const v = dims[axis];
+  for (const [axis, v] of Object.entries(dims)) {
     if (v < DIM_MIN || v > DIM_MAX) fail('invalid_dims', `${axis}=${v}`);
   }
   return dims;
@@ -118,11 +116,12 @@ function normalizeFloors(raw, dims) {
   });
 
   // Tranches Y libres mais non chevauchantes (règle explicite du modèle).
-  const sorted = [...floors].sort((a, b) => a.yMin - b.yMin);
-  for (let i = 1; i < sorted.length; i += 1) {
-    if (sorted[i].yMin <= sorted[i - 1].yMax) {
-      fail('floors_overlap', `${sorted[i - 1].name || sorted[i - 1].id} / ${sorted[i].name || sorted[i].id}`);
+  let previous = null;
+  for (const floor of [...floors].sort((a, b) => a.yMin - b.yMin)) {
+    if (previous && floor.yMin <= previous.yMax) {
+      fail('floors_overlap', `${previous.name || previous.id} / ${floor.name || floor.id}`);
     }
+    previous = floor;
   }
   return floors;
 }

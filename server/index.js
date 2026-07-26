@@ -43,6 +43,7 @@ import { stairsRouter } from './routes/stairs.js';
 import { summaryRouter } from './routes/summary.js';
 import { tagsRouter } from './routes/tags.js';
 import { usersRouter } from './routes/users.js';
+import { vaultRouter, vaultCategoriesRouter } from './routes/vault.js';
 import { ecritureRouter } from './routes/writing.js';
 import { writingAdminRouter } from './routes/writing-admin.js';
 import { workspacesRouter } from './routes/workspaces.js';
@@ -310,6 +311,12 @@ app.use('/api/craft', craftRouter);
 // mounted before the admin one so GETs win and writes fall through.
 app.use('/api/quests', questsRouter);
 app.use('/api/quests', questsAdminRouter);
+
+// Atelier « Salle des coffres » : plans de rangement Minefield. Module global
+// comme les quêtes — un plan appartient à un compte et se partage explicitement.
+// Lecture gated par users.can_view_vault (admins outre).
+app.use('/api/vault-plans', vaultRouter);
+app.use('/api/vault-categories', vaultCategoriesRouter);
 
 // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.
 app.use('/api/minecraft-admin', minecraftAdminRouter);

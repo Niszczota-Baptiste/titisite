@@ -41,6 +41,7 @@ authRouter.post('/login', async (req, res) => {
       canViewStairs: isAdmin || user.can_view_stairs === 1,
       canViewQuests: isAdmin || user.can_view_quests === 1 || user.can_edit_quests === 1,
       canEditQuests: isAdmin || user.can_edit_quests === 1,
+      canViewVault: isAdmin || user.can_view_vault === 1,
     },
     expiresIn: '7d',
   });
@@ -65,5 +66,6 @@ authRouter.get('/me', requireAuth, (req, res) => {
     canViewStairs: isAdmin || req.user.can_view_stairs === 1,
     canViewQuests: isAdmin || req.user.can_view_quests === 1 || req.user.can_edit_quests === 1,
     canEditQuests: isAdmin || req.user.can_edit_quests === 1,
+    canViewVault: isAdmin || req.user.can_view_vault === 1,
   });
 });

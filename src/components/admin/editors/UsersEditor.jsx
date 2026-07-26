@@ -187,6 +187,7 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
   const [canViewStairs, setCanViewStairs] = useState(user?.can_view_stairs === 1);
   const [canViewQuests, setCanViewQuests] = useState(user?.can_view_quests === 1);
   const [canEditQuests, setCanEditQuests] = useState(user?.can_edit_quests === 1);
+  const [canViewVault, setCanViewVault] = useState(user?.can_view_vault === 1);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -199,12 +200,12 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
     setSaving(true); setErr(null);
     try {
       if (isEdit) {
-        const payload = { name, role, canViewStairs, canViewQuests, canEditQuests };
+        const payload = { name, role, canViewStairs, canViewQuests, canEditQuests, canViewVault };
         if (password && canResetPassword) payload.password = password;
         await api.updateUser(user.id, payload);
       } else {
         if (!email || !password) { setErr('Email et mot de passe requis'); setSaving(false); return; }
-        await api.createUser({ email, name, role, password, canViewStairs, canViewQuests, canEditQuests });
+        await api.createUser({ email, name, role, password, canViewStairs, canViewQuests, canEditQuests, canViewVault });
       }
       onSaved();
     } catch (ex) {
@@ -330,6 +331,19 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
             />
             <span>Peut <strong>éditer</strong> les quêtes/factions/chaînes
               <span style={{ color: 'rgba(180,170,200,0.55)', fontSize: 11, marginLeft: 6 }}>(implique la lecture)</span>
+            </span>
+          </label>
+          <label style={questToggle}>
+            <input
+              type="checkbox"
+              checked={canViewVault}
+              onChange={(e) => setCanViewVault(e.target.checked)}
+              style={{ accentColor: ACC, width: 16, height: 16 }}
+            />
+            <span>Accès à l'atelier <strong>🗝️ Salle des coffres</strong>
+              <span style={{ color: 'rgba(180,170,200,0.55)', fontSize: 11, marginLeft: 6 }}>
+                (ses plans + ceux partagés avec lui)
+              </span>
             </span>
           </label>
         </div>

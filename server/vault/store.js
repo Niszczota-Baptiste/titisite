@@ -32,14 +32,22 @@ function originOf(r) {
   return { x: r.origin_x ?? 0, y: r.origin_y ?? 0, z: r.origin_z ?? 0 };
 }
 
+// `canViewVault` remonte pour que l'UI signale un partage inopérant : le compte
+// est bien destinataire, mais l'atelier lui est fermé tant qu'un admin ne lui a
+// pas donné le flag. Pas d'email ici — le partage se fait par compte choisi
+// dans la liste, il n'a pas à divulguer d'adresse.
 export function listShares(planId) {
   return db.prepare(`
-    SELECT s.user_id AS id, u.name, u.email
+    SELECT s.user_id AS id, u.name, u.role, u.can_view_vault
     FROM vault_plan_shares s
     JOIN users u ON u.id = s.user_id
     WHERE s.plan_id = ?
     ORDER BY u.name, u.id
-  `).all(planId).map((r) => ({ id: r.id, name: r.name || r.email }));
+  `).all(planId).map((r) => ({
+    id: r.id,
+    name: r.name || `Compte #${r.id}`,
+    canViewVault: r.role === 'admin' || r.can_view_vault === 1,
+  }));
 }
 
 /**
