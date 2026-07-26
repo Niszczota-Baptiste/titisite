@@ -23,11 +23,14 @@ export function PlanCanvas({
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const [view, setView] = useState(null);
-  const [size, setSize] = useState({ w: 800, h: 560 });
+  // null tant que le conteneur n'a pas été mesuré : cadrer sur une taille
+  // fictive figerait une échelle fausse (la vue est ensuite ancrée, pas recadrée).
+  const [size, setSize] = useState(null);
   const [hover, setHover] = useState(null);
   const [ghost, setGhost] = useState(null);
   const drag = useRef(null);
   const spaceDown = useRef(false);
+  const lastSize = useRef(null);
 
   // Les gestes lisent l'état courant par ref : les écouteurs restent stables.
   const state = useRef({});
@@ -37,22 +40,43 @@ export function PlanCanvas({
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return undefined;
-    const apply = () => setSize({ w: el.clientWidth || 800, h: el.clientHeight || 560 });
+    const apply = () => setSize((prev) => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (!w || !h) return prev;
+      return prev && prev.w === w && prev.h === h ? prev : { w, h };
+    });
     apply();
     const ro = new ResizeObserver(apply);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
+  // Premier rendu : on cadre le gabarit entier. Ensuite, un changement de
+  // taille (la barre d'outils qui passe sur deux lignes selon l'outil, la
+  // fenêtre redimensionnée) **ancre** la vue au lieu de la recadrer : même
+  // échelle, même point du plan au centre. Sans ça, changer d'outil ferait
+  // sauter le plan sous le curseur.
   useEffect(() => {
-    setView((v) => v || fitView(dims, size.w, size.h));
-  }, [dims, size.w, size.h]);
+    if (!size) return;
+    setView((v) => {
+      const prev = lastSize.current;
+      lastSize.current = size;
+      if (!v) return fitView(dims, size.w, size.h);
+      if (!prev || (prev.w === size.w && prev.h === size.h)) return v;
+      const cx = v.x + prev.w / (2 * v.scale);
+      const cz = v.z + prev.h / (2 * v.scale);
+      return { ...v, x: cx - size.w / (2 * v.scale), z: cz - size.h / (2 * v.scale) };
+    });
+  }, [dims, size]);
 
-  const resetView = useCallback(() => setView(fitView(dims, size.w, size.h)), [dims, size.w, size.h]);
+  const resetView = useCallback(() => {
+    if (size) setView(fitView(dims, size.w, size.h));
+  }, [dims, size]);
 
   // Centrage sur un élément (clic dans le panneau warnings / la vue logique).
   useEffect(() => {
-    if (!focus || !view) return;
+    if (!focus || !view || !size) return;
     let target = null;
     if (focus.type === 'zone') {
       const z = doc.zones.find((x) => x.id === focus.id);
@@ -72,7 +96,7 @@ export function PlanCanvas({
   // ── Rendu ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !view || !floor) return;
+    if (!canvas || !view || !floor || !size) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = size.w * dpr;
     canvas.height = size.h * dpr;
@@ -199,14 +223,17 @@ export function PlanCanvas({
 
   function previewRow(from, to, single) {
     const s = state.current;
-    return buildRow(from, to, {
+    const chests = buildRow(from, to, {
       dims: s.dims,
       y: s.currentY,
-      zoneId: zoneAt(s.doc.zones, s.floor.id, from.x, from.z)?.id ?? null,
       single: single || s.options.chestKind === 'single',
       facing: s.options.autoFacing ? null : s.options.facing,
       access: accessSet(s.doc.circulation, s.floor.id),
     });
+    // Chaque coffre prend la zone qui le recouvre *lui* : une rangée qui
+    // traverse deux zones (ou qui déborde) se répartit correctement, au lieu
+    // d'hériter en bloc de la zone de la case de départ.
+    return chests.map((c) => ({ ...c, zoneId: zoneAt(s.doc.zones, s.floor.id, c.x, c.z)?.id ?? null }));
   }
 
   function commitRow(chests) {
@@ -243,7 +270,17 @@ export function PlanCanvas({
       reserved: false,
       notes: '',
     };
-    onEdit((d) => ({ ...d, zones: [...d.zones, zone] }));
+    // Une zone tracée par-dessus des coffres déjà posés les adopte (s'ils sont
+    // encore orphelins) : sinon ils resteraient signalés « hors zone » alors
+    // qu'ils sont visiblement dedans.
+    onEdit((d) => ({
+      ...d,
+      zones: [...d.zones, zone],
+      chests: d.chests.map((c) => (
+        !c.zoneId && c.y >= s.floor.yMin && c.y <= s.floor.yMax
+          && chestCells(c).some(([x, z]) => rectContains(rect, x, z))
+          ? { ...c, zoneId: zone.id } : c)),
+    }));
     onSelect({ type: 'zone', ids: [zone.id] });
   }
 
@@ -267,7 +304,16 @@ export function PlanCanvas({
     if ((dx === 0 && dz === 0) || !list?.length) return;
     const ids = new Set(list);
     onEdit((d) => {
-      const moved = d.chests.map((c) => (ids.has(c.id) ? { ...c, x: c.x + dx, z: c.z + dz } : c));
+      // Un coffre déplacé change de zone d'accueil : on la ré-évalue, sinon il
+      // resterait compté dans la capacité de sa zone d'origine.
+      const moved = d.chests.map((c) => (ids.has(c.id)
+        ? {
+          ...c,
+          x: c.x + dx,
+          z: c.z + dz,
+          zoneId: zoneAt(d.zones, s.floor.id, c.x + dx, c.z + dz)?.id ?? null,
+        }
+        : c));
       const ok = moved.every((c) => chestCells(c).every(([x, z]) => inBounds(s.dims, x, z)));
       return ok ? { ...d, chests: moved } : d;
     });

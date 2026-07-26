@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { useAuth } from '../../auth/AuthContext';
 import { useConfirm } from '../../ui/ConfirmProvider';
 import { useToast } from '../../ui/ToastProvider';
 import { formatDate } from '../project/shared';
@@ -76,6 +77,7 @@ export function SnapshotsPanel({ planId, onRestored }) {
 
 export function SharePanel({ planId, sharedWith, isOwner, onChanged }) {
   const toast = useToast();
+  const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [pick, setPick] = useState('');
 
@@ -101,7 +103,8 @@ export function SharePanel({ planId, sharedWith, isOwner, onChanged }) {
     } catch (e) { toast.error(e.message); }
   };
 
-  const already = new Set(sharedWith.map((s) => s.id));
+  // Ni soi-même (le serveur refuserait), ni les comptes déjà destinataires.
+  const already = new Set([...sharedWith.map((s) => s.id), user?.id]);
 
   return (
     <div style={{ ...panel, display: 'grid', gap: 8 }}>
