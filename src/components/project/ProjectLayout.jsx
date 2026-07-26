@@ -35,7 +35,11 @@ function tabsFor(workspace) {
   // Projet 100 % Minecraft : les onglets classiques (Vue d'ensemble → Réunions)
   // disparaissent au profit des pages Minecraft + un lien vers /quetes.
   if (workspace?.minecraftOnly) {
-    return [...MINECRAFT_TABS, { href: `/quetes?projet=${workspace.slug}`, label: '📜 Quêtes' }];
+    return [
+      ...MINECRAFT_TABS,
+      { href: `/quetes?projet=${workspace.slug}`, label: '📜 Quêtes' },
+      { href: `/atelier-coffres?projet=${workspace.slug}`, label: '🗝️ Salle des coffres' },
+    ];
   }
   const tabs = [...BASE_TABS];
   if (workspace?.isMinecraft) tabs.push({ to: 'minecraft', label: '⛏️ Minecraft' });

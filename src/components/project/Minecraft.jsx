@@ -410,7 +410,12 @@ export function MinecraftTab({ mode = 'full' }) {
   const subNav = <MinecraftSubNav view={view} setView={setView} />;
   // Lien vers le journal de quêtes global (Nostra/Minefield) — vit ici plutôt
   // que dans le footer du site public.
-  const questsLink = <QuestsLink slug={workspace.slug} />;
+  const questsLink = (
+    <>
+      <QuestsLink slug={workspace.slug} />
+      <VaultLink slug={workspace.slug} />
+    </>
+  );
 
   // Projets 100 % Minecraft : ancien deep-link /minecraft?view=builds&build=N
   // (« Extraire la zone ») → la page Builds 3D dédiée.
@@ -810,6 +815,25 @@ function QuestsLink({ slug }) {
       }}
     >
       📜 Quêtes
+    </Link>
+  );
+}
+
+// Atelier de conception de la salle des coffres (module global /atelier-coffres,
+// comme les quêtes). ?projet=<slug> alimente le lien de retour là-bas.
+function VaultLink({ slug }) {
+  return (
+    <Link
+      to={`/atelier-coffres?projet=${slug}`}
+      title="Concevoir la salle des coffres (plan, zones, circulation)"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '7px 12px', borderRadius: 8, textDecoration: 'none',
+        background: 'rgba(232,200,106,0.08)', border: '1px solid rgba(232,200,106,0.4)',
+        color: '#e8c86a', fontFamily: "'Inter',sans-serif", fontSize: 13, whiteSpace: 'nowrap',
+      }}
+    >
+      🗝️ Salle des coffres
     </Link>
   );
 }

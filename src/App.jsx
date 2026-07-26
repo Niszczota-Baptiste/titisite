@@ -12,6 +12,7 @@ const Ecriture = lazy(() => import('./pages/Ecriture'));
 const PhotosPage = lazy(() => import('./pages/PhotosPage'));
 const Stairs = lazy(() => import('./pages/Stairs'));
 const Quetes = lazy(() => import('./pages/Quetes'));
+const Atelier = lazy(() => import('./pages/Atelier'));
 const BuildShare = lazy(() => import('./pages/BuildShare'));
 const WorldEditShare = lazy(() => import('./pages/WorldEditShare'));
 
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/photos"         element={<PhotosPage />} />
           <Route path="/stairs"         element={<Stairs />} />
           <Route path="/quetes/*"       element={<Quetes />} />
+          <Route path="/atelier-coffres/*" element={<Atelier />} />
           <Route path="/build/:token"   element={<BuildShare />} />
           <Route path="/we/:token"      element={<WorldEditShare />} />
           <Route path="*"               element={<Public />} />
