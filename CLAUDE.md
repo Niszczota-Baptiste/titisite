@@ -126,7 +126,8 @@ Single-process Node app:
   🎯 Wanted, 🗺️ Carte (`ProjectMap.jsx`), 🧑‍🌾 Villageois (`Villagers.jsx`),
   ✏️ Schémas (`Sketches.jsx`), 💬 Discussions (`Discussions.jsx`),
   🏗️ Builds 3D, 🧮 Calculateur (`MinecraftTab mode=…`) + a
-  📜 Quêtes tab-link to `/quetes`; mixed projects reach Carte/Villageois/
+  📜 Quêtes tab-link to `/quetes` and a 🗝️ Salle des coffres one to
+  `/atelier-coffres`; mixed projects reach Carte/Villageois/
   Schémas/Discussions via tool-links in the ⛏️ Minecraft action bar. `tabsFor`/`projectHome`/
   `MINECRAFT_ONLY_TABS` in `ProjectLayout.jsx` drive the tab bar; hidden-tab
   URLs redirect to `/resume`, where Home cards and the switcher also land.
@@ -214,6 +215,35 @@ Single-process Node app:
   The `/quetes` entry point is a « 📜 Quêtes » link in the Minecraft tab of
   projects (`QuestsLink` in `src/components/project/Minecraft.jsx`) — NOT in
   the public-site footer. See `docs/quetes.md`.
+- **Atelier « Salle des coffres »** (`/atelier-coffres`, `docs/salle-des-coffres.md`)
+  is a **design** tool for a Minefield vault room — a schematic, not a builder
+  and **not an inventory**: no decoration block anywhere, and **no resource /
+  quantity is ever stored** (a chest is a cell, a kind — 27 or 54 slots — and a
+  facing). Global module gated by `users.can_view_vault` (admins bypass), but a
+  plan is only visible to its owner and the accounts it is explicitly shared
+  with — **no admin bypass there**, and an inaccessible plan answers 404.
+  Tables: `vault_plans` (scalar metadata + `data` JSON document + `revision`),
+  `vault_plan_shares`, `vault_plan_versions` (snapshots freeze document +
+  dims + a copy of the categories used), `vault_categories` (**global**,
+  seeded from the codex's 9 Minefield categories — vanilla entries have no
+  `categorie`, hence an editable table). Document = `floors` (non-overlapping
+  Y slices) / `zones` (rect + categories + manual `reservedSlots` + `reserved`
+  update-buffer flag) / `chests` / `circulation` (couloir/escalier/entree). A
+  double chest's pair is **derived from its facing** (north/south → along X),
+  like in game. `server/vault/validate.js` renormalizes on every write and
+  422s only on *structural* breakage; design defects (unreachable chest,
+  overlapping zones, isolated floor…) are non-blocking warnings, otherwise a
+  plan being edited would become unsaveable mid-autosave. Saving is an atomic
+  CAS (`UPDATE … WHERE id = ? AND revision = ?`) → **409** with
+  `{ updatedBy, updatedAt, serverRevision }`, autosave pauses and the modal
+  offers Recharger / Écraser (`force: true`). Capacity is structural only
+  (chests placed vs the zone's manual reserve), computed twice on purpose:
+  `server/vault/capacity.js` for plan summaries, `src/components/vault/capacity.js`
+  for per-zone/per-category figures and warnings. Front: `src/pages/Atelier.jsx`
+  + `src/components/vault/*` (native 2D canvas, homemade SVG logic map, lazy
+  three.js volume view) + `useVaultPlan.js` (2 s autosave, keepalive flush,
+  revision handling). Entry point: the « 🗝️ Salle des coffres » link of a
+  project's ⛏️ Minecraft tab (`?projet=<slug>` for the way back).
 - **SEO**: `GET /sitemap.xml` is generated from the DB
   (`server/routes/sitemap.js`); per-route meta via
   `src/hooks/usePageMeta.js`. Reader prefs (font size/width/theme) live in
@@ -328,3 +358,4 @@ First boot creates the DB at `DB_PATH` (default `./data.sqlite`) and seeds:
 | New public setting | use the existing `site_settings` k/v table — see `server/routes/settings.js` |
 | New writing-space field/resource | add the column/table in `server/db.js#migrate`, the mapper + route in `server/routes/writing.js` (public) / `writing-admin.js` (admin), an `api.*` helper in `src/api/client.js`, then the editor in `src/components/admin/editors/writing/` and reader UI in `src/components/writing/` |
 | New 3D-map biome/building | `src/components/writing/map/presets.js` (+ the mesh in `buildings.jsx` for a building), then the matching allowlist in `server/routes/writing-admin.js` — see `docs/carte-3d.md` |
+| New tool/field in the vault workshop | the field in `server/vault/validate.js#normalizeDoc` (it strips anything it doesn't know), then the tool in `src/components/vault/Toolbar.jsx` + its gesture in `PlanCanvas.jsx` + its fiche in `Inspector.jsx` — see `docs/salle-des-coffres.md` |
