@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { bootServer, fetcher } from './harness.js';
-import { chestCells, normalizeDims, normalizeDoc, VaultValidationError } from '../server/vault/validate.js';
+import { CHEST_SLOTS, normalizeDims, normalizeDoc, VaultValidationError } from '../server/vault/validate.js';
 import { planStats } from '../server/vault/capacity.js';
 
 let server;
@@ -22,9 +22,10 @@ function login(creds) {
 const DIMS = { x: 125, y: 200, z: 125 };
 const FLOOR = { id: 'f1', name: 'Rez — Entrée & tri', yMin: 0, yMax: 5, color: '#c8a24a' };
 const ZONE = {
-  id: 'z1', floorId: 'f1', rect: { x0: 4, z0: 4, x1: 40, z1: 30 },
+  id: 'z1', floorId: 'f1', rect: { x0: 4, z0: 4, x1: 40, z1: 30 }, yMin: 0, yMax: 5,
   name: 'Redstone', color: '#b02e2e', categoryIds: [], reservedSlots: 0, reserved: false, notes: '',
 };
+const chest = (id, x, z, over = {}) => ({ id, zoneId: 'z1', x, y: 1, z, items: [], ...over });
 
 const docWith = (over = {}) => ({
   floors: [FLOOR], zones: [ZONE], chests: [], circulation: [], ...over,
@@ -65,23 +66,31 @@ describe('vault/validate — normalisation', () => {
     );
   });
 
-  it('refuse un coffre hors gabarit, paire du double comprise', () => {
-    const chest = { id: 'c1', zoneId: 'z1', x: 124, y: 1, z: 8, kind: 'double', facing: 'south' };
-    // facing sud → paire le long de X → la seconde case tombe en x=125.
+  it('refuse un coffre hors gabarit', () => {
     assert.throws(
-      () => normalizeDoc(docWith({ chests: [chest] }), DIMS),
+      () => normalizeDoc(docWith({ chests: [chest('c1', 125, 8)] }), DIMS),
       (e) => e.code === 'chest_out_of_bounds',
     );
-    // Même coffre tourné : la paire part le long de Z, donc ça rentre.
-    const rotated = normalizeDoc(docWith({ chests: [{ ...chest, facing: 'east' }] }), DIMS);
-    assert.deepEqual(chestCells(rotated.chests[0]), [[124, 8], [124, 9]]);
+    assert.throws(
+      () => normalizeDoc(docWith({ chests: [chest('c1', 10, 8, { y: 999 })] }), DIMS),
+      (e) => e.code === 'chest_out_of_bounds',
+    );
+    // Le coffre sans fond tient sur une seule case : la dernière colonne passe.
+    assert.equal(normalizeDoc(docWith({ chests: [chest('c1', 124, 124)] }), DIMS).chests.length, 1);
+  });
+
+  it('donne à une zone la hauteur de son étage par défaut, et la borne dedans', () => {
+    const doc = normalizeDoc(docWith({ zones: [{ ...ZONE, yMin: undefined, yMax: undefined }] }), DIMS);
+    assert.equal(doc.zones[0].yMin, FLOOR.yMin);
+    assert.equal(doc.zones[0].yMax, FLOOR.yMax);
+    // Une hauteur qui déborde de l'étage est ramenée dedans, pas refusée.
+    const clamped = normalizeDoc(docWith({ zones: [{ ...ZONE, yMin: -5, yMax: 99 }] }), DIMS);
+    assert.equal(clamped.zones[0].yMin, FLOOR.yMin);
+    assert.equal(clamped.zones[0].yMax, FLOOR.yMax);
   });
 
   it('détache un coffre dont la zone a disparu au lieu de bloquer la sauvegarde', () => {
-    const doc = normalizeDoc(
-      { ...docWith(), zones: [], chests: [{ id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8, kind: 'single', facing: 'south' }] },
-      DIMS,
-    );
+    const doc = normalizeDoc({ ...docWith(), zones: [], chests: [chest('c1', 6, 8)] }, DIMS);
     assert.equal(doc.chests[0].zoneId, null);
   });
 
@@ -104,45 +113,52 @@ describe('vault/validate — normalisation', () => {
     assert.throws(() => normalizeDoc(doc, DIMS), (e) => e.code === 'stair_same_floor');
   });
 
-  it('supprime les champs parasites (le stockage reste canonique)', () => {
+  it('migre les anciens coffres (kind/facing) et ne garde aucune quantité', () => {
     const doc = normalizeDoc(docWith({
-      chests: [{ id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8, kind: 'double', facing: 'south', items: [{ itemId: 'x', stacks: 10 }] }],
+      chests: [{
+        id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8,
+        kind: 'double', facing: 'south', quantity: 640,
+        items: ['redstone', 'redstone', 'repeater'],
+      }],
     }), DIMS);
-    // Le module ne stocke aucune ressource : `items` ne survit pas.
-    assert.equal(doc.chests[0].items, undefined);
-    assert.deepEqual(Object.keys(doc.chests[0]).sort(), ['facing', 'id', 'kind', 'label', 'x', 'y', 'z', 'zoneId']);
+    const c = doc.chests[0];
+    assert.equal(c.kind, undefined, 'plus de type : tout est un coffre sans fond');
+    assert.equal(c.facing, undefined, 'ouvrable de partout : plus d’orientation');
+    assert.equal(c.quantity, undefined, 'aucune quantité ne survit');
+    // Les items sont des désignations de rangement, dédoublonnées.
+    assert.deepEqual(c.items, ['redstone', 'repeater']);
+    assert.deepEqual(Object.keys(c).sort(), ['id', 'items', 'label', 'x', 'y', 'z', 'zoneId']);
   });
 });
 
 // ── Unités : capacité ──────────────────────────────────────────────────────
 describe('vault/capacity — capacité structurelle', () => {
-  it('compte 27 slots par coffre simple, 54 par double', () => {
+  it('compte 72 slots par coffre sans fond', () => {
     const doc = normalizeDoc(docWith({
-      chests: [
-        { id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8, kind: 'double', facing: 'south' },
-        { id: 'c2', zoneId: 'z1', x: 10, y: 1, z: 8, kind: 'single', facing: 'south' },
-      ],
+      chests: [chest('c1', 6, 8), chest('c2', 10, 8, { items: ['redstone'] })],
     }), DIMS);
     const s = planStats(doc, DIMS);
-    assert.equal(s.slots, 54 + 27);
-    assert.equal(s.doubles, 1);
-    assert.equal(s.singles, 1);
+    assert.equal(CHEST_SLOTS, 72);
+    assert.equal(s.slots, 144);
+    assert.equal(s.chests, 2);
+    assert.equal(s.assignedChests, 1);
+    assert.equal(s.distinctItems, 1);
   });
 
   it('compte la réserve manuelle en besoin et signale le déficit', () => {
     const doc = normalizeDoc(docWith({
       zones: [{ ...ZONE, reservedSlots: 100 }],
-      chests: [{ id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8, kind: 'double', facing: 'south' }],
+      chests: [chest('c1', 6, 8)],
     }), DIMS);
     const s = planStats(doc, DIMS);
     assert.equal(s.reservedSlots, 100);
-    assert.equal(s.deficit, 100 - 54);
+    assert.equal(s.deficit, 100 - 72);
   });
 
   it('exclut les zones réservées MàJ de la capacité et les compte à part', () => {
     const doc = normalizeDoc(docWith({
       zones: [{ ...ZONE, id: 'z2', reserved: true, reservedSlots: 999 }],
-      chests: [{ id: 'c1', zoneId: 'z2', x: 6, y: 1, z: 8, kind: 'double', facing: 'south' }],
+      chests: [chest('c1', 6, 8, { zoneId: 'z2' })],
     }), DIMS);
     const s = planStats(doc, DIMS);
     assert.equal(s.slots, 0);
@@ -193,7 +209,7 @@ describe('vault — API plans, partage, snapshots', () => {
       body: {
         revision: 1,
         ...docWith({
-          chests: [{ id: 'c1', zoneId: 'z1', x: 6, y: 1, z: 8, kind: 'double', facing: 'south' }],
+          chests: [chest('c1', 6, 8, { items: ['redstone'] })],
           circulation: [{ id: 'p1', kind: 'couloir', floorId: 'f1', cells: [[5, 3], [6, 3]] }],
         }),
       },
@@ -201,7 +217,8 @@ describe('vault — API plans, partage, snapshots', () => {
     assert.equal(r.status, 200);
     assert.equal(r.json.revision, 2);
     assert.equal(r.json.chests.length, 1);
-    assert.equal(r.json.stats.slots, 54);
+    assert.equal(r.json.stats.slots, 72);
+    assert.deepEqual(r.json.chests[0].items, ['redstone']);
   });
 
   it('rejette un document structurellement incohérent en 422', async () => {

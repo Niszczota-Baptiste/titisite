@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
+import { useCodex } from '../../hooks/useCodex';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useVaultPlan } from '../../hooks/useVaultPlan';
 import { useToast } from '../../ui/ToastProvider';
@@ -11,6 +12,7 @@ import { ItemsPanel } from './ItemsPanel';
 import { LogicMap } from './LogicMap';
 import { PlanCanvas } from './PlanCanvas';
 import { SharePanel, SnapshotsPanel } from './SnapshotsPanel';
+import { StorageIndex } from './StorageIndex';
 import { Toolbar } from './Toolbar';
 import { VolumeView } from './VolumeView';
 import { computeWarnings } from './capacity';
@@ -19,8 +21,8 @@ import { GOLD, INK, MUTED, body, mono, panel, title } from './theme';
 
 const TABS = [
   ['plan', '▦ Plan'],
+  ['rangement', '📒 Rangement'],
   ['volume', '⬢ Volume'],
-  ['logique', '⇄ Logique'],
   ['capacite', '📊 Capacité'],
 ];
 
@@ -34,6 +36,7 @@ const RAILS = [
 export function VaultApp({ planId, onBack, onOpenPlan }) {
   const toast = useToast();
   const isMobile = useIsMobile(1024);
+  const { byId: codexById } = useCodex();
   const plan = useVaultPlan(planId);
   const { meta, doc, update, patchMeta } = plan;
 
@@ -44,9 +47,10 @@ export function VaultApp({ planId, onBack, onOpenPlan }) {
   const [currentY, setCurrentY] = useState(0);
   const [tool, setTool] = useState('select');
   const [options, setOptions] = useState({
-    chestKind: 'double', facing: 'south', autoFacing: true, zoneColor: '#b02e2e', stairTarget: '',
+    // 0 = mur monté sur toute la hauteur de la zone.
+    maxLevels: 0, zoneColor: '#b02e2e', stairTarget: '',
   });
-  const [overlays, setOverlays] = useState({ chunks: false, labels: true, heatmap: false });
+  const [overlays, setOverlays] = useState({ chunks: false, labels: true, heatmap: false, items: true });
   const [selection, setSelection] = useState({ type: null, ids: [] });
   const [focus, setFocus] = useState(null);
   const [hover, setHover] = useState(null);
@@ -103,20 +107,6 @@ export function VaultApp({ planId, onBack, onOpenPlan }) {
         }
         return;
       }
-      if (e.key.toLowerCase() === 'r') {
-        const order = ['north', 'east', 'south', 'west'];
-        if (selection.type === 'chest' && selection.ids.length > 0) {
-          const ids = new Set(selection.ids);
-          update((d) => ({
-            ...d,
-            chests: d.chests.map((c) => (ids.has(c.id)
-              ? { ...c, facing: order[(order.indexOf(c.facing) + 1) % 4] } : c)),
-          }));
-        } else {
-          setOptions((o) => ({ ...o, autoFacing: false, facing: order[(order.indexOf(o.facing) + 1) % 4] }));
-        }
-        return;
-      }
       if (e.key === 'PageUp' || e.key === 'PageDown') {
         const list = floorsByHeight(doc?.floors || []);
         const idx = list.findIndex((f) => f.id === floorId);
@@ -142,10 +132,26 @@ export function VaultApp({ planId, onBack, onOpenPlan }) {
     setRail('fiche');
   }, [doc, floorId]);
 
+  // Depuis l'annuaire : ouvrir le plan sur le coffre exact d'une ligne.
+  const focusChest = useCallback((chestId) => {
+    const chest = doc?.chests.find((c) => c.id === chestId);
+    if (!chest) return;
+    const zone = chest.zoneId ? doc.zones.find((z) => z.id === chest.zoneId) : null;
+    const floor = zone
+      ? doc.floors.find((f) => f.id === zone.floorId)
+      : doc.floors.find((f) => chest.y >= f.yMin && chest.y <= f.yMax);
+    if (floor) setFloorId(floor.id);
+    setCurrentY(chest.y);
+    setSelection({ type: 'chest', ids: [chestId] });
+    setFocus({ type: 'chest', id: chestId, at: Date.now() });
+    setTab('plan');
+    setRail('fiche');
+  }, [doc]);
+
   const openZone = useCallback((zoneId, zoneFloorId) => {
     setFloorId(zoneFloorId);
-    const f = doc?.floors.find((x) => x.id === zoneFloorId);
-    if (f) setCurrentY(f.yMin);
+    const zone = doc?.zones.find((z) => z.id === zoneId);
+    if (zone) setCurrentY(zone.yMin);
     setSelection({ type: 'zone', ids: [zoneId] });
     setFocus({ type: 'zone', id: zoneId, at: Date.now() });
     setTab('plan');
@@ -175,8 +181,8 @@ export function VaultApp({ planId, onBack, onOpenPlan }) {
       </div>
       {rail === 'fiche' && (
         <Inspector
-          doc={doc} selection={selection} categories={categories}
-          onEdit={update} onSelect={setSelection}
+          doc={doc} floors={doc.floors} dims={meta.dims} selection={selection}
+          categories={categories} onEdit={update} onSelect={setSelection}
         />
       )}
       {rail === 'items' && (
@@ -247,7 +253,7 @@ export function VaultApp({ planId, onBack, onOpenPlan }) {
                     doc={doc} dims={meta.dims} worldOrigin={meta.worldOrigin}
                     floor={floor} currentY={currentY}
                     tool={tool} options={options} overlays={overlays}
-                    selection={selection} categories={categories}
+                    selection={selection} categories={categories} codexById={codexById}
                     onEdit={update} onSelect={setSelection} onHover={setHover}
                     focus={focus}
                   />
@@ -267,7 +273,15 @@ export function VaultApp({ planId, onBack, onOpenPlan }) {
       )}
 
       {tab === 'volume' && <VolumeView doc={doc} dims={meta.dims} onOpenZone={openZone} />}
-      {tab === 'logique' && <LogicMap doc={doc} categories={categories} onOpenZone={openZone} />}
+      {tab === 'rangement' && (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <LogicMap doc={doc} categories={categories} onOpenZone={openZone} compact />
+          <StorageIndex
+            doc={doc} worldOrigin={meta.worldOrigin} categories={categories}
+            onFocusChest={focusChest} onFocusZone={openZone}
+          />
+        </div>
+      )}
       {tab === 'capacite' && (
         <Dashboard doc={doc} dims={meta.dims} categories={categories} warnings={warnings} />
       )}

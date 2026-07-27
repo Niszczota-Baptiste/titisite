@@ -6,8 +6,11 @@
 // deux révisions reste lisible, et l'export futur (.schem / pipeline Anvil) part
 // d'une structure garantie.
 //
-// Ce module ne connaît AUCUNE ressource : un coffre est une case et un type,
-// jamais un inventaire.
+// Le seul contenant du modèle est le **coffre sans fond** de Minefield : un bloc
+// 1×1×1 de 72 slots, ouvrable de n'importe où (donc ni orientation, ni paire, ni
+// contrainte d'accès). Un coffre peut être *dédié* à un ou plusieurs items du
+// codex — c'est une désignation de rangement, jamais un inventaire : aucune
+// quantité n'est stockée nulle part.
 
 export class VaultValidationError extends Error {
   constructor(code, detail) {
@@ -24,14 +27,16 @@ export const DIM_MIN = 1;
 // inutilisables bien avant d'atteindre ce plafond.
 export const DIM_MAX = 1024;
 
-export const CHEST_KINDS = ['single', 'double'];
-export const FACINGS = ['north', 'south', 'east', 'west'];
 export const CIRCULATION_KINDS = ['couloir', 'escalier', 'entree'];
+// Capacité d'un coffre sans fond, en slots (72 stacks).
+export const CHEST_SLOTS = 72;
+// Un coffre reste lisible avec quelques types dedans ; au-delà, c'est une zone
+// qu'il faut découper, pas un coffre qu'il faut charger.
+const MAX_ITEMS_PER_CHEST = 24;
 
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const HEX_RE = /^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$/;
 
-const isInt = (v) => Number.isInteger(v);
 const asInt = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Math.trunc(Number(v)) : fallback);
 const asStr = (v, max) => String(v ?? '').slice(0, max);
 const asBool = (v) => v === true || v === 1;
@@ -40,24 +45,8 @@ const asColor = (v, fallback) => (HEX_RE.test(String(v || '')) ? String(v) : fal
 const ZONE_COLOR = '#c9a8e8';
 const FLOOR_COLOR = '#c8a24a';
 
-/**
- * Une case d'un coffre double : l'ancre (x, z) plus la case voisine.
- *
- * L'axe de la paire est déduit de l'orientation, comme en jeu — un double
- * coffre orienté nord/sud est accolé le long de X, est/ouest le long de Z. Rien
- * n'est donc stocké en plus, et une rotation (touche R) réoriente la paire.
- */
-export function pairAxis(facing) {
-  return facing === 'north' || facing === 'south' ? 'x' : 'z';
-}
-
-/** Cases occupées par un coffre : 1 case (simple) ou 2 (double). */
-export function chestCells(chest) {
-  if (chest.kind !== 'double') return [[chest.x, chest.z]];
-  return pairAxis(chest.facing) === 'x'
-    ? [[chest.x, chest.z], [chest.x + 1, chest.z]]
-    : [[chest.x, chest.z], [chest.x, chest.z + 1]];
-}
+/** Un coffre sans fond occupe exactement une case. */
+export const chestCells = (chest) => [[chest.x, chest.z]];
 
 export function normalizeDims(input) {
   const src = input || {};
@@ -126,8 +115,9 @@ function normalizeFloors(raw, dims) {
   return floors;
 }
 
-function normalizeZones(raw, dims, floorIds) {
+function normalizeZones(raw, dims, floors) {
   const list = Array.isArray(raw) ? raw : [];
+  const floorById = new Map(floors.map((f) => [f.id, f]));
   const nextId = idFactory('z');
   return list.map((z) => {
     const r = z?.rect || {};
@@ -139,7 +129,17 @@ function normalizeZones(raw, dims, floorIds) {
       fail('zone_out_of_bounds', `${x0},${z0} → ${x1},${z1}`);
     }
     const floorId = typeof z?.floorId === 'string' ? z.floorId : '';
-    if (!floorIds.has(floorId)) fail('unknown_floor', floorId || '(vide)');
+    const floor = floorById.get(floorId);
+    if (!floor) fail('unknown_floor', floorId || '(vide)');
+
+    // Une zone occupe un VOLUME : une hauteur propre à l'intérieur de l'étage
+    // (« 100 × 5 × 100 »), c'est elle qui définit les niveaux de rangement.
+    // Par défaut, toute la hauteur de l'étage.
+    let yMin = asInt(z?.yMin, floor.yMin);
+    let yMax = asInt(z?.yMax, floor.yMax);
+    if (yMin > yMax) [yMin, yMax] = [yMax, yMin];
+    yMin = Math.min(Math.max(yMin, floor.yMin), floor.yMax);
+    yMax = Math.min(Math.max(yMax, floor.yMin), floor.yMax);
 
     // Catégories : ids de la table globale vault_categories. Dédoublonnés ;
     // un id supprimé entre-temps est ignoré à l'affichage, pas au stockage —
@@ -154,11 +154,12 @@ function normalizeZones(raw, dims, floorIds) {
       id: nextId(z?.id),
       floorId,
       rect: { x0, z0, x1, z1 },
+      yMin,
+      yMax,
       name: asStr(z?.name, 80),
       color: asColor(z?.color, ZONE_COLOR),
       categoryIds,
-      // Réserve manuelle, en slots. C'est le seul « besoin » du modèle : aucun
-      // item ni aucune quantité n'est stocké dans un coffre.
+      // Réserve manuelle, en slots : le besoin annoncé, face aux coffres posés.
       reservedSlots: Math.max(0, asInt(z?.reservedSlots, 0)),
       // Zone tampon gardée libre pour une future MàJ Minecraft : hachurée dans
       // les trois vues, exclue des calculs de capacité.
@@ -168,6 +169,14 @@ function normalizeZones(raw, dims, floorIds) {
   });
 }
 
+// Items désignés d'un coffre : des ids de codex, sans quantité. C'est le
+// « plan dans le plan » — ce qu'on rangera ici, pas ce qui s'y trouve.
+function normalizeItems(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  return [...new Set(list.map((v) => String(v ?? '').slice(0, 120)).filter(Boolean))]
+    .slice(0, MAX_ITEMS_PER_CHEST);
+}
+
 function normalizeChests(raw, dims, zoneIds) {
   const list = Array.isArray(raw) ? raw : [];
   const nextId = idFactory('c');
@@ -175,17 +184,18 @@ function normalizeChests(raw, dims, zoneIds) {
     const x = asInt(c?.x, 0);
     const y = asInt(c?.y, 0);
     const z = asInt(c?.z, 0);
-    const kind = CHEST_KINDS.includes(c?.kind) ? c.kind : 'single';
-    const facing = FACINGS.includes(c?.facing) ? c.facing : 'south';
-    const chest = { id: nextId(c?.id), zoneId: null, x, y, z, kind, facing, label: asStr(c?.label, 60) };
+    if (x < 0 || z < 0 || x >= dims.x || z >= dims.z) fail('chest_out_of_bounds', `${x},${z}`);
+    if (y < 0 || y >= dims.y) fail('chest_out_of_bounds', `y=${y}`);
 
-    for (const [cx, cz] of chestCells(chest)) {
-      if (cx < 0 || cz < 0 || cx >= dims.x || cz >= dims.z) {
-        fail('chest_out_of_bounds', `${chest.id} @ ${cx},${cz}`);
-      }
-    }
-    if (y < 0 || y >= dims.y) fail('chest_out_of_bounds', `${chest.id} @ y=${y}`);
-
+    const chest = {
+      id: nextId(c?.id),
+      zoneId: null,
+      x,
+      y,
+      z,
+      items: normalizeItems(c?.items),
+      label: asStr(c?.label, 60),
+    };
     // Une zone supprimée ne doit pas empêcher la sauvegarde : le coffre devient
     // « hors zone » et le panneau de warnings le signalera.
     if (typeof c?.zoneId === 'string' && zoneIds.has(c.zoneId)) chest.zoneId = c.zoneId;
@@ -250,15 +260,19 @@ function normalizeCirculation(raw, dims, floorIds) {
  * Normalise le document complet. Lève `VaultValidationError` sur une incohérence
  * structurelle (dimensions, étages qui se chevauchent, référence inconnue,
  * élément hors gabarit). Les incohérences *de conception* — zones qui se
- * chevauchent, coffre inaccessible, étage sans escalier — ne sont pas des
+ * chevauchent, coffre hors zone, étage sans escalier — ne sont pas des
  * erreurs ici : ce sont les warnings non bloquants du panneau, sinon un plan
  * en cours d'édition deviendrait insauvegardable.
+ *
+ * Sert aussi de migration : les plans écrits avant le passage au tout
+ * coffre sans fond perdent `kind`/`facing` (un double devient un coffre à sa
+ * case d'ancrage) et les zones héritent de la hauteur de leur étage.
  */
 export function normalizeDoc(doc, dims) {
   const src = doc && typeof doc === 'object' ? doc : {};
   const floors = normalizeFloors(src.floors, dims);
   const floorIds = new Set(floors.map((f) => f.id));
-  const zones = normalizeZones(src.zones, dims, floorIds);
+  const zones = normalizeZones(src.zones, dims, floors);
   const zoneIds = new Set(zones.map((z) => z.id));
   const chests = normalizeChests(src.chests, dims, zoneIds);
   const circulation = normalizeCirculation(src.circulation, dims, floorIds);

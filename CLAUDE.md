@@ -216,28 +216,39 @@ Single-process Node app:
   projects (`QuestsLink` in `src/components/project/Minecraft.jsx`) — NOT in
   the public-site footer. See `docs/quetes.md`.
 - **Atelier « Salle des coffres »** (`/atelier-coffres`, `docs/salle-des-coffres.md`)
-  is a **design** tool for a Minefield vault room — a schematic, not a builder
-  and **not an inventory**: no decoration block anywhere, and **no resource /
-  quantity is ever stored** (a chest is a cell, a kind — 27 or 54 slots — and a
-  facing). Global module gated by `users.can_view_vault` (admins bypass), but a
-  plan is only visible to its owner and the accounts it is explicitly shared
-  with — **no admin bypass there**, and an inaccessible plan answers 404.
+  is a **design** tool for a Minefield vault room *and its storage layout* — a
+  schematic, not a builder and **not an inventory**: no decoration block
+  anywhere, and **no quantity is ever stored**. The only container is
+  Minefield's **coffre sans fond**: a 1×1×1 block of **72 slots** openable from
+  anywhere, so chests have no kind, no facing, no pair and no reachability
+  constraint. A chest may be *dedicated* to one or more codex items — a storage
+  designation (« la redstone va ici »), never a stock. Global module gated by
+  `users.can_view_vault` (admins bypass), but a plan is only visible to its
+  owner and the accounts it is explicitly shared with — **no admin bypass
+  there**, and an inaccessible plan answers 404.
   Tables: `vault_plans` (scalar metadata + `data` JSON document + `revision`),
   `vault_plan_shares`, `vault_plan_versions` (snapshots freeze document +
   dims + a copy of the categories used), `vault_categories` (**global**,
   seeded from the codex's 9 Minefield categories — vanilla entries have no
   `categorie`, hence an editable table). Document = `floors` (non-overlapping
-  Y slices) / `zones` (rect + categories + manual `reservedSlots` + `reserved`
-  update-buffer flag) / `chests` / `circulation` (couloir/escalier/entree). A
-  double chest's pair is **derived from its facing** (north/south → along X),
-  like in game. `server/vault/validate.js` renormalizes on every write and
-  422s only on *structural* breakage; design defects (unreachable chest,
-  overlapping zones, isolated floor…) are non-blocking warnings, otherwise a
-  plan being edited would become unsaveable mid-autosave. Saving is an atomic
+  Y slices) / `zones` (rect **+ their own `yMin`/`yMax` inside the floor**, so a
+  zone is a volume — « 100×5×100 » — plus categories, manual `reservedSlots`
+  and the `reserved` update-buffer flag) / `chests` (`x/y/z` + `items`, codex
+  ids without quantity) / `circulation` (couloir/escalier/entree). The **Mur**
+  tool drags one line and raises it across every level of the zone (500 chests
+  in one gesture); a zone's fiche fills its whole volume and distributes a
+  category's items over its free chests — that's the « plan dans le plan », and
+  the « 📒 Rangement » tab turns it into a searchable index (item → zone, floor,
+  exact coordinates, CSV export). `server/vault/validate.js` renormalizes on
+  every write **and read** (it doubles as the migration off the old
+  single/double model) and 422s only on *structural* breakage; design defects
+  (chest outside its zone or levels, overlapping zones, item filed twice,
+  isolated floor…) are non-blocking warnings, otherwise a plan being edited
+  would become unsaveable mid-autosave. Saving is an atomic
   CAS (`UPDATE … WHERE id = ? AND revision = ?`) → **409** with
   `{ updatedBy, updatedAt, serverRevision }`, autosave pauses and the modal
   offers Recharger / Écraser (`force: true`). Capacity is structural only
-  (chests placed vs the zone's manual reserve), computed twice on purpose:
+  (chests × 72 vs the zone's manual reserve), computed twice on purpose:
   `server/vault/capacity.js` for plan summaries, `src/components/vault/capacity.js`
   for per-zone/per-category figures and warnings. Front: `src/pages/Atelier.jsx`
   + `src/components/vault/*` (native 2D canvas, homemade SVG logic map, lazy

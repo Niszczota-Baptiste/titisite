@@ -16,9 +16,9 @@ export function Dashboard({ doc, dims, categories, warnings }) {
       <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
         <Stat label="Étages" value={totals.floors} />
         <Stat label="Zones" value={totals.zones} sub={totals.reservedZones ? `${totals.reservedZones} réservée(s)` : null} />
-        <Stat label="Coffres" value={totals.chests} sub={`${totals.doubles} doubles · ${totals.singles} simples`} />
-        <Stat label="Slots disponibles" value={totals.slots} accent />
-        <Stat label="Slots réservés" value={totals.needed} sub={`delta ${totals.delta >= 0 ? '+' : ''}${totals.delta}`} />
+        <Stat label="Coffres sans fond" value={totals.chests} sub={`${totals.assignedChests} affectés · ${totals.freeChests} libres`} />
+        <Stat label="Slots disponibles" value={totals.slots} accent sub="72 slots par coffre" />
+        <Stat label="Items rangés" value={totals.distinctItems} sub={totals.needed ? `réserve ${totals.needed} slots` : 'types distincts'} />
         <Stat label="Espace réservé MàJ" value={`${totals.reservedVolumePct.toFixed(1)} %`} sub="du volume total" />
       </div>
 
@@ -35,7 +35,7 @@ export function Dashboard({ doc, dims, categories, warnings }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', ...body, fontSize: 12 }}>
               <thead>
                 <tr style={{ color: MUTED, textAlign: 'left' }}>
-                  {['Catégorie', 'Zones', 'Requis', 'Disponible', 'Delta', ''].map((h) => (
+                  {['Catégorie', 'Zones', 'Coffres', 'Affectés', 'Slots', ''].map((h) => (
                     <th key={h} style={{ padding: '8px 12px', fontWeight: 600, fontSize: 11 }}>{h}</th>
                   ))}
                 </tr>
@@ -50,15 +50,14 @@ export function Dashboard({ doc, dims, categories, warnings }) {
                       </span>
                     </td>
                     <td style={{ padding: '8px 12px', ...mono, color: MUTED }}>{r.zones}</td>
-                    <td style={{ padding: '8px 12px', ...mono, color: MUTED }}>{r.needed}</td>
-                    <td style={{ padding: '8px 12px', ...mono, color: INK }}>{r.slots}</td>
-                    <td style={{ padding: '8px 12px', ...mono, color: LEVELS[r.level].color }}>
-                      {r.delta >= 0 ? `+${r.delta}` : r.delta}
-                    </td>
+                    <td style={{ padding: '8px 12px', ...mono, color: INK }}>{r.chests}</td>
+                    <td style={{ padding: '8px 12px', ...mono, color: LEVELS[r.level].color }}>{r.assigned}</td>
+                    <td style={{ padding: '8px 12px', ...mono, color: MUTED }}>{r.slots}</td>
                     <td style={{ padding: '8px 12px', width: 120 }}>
+                      {/* Avancement du rangement de la catégorie. */}
                       <div style={{ height: 6, borderRadius: 3, background: 'rgba(120,100,170,0.2)', overflow: 'hidden' }}>
                         <div style={{
-                          width: `${Math.min(100, r.slots > 0 ? (r.needed / r.slots) * 100 : (r.needed > 0 ? 100 : 0))}%`,
+                          width: `${Math.min(100, r.chests > 0 ? (r.assigned / r.chests) * 100 : 0)}%`,
                           height: '100%', background: LEVELS[r.level].color,
                         }} />
                       </div>
@@ -73,8 +72,9 @@ export function Dashboard({ doc, dims, categories, warnings }) {
 
       <div style={{ ...panel, ...body, fontSize: 12, color: MUTED }}>
         <strong style={{ color: INK }}>{warnings.length}</strong> vérification(s) en attente ·
-        {' '}capacité totale <strong style={{ color: GOLD }}>{totals.slots}</strong> slots
-        {totals.needed > 0 && <> pour <strong style={{ color: INK }}>{totals.needed}</strong> réservés</>}.
+        {' '}<strong style={{ color: GOLD }}>{totals.chests}</strong> coffres sans fond
+        {' '}(<strong style={{ color: INK }}>{totals.slots}</strong> slots), dont
+        {' '}<strong style={{ color: INK }}>{totals.freeChests}</strong> encore libres.
         {' '}Les zones réservées MàJ sont exclues de ces calculs.
       </div>
     </div>

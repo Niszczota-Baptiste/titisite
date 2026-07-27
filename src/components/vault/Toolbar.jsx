@@ -5,18 +5,16 @@ import { ACC, GOLD, INK, MUTED, ZONE_PALETTE, body } from './theme';
 
 export const TOOLS = [
   { id: 'select',   icon: '⬚', label: 'Sélection', hint: 'Rectangle, déplacement, Suppr' },
-  { id: 'zone',     icon: '▦', label: 'Zone', hint: 'Tracer un rectangle' },
-  { id: 'row',      icon: '⣿', label: 'Rangée', hint: 'Glisser : doubles 2 par 2 (Maj = simples)' },
-  { id: 'chest',    icon: '▪', label: 'Coffre', hint: 'Poser à l’unité (R : tourner)' },
+  { id: 'zone',     icon: '▦', label: 'Zone', hint: 'Tracer un rectangle (hauteur ajustable ensuite)' },
+  { id: 'wall',     icon: '⣿', label: 'Mur', hint: 'Glisser : monte le mur sur tous les niveaux de la zone (Maj = niveau courant)' },
+  { id: 'chest',    icon: '▪', label: 'Coffre', hint: 'Poser un coffre sans fond (72 slots)' },
   { id: 'corridor', icon: '⌁', label: 'Couloir', hint: 'Pinceau de circulation' },
   { id: 'stair',    icon: '↕', label: 'Escalier', hint: 'Relier deux étages' },
   { id: 'entry',    icon: '⌂', label: 'Entrée', hint: 'Marquer une entrée' },
   { id: 'erase',    icon: '⌫', label: 'Gomme', hint: 'Coffres et circulation' },
 ];
 
-const FACINGS = [
-  ['north', '↑ Nord'], ['south', '↓ Sud'], ['west', '← Ouest'], ['east', '→ Est'],
-];
+const LEVEL_CHOICES = [[0, 'toute la zone'], [1, '1 niveau'], [2, '2'], [3, '3'], [5, '5'], [10, '10']];
 
 export function Toolbar({
   tool, setTool, options, setOptions, overlays, setOverlays, floors, floor,
@@ -40,30 +38,17 @@ export function Toolbar({
         ))}
       </div>
 
-      {(tool === 'row' || tool === 'chest') && (
-        <>
-          <Segmented
-            value={options.chestKind}
-            onChange={(v) => set({ chestKind: v })}
-            items={[['double', 'Double 54'], ['single', 'Simple 27']]}
-          />
-          <label style={chk}>
-            <input
-              type="checkbox" checked={options.autoFacing}
-              onChange={(e) => set({ autoFacing: e.target.checked })}
-              style={{ accentColor: ACC }}
-            />
-            face à la circulation
-          </label>
-          {!options.autoFacing && (
-            <select
-              value={options.facing} onChange={(e) => set({ facing: e.target.value })}
-              style={select}
-            >
-              {FACINGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          )}
-        </>
+      {tool === 'wall' && (
+        <label style={{ ...chk, gap: 6 }}>
+          hauteur du mur
+          <select
+            value={options.maxLevels ?? 0}
+            onChange={(e) => set({ maxLevels: Number(e.target.value) })}
+            style={select}
+          >
+            {LEVEL_CHOICES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </label>
       )}
 
       {tool === 'zone' && (
@@ -101,7 +86,7 @@ export function Toolbar({
       </div>
 
       <div style={{ display: 'flex', gap: 8, ...body, fontSize: 11.5, color: MUTED }}>
-        {[['chunks', 'chunks 16×16'], ['labels', 'noms'], ['heatmap', 'charge']].map(([k, l]) => (
+        {[['chunks', 'chunks 16×16'], ['labels', 'noms'], ['heatmap', 'charge'], ['items', 'items']].map(([k, l]) => (
           <label key={k} style={chk}>
             <input
               type="checkbox" checked={!!overlays[k]}
@@ -112,23 +97,6 @@ export function Toolbar({
           </label>
         ))}
       </div>
-    </div>
-  );
-}
-
-function Segmented({ value, onChange, items }) {
-  return (
-    <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(80,50,130,0.3)' }}>
-      {items.map(([v, l]) => (
-        <button
-          key={v} type="button" onClick={() => onChange(v)}
-          style={{
-            padding: '6px 10px', border: 'none', cursor: 'pointer', ...body, fontSize: 12,
-            background: value === v ? 'rgba(201,168,232,0.22)' : 'transparent',
-            color: value === v ? INK : MUTED,
-          }}
-        >{l}</button>
-      ))}
     </div>
   );
 }

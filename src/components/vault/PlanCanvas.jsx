@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  accessSet, buildRow, cellAt, cellKey, chestCells, chestIndex, clampRect, fitView, inBounds,
-  lineCells, panBy, rectContains, rectFrom, worldToScreen, zoneAt, zoomAt,
+  buildChests, cellAt, cellKey, chestIndex, clampRect, fitView, inBounds, lineCells, panBy,
+  rectContains, rectFrom, straightLine, worldToScreen, zoneAt, zoneLevelRange, zoomAt,
 } from './planGeometry';
 import { zoneStats } from './capacity';
 import {
@@ -11,14 +11,32 @@ import {
 // Vue Plan : canvas 2D natif (125×125 = 15 625 cases par étage — pas de DOM par
 // case). Le composant possède la vue (pan/zoom) et le geste en cours ; toute
 // modification du document remonte par `onEdit(mutate)`.
+//
+// Un coffre = une case, 72 slots, sans orientation (coffre sans fond). Le
+// niveau Y courant est le plan de coupe : on voit les coffres de ce niveau en
+// plein, ceux des autres niveaux de l'étage en repère.
 
 export const newId = (prefix) => `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 
-const FACING_ARROW = { north: [0, -1], south: [0, 1], west: [-1, 0], east: [1, 0] };
+// Cache d'icônes du codex : les images se chargent une fois, et le canvas se
+// redessine quand elles arrivent.
+const iconCache = new Map();
+function getIcon(url, onLoad) {
+  if (!url) return null;
+  let img = iconCache.get(url);
+  if (img === undefined) {
+    img = new Image();
+    img.onload = () => onLoad?.();
+    img.onerror = () => iconCache.set(url, null);
+    img.src = url;
+    iconCache.set(url, img);
+  }
+  return img && img.complete && img.naturalWidth > 0 ? img : null;
+}
 
 export function PlanCanvas({
   doc, dims, worldOrigin, floor, currentY, tool, options, selection, categories = [],
-  overlays, onEdit, onSelect, onHover, focus,
+  codexById, overlays, onEdit, onSelect, onHover, focus,
 }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
@@ -28,6 +46,7 @@ export function PlanCanvas({
   const [size, setSize] = useState(null);
   const [hover, setHover] = useState(null);
   const [ghost, setGhost] = useState(null);
+  const [, redraw] = useState(0);
   const drag = useRef(null);
   const spaceDown = useRef(false);
   const lastSize = useRef(null);
@@ -104,8 +123,9 @@ export function PlanCanvas({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     render(ctx, {
       doc, dims, floor, currentY, view, size, hover, ghost, selection, overlays, categories,
+      codexById, onIconLoad: () => redraw((n) => n + 1),
     });
-  }, [doc, dims, floor, currentY, view, size, hover, ghost, selection, overlays, categories]);
+  }, [doc, dims, floor, currentY, view, size, hover, ghost, selection, overlays, categories, codexById]);
 
   // ── Gestes ─────────────────────────────────────────────────────────────
 
@@ -146,19 +166,24 @@ export function PlanCanvas({
     if (s.tool === 'select') {
       const chest = chestIndex(chestsOfFloor(s.doc, s.floor, s.currentY)).get(cellKey(cell.x, cell.z));
       if (chest && s.selection?.type === 'chest' && s.selection.ids.includes(chest.id)) {
-        drag.current = { mode: 'move', from: cell, offset: { x: 0, z: 0 } };
+        // Déjà dans la sélection : on prépare un déplacement de groupe, mais un
+        // simple clic (sans glisser) isole ce coffre — sinon, après un mur, on
+        // éditerait les 500 coffres en croyant n'en toucher qu'un.
+        drag.current = { mode: 'move', from: cell, hitId: chest.id };
         return;
       }
       if (chest) {
         onSelect({ type: 'chest', ids: [chest.id] });
-        drag.current = { mode: 'move', from: cell, offset: { x: 0, z: 0 }, ids: [chest.id] };
+        drag.current = { mode: 'move', from: cell, hitId: chest.id, ids: [chest.id] };
         return;
       }
       drag.current = { mode: 'marquee', from: cell };
       return;
     }
     if (s.tool === 'zone') { drag.current = { mode: 'zone', from: cell }; return; }
-    if (s.tool === 'row')  { drag.current = { mode: 'row', from: cell, single: shift }; return; }
+    // Mur : un glissé au sol, monté sur tous les niveaux (Maj = niveau courant
+    // seulement, pour compléter une rangée isolée).
+    if (s.tool === 'wall') { drag.current = { mode: 'wall', from: cell, single: shift }; return; }
     if (s.tool === 'corridor' || s.tool === 'erase') {
       drag.current = { mode: s.tool, cells: [], last: cell };
       applyBrush(cell, cell);
@@ -188,8 +213,9 @@ export function PlanCanvas({
       setGhost({ kind: d.mode, rect: clampRect(rectFrom(d.from, cell), s.dims) });
       return;
     }
-    if (d.mode === 'row') {
-      setGhost({ kind: 'row', chests: previewRow(d.from, cell, d.single) });
+    if (d.mode === 'wall') {
+      const preview = previewWall(d.from, cell, d.single);
+      setGhost({ kind: 'wall', cells: preview.cells, levels: preview.levels.length, count: preview.chests.length });
       return;
     }
     if (d.mode === 'move') {
@@ -212,31 +238,55 @@ export function PlanCanvas({
     const cell = cellAt(s.view, sx, sy);
 
     if (d.mode === 'zone') commitZone(clampRect(rectFrom(d.from, cell), s.dims));
-    else if (d.mode === 'row') commitRow(previewRow(d.from, cell, d.single));
+    else if (d.mode === 'wall') commitChests(previewWall(d.from, cell, d.single).chests);
     else if (d.mode === 'marquee') commitMarquee(clampRect(rectFrom(d.from, cell), s.dims));
-    else if (d.mode === 'move') commitMove(cell.x - d.from.x, cell.z - d.from.z, d.ids);
+    else if (d.mode === 'move') {
+      const dx = cell.x - d.from.x;
+      const dz = cell.z - d.from.z;
+      if (dx === 0 && dz === 0) {
+        if (d.hitId) onSelect({ type: 'chest', ids: [d.hitId] });
+      } else {
+        commitMove(dx, dz, d.ids);
+      }
+    }
   };
 
   // ── Actions ────────────────────────────────────────────────────────────
 
   const chestsHere = (s = state.current) => chestsOfFloor(s.doc, s.floor, s.currentY);
 
-  function previewRow(from, to, single) {
-    const s = state.current;
-    const chests = buildRow(from, to, {
-      dims: s.dims,
-      y: s.currentY,
-      single: single || s.options.chestKind === 'single',
-      facing: s.options.autoFacing ? null : s.options.facing,
-      access: accessSet(s.doc.circulation, s.floor.id),
-    });
-    // Chaque coffre prend la zone qui le recouvre *lui* : une rangée qui
-    // traverse deux zones (ou qui déborde) se répartit correctement, au lieu
-    // d'hériter en bloc de la zone de la case de départ.
-    return chests.map((c) => ({ ...c, zoneId: zoneAt(s.doc.zones, s.floor.id, c.x, c.z)?.id ?? null }));
+  // Cases déjà occupées (clé « y:x,z ») : un second passage complète le mur au
+  // lieu d'empiler deux coffres sur la même case.
+  function occupiedSet(doc) {
+    const set = new Set();
+    for (const c of doc.chests) set.add(`${c.y}:${cellKey(c.x, c.z)}`);
+    return set;
   }
 
-  function commitRow(chests) {
+  function levelsFor(cell, single) {
+    const s = state.current;
+    if (single) return [s.currentY];
+    const zone = zoneAt(s.doc.zones, s.floor.id, cell.x, cell.z, s.currentY)
+      || zoneAt(s.doc.zones, s.floor.id, cell.x, cell.z);
+    const levels = zoneLevelRange(zone, s.floor, s.options.maxLevels || 0);
+    return levels.length > 0 ? levels : [s.currentY];
+  }
+
+  function previewWall(from, to, single) {
+    const s = state.current;
+    const cells = straightLine(from, to).filter(([x, z]) => inBounds(s.dims, x, z));
+    const levels = levelsFor(from, single);
+    const chests = buildChests(cells, levels, {
+      dims: s.dims,
+      occupied: occupiedSet(s.doc),
+      // Chaque coffre prend la zone qui le recouvre *lui*, niveau compris : un
+      // mur qui traverse deux zones se répartit correctement.
+      zoneFor: (x, z, y) => zoneAt(s.doc.zones, s.floor.id, x, z, y)?.id ?? null,
+    });
+    return { cells, levels, chests };
+  }
+
+  function commitChests(chests) {
     if (chests.length === 0) return;
     onEdit((d) => ({ ...d, chests: [...d.chests, ...chests] }));
     onSelect({ type: 'chest', ids: chests.map((c) => c.id) });
@@ -245,13 +295,12 @@ export function PlanCanvas({
   function placeChest(cell) {
     const s = state.current;
     if (!inBounds(s.dims, cell.x, cell.z)) return;
+    if (occupiedSet(s.doc).has(`${s.currentY}:${cellKey(cell.x, cell.z)}`)) return;
     const chest = {
       id: newId('c'),
-      zoneId: zoneAt(s.doc.zones, s.floor.id, cell.x, cell.z)?.id ?? null,
-      x: cell.x, y: s.currentY, z: cell.z,
-      kind: s.options.chestKind, facing: s.options.facing, label: '',
+      zoneId: zoneAt(s.doc.zones, s.floor.id, cell.x, cell.z, s.currentY)?.id ?? null,
+      x: cell.x, y: s.currentY, z: cell.z, items: [], label: '',
     };
-    if (!chestCells(chest).every(([x, z]) => inBounds(s.dims, x, z))) return;
     onEdit((d) => ({ ...d, chests: [...d.chests, chest] }));
     onSelect({ type: 'chest', ids: [chest.id] });
   }
@@ -259,10 +308,14 @@ export function PlanCanvas({
   function commitZone(rect) {
     const s = state.current;
     if (rect.x1 - rect.x0 < 1 && rect.z1 - rect.z0 < 1) return;
+    // Hauteur de la zone : par défaut, du niveau courant au sommet de l'étage
+    // (« 100 × 5 × 100 »). Ajustable ensuite dans la fiche.
     const zone = {
       id: newId('z'),
       floorId: s.floor.id,
       rect,
+      yMin: s.currentY,
+      yMax: s.floor.yMax,
       name: `Zone ${s.doc.zones.filter((z) => z.floorId === s.floor.id).length + 1}`,
       color: s.options.zoneColor,
       categoryIds: [],
@@ -277,8 +330,7 @@ export function PlanCanvas({
       ...d,
       zones: [...d.zones, zone],
       chests: d.chests.map((c) => (
-        !c.zoneId && c.y >= s.floor.yMin && c.y <= s.floor.yMax
-          && chestCells(c).some(([x, z]) => rectContains(rect, x, z))
+        !c.zoneId && c.y >= zone.yMin && c.y <= zone.yMax && rectContains(rect, c.x, c.z)
           ? { ...c, zoneId: zone.id } : c)),
     }));
     onSelect({ type: 'zone', ids: [zone.id] });
@@ -286,9 +338,7 @@ export function PlanCanvas({
 
   function commitMarquee(rect) {
     const s = state.current;
-    const ids = chestsHere(s)
-      .filter((c) => chestCells(c).some(([x, z]) => rectContains(rect, x, z)))
-      .map((c) => c.id);
+    const ids = chestsHere(s).filter((c) => rectContains(rect, c.x, c.z)).map((c) => c.id);
     if (ids.length > 0) onSelect({ type: 'chest', ids });
     else {
       const zone = zoneAt(s.doc.zones, s.floor.id, rect.x0, rect.z0);
@@ -311,10 +361,10 @@ export function PlanCanvas({
           ...c,
           x: c.x + dx,
           z: c.z + dz,
-          zoneId: zoneAt(d.zones, s.floor.id, c.x + dx, c.z + dz)?.id ?? null,
+          zoneId: zoneAt(d.zones, s.floor.id, c.x + dx, c.z + dz, c.y)?.id ?? null,
         }
         : c));
-      const ok = moved.every((c) => chestCells(c).every(([x, z]) => inBounds(s.dims, x, z)));
+      const ok = moved.every((c) => inBounds(s.dims, c.x, c.z));
       return ok ? { ...d, chests: moved } : d;
     });
   }
@@ -370,7 +420,7 @@ export function PlanCanvas({
     onEdit((d) => {
       const doomed = new Set();
       for (const c of chestsOfFloor(d, s.floor, s.currentY)) {
-        if (chestCells(c).some(([x, z]) => painted.has(cellKey(x, z)))) doomed.add(c.id);
+        if (painted.has(cellKey(c.x, c.z))) doomed.add(c.id);
       }
       const circulation = [];
       let touched = doomed.size > 0;
@@ -410,7 +460,8 @@ export function PlanCanvas({
     if (!categoryId || !s.view || !s.floor) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const cell = cellAt(s.view, e.clientX - rect.left, e.clientY - rect.top);
-    const zone = zoneAt(s.doc.zones, s.floor.id, cell.x, cell.z);
+    const zone = zoneAt(s.doc.zones, s.floor.id, cell.x, cell.z, s.currentY)
+      || zoneAt(s.doc.zones, s.floor.id, cell.x, cell.z);
     if (!zone) return;
     onEdit((d) => ({
       ...d,
@@ -490,6 +541,9 @@ function render(ctx, s) {
     drawChest(ctx, view, c, color, selected.has(c.id));
   }
 
+  // Icônes des items affectés : lisibles seulement à partir d'un certain zoom,
+  // c'est ce qui transforme le plan en plan de rangement.
+  if (overlays.items && view.scale >= 9) drawChestItems(ctx, s);
   if (overlays.labels) drawZoneLabels(ctx, s, categories);
   if (ghost) drawGhost(ctx, s);
 
@@ -548,17 +602,22 @@ const rectPx = (view, rect) => {
   return [x, z, (rect.x1 - rect.x0 + 1) * view.scale, (rect.z1 - rect.z0 + 1) * view.scale];
 };
 
-function drawZones(ctx, { doc, floor, view, selection }) {
+function drawZones(ctx, { doc, floor, view, selection, currentY }) {
   const selected = new Set(selection?.type === 'zone' ? selection.ids : []);
   for (const zone of doc.zones) {
     if (zone.floorId !== floor.id) continue;
+    // Une zone qui ne couvre pas le niveau de coupe reste visible, en retrait :
+    // on garde le repère sans confondre les niveaux.
+    const here = currentY >= zone.yMin && currentY <= zone.yMax;
     const [x, z, w, h] = rectPx(view, zone.rect);
-    ctx.fillStyle = hexAlpha(zone.color, zone.reserved ? 0.08 : 0.18);
+    ctx.fillStyle = hexAlpha(zone.color, zone.reserved ? 0.08 : (here ? 0.18 : 0.05));
     ctx.fillRect(x, z, w, h);
     if (zone.reserved) hatch(ctx, x, z, w, h, hexAlpha(zone.color, 0.5));
-    ctx.strokeStyle = selected.has(zone.id) ? '#ffffff' : hexAlpha(zone.color, 0.85);
+    ctx.strokeStyle = selected.has(zone.id) ? '#ffffff' : hexAlpha(zone.color, here ? 0.85 : 0.3);
     ctx.lineWidth = selected.has(zone.id) ? 2.5 : 1.5;
+    if (!here) ctx.setLineDash([4, 4]);
     ctx.strokeRect(x + 0.5, z + 0.5, w, h);
+    ctx.setLineDash([]);
   }
 }
 
@@ -575,7 +634,7 @@ function drawZoneLabels(ctx, { doc, floor, view }, categories) {
     const label = zone.name || zone.id;
     const sub = zone.reserved
       ? 'réservée MàJ'
-      : `${stats.chests} coffres · ${stats.slots} slots${stats.needed ? ` / ${stats.needed}` : ''}`;
+      : `${stats.chests} coffres · Y ${zone.yMin}–${zone.yMax}${stats.assigned ? ` · ${stats.assigned} rangés` : ''}`;
     const tw = Math.max(ctx.measureText(label).width, ctx.measureText(sub).width) + 12;
     ctx.fillRect(x + 4, z + 4, Math.min(tw, w - 8), 32);
     ctx.fillStyle = zone.color;
@@ -618,33 +677,61 @@ function drawCirculation(ctx, { doc, floor, view }) {
   }
 }
 
+// Un coffre occupe une case. Rempli = au moins un item affecté, contour seul =
+// coffre encore libre : d'un coup d'œil on voit ce qui reste à ranger.
 function drawChest(ctx, view, chest, color, selected) {
-  const cells = chestCells(chest);
-  const x0 = Math.min(...cells.map((c) => c[0]));
-  const z0 = Math.min(...cells.map((c) => c[1]));
-  const w = (Math.max(...cells.map((c) => c[0])) - x0 + 1) * view.scale;
-  const h = (Math.max(...cells.map((c) => c[1])) - z0 + 1) * view.scale;
-  const [x, z] = worldToScreen(view, x0, z0);
-  const pad = view.scale > 6 ? 1 : 0;
-  ctx.fillStyle = color;
-  ctx.fillRect(x + pad, z + pad, w - pad * 2, h - pad * 2);
+  const [x, z] = worldToScreen(view, chest.x, chest.z);
+  const size = view.scale;
+  const pad = size > 6 ? 1 : 0;
+  const assigned = chest.items?.length > 0;
 
-  if (view.scale >= 6) {
-    // Petite marque du côté ouvert : on lit l'orientation d'un coup d'œil.
-    const [dx, dz] = FACING_ARROW[chest.facing] || [0, 1];
-    ctx.fillStyle = 'rgba(8,5,20,0.75)';
-    const t = Math.max(2, view.scale * 0.18);
-    ctx.fillRect(
-      x + w / 2 + (dx * (w / 2 - t)) - t / 2,
-      z + h / 2 + (dz * (h / 2 - t)) - t / 2,
-      t, t,
-    );
+  if (assigned) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x + pad, z + pad, size - pad * 2, size - pad * 2);
+  } else {
+    ctx.fillStyle = 'rgba(232,200,106,0.16)';
+    ctx.fillRect(x + pad, z + pad, size - pad * 2, size - pad * 2);
+    if (size >= 5) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + pad + 0.5, z + pad + 0.5, size - pad * 2 - 1, size - pad * 2 - 1);
+    }
   }
   if (selected) {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
-    ctx.strokeRect(x + 0.5, z + 0.5, w - 1, h - 1);
+    ctx.strokeRect(x + 0.5, z + 0.5, size - 1, size - 1);
   }
+}
+
+function drawChestItems(ctx, s) {
+  const { doc, floor, currentY, view, codexById, onIconLoad } = s;
+  const size = view.scale;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  for (const c of chestsOfFloor(doc, floor, currentY)) {
+    const first = c.items?.[0];
+    if (!first) continue;
+    const entry = codexById?.get(first);
+    const [x, z] = worldToScreen(view, c.x, c.z);
+    const icon = getIcon(entry?.icon, onIconLoad);
+    if (icon) {
+      const pad = Math.max(1, size * 0.12);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(icon, x + pad, z + pad, size - pad * 2, size - pad * 2);
+      ctx.imageSmoothingEnabled = true;
+    } else {
+      ctx.fillStyle = 'rgba(8,5,20,0.8)';
+      ctx.font = `700 ${Math.min(size * 0.5, 11)}px 'Inter', sans-serif`;
+      ctx.fillText((entry?.nomFr || first).slice(0, 2).toUpperCase(), x + size / 2, z + size / 2);
+    }
+    if (c.items.length > 1 && size >= 16) {
+      ctx.fillStyle = 'rgba(8,5,20,0.85)';
+      ctx.font = "700 9px 'Inter', sans-serif";
+      ctx.fillText(`+${c.items.length - 1}`, x + size - 8, z + size - 6);
+    }
+  }
+  ctx.textAlign = 'left';
 }
 
 function drawGhost(ctx, s) {
@@ -660,8 +747,24 @@ function drawGhost(ctx, s) {
     ctx.setLineDash([]);
     return;
   }
-  if (ghost.kind === 'row') {
-    for (const c of ghost.chests) drawChest(ctx, view, c, 'rgba(232,200,106,0.55)', false);
+  if (ghost.kind === 'wall') {
+    for (const [x, z] of ghost.cells) {
+      const [sx, sz] = worldToScreen(view, x, z);
+      ctx.fillStyle = 'rgba(232,200,106,0.5)';
+      ctx.fillRect(sx, sz, view.scale, view.scale);
+    }
+    // Le mur monte sur plusieurs niveaux : le compte se lit sur le curseur.
+    if (ghost.cells.length > 0) {
+      const [lx, lz] = worldToScreen(view, ghost.cells.at(-1)[0], ghost.cells.at(-1)[1]);
+      ctx.font = "700 12px 'Inter', sans-serif";
+      const text = `${ghost.count} coffres · ${ghost.levels} niveau${ghost.levels > 1 ? 'x' : ''}`;
+      const w = ctx.measureText(text).width + 12;
+      ctx.fillStyle = 'rgba(8,5,20,0.85)';
+      ctx.fillRect(lx + 10, lz - 10, w, 20);
+      ctx.fillStyle = '#e8c86a';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, lx + 16, lz + 1);
+    }
     return;
   }
   if (ghost.kind === 'move' && (ghost.dx || ghost.dz)) {

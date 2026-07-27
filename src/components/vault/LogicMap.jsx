@@ -5,7 +5,7 @@ import { GOLD, LEVELS, MUTED, body, panel, title } from './theme';
 // Vue Logique : diagramme régénéré à chaque modification, jamais éditable.
 // SVG maison (pas de dépendance), exportable en SVG ou PNG pour Discord.
 
-export function LogicMap({ doc, categories, onOpenZone }) {
+export function LogicMap({ doc, categories, onOpenZone, compact = false }) {
   const svgRef = useRef(null);
   const model = useMemo(() => layoutLogic(doc, categories), [doc, categories]);
 
@@ -47,7 +47,7 @@ export function LogicMap({ doc, categories, onOpenZone }) {
         <button type="button" onClick={exportPng} style={btn}>PNG</button>
       </div>
 
-      <div style={{ overflow: 'auto', maxHeight: '70vh', background: '#08051a' }}>
+      <div style={{ overflow: 'auto', maxHeight: compact ? 260 : '70vh', background: '#08051a' }}>
         <svg
           ref={svgRef}
           xmlns="http://www.w3.org/2000/svg"
@@ -102,8 +102,16 @@ export function LogicMap({ doc, categories, onOpenZone }) {
                     {clip(z.name, 20)}
                   </text>
                   <text x={z.x + 10} y={z.y + 34} fill="rgba(214,206,232,0.75)" fontSize="9.5" fontFamily="Inter, sans-serif">
-                    {z.reserved ? 'réservée MàJ' : `${z.stats.chests} coffres · ${z.stats.slots} slots`}
+                    {z.reserved
+                      ? 'réservée MàJ'
+                      : `${z.stats.chests} coffres · ${z.stats.assigned} rangés`}
                   </text>
+                  {z.levels > 1 && (
+                    <text x={z.x + z.w - 10} y={z.y + 19} fill="rgba(180,170,200,0.6)" fontSize="9"
+                      textAnchor="end" fontFamily="JetBrains Mono, monospace">
+                      {z.levels} niv.
+                    </text>
+                  )}
                   {z.categories.length > 0 && (
                     <text x={z.x + 10} y={z.y + 47} fill="rgba(180,170,200,0.65)" fontSize="9" fontFamily="Inter, sans-serif">
                       {clip(z.categories.map((c) => c.name).join(' · '), 24)}
@@ -112,9 +120,10 @@ export function LogicMap({ doc, categories, onOpenZone }) {
                   {!z.reserved && (
                     <>
                       <rect x={z.x + 10} y={z.y + z.h - 14} width={z.w - 20} height="6" rx="3" fill="rgba(120,100,170,0.25)" />
+                      {/* Avancement du rangement : part des coffres déjà affectés. */}
                       <rect
                         x={z.x + 10} y={z.y + z.h - 14} rx="3" height="6"
-                        width={Math.max(0, Math.min(1, z.stats.slots > 0 ? z.stats.needed / z.stats.slots : 0)) * (z.w - 20)}
+                        width={Math.max(0, Math.min(1, z.stats.chests > 0 ? z.stats.assigned / z.stats.chests : 0)) * (z.w - 20)}
                         fill={LEVELS[z.stats.level].color}
                       />
                     </>
@@ -136,7 +145,7 @@ export function LogicMap({ doc, categories, onOpenZone }) {
         <Legend color="#9ad4ae" label="escalier" />
         <Legend color="#e0526f" label="entrée" />
         <Legend color={GOLD} label="zone réservée (tirets)" />
-        {Object.entries(LEVELS).map(([k, v]) => <Legend key={k} color={v.color} label={v.label} />)}
+        <Legend color="#9ad4ae" label="barre = part des coffres déjà affectés" />
       </div>
     </div>
   );

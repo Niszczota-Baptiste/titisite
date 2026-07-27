@@ -49,6 +49,7 @@ export function layoutLogic(doc, categories = []) {
           name: z.name || z.id,
           color: z.color,
           reserved: !!z.reserved,
+          levels: stats.levels,
           categories: (z.categoryIds || []).map((cid) => catById.get(cid)).filter(Boolean),
           stats,
           x: L.gutter + (i % L.cols) * (L.zoneW + L.gap),

@@ -56,8 +56,12 @@ export function listShares(planId) {
  */
 function mapPlan(r, { full = false, role = null } = {}) {
   if (!r) return null;
-  const doc = parseDoc(r.data);
   const dims = dimsOf(r);
+  // Renormalisé à la lecture : les plans écrits avant le passage au tout coffre
+  // sans fond (kind/facing, zones sans hauteur propre) sortent d'ici au format
+  // courant, sans attendre une réécriture.
+  let doc = parseDoc(r.data);
+  try { doc = normalizeDoc(doc, dims); } catch { /* document légal en base : on sert tel quel */ }
   const base = {
     id: r.id,
     name: r.name,

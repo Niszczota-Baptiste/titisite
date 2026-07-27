@@ -1,13 +1,18 @@
 # Atelier « Salle des coffres » (Minefield)
 
 Outil de **conception** d'une salle des coffres géante avant de la construire
-en jeu. C'est un **schéma d'organisation**, pas un builder ni un inventaire :
+en jeu, et de **son rangement**. C'est un schéma d'organisation, pas un builder
+ni un inventaire :
 
 - la palette ne contient que du fonctionnel — coffres, zones, circulation ;
   **aucun bloc de décoration** n'existe dans le modèle ni dans l'UI ;
-- **aucune ressource, aucune quantité, aucun stock** n'est stocké. Un coffre
-  est une case, un type (simple 27 slots / double 54) et une orientation. Le
-  suivi d'inventaire réel reste l'onglet ⛏️ Minecraft des projets.
+- le seul contenant est le **coffre sans fond** de Minefield : bloc 1×1×1,
+  **72 slots**, ouvrable de n'importe où — donc ni orientation, ni paire, ni
+  contrainte d'accès ;
+- un coffre peut être **dédié à un ou plusieurs items** du codex : c'est une
+  désignation de rangement (« la redstone va ici »), **jamais un stock**.
+  Aucune quantité n'existe dans le modèle. Le suivi d'inventaire réel reste
+  l'onglet ⛏️ Minecraft des projets.
 
 Module **global** (comme les quêtes) : route `/atelier-coffres`, back sous
 `/api/vault-plans` + `/api/vault-categories`. Point d'entrée : le bouton
@@ -39,22 +44,26 @@ d'un bloc (`server/db.js#migrate`) :
 Document (`floors` / `zones` / `chests` / `circulation`) :
 
 - **Étages** : tranches Y libres et **non chevauchantes** (vérifié à la
-  sauvegarde). Un étage peut faire 3 blocs comme 40, d'où le sélecteur de
-  niveau Y dans le panneau Étages : plusieurs rangées peuvent s'empiler au
-  même endroit, les autres niveaux restant affichés en repère.
-- **Zones** : rectangle sur un étage, couleur, catégories, `reservedSlots`
-  (réserve manuelle, en slots) et `reserved` (zone tampon gardée libre pour
-  une future MàJ — hachurée partout, exclue des calculs, comptée à part).
-- **Coffres** : `x/y/z`, `kind`, `facing`, `label` libre (le *rôle* du coffre,
-  jamais son contenu). La **paire d'un coffre double est déduite de son
-  orientation**, comme en jeu : nord/sud → accolés le long de X, est/ouest le
-  long de Z. Rien n'est stocké en plus et la touche `R` réoriente la paire.
+  sauvegarde). Un étage peut faire 3 blocs comme 40. Le sélecteur « niveau de
+  pose » du panneau Étages est le plan de coupe : les coffres de ce niveau sont
+  pleins, ceux des autres niveaux de l'étage restent en repère.
+- **Zones** : un **volume** — rectangle au sol **plus sa propre tranche Y**
+  (`yMin`/`yMax`) à l'intérieur de l'étage, d'où les « 100 × 5 × 100 ». Deux
+  zones peuvent partager une empreinte si elles occupent des niveaux distincts.
+  Plus couleur, catégories, `reservedSlots` (réserve manuelle, en slots) et
+  `reserved` (zone tampon gardée libre pour une future MàJ — hachurée partout,
+  exclue des calculs, comptée à part).
+- **Coffres** : `x/y/z`, `items` (ids de codex, sans quantité) et `label` libre.
+  Tous identiques : coffre sans fond, une case, 72 slots.
 - **Circulation** : `couloir` (cases peintes, une entrée par étage), `escalier`
   (case + liaison entre deux étages), `entree` (case + libellé).
 
-`server/vault/validate.js` renormalise le document à chaque écriture : le
-stockage est canonique (mêmes clés, pas de champ parasite), ce qui garde les
-révisions lisibles et l'export futur (`.schem` / pipeline Anvil) propre.
+`server/vault/validate.js` renormalise le document à chaque écriture **et à la
+lecture** : le stockage est canonique (mêmes clés, pas de champ parasite), ce
+qui garde les révisions lisibles et l'export futur (`.schem` / pipeline Anvil)
+propre. C'est aussi la migration : les plans écrits avant le passage au tout
+coffre sans fond perdent `kind`/`facing` (un double devient un coffre à sa case
+d'ancrage) et leurs zones héritent de la hauteur de leur étage.
 
 ### Ce qui bloque une sauvegarde, et ce qui ne bloque pas
 
@@ -63,11 +72,13 @@ bornes, étages qui se chevauchent, référence d'étage inconnue, élément hor
 gabarit, escalier qui ne relie pas deux étages distincts, id dupliqué.
 
 Les défauts de **conception** sont des warnings non bloquants (panneau
-« Vérifs », cliquables pour cadrer l'élément) : coffre sans circulation
-adjacente, coffre hors zone, zones superposées, coffres superposés, étage
-sans escalier, réserve supérieure à la capacité posée. Sinon un plan en cours
-d'édition deviendrait insauvegardable en pleine autosave. Dans le même esprit,
-supprimer une zone détache ses coffres au lieu de refuser l'écriture.
+« Vérifs », cliquables pour cadrer l'élément) : coffre hors zone, coffre hors
+des niveaux de sa zone, coffres superposés, zones superposées (empreinte **et**
+niveaux), item affecté à plusieurs coffres, étage sans escalier, réserve
+supérieure à la capacité posée. Sinon un plan en cours d'édition deviendrait
+insauvegardable en pleine autosave. Dans le même esprit, supprimer une zone
+détache ses coffres au lieu de refuser l'écriture. Il n'y a **pas** de warning
+d'accessibilité : un coffre sans fond s'ouvre de n'importe où.
 
 ## Collaboration (asynchrone, sans WebSocket)
 
@@ -80,11 +91,32 @@ deux éditeurs simultanés ne peuvent donc pas s'écraser silencieusement. En ca
 de `409`, l'autosave se met en pause et la modale propose **Recharger** ou
 **Écraser** (`force: true`), avec téléchargement du JSON local en filet.
 
+## Outils de remplissage
+
+- **Mur** : un glissé au sol trace une ligne droite et la monte sur **tous les
+  niveaux de la zone** (100 de long × 5 de haut = 500 coffres d'un geste).
+  `Maj` limite au niveau courant, et un réglage plafonne la hauteur. Les cases
+  déjà occupées sont sautées : un second passage complète le mur au lieu de le
+  doubler.
+- **Remplir de coffres** (fiche de zone) : tout le volume de la zone d'un coup.
+- **Répartir une catégorie** (fiche de zone) : les items de la catégorie sont
+  affectés aux coffres **libres** de la zone, dans l'ordre de lecture (niveau
+  par niveau), N items par coffre. C'est le « plan dans le plan » — le rangement
+  se dessine en un clic, puis s'ajuste coffre par coffre.
+
+## Annuaire de rangement
+
+L'onglet « 📒 Rangement » est la sortie utile du plan : un schéma compact des
+étages en haut, et en dessous l'annuaire — recherche d'un item, sa zone, son
+étage, les **coordonnées exactes** de son coffre (locales et monde si le plan a
+une origine), avec un lien qui recadre le plan dessus. Trois vues : par item,
+par zone, et la liste des coffres encore libres. Export CSV.
+
 ## Capacité
 
 Structurelle, sans jamais toucher à l'inventaire :
 
-- **disponible** = Σ des coffres posés (27 / 54) ;
+- **disponible** = nombre de coffres posés × 72 slots ;
 - **besoin** = la réserve manuelle saisie sur la zone ;
 - jauges à trois seuils (< 80 % vert, 80–100 % orange, > 100 % rouge) sur la
   zone, dans la carte logique et dans le tableau de bord ;
@@ -124,15 +156,16 @@ server/routes/vault.js
 src/pages/Atelier.jsx
 src/hooks/useVaultPlan.js          chargement, autosave, révision, 409
 src/components/vault/
-  planGeometry.js   maths pures (vue, rectangles, rangées, orientation)
+  planGeometry.js   maths pures (vue, rectangles, murs, niveaux de zone)
   capacity.js       jauges + validations douces
   logicLayout.js    mise en page du diagramme
   PlanCanvas.jsx    canvas 2D + gestes
   Toolbar · FloorsPanel · Inspector · ItemsPanel · ConflictModal
+  StorageIndex.jsx  l'annuaire (par item / par zone / coffres libres, CSV)
   LogicMap · Dashboard · VolumeView + VolumeScene · SnapshotsPanel
-  VaultApp.jsx      coquille (onglets Plan / Volume / Logique / Capacité)
+  VaultApp.jsx      coquille (onglets Plan / Rangement / Volume / Capacité)
 test/vault.test.js            API (409, 422, partage, snapshots, isolation)
-test/vault-geometry.test.js   maths pures + capacité + warnings
+test/vault-geometry.test.js   maths pures + murs + capacité + annuaire + warnings
 ```
 
 ## Hors périmètre v1

@@ -80,7 +80,7 @@ export default function VolumeScene({ doc, dims, onPickZone }) {
       scene.add(mesh);
     }
 
-    // Zones extrudées, cliquables.
+    // Zones extrudées, cliquables — chacune à sa propre hauteur (100×5×100).
     const floorById = new Map(doc.floors.map((f) => [f.id, f]));
     const zoneMeshes = [];
     for (const zone of doc.zones) {
@@ -88,7 +88,8 @@ export default function VolumeScene({ doc, dims, onPickZone }) {
       if (!floor) continue;
       const w = zone.rect.x1 - zone.rect.x0 + 1;
       const d = zone.rect.z1 - zone.rect.z0 + 1;
-      const h = Math.max(1, floor.yMax - floor.yMin + 1);
+      const yMin = zone.yMin ?? floor.yMin;
+      const h = Math.max(1, (zone.yMax ?? floor.yMax) - yMin + 1);
       const color = new THREE.Color(zone.color || '#c9a8e8');
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(w, h, d),
@@ -96,7 +97,7 @@ export default function VolumeScene({ doc, dims, onPickZone }) {
           color, transparent: true, opacity: zone.reserved ? 0.12 : 0.28, depthWrite: false,
         }),
       );
-      mesh.position.set(ox + zone.rect.x0 + w / 2, floor.yMin + h / 2, oz + zone.rect.z0 + d / 2);
+      mesh.position.set(ox + zone.rect.x0 + w / 2, yMin + h / 2, oz + zone.rect.z0 + d / 2);
       mesh.userData = { zoneId: zone.id, floorId: zone.floorId };
       scene.add(mesh);
       zoneMeshes.push(mesh);
@@ -109,29 +110,30 @@ export default function VolumeScene({ doc, dims, onPickZone }) {
       scene.add(edges);
     }
 
-    // Coffres agrégés : une instance par coffre, taille réelle (1 ou 2 cases).
+    // Coffres : un cube 1×1×1 par coffre sans fond, dans un seul InstancedMesh.
+    // Teinte selon l'état : or plein = déjà affecté à des items, sombre = libre.
     const chests = doc.chests.slice(0, CHEST_LIMIT);
     if (chests.length > 0) {
-      const geo = new THREE.BoxGeometry(1, 1, 1);
-      const mat = new THREE.MeshLambertMaterial({ color: new THREE.Color('#e8c86a') });
+      const geo = new THREE.BoxGeometry(0.92, 0.92, 0.92);
+      // Couleur par instance (setColorAt) : la matière reste blanche, three
+      // multiplie par `instanceColor`. Pas de `vertexColors`, la géométrie n'a
+      // pas d'attribut de couleur.
+      const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
       const inst = new THREE.InstancedMesh(geo, mat, chests.length);
       const m = new THREE.Matrix4();
       const q = new THREE.Quaternion();
-      const scale = new THREE.Vector3();
+      const scale = new THREE.Vector3(1, 1, 1);
       const pos = new THREE.Vector3();
+      const assignedColor = new THREE.Color('#e8c86a');
+      const freeColor = new THREE.Color('#6b5a34');
       chests.forEach((c, i) => {
-        const alongX = c.kind === 'double' && (c.facing === 'north' || c.facing === 'south');
-        const alongZ = c.kind === 'double' && !alongX;
-        scale.set(alongX ? 1.85 : 0.9, 0.9, alongZ ? 1.85 : 0.9);
-        pos.set(
-          ox + c.x + (alongX ? 1 : 0.5),
-          c.y + 0.45,
-          oz + c.z + (alongZ ? 1 : 0.5),
-        );
+        pos.set(ox + c.x + 0.5, c.y + 0.5, oz + c.z + 0.5);
         m.compose(pos, q, scale);
         inst.setMatrixAt(i, m);
+        inst.setColorAt(i, c.items?.length > 0 ? assignedColor : freeColor);
       });
       inst.instanceMatrix.needsUpdate = true;
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
       scene.add(inst);
     }
 

@@ -102,8 +102,9 @@ function PlanList({ onOpen }) {
       {plans.length === 0 && (
         <div style={{ ...panel, ...body, fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
           Aucun plan pour l’instant. Un plan, c’est un gabarit (par défaut 125 × 200 × 125),
-          des étages, des zones de rangement, des rangées de coffres et la circulation qui
-          les dessert — pour concevoir la salle avant de poser le premier bloc en jeu.
+          des étages, des zones en volume (100 × 5 × 100), des murs de coffres sans fond
+          montés d’un glissé, et l’annuaire qui dit quel item va dans quel coffre — pour
+          concevoir la salle *et* son rangement avant de poser le premier bloc en jeu.
         </div>
       )}
 
@@ -248,7 +249,7 @@ function Banner({ backSlug }) {
           </div>
           <h1 style={{ ...title, fontSize: 30, margin: '4px 0 0' }}>🗝️ Salle des coffres</h1>
           <p style={{ ...body, fontSize: 13, color: 'rgba(214,206,232,0.75)', margin: '5px 0 0' }}>
-            Schéma d’organisation : étages, zones, rangées de coffres et circulation. Aucun contenu, aucun stock.
+            Zones en volume, murs de coffres sans fond (72 slots) et annuaire de rangement. Aucune quantité, aucun stock.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
