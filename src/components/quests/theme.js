@@ -60,6 +60,50 @@ export const POINT_ROLES = {
   autre:        { label: 'Autre',        icon: '📍', color: ACC },
 };
 
+// Familles de quêtes. Pour en ajouter une : ici ET dans QUEST_CATEGORIES
+// (server/quests/enums.js) — rien d'autre, il n'y a pas de contrainte en base.
+export const QUEST_CATEGORIES = {
+  recolte: { label: 'Récolte', icon: '🌾', color: '#7be3a8' },
+  craft:   { label: 'Craft',   icon: '⚒️', color: GOLD },
+  achat:   { label: 'Achat',   icon: '🪙', color: '#7bd3e8' },
+  pvp:     { label: 'PvP',     icon: '⚔️', color: CRIMSON },
+  autre:   { label: 'Autre',   icon: '•',  color: ACC },
+};
+export const QUEST_CATEGORY_ORDER = ['recolte', 'craft', 'achat', 'pvp', 'autre'];
+
+// Catégories d'items uniques (même règle d'extension que ci-dessus, côté
+// UNIQUE_ITEM_CATEGORIES).
+export const ITEM_CATEGORIES = {
+  contenant:   { label: 'Contenant',   icon: '🎁' },
+  monnaie:     { label: 'Monnaie',     icon: '🪙' },
+  ressource:   { label: 'Ressource',   icon: '⛏️' },
+  equipement:  { label: 'Équipement',  icon: '⚔️' },
+  consommable: { label: 'Consommable', icon: '🧪' },
+  autre:       { label: 'Autre',       icon: '📦' },
+};
+export const ITEM_CATEGORY_ORDER = [
+  'contenant', 'monnaie', 'ressource', 'equipement', 'consommable', 'autre',
+];
+
+// D'où vient une probabilité de butin — une observation n'est pas une donnée
+// officielle, et la fiche doit le dire.
+export const PROBA_SOURCES = {
+  officielle: { label: 'Officielle', short: 'off.', color: '#7be3a8', title: 'Valeur publiée par le serveur' },
+  estimee:    { label: 'Estimée',    short: 'est.', color: GOLD,      title: 'Estimation à la louche, à confirmer' },
+  observee:   { label: 'Observée',   short: 'obs.', color: '#7bd3e8', title: 'Déduite des ouvertures relevées' },
+};
+
+// Sources saisies à la main (tout le reste est dérivé).
+export const MANUAL_SOURCE_KINDS = {
+  mob:        { label: 'Drop de mob',  icon: '🧟' },
+  coffre:     { label: 'Coffre',       icon: '🧰' },
+  evenement:  { label: 'Événement',    icon: '🎉' },
+  pnj:        { label: 'PNJ',          icon: '🧑‍🌾' },
+  peche:      { label: 'Pêche',        icon: '🎣' },
+  minage:     { label: 'Minage',       icon: '⛏️' },
+  autre:      { label: 'Autre',        icon: '•' },
+};
+
 // Standalone points of interest (not tied to a quest).
 export const POI_CATEGORIES = {
   batiment:  { label: 'Bâtiment',   icon: '🏛️', color: '#e8c86a' },

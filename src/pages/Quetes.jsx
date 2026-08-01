@@ -8,7 +8,7 @@ import { Login } from '../components/admin/Login';
 import { Modal } from '../components/project/shared';
 import { customCatalogEntries } from '../data/minefieldCatalog';
 import { ChainGraph } from '../components/quests/ChainGraph';
-import { CustomItemsTab } from '../components/quests/CustomItemsTab';
+import { ItemsTab } from '../components/quests/items/ItemsTab';
 import { GainsView } from '../components/quests/GainsView';
 import { MapTab } from '../components/quests/MapTab';
 import { QuestDetail } from '../components/quests/QuestDetail';
@@ -41,7 +41,7 @@ export default function Quetes() {
 
 const TABS = [
   ['quetes', 'Quêtes'],
-  ['items', 'Items'],
+  ['items', '📦 Items'],
   ['carte', 'Carte'],
   ['chaines', 'Chaînes'],
   ['reputation', 'Réputation'],
@@ -175,7 +175,10 @@ function QuestsApp({ user }) {
           <QuestList quests={quests} factions={factions} chains={chains} groups={groups} filters={filters} setFilters={setFilters} onOpen={setDetailId} />
         )}
         {tab === 'items' && (
-          <CustomItemsTab items={customItems} catalog={catalog} byId={byId} canEdit={canEdit} onChanged={refreshAll} />
+          <ItemsTab
+            byId={byIdPlus} catalog={catalogPlus} factions={factions} canEdit={canEdit}
+            onOpenQuest={setDetailId} onChanged={refreshAll}
+          />
         )}
         {tab === 'carte' && <MapTab canEdit={canEdit} onOpenQuest={setDetailId} />}
         {tab === 'chaines' && <ChainsTab chains={chains} doneMap={doneMap} onOpen={setDetailId} />}
