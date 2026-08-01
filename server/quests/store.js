@@ -4,6 +4,9 @@
 // write. No reputation score is stored — rewards only *document* gains.
 
 import { db } from '../db.js';
+import {
+  createUniqueItem, deleteUniqueItem, getUniqueItem, listUniqueItems, updateUniqueItem,
+} from './items.js';
 import { currentPeriodKey, nextResetAt, RECURRING } from './period.js';
 
 // ── Mappers ──────────────────────────────────────────────────────────────
@@ -59,6 +62,8 @@ function mapQuestSummary(r) {
     titre: r.titre,
     description: r.description,
     occurrenceType: r.occurrence_type,
+    // Famille de quête : récolte (défaut historique), craft, achat, pvp, autre.
+    categorie: r.categorie || 'recolte',
     factionId: r.faction_id,
     factionNom: r.faction_nom ?? null,
     factionCouleur: r.faction_couleur ?? null,
@@ -298,35 +303,19 @@ function replaceGroupItems(questId, groupIds) {
 // avec une liste libre d'enchantements. Les lignes de quêtes le référencent
 // par ref_code = 'custom:<id>'.
 
-function mapCustomItem(r) {
-  if (!r) return null;
-  const parseList = (blob) => {
-    try {
-      const parsed = JSON.parse(blob);
-      return Array.isArray(parsed) ? parsed.map(String) : [];
-    } catch { return []; /* blob illisible → liste vide */ }
-  };
-  return {
-    id: r.id, nom: r.nom, refCode: r.ref_code,
-    enchantements: parseList(r.enchantements),
-    stats: parseList(r.stats),
-    note: r.note, sortOrder: r.sort_order, updatedAt: r.updated_at,
-  };
-}
-
-const enchantsJson = (list) => JSON.stringify(
-  (Array.isArray(list) ? list : [])
-    .map((e) => String(e).trim().slice(0, 80))
-    .filter(Boolean)
-    .slice(0, 20),
-);
+// Ces fonctions DÉLÈGUENT au catalogue d'items uniques (quests/items.js) :
+// c'est la même table et la même entité, et un second chemin d'écriture
+// laisserait des lignes sans slug. Elles restent exportées ici parce que les
+// routes historiques `/quests/custom-items` s'en servent — elles renvoient
+// désormais la fiche enrichie (rareté, lore, catégorie…), qui reste compatible
+// avec les consommateurs existants (nom / refCode / enchantements / stats).
 
 export function listCustomItems() {
-  return db.prepare(`SELECT * FROM quest_custom_items ORDER BY sort_order, id`).all().map(mapCustomItem);
+  return listUniqueItems();
 }
 
 export function getCustomItem(id) {
-  return mapCustomItem(db.prepare(`SELECT * FROM quest_custom_items WHERE id = ?`).get(id));
+  return getUniqueItem(id);
 }
 
 // Nom custom depuis un ref_code 'custom:<id>' (null si autre forme / inconnu).
@@ -337,34 +326,23 @@ export function customItemNameByRef(refCode) {
   return r ? r.nom : null;
 }
 
+// Création/édition depuis les routes historiques : un payload minimal (nom,
+// refCode, enchantements…) reste valide, les champs de catalogue prennent
+// simplement leurs valeurs par défaut. Une mise à jour PRÉSERVE les champs
+// absents du payload, sinon éditer un item depuis l'ancien formulaire
+// effacerait sa rareté, son lore et sa table de butin.
 export function createCustomItem(data, userId) {
-  const info = db.prepare(`
-    INSERT INTO quest_custom_items (nom, ref_code, enchantements, stats, note, sort_order, created_by, updated_by)
-    VALUES (?, ?, ?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_custom_items), 0), ?, ?)
-  `).run(
-    String(data.nom).trim(), data.refCode || null,
-    enchantsJson(data.enchantements), enchantsJson(data.stats),
-    String(data.note || '').trim().slice(0, 500), userId, userId,
-  );
-  return getCustomItem(info.lastInsertRowid);
+  return createUniqueItem(data, userId);
 }
 
 export function updateCustomItem(id, data, userId) {
-  const exists = db.prepare(`SELECT id FROM quest_custom_items WHERE id = ?`).get(id);
-  if (!exists) return null;
-  db.prepare(`
-    UPDATE quest_custom_items SET nom = ?, ref_code = ?, enchantements = ?, stats = ?, note = ?,
-      updated_by = ?, updated_at = strftime('%s','now') WHERE id = ?
-  `).run(
-    String(data.nom).trim(), data.refCode || null,
-    enchantsJson(data.enchantements), enchantsJson(data.stats),
-    String(data.note || '').trim().slice(0, 500), userId, id,
-  );
-  return getCustomItem(id);
+  const current = getUniqueItem(id);
+  if (!current) return null;
+  return updateUniqueItem(id, { ...current, ...data }, userId);
 }
 
 export function deleteCustomItem(id) {
-  return db.prepare(`DELETE FROM quest_custom_items WHERE id = ?`).run(id).changes > 0;
+  return deleteUniqueItem(id);
 }
 
 // ── Quests ───────────────────────────────────────────────────────────────
@@ -375,6 +353,7 @@ export function listQuests(filters = {}) {
   if (filters.factionId != null) { where.push('q.faction_id = ?'); args.push(filters.factionId); }
   if (filters.chainId != null) { where.push('q.chain_id = ?'); args.push(filters.chainId); }
   if (filters.occurrence) { where.push('q.occurrence_type = ?'); args.push(filters.occurrence); }
+  if (filters.categorie) { where.push('q.categorie = ?'); args.push(filters.categorie); }
   if (filters.groupId != null) {
     where.push('q.id IN (SELECT quest_id FROM quest_group_items WHERE group_id = ?)');
     args.push(filters.groupId);
@@ -404,7 +383,106 @@ export function getQuest(id) {
     JOIN quests q ON q.id = e.from_quest_id WHERE e.to_quest_id = ? ORDER BY q.chain_rank, q.id
   `).all(id).map((q) => ({ id: q.id, titre: q.titre, occurrenceType: q.occurrence_type }));
   const groups = groupsForQuest(id);
-  return { ...base, inputs, rewards, prerequisites, mapPoints, nextQuests, prevQuests, groups };
+  return {
+    ...base, inputs, rewards, prerequisites, mapPoints, nextQuests, prevQuests, groups,
+    craft: mapCraft(r), offers: listOffers(id),
+  };
+}
+
+// ── Recette d'une quête de craft ──────────────────────────────────────────
+// Les ingrédients vivent dans `quest_inputs` et le résultat dans
+// `quest_rewards` (donc « Où trouver dans les coffres » et le flux cockpit
+// fonctionnent sans rien de plus) ; seule la mise en scène est stockée ici.
+// `grid` = 9 cases d'ids de codex, le format déjà consommé par CraftGrid.
+
+function mapCraft(r) {
+  let grid = [];
+  try {
+    const parsed = JSON.parse(r.craft_grid || '[]');
+    if (Array.isArray(parsed)) grid = parsed.slice(0, 9).map((c) => String(c || ''));
+  } catch { grid = []; /* grille illisible → liste d'ingrédients seule */ }
+  return {
+    station: r.craft_station || '',
+    grid,
+    shapeless: !!r.craft_shapeless,
+    maitriseFactionId: r.maitrise_faction_id ?? null,
+    maitriseTierId: r.maitrise_tier_id ?? null,
+  };
+}
+
+// Grille normalisée : 9 cases exactement, ids de codex bruts ('' = vide).
+function craftGridJson(grid) {
+  if (!Array.isArray(grid) || grid.length === 0) return '[]';
+  // eslint-disable-next-line security/detect-object-injection -- `i` est l'index d'un Array.from de longueur fixe
+  const cells = Array.from({ length: 9 }, (_, i) => String(grid[i] || '').slice(0, 120));
+  return cells.some((c) => c) ? JSON.stringify(cells) : '[]';
+}
+
+// ── Offres d'une quête d'achat ────────────────────────────────────────────
+
+function mapOfferLine(r) {
+  return {
+    id: r.id, sens: r.sens, kind: r.kind, refCode: r.ref_code,
+    quantite: r.quantite, label: r.label, ordre: r.ordre,
+  };
+}
+
+export function listOffers(questId) {
+  const offers = db.prepare(`SELECT * FROM quest_offers WHERE quest_id = ? ORDER BY ordre, id`).all(questId);
+  if (offers.length === 0) return [];
+  const ph = offers.map(() => '?').join(',');
+  const lines = db.prepare(`
+    SELECT * FROM quest_offer_lines WHERE offer_id IN (${ph}) ORDER BY ordre, id
+  `).all(...offers.map((o) => o.id));
+  const byOffer = new Map();
+  for (const l of lines) {
+    if (!byOffer.has(l.offer_id)) byOffer.set(l.offer_id, []);
+    byOffer.get(l.offer_id).push(mapOfferLine(l));
+  }
+  return offers.map((o) => {
+    const all = byOffer.get(o.id) || [];
+    return {
+      id: o.id,
+      vendeur: o.vendeur,
+      note: o.note,
+      stock: o.stock ?? null,
+      limite: o.limite,
+      mapId: o.map_id ?? null,
+      x: o.x, y: o.y, z: o.z,
+      ordre: o.ordre,
+      donne: all.filter((l) => l.sens === 'donne'),
+      recoit: all.filter((l) => l.sens === 'recoit'),
+    };
+  });
+}
+
+function replaceOffers(questId, rows) {
+  db.prepare(`DELETE FROM quest_offers WHERE quest_id = ?`).run(questId);
+  const insOffer = db.prepare(`
+    INSERT INTO quest_offers (quest_id, vendeur, note, stock, limite, map_id, x, y, z, ordre)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insLine = db.prepare(`
+    INSERT INTO quest_offer_lines (offer_id, sens, kind, ref_code, quantite, label, ordre)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  const num = (v) => (v == null || v === '' ? null : Math.trunc(+v) || 0);
+  (rows || []).forEach((o, i) => {
+    const info = insOffer.run(
+      questId, String(o.vendeur || '').slice(0, 120), String(o.note || '').slice(0, 500),
+      o.stock == null || o.stock === '' ? null : Math.max(0, Math.trunc(+o.stock) || 0),
+      String(o.limite || '').slice(0, 120),
+      o.mapId ?? null, num(o.x), num(o.y), num(o.z), i,
+    );
+    const offerId = info.lastInsertRowid;
+    for (const sens of ['donne', 'recoit']) {
+      // eslint-disable-next-line security/detect-object-injection -- `sens` itère une liste littérale
+      (o[sens] || []).forEach((l, j) => insLine.run(
+        offerId, sens, l.kind || 'item', l.refCode ?? null,
+        Math.max(1, Math.trunc(+l.quantite || 1)), String(l.label || '').slice(0, 120), j,
+      ));
+    }
+  });
 }
 
 function replaceInputs(questId, rows) {
@@ -470,13 +548,20 @@ function replaceEdges(questId, rewards) {
 }
 
 const insertQuestTx = db.transaction((data, userId) => {
+  const craft = data.craft || {};
   const info = db.prepare(`
-    INSERT INTO quests (titre, description, occurrence_type, faction_id, chain_id, chain_rank, due_date, created_by, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO quests (titre, description, occurrence_type, categorie, faction_id, chain_id,
+      chain_rank, due_date, craft_station, craft_grid, craft_shapeless,
+      maitrise_faction_id, maitrise_tier_id, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.titre, data.description || '', data.occurrenceType || 'simple',
+    data.categorie || 'recolte',
     data.factionId ?? null, data.chainId ?? null, Number(data.chainRank) || 0,
-    data.dueDate ?? null, userId, userId,
+    data.dueDate ?? null,
+    String(craft.station || '').slice(0, 120), craftGridJson(craft.grid), craft.shapeless ? 1 : 0,
+    craft.maitriseFactionId ?? null, craft.maitriseTierId ?? null,
+    userId, userId,
   );
   const id = info.lastInsertRowid;
   replaceInputs(id, data.inputs);
@@ -485,6 +570,7 @@ const insertQuestTx = db.transaction((data, userId) => {
   replacePoints(id, data.mapPoints);
   replaceEdges(id, data.rewards);
   replaceGroupItems(id, data.groupIds);
+  replaceOffers(id, data.offers);
   return id;
 });
 
@@ -493,20 +579,29 @@ export function createQuest(data, userId) {
 }
 
 const updateQuestTx = db.transaction((id, data, userId) => {
+  const craft = data.craft || {};
   db.prepare(`
-    UPDATE quests SET titre = ?, description = ?, occurrence_type = ?, faction_id = ?,
-      chain_id = ?, chain_rank = ?, due_date = ?, updated_by = ?, updated_at = strftime('%s','now')
+    UPDATE quests SET titre = ?, description = ?, occurrence_type = ?, categorie = ?, faction_id = ?,
+      chain_id = ?, chain_rank = ?, due_date = ?,
+      craft_station = ?, craft_grid = ?, craft_shapeless = ?,
+      maitrise_faction_id = ?, maitrise_tier_id = ?,
+      updated_by = ?, updated_at = strftime('%s','now')
     WHERE id = ?
   `).run(
     data.titre, data.description || '', data.occurrenceType || 'simple',
+    data.categorie || 'recolte',
     data.factionId ?? null, data.chainId ?? null, Number(data.chainRank) || 0,
-    data.dueDate ?? null, userId, id,
+    data.dueDate ?? null,
+    String(craft.station || '').slice(0, 120), craftGridJson(craft.grid), craft.shapeless ? 1 : 0,
+    craft.maitriseFactionId ?? null, craft.maitriseTierId ?? null,
+    userId, id,
   );
   if (Array.isArray(data.inputs)) replaceInputs(id, data.inputs);
   if (Array.isArray(data.rewards)) { replaceRewards(id, data.rewards); replaceEdges(id, data.rewards); }
   if (Array.isArray(data.prerequisites)) replacePrereqs(id, data.prerequisites);
   if (Array.isArray(data.mapPoints)) replacePoints(id, data.mapPoints);
   if (Array.isArray(data.groupIds)) replaceGroupItems(id, data.groupIds);
+  if (Array.isArray(data.offers)) replaceOffers(id, data.offers);
 });
 
 export function updateQuest(id, data, userId) {

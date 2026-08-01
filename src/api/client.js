@@ -324,12 +324,36 @@ export const api = {
     // Items custom : objets du codex renommés (+ enchantements), référencés
     // dans les lignes de quêtes via refCode 'custom:<id>'.
     customItems:      () => request('GET', '/quests/custom-items'),
+    // Catalogue d'items uniques — MÊME entité que les items custom, vue riche
+    // (rareté, lore, catégorie, prix, table de butin, sources).
+    uniqueItems: {
+      list:     () => request('GET', '/quests/unique-items'),
+      get:      (id) => request('GET', `/quests/unique-items/${id}`),
+      // Index inversé : { sources: {…}, usages: {…} }, entièrement dérivé.
+      sources:  (id) => request('GET', `/quests/unique-items/${id}/sources`),
+      create:   (b) => request('POST', '/quests/unique-items', b),
+      update:   (id, b) => request('PUT', `/quests/unique-items/${id}`, b),
+      remove:   (id) => request('DELETE', `/quests/unique-items/${id}`),
+      // Journal d'ouvertures : ouvert à tout lecteur de quêtes (taux empiriques).
+      observations:    (id) => request('GET', `/quests/unique-items/${id}/observations`),
+      logObservation:  (id, b) => request('POST', `/quests/unique-items/${id}/observations`, b),
+      deleteObservation: (obsId) => request('DELETE', `/quests/observations/${obsId}`),
+    },
+    // Échelle de rareté (table éditable, pas un enum).
+    rarities: {
+      list:    () => request('GET', '/quests/rarities'),
+      create:  (b) => request('POST', '/quests/rarities', b),
+      update:  (id, b) => request('PUT', `/quests/rarities/${id}`, b),
+      reorder: (ids) => request('PUT', '/quests/rarities', { ids }),
+      remove:  (id) => request('DELETE', `/quests/rarities/${id}`),
+    },
     list:       (params = {}) => {
       const q = new URLSearchParams();
       if (params.faction) q.set('faction', params.faction);
       if (params.chain) q.set('chain', params.chain);
       if (params.group) q.set('group', params.group);
       if (params.occurrence) q.set('occurrence', params.occurrence);
+      if (params.categorie) q.set('categorie', params.categorie);
       const s = q.toString();
       return request('GET', `/quests/quests${s ? `?${s}` : ''}`);
     },

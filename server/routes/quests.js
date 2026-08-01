@@ -6,6 +6,20 @@ import { db } from '../db.js';
 import { findByCockpitToken } from '../users.js';
 import { buildCockpitFeed } from '../quests/cockpit.js';
 import {
+  addObservation,
+  deleteObservation,
+  getObservation,
+  getUniqueItem,
+  itemSources,
+  listObservations,
+  listRarities,
+  listUniqueItems,
+  observationSummary,
+  parseUniqueRef,
+  uniqueItemExists,
+} from '../quests/items.js';
+import { LOOT_RESULT_TYPES } from '../quests/enums.js';
+import {
   completeQuest,
   createGroup,
   customItemNameByRef,
@@ -119,6 +133,67 @@ questsRouter.put('/my-groups/:id/quests', READ, (req, res) => {
   if (!Array.isArray(req.body?.questIds)) return res.status(400).json({ error: 'quest_ids_required' });
   res.json({ questIds: setGroupQuests(id, req.body.questIds) });
 });
+// ── Catalogue d'items uniques ──────────────────────────────────────────────
+// Lecture ouverte à tout lecteur de quêtes (même garde que le reste du module :
+// rien n'est public). L'écriture du catalogue vit dans quests-admin.js ; SEULE
+// exception, le journal d'ouvertures ci-dessous, qu'un simple lecteur alimente
+// — c'est le principe même d'une table de butin affinée collectivement.
+questsRouter.get('/rarities', READ, (_req, res) => res.json(listRarities()));
+
+questsRouter.get('/unique-items', READ, (_req, res) => res.json(listUniqueItems()));
+
+questsRouter.get('/unique-items/:id', READ, (req, res) => {
+  const item = getUniqueItem(Number(req.params.id));
+  if (!item) return res.status(404).json({ error: 'not_found' });
+  res.json(item);
+});
+
+// Index inversé : toutes les façons d'obtenir l'objet + tout ce à quoi il sert.
+questsRouter.get('/unique-items/:id/sources', READ, (req, res) => {
+  const id = Number(req.params.id);
+  if (!uniqueItemExists(id)) return res.status(404).json({ error: 'not_found' });
+  res.json(itemSources(id));
+});
+
+questsRouter.get('/unique-items/:id/observations', READ, (req, res) => {
+  const id = Number(req.params.id);
+  if (!uniqueItemExists(id)) return res.status(404).json({ error: 'not_found' });
+  res.json({ resume: observationSummary(id), recentes: listObservations(id) });
+});
+
+// Loguer une ouverture : réservé aux items ouvrables, quantité bornée.
+questsRouter.post('/unique-items/:id/observations', READ, (req, res) => {
+  const id = Number(req.params.id);
+  const item = getUniqueItem(id);
+  if (!item) return res.status(404).json({ error: 'not_found' });
+  if (!item.estOuvrable) return res.status(400).json({ error: 'item_not_openable' });
+  const type = String(req.body?.resultatType || 'item_referentiel');
+  if (!LOOT_RESULT_TYPES.has(type)) return res.status(400).json({ error: 'invalid_resultat_type' });
+  const qte = Math.trunc(Number(req.body?.quantite ?? 1));
+  if (!Number.isFinite(qte) || qte < 1 || qte > 10_000) {
+    return res.status(400).json({ error: 'invalid_quantite' });
+  }
+  // Une observation qui désigne un item unique doit désigner un item existant.
+  if (type === 'unique_item') {
+    const target = req.body?.resultatUniqueId ?? parseUniqueRef(req.body?.resultatRef);
+    if (!target || !uniqueItemExists(Number(target))) {
+      return res.status(400).json({ error: 'unknown_unique_item' });
+    }
+  }
+  addObservation(id, { ...req.body, quantite: qte, resultatType: type }, req.user.id);
+  res.status(201).json({ resume: observationSummary(id), recentes: listObservations(id) });
+});
+
+// Suppression d'une observation : son auteur, ou un éditeur de quêtes.
+questsRouter.delete('/observations/:id', READ, (req, res) => {
+  const obs = getObservation(Number(req.params.id));
+  if (!obs) return res.status(404).json({ error: 'not_found' });
+  const isEditor = req.user.role === 'admin' || req.user.can_edit_quests === 1;
+  if (!isEditor && obs.memberId !== req.user.id) return res.status(403).json({ error: 'forbidden' });
+  deleteObservation(obs.id);
+  res.json({ resume: observationSummary(obs.uniqueItemId), recentes: listObservations(obs.uniqueItemId) });
+});
+
 questsRouter.get('/reputation', READ, (_req, res) => res.json(reputationOverview()));
 questsRouter.get('/maps', READ, (_req, res) => res.json(listMaps()));
 questsRouter.get('/custom-items', READ, (_req, res) => res.json(listCustomItems()));
@@ -139,6 +214,7 @@ questsRouter.get('/quests', READ, (req, res) => {
     else return res.status(404).json({ error: 'not_found' });
   }
   if (req.query.occurrence) filters.occurrence = String(req.query.occurrence);
+  if (req.query.categorie) filters.categorie = String(req.query.categorie);
   const done = memberCurrentDone(req.user.id);
   const quests = listQuests(filters).map((q) => ({ ...q, done: !!done[q.id] }));
   res.json(quests);

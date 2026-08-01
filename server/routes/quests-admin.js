@@ -1,6 +1,29 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
 import {
+  LOOT_RESULT_TYPES,
+  MANUAL_SOURCE_KINDS,
+  OFFER_LINE_KINDS,
+  PROBA_SOURCES,
+  QUEST_CATEGORIES,
+  UNIQUE_ITEM_CATEGORIES,
+} from '../quests/enums.js';
+import {
+  createRarity,
+  createUniqueItem,
+  deleteRarity,
+  deleteUniqueItem,
+  factionExists,
+  getUniqueItem,
+  lootWouldCycle,
+  parseUniqueRef,
+  rarityExists,
+  reorderRarities,
+  uniqueItemExists,
+  updateRarity,
+  updateUniqueItem,
+} from '../quests/items.js';
+import {
   createChain,
   createCustomItem,
   createFaction,
@@ -38,6 +61,7 @@ questsAdminRouter.use(requireAuth, requireQuestEdit);
 
 // ── Validation ─────────────────────────────────────────────────────────────
 const OCCURRENCES = new Set(['simple', 'journaliere', 'hebdomadaire', 'mensuelle']);
+const PRICE_UNIT_RE = /^(pa|custom:\d+)$/;
 const FACTION_TYPES = new Set(['faction', 'maitrise']);
 const INPUT_KINDS = new Set(['item', 'pa', 'reputation', 'pnj', 'autre']);
 const REWARD_KINDS = new Set(['item', 'pa', 'reputation', 'deblocage', 'autre']);
@@ -86,9 +110,115 @@ function validateCustomItem(b) {
   if (b.stats != null && !Array.isArray(b.stats)) throw new Invalid('invalid_stats');
 }
 
+// ── Items uniques ───────────────────────────────────────────────────────────
+
+function validateRarity(b) {
+  if (!nonEmpty(b?.nom)) throw new Invalid('rarity_nom_required');
+  if (asStr(b.nom).trim().length > 60) throw new Invalid('rarity_nom_too_long');
+}
+
+// Une ligne de butin. `probabilite` est bornée à [0,100] mais la SOMME n'est
+// jamais contrainte : une table incomplète doit rester enregistrable, elle est
+// seulement signalée à l'écran.
+function validateLootRow(l) {
+  const type = l?.resultatType || 'item_referentiel';
+  if (!LOOT_RESULT_TYPES.has(type)) throw new Invalid('invalid_resultat_type');
+  if (l?.probabiliteSource && !PROBA_SOURCES.has(l.probabiliteSource)) {
+    throw new Invalid('invalid_probabilite_source');
+  }
+  const p = Number(l?.probabilite ?? 0);
+  if (!Number.isFinite(p) || p < 0 || p > 100) throw new Invalid('invalid_probabilite');
+  const min = Math.trunc(Number(l?.quantiteMin ?? 1));
+  const max = Math.trunc(Number(l?.quantiteMax ?? min));
+  if (!Number.isFinite(min) || min < 1) throw new Invalid('invalid_quantite_min');
+  if (!Number.isFinite(max) || max < 1) throw new Invalid('invalid_quantite_max');
+  if (min > max) throw new Invalid('quantite_min_gt_max');
+  if (type === 'unique_item') {
+    const target = l?.resultatUniqueId ?? parseUniqueRef(l?.resultatRef);
+    if (!target || !uniqueItemExists(Number(target))) throw new Invalid('unknown_unique_item');
+  }
+  if (type === 'reputation' && l?.factionId != null && !factionExists(Number(l.factionId))) {
+    throw new Invalid('unknown_faction');
+  }
+}
+
+function validateUniqueItem(b, { id = null } = {}) {
+  if (!nonEmpty(b?.nom)) throw new Invalid('item_nom_required');
+  if (asStr(b.nom).trim().length > 120) throw new Invalid('item_nom_too_long');
+  if (b.categorie && !UNIQUE_ITEM_CATEGORIES.has(b.categorie)) throw new Invalid('invalid_categorie');
+  if (b.rareteId != null && b.rareteId !== '' && !rarityExists(Number(b.rareteId))) {
+    throw new Invalid('unknown_rarete');
+  }
+  if (b.factionId != null && b.factionId !== '' && !factionExists(Number(b.factionId))) {
+    throw new Invalid('unknown_faction');
+  }
+  if (b.prixVente != null && b.prixVente !== '') {
+    const p = Number(b.prixVente);
+    if (!Number.isFinite(p) || p < 0) throw new Invalid('invalid_prix');
+  }
+  // Unité de prix : PA, ou un item unique de catégorie « monnaie » qui existe.
+  if (b.prixUnite && !PRICE_UNIT_RE.test(String(b.prixUnite))) throw new Invalid('invalid_prix_unite');
+  const unitId = parseUniqueRef(b.prixUnite);
+  if (unitId != null && !uniqueItemExists(unitId)) throw new Invalid('unknown_prix_unite');
+  if (unitId != null && id != null && unitId === Number(id)) throw new Invalid('prix_unite_self');
+  for (const e of [b.enchantements, b.stats, b.tags]) {
+    if (e != null && !Array.isArray(e)) throw new Invalid('invalid_list');
+  }
+  if (b.loot != null) {
+    if (!Array.isArray(b.loot)) throw new Invalid('invalid_loot');
+    if (b.loot.length > 200) throw new Invalid('too_many_loot_rows');
+    for (const l of b.loot) validateLootRow(l);
+    // Un contenant ne peut pas se contenir lui-même, même indirectement.
+    if (id != null && lootWouldCycle(id, b.loot)) throw new Invalid('loot_cycle');
+  }
+  if (b.sourcesManuelles != null) {
+    if (!Array.isArray(b.sourcesManuelles)) throw new Invalid('invalid_sources');
+    for (const s of b.sourcesManuelles) {
+      if (s?.kind && !MANUAL_SOURCE_KINDS.has(s.kind)) throw new Invalid('invalid_source_kind');
+      if (!nonEmpty(s?.label)) throw new Invalid('source_label_required');
+    }
+  }
+}
+
+function validateOffers(offers) {
+  if (!Array.isArray(offers)) throw new Invalid('invalid_offers');
+  if (offers.length > 50) throw new Invalid('too_many_offers');
+  for (const o of offers) {
+    if (o?.stock != null && o.stock !== '') {
+      const s = Number(o.stock);
+      if (!Number.isFinite(s) || s < 0) throw new Invalid('invalid_stock');
+    }
+    let lines = 0;
+    for (const sens of ['donne', 'recoit']) {
+      // eslint-disable-next-line security/detect-object-injection -- `sens` itère une liste littérale
+      const rows = o?.[sens];
+      if (rows == null) continue;
+      if (!Array.isArray(rows)) throw new Invalid('invalid_offer_lines');
+      lines += rows.length;
+      for (const l of rows) {
+        if (l?.kind && !OFFER_LINE_KINDS.has(l.kind)) throw new Invalid('invalid_offer_line_kind');
+        const q = Math.trunc(Number(l?.quantite ?? 1));
+        if (!Number.isFinite(q) || q < 1) throw new Invalid('invalid_offer_quantite');
+        const uid = parseUniqueRef(l?.refCode);
+        if (uid != null && !uniqueItemExists(uid)) throw new Invalid('unknown_unique_item');
+      }
+    }
+    if (lines === 0) throw new Invalid('offer_needs_lines');
+  }
+}
+
 function validateQuest(b) {
   if (!nonEmpty(b?.titre)) throw new Invalid('titre_required');
   if (b.occurrenceType && !OCCURRENCES.has(b.occurrenceType)) throw new Invalid('invalid_occurrence');
+  if (b.categorie && !QUEST_CATEGORIES.has(b.categorie)) throw new Invalid('invalid_quest_categorie');
+  if (b.craft != null) {
+    if (typeof b.craft !== 'object') throw new Invalid('invalid_craft');
+    if (b.craft.grid != null && !Array.isArray(b.craft.grid)) throw new Invalid('invalid_craft_grid');
+    if (b.craft.grid != null && b.craft.grid.length > 9) throw new Invalid('invalid_craft_grid');
+    if (b.craft.maitriseFactionId != null && b.craft.maitriseFactionId !== ''
+        && !factionExists(Number(b.craft.maitriseFactionId))) throw new Invalid('unknown_faction');
+  }
+  if (b.offers != null) validateOffers(b.offers);
   for (const l of b.inputs || []) {
     if (!INPUT_KINDS.has(l?.kind)) throw new Invalid('invalid_input_kind');
   }
@@ -230,6 +360,55 @@ questsAdminRouter.put('/custom-items/:id', handle((req, res) => {
 
 questsAdminRouter.delete('/custom-items/:id', (req, res) => {
   if (!deleteCustomItem(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Raretés (échelle ordonnée, éditable en ligne) ───────────────────────────
+questsAdminRouter.post('/rarities', handle((req, res) => {
+  validateRarity(req.body);
+  res.status(201).json(createRarity(req.body, req.user.id));
+}));
+
+questsAdminRouter.put('/rarities/:id', handle((req, res) => {
+  validateRarity(req.body);
+  const out = updateRarity(Number(req.params.id), req.body, req.user.id);
+  if (!out) return res.status(404).json({ error: 'not_found' });
+  res.json(out);
+}));
+
+// Réordonne toute l'échelle d'un coup (glisser-déposer côté éditeur).
+questsAdminRouter.put('/rarities', handle((req, res) => {
+  if (!Array.isArray(req.body?.ids)) throw new Invalid('ids_required');
+  res.json(reorderRarities(req.body.ids, req.user.id));
+}));
+
+// Les items concernés gardent leur ligne : rarete_id retombe à NULL (FK).
+questsAdminRouter.delete('/rarities/:id', (req, res) => {
+  if (!deleteRarity(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Items uniques (catalogue + table de butin + sources manuelles) ──────────
+questsAdminRouter.post('/unique-items', handle((req, res) => {
+  validateUniqueItem(req.body);
+  res.status(201).json(createUniqueItem(req.body, req.user.id));
+}));
+
+questsAdminRouter.put('/unique-items/:id', handle((req, res) => {
+  const id = Number(req.params.id);
+  if (!uniqueItemExists(id)) return res.status(404).json({ error: 'not_found' });
+  validateUniqueItem(req.body, { id });
+  res.json(updateUniqueItem(id, req.body, req.user.id));
+}));
+
+questsAdminRouter.get('/unique-items/:id/edit', (req, res) => {
+  const out = getUniqueItem(Number(req.params.id));
+  if (!out) return res.status(404).json({ error: 'not_found' });
+  res.json(out);
+});
+
+questsAdminRouter.delete('/unique-items/:id', (req, res) => {
+  if (!deleteUniqueItem(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
   res.status(204).end();
 });
 
