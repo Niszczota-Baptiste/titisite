@@ -1275,6 +1275,179 @@ export function migrate() {
   // « Vitesse +20 % ») — même modèle que les enchantements.
   ensureColumn('quest_custom_items', 'stats', "TEXT NOT NULL DEFAULT '[]'");
 
+  // ══════════════════════════════════════════════════════════════════════
+  //  Items UNIQUES — `quest_custom_items` promue en entité de premier plan.
+  //  Historiquement « un item du codex renommé » ; c'est désormais LE
+  //  catalogue d'objets du serveur (géodes, monnaies, équipement custom…),
+  //  autonome (créable sans quête) et référencé partout par la convention
+  //  déjà en place `ref_code = 'custom:<id>'` — d'où l'extension EN PLACE
+  //  plutôt qu'une table parallèle : aucun id ne bouge, aucune ligne de
+  //  quête existante ne casse.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // Échelle de rareté ORDONNÉE et éditable en ligne (commun → légendaire).
+  // Volontairement une table et non un enum : de nouveaux paliers apparaissent
+  // au fil des découvertes en jeu, sans redéploiement.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS unique_item_rarities (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      nom        TEXT NOT NULL,
+      couleur    TEXT NOT NULL DEFAULT '#c9a8e8',
+      ordre      INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_item_rarities_ordre ON unique_item_rarities(ordre, id);`);
+
+  // Champs d'item unique. `ref_code` (existant) porte l'item support du codex —
+  // c'est le `base_item_id` de la spec, gardé sous son nom historique pour ne
+  // pas réécrire les lignes existantes. `note` (existant) sert de champ Notes.
+  // `categorie` n'a délibérément PAS de CHECK : en SQLite une contrainte CHECK
+  // ne s'étend pas sans reconstruire la table, or la liste doit rester ouverte
+  // — la validation vit côté serveur (quests-admin.js#UNIQUE_ITEM_CATEGORIES).
+  ensureColumn('quest_custom_items', 'slug', 'TEXT');
+  ensureColumn('quest_custom_items', 'lore', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('quest_custom_items', 'rarete_id', 'INTEGER REFERENCES unique_item_rarities(id) ON DELETE SET NULL');
+  ensureColumn('quest_custom_items', 'categorie', "TEXT NOT NULL DEFAULT 'autre'");
+  ensureColumn('quest_custom_items', 'faction_id', 'INTEGER REFERENCES factions(id) ON DELETE SET NULL');
+  ensureColumn('quest_custom_items', 'icone_override', 'TEXT');
+  ensureColumn('quest_custom_items', 'est_vendable', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('quest_custom_items', 'prix_vente', 'REAL');
+  // Unité du prix : 'pa' ou 'custom:<id>' (un item unique de catégorie monnaie).
+  ensureColumn('quest_custom_items', 'prix_unite', "TEXT NOT NULL DEFAULT 'pa'");
+  ensureColumn('quest_custom_items', 'est_ouvrable', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('quest_custom_items', 'tags', "TEXT NOT NULL DEFAULT '[]'");
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_items_slug ON quest_custom_items(slug) WHERE slug IS NOT NULL AND slug <> '';`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_items_rarete ON quest_custom_items(rarete_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_items_categorie ON quest_custom_items(categorie);`);
+  backfillUniqueItemSlugs();
+
+  // Table de butin d'un contenant ouvrable (« géode »). Un résultat est soit un
+  // autre item unique (FK, d'où la détection de cycle côté serveur), soit un id
+  // de codex, soit des PA / de la réputation, soit du texte libre. La somme des
+  // probabilités n'est JAMAIS contrainte : elle est signalée, pas imposée.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS loot_entries (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      unique_item_id     INTEGER NOT NULL REFERENCES quest_custom_items(id) ON DELETE CASCADE,
+      resultat_type      TEXT NOT NULL DEFAULT 'item_referentiel'
+                         CHECK (resultat_type IN ('unique_item','item_referentiel','pa','reputation','autre')),
+      resultat_ref       TEXT,
+      resultat_unique_id INTEGER REFERENCES quest_custom_items(id) ON DELETE SET NULL,
+      faction_id         INTEGER REFERENCES factions(id) ON DELETE SET NULL,
+      label_affiche      TEXT NOT NULL DEFAULT '',
+      quantite_min       INTEGER NOT NULL DEFAULT 1,
+      quantite_max       INTEGER NOT NULL DEFAULT 1,
+      probabilite        REAL NOT NULL DEFAULT 0,
+      probabilite_source TEXT NOT NULL DEFAULT 'estimee'
+                         CHECK (probabilite_source IN ('officielle','estimee','observee')),
+      ordre              INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_loot_entries_item ON loot_entries(unique_item_id, ordre);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_loot_entries_result ON loot_entries(resultat_unique_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_loot_entries_ref ON loot_entries(resultat_ref);`);
+
+  // Journal d'ouvertures : ce qu'un membre a RÉELLEMENT obtenu. Sert à calculer
+  // un taux empirique (+ intervalle de confiance) à côté de la proba déclarée.
+  // Aucune donnée personnelle nouvelle : member_id est le compte déjà connecté,
+  // exactement comme quest_completions.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS loot_observations (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      unique_item_id     INTEGER NOT NULL REFERENCES quest_custom_items(id) ON DELETE CASCADE,
+      loot_entry_id      INTEGER REFERENCES loot_entries(id) ON DELETE SET NULL,
+      resultat_type      TEXT NOT NULL DEFAULT 'item_referentiel'
+                         CHECK (resultat_type IN ('unique_item','item_referentiel','pa','reputation','autre')),
+      resultat_ref       TEXT,
+      resultat_unique_id INTEGER REFERENCES quest_custom_items(id) ON DELETE SET NULL,
+      label_affiche      TEXT NOT NULL DEFAULT '',
+      quantite           INTEGER NOT NULL DEFAULT 1,
+      member_id          INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at         INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_loot_observations_item ON loot_observations(unique_item_id, created_at);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_loot_observations_member ON loot_observations(member_id);`);
+
+  // Sources MANUELLES d'un item : ce qui n'entre dans aucune source dérivée
+  // (drop de mob, coffre, événement…). Le reste de la page « Où trouver quoi »
+  // est calculé, jamais ressaisi.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS unique_item_sources (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      unique_item_id INTEGER NOT NULL REFERENCES quest_custom_items(id) ON DELETE CASCADE,
+      kind           TEXT NOT NULL DEFAULT 'autre'
+                     CHECK (kind IN ('mob','coffre','evenement','pnj','peche','minage','autre')),
+      label          TEXT NOT NULL DEFAULT '',
+      note           TEXT NOT NULL DEFAULT '',
+      map_id         INTEGER REFERENCES quest_maps(id) ON DELETE SET NULL,
+      x              INTEGER,
+      y              INTEGER,
+      z              INTEGER,
+      ordre          INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_item_sources_item ON unique_item_sources(unique_item_id, ordre);`);
+
+  // ── Quêtes d'achat : n offres par quête, chacune « ce qu'on donne » →
+  //    « ce qu'on reçoit ». La monnaie est soit des PA, soit un item unique de
+  //    catégorie monnaie (ligne kind='item' + ref_code='custom:<id>', la même
+  //    convention que les entrées/récompenses — une seule façon de désigner un
+  //    objet dans tout le module).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_offers (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      quest_id INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      vendeur  TEXT NOT NULL DEFAULT '',
+      note     TEXT NOT NULL DEFAULT '',
+      stock    INTEGER,
+      limite   TEXT NOT NULL DEFAULT '',
+      map_id   INTEGER REFERENCES quest_maps(id) ON DELETE SET NULL,
+      x        INTEGER,
+      y        INTEGER,
+      z        INTEGER,
+      ordre    INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_offers_quest ON quest_offers(quest_id, ordre);`);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_offer_lines (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      offer_id INTEGER NOT NULL REFERENCES quest_offers(id) ON DELETE CASCADE,
+      sens     TEXT NOT NULL DEFAULT 'donne' CHECK (sens IN ('donne','recoit')),
+      kind     TEXT NOT NULL DEFAULT 'item' CHECK (kind IN ('item','pa','autre')),
+      ref_code TEXT,
+      quantite INTEGER NOT NULL DEFAULT 1,
+      label    TEXT NOT NULL DEFAULT '',
+      ordre    INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_offer_lines_offer ON quest_offer_lines(offer_id, sens, ordre);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_offer_lines_ref ON quest_offer_lines(ref_code);`);
+
+  // ── Familles de quêtes + recette de craft ──
+  // `categorie` sans CHECK (même raison que unique_items.categorie : la liste
+  // doit rester extensible sans reconstruire la table).
+  ensureColumn('quests', 'categorie', "TEXT NOT NULL DEFAULT 'recolte'");
+  // La recette d'une quête de craft RÉUTILISE quest_inputs (ingrédients) et
+  // quest_rewards (résultat) — d'où le suivi « Où trouver dans les coffres » et
+  // le flux cockpit qui marchent d'emblée sur les crafts. Ne s'ajoutent ici que
+  // la mise en scène (station, grille 3×3) et la maîtrise requise.
+  ensureColumn('quests', 'craft_station', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('quests', 'craft_grid', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn('quests', 'craft_shapeless', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('quests', 'maitrise_faction_id', 'INTEGER REFERENCES factions(id) ON DELETE SET NULL');
+  ensureColumn('quests', 'maitrise_tier_id', 'INTEGER REFERENCES faction_tiers(id) ON DELETE SET NULL');
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quests_categorie ON quests(categorie);`);
+  // Index inversé « où trouver quoi » : les sources dérivées interrogent les
+  // lignes de quêtes par ref_code (égalité exacte sur 'custom:<id>' ou id codex).
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_inputs_ref ON quest_inputs(ref_code);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_rewards_ref ON quest_rewards(ref_code);`);
+
   // ── Cockpit MF : réglages PERSO du flux pull ──
   // Liste d'items par utilisateur (pas la wishlist de groupe minecraft_wanted) :
   // envoyée dans la section `wanted` du flux cockpit. `workspace_id` optionnel
@@ -1402,6 +1575,34 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_categories_sort ON vault_categories(sort_order, id);`);
+}
+
+// Donne un slug aux items uniques qui n'en ont pas encore (lignes créées avant
+// la promotion du catalogue). Rejouable : ne touche que les slugs vides.
+// Le slugify est LOCAL — server/slugify.js importe db.js, l'importer ici
+// créerait un cycle ; le runtime, lui, passe par uniqueSlug().
+function backfillUniqueItemSlugs() {
+  const rows = db.prepare(`SELECT id, nom FROM quest_custom_items WHERE slug IS NULL OR slug = ''`).all();
+  if (rows.length === 0) return;
+  const slugify = (s) => String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  const taken = new Set(
+    db.prepare(`SELECT slug FROM quest_custom_items WHERE slug IS NOT NULL AND slug <> ''`)
+      .all().map((r) => r.slug),
+  );
+  const upd = db.prepare(`UPDATE quest_custom_items SET slug = ? WHERE id = ?`);
+  for (const r of rows) {
+    const base = slugify(r.nom) || `item-${r.id}`;
+    let candidate = base;
+    let n = 1;
+    while (taken.has(candidate)) { n += 1; candidate = `${base}-${n}`; }
+    taken.add(candidate);
+    upd.run(candidate, r.id);
+  }
 }
 
 function ensureColumn(table, column, ddl) {

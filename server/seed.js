@@ -5,6 +5,7 @@ import { COLLECTIONS, count, insert, migrate } from './db.js';
 import { ensureSeedUsers } from './users.js';
 import { seedWritingIfEmpty } from './seed-writing.js';
 import { seedQuestsIfEmpty } from './seed-quests.js';
+import { seedUniqueItemsCatalogue } from './seed-unique-items.js';
 import { seedVaultCategoriesIfEmpty } from './vault/seed-categories.js';
 import { migrateOrphansToDefault } from './workspaces.js';
 
@@ -49,6 +50,10 @@ export async function seedIfEmpty({ force = false } = {}) {
 
   results.writing = seedWritingIfEmpty();
   results.quests = seedQuestsIfEmpty();
+  // Raretés + géodes : idempotent par ligne (rareté par nom, item par slug), donc
+  // rejoué à chaque boot sans écraser le catalogue — contrairement au seed de
+  // démo des quêtes, court-circuité dès qu'une faction existe.
+  results.uniqueItems = seedUniqueItemsCatalogue();
   results.vaultCategories = seedVaultCategoriesIfEmpty();
 
   return results;

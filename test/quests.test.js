@@ -8,7 +8,11 @@ const ADMIN = { email: 'admin@test.local', password: 'adminpw1-strong' };
 const MEMBER = { email: 'member@test.local', password: 'memberpw1-strong' };
 
 // Suppress the demo seed so quest counts / gains sums are deterministic here.
-before(async () => { server = await bootServer({ env: { SEED_DEMO_QUESTS: 'off' } }); });
+// Same for the unique-item catalogue (raretés + géodes), which would otherwise
+// pré-remplir la liste des items et fausser les comptes absolus.
+before(async () => {
+  server = await bootServer({ env: { SEED_DEMO_QUESTS: 'off', SEED_UNIQUE_ITEMS: 'off' } });
+});
 after(async () => { await server.stop(); });
 
 function login(creds) {
