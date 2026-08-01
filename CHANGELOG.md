@@ -5,6 +5,53 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — quetes-items-uniques-geodes
+
+### Quêtes — catalogue d'items uniques, contenants aléatoires, crafts & achats
+- **Catalogue d'items uniques** : `quest_custom_items` est promue en entité de
+  premier plan (slug, lore, rareté, catégorie, faction d'origine, prix + monnaie,
+  ouvrable, tags). **Extension en place** et non table parallèle : aucun id ne
+  bouge, les `ref_code = 'custom:<id>'` déjà écrits dans les quêtes continuent de
+  résoudre, et les items existants héritent d'un slug au premier boot. Un item se
+  crée **sans aucune quête**.
+- **Échelle de rareté** (`unique_item_rarities`) ordonnée et éditable en ligne —
+  une table, pas un enum : de nouveaux paliers apparaissent en jeu.
+- **Contenants ouvrables** (`loot_entries`) : table de butin par géode, résultat
+  = item unique (FK) / item du codex / PA / réputation / texte libre, fourchette
+  de quantité, probabilité et **provenance** de cette probabilité (officielle /
+  estimée / observée). La somme n'est jamais contrainte : elle est signalée, et
+  un reliquat « rien / commun » est proposé en un clic.
+- **« Vendre ou ouvrir ? »** : espérance d'une ouverture comparée au prix de
+  revente, verdict lisible et détail du calcul dépliable. Deux règles
+  d'honnêteté — un résultat sans prix est exclu (sa part est affichée) au lieu
+  d'être compté zéro, et aucun taux de change n'est inventé entre monnaies.
+- **Journal d'ouvertures** (`loot_observations`) : taux empiriques avec
+  intervalle de Wilson à 95 %, affichés à côté des probabilités déclarées, plus
+  l'alerte « obtenu en jeu mais absent de la table ». Seule écriture ouverte aux
+  simples lecteurs de quêtes.
+- **Familles de quêtes** (`quests.categorie`) : récolte / craft / achat / PvP /
+  autre, avec facette et sections dédiées dans la liste.
+- **Quêtes de craft** : grille 3×3, poste de craft, maîtrise requise,
+  pré-remplissage depuis le référentiel de recettes du serveur. Les ingrédients
+  restent des `quest_inputs` → « Où trouver dans les coffres » et le flux cockpit
+  marchent d'emblée sur les crafts.
+- **Quêtes d'achat** (`quest_offers`) : plusieurs offres par quête, payables en
+  PA **ou en items** (les monnaies sont des items uniques), lisibles en une ligne
+  « 12 × Écaille du devin → Botte de célérité », avec stock, limite et point de
+  carte.
+- **« Où trouver quoi »** : pour chaque objet, toutes les sources — récompense de
+  quête, contenu de contenant (avec probabilité), résultat de craft, offre
+  d'achat, source manuelle — **et l'inverse** (« à quoi ça sert »). Tout est
+  dérivé des relations existantes, rien n'est ressaisi ; filtre « sans source
+  connue » pour repérer les trous de documentation.
+- Fiche d'objet au rendu de l'infobulle en jeu (lore violet, nom coloré par la
+  rareté, id namespacé), réutilisée en aperçu direct dans l'éditeur.
+- Seed : les 5 raretés et les 3 géodes relevées en jeu, idempotent **par ligne**
+  (donc applicable à une base déjà remplie), tables de butin laissées vides.
+  `SEED_UNIQUE_ITEMS=off` pour ne rien insérer.
+- Validation serveur systématique (bornes, `min ≤ max`, FK, énumérations) et
+  **refus des cycles** contenant → contenu, directs comme indirects.
+
 ## [Unreleased] — audit-corrections-nouvelles-fonctionnalites
 
 ### Espace projet — Minecraft (coffres + codex + lecture IA)

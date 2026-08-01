@@ -174,14 +174,36 @@ Single-process Node app:
   API via `api.quests.*`. **No reputation score is stored** (in-game) —
   factions/tiers are a reference and rewards only *document* gains. Item lines
   reuse the **codex** catalogue (`CodexPicker`, `ref_code` = codex id, no FK).
-  **Custom items** (`quest_custom_items`, « Items » tab in `/quetes`): a codex
-  item renamed (e.g. chair de zombie → « Chair de noyé ») + free-text enchant
-  list; quest lines reference them as `ref_code = 'custom:<id>'`, they're
-  merged into the picker catalogue via `customCatalogEntries()`
-  (`src/data/minefieldCatalog.js`) both in `/quetes` and in the projects'
-  Minecraft tab (chest autocomplete + icons), and the stock endpoint matches
-  them by normalized **custom name** so a chest row named after the custom
-  item is tracked.
+  **Unique items** (`quest_custom_items`, « 📦 Items » tab in `/quetes`): the
+  server's item catalogue — géodes, monnaies, renamed gear. Started life as
+  "a renamed codex item"; **extended in place** into a first-class entity
+  (slug, lore, rarity, category, faction, price + currency, openable, tags) so
+  no id moved and the existing `ref_code = 'custom:<id>'` references keep
+  resolving. Items exist **without any quest**. They're merged into the picker
+  catalogue via `customCatalogEntries()` (`src/data/minefieldCatalog.js`) both
+  in `/quetes` and in the projects' Minecraft tab (chest autocomplete + icons),
+  and the stock endpoint matches them by normalized **custom name** so a chest
+  row named after the item is tracked.
+  Around them: `unique_item_rarities` (ordered, editable in-app — a table, not
+  an enum), `loot_entries` (a container's loot table: result is a unique item
+  FK / codex id / PA / reputation / free text, quantity range, probability +
+  its provenance), `loot_observations` (per-member opening log → empirical
+  rates with a Wilson 95 % interval), `unique_item_sources` (manual sources
+  only). `quests.categorie` (`recolte|craft|achat|pvp|autre`) drives list
+  facets + sections; a craft quest's **ingredients stay in `quest_inputs` and
+  its result in `quest_rewards`** (only station/3×3 grid/mastery are new
+  columns), so chest lookup and the cockpit feed work on crafts for free;
+  `quest_offers`/`quest_offer_lines` carry n purchase offers per quest, payable
+  in PA or in items. `GET /unique-items/:id/sources` **derives** every way to
+  obtain an item (and every use of it) from those relations — nothing is
+  re-entered; catalogue counts are 8 GROUP BY queries, never N+1. Loot maths
+  (expected value, « vendre ou ouvrir ? » verdict, Wilson) are pure functions in
+  `src/components/quests/items/loot.js`, tested in `test/loot-math.test.js`:
+  results with no known price are **excluded** (their share is shown) rather
+  than counted as zero, and no exchange rate is ever invented between
+  currencies. Extensible lists live in `server/quests/enums.js` — the two
+  `categorie` columns deliberately have **no CHECK** (a SQLite CHECK can't be
+  extended without rebuilding the table). See `docs/quetes.md`.
   **Recurring reset is a pure function of `period_key`** (07:00 Europe/Paris,
   `server/quests/period.js`) — no cron, no DB mutation, replayable/self-healing.
   **Cockpit MF integration is PULL**: a secret per-user `cockpit_token`

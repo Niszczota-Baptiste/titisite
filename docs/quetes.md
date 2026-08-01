@@ -56,14 +56,17 @@ membre). Exposés au front en camelCase via `/auth/me`
 - `quest_inputs` / `quest_rewards` — `kind` + `ref_code` (id **codex**, pas de FK :
   le référentiel est le catalogue JSON `public/codex` + `codex_vanilla.json`),
   `faction_id`, `quantite`, `label` (surcharge/affichage), `icon`.
-- `quest_custom_items` — **items custom** (onglet « Items » de `/quetes`) : un
-  item du codex rebaptisé (ex. « Chair de zombie » → « Chair de noyé »), avec
-  `ref_code` (item de base, pour l'icône), `enchantements` (JSON array de
-  textes libres) et une note. Les lignes de quêtes (entrées / récompenses /
-  prérequis `item_possede`) les référencent via `ref_code = 'custom:<id>'` —
-  côté front, `customCatalogEntries()` (`src/data/minefieldCatalog.js`) les
-  injecte dans le codex des pickers (`/quetes` ET l'onglet ⛏️ Minecraft des
-  projets, pour l'autocomplete et les icônes des coffres).
+- `quest_custom_items` — le **catalogue d'items uniques** (onglet « 📦 Items »
+  de `/quetes`). Historiquement « un item du codex rebaptisé » ; c'est désormais
+  l'entité de premier plan du module (voir « Catalogue d'items uniques »
+  ci-dessous). Le nom de table est resté : l'entité a été **étendue en place**
+  pour qu'aucun id ne bouge et que les `ref_code = 'custom:<id>'` déjà écrits
+  dans les quêtes continuent de résoudre. Les lignes de quêtes (entrées /
+  récompenses / prérequis `item_possede`) et les lignes d'offres les référencent
+  ainsi ; côté front, `customCatalogEntries()`
+  (`src/data/minefieldCatalog.js`) les injecte dans le codex des pickers
+  (`/quetes` ET l'onglet ⛏️ Minecraft des projets, pour l'autocomplete et les
+  icônes des coffres).
 - `quest_prerequisites` — `kind` + réf (quête / faction+palier / item / valeur).
 - `quest_map_points` — 1–2 points **X/Y/Z** bruts + `role`.
 - `quest_completions` — `(quest_id, member_id, period_key)` **unique**.
@@ -82,6 +85,58 @@ membre). Exposés au front en camelCase via `/auth/me`
   un axe de rangement libre en plus des factions (origine) et chaînes (séquence).
   Une quête peut appartenir à plusieurs groupes ; gérés dans l'onglet « Groupes »
   de l'éditeur, filtrables dans la liste, affichés en puces sur les cartes/fiches.
+
+### Catalogue d'items uniques, contenants et familles de quêtes
+
+Un **item unique** est un objet du serveur décrit une fois et référencé partout :
+géodes, monnaies, équipement renommé. Il vit **sans quête** — le catalogue est
+autonome, les quêtes le référencent.
+
+| Table | Rôle |
+|---|---|
+| `quest_custom_items` | l'item unique : `slug` (adresse stable, ne suit pas le renommage), `nom`, `ref_code` (= item support du codex, pour l'icône), `lore`, `rarete_id`, `categorie`, `faction_id`, `est_vendable` + `prix_vente` + `prix_unite`, `est_ouvrable`, `tags`, `enchantements`, `stats`, `note` |
+| `unique_item_rarities` | échelle **ordonnée et éditable en ligne** (commun → légendaire), avec couleur. Une table et non un enum : de nouveaux paliers apparaissent au fil des découvertes |
+| `loot_entries` | table de butin d'un contenant ouvrable : `resultat_type` (`unique_item` **FK** / `item_referentiel` (id codex) / `pa` / `reputation` / `autre`), fourchette `quantite_min`–`quantite_max`, `probabilite`, `probabilite_source` (`officielle`/`estimee`/`observee`) |
+| `loot_observations` | journal d'ouvertures : ce qu'un membre a réellement obtenu → taux empiriques |
+| `unique_item_sources` | sources **manuelles** uniquement (drop de mob, coffre, événement…) — tout le reste est dérivé |
+| `quest_offers` / `quest_offer_lines` | offres d'une quête d'achat : `donne` ↔ `recoit`, payables en PA ou en items |
+
+Sur `quests` : `categorie` (`recolte`|`craft`|`achat`|`pvp`|`autre`) plus la mise
+en scène du craft (`craft_station`, `craft_grid` = 9 cases d'ids codex,
+`craft_shapeless`, `maitrise_faction_id`/`maitrise_tier_id`).
+
+**La recette d'une quête de craft n'a pas de table à elle** : ses ingrédients
+sont les `quest_inputs` et son résultat une `quest_rewards`. Conséquence
+directe et voulue — « 📦 Où trouver dans les coffres » et le flux cockpit
+fonctionnent sur les crafts sans une ligne de code de plus.
+
+**« Où trouver quoi » est calculé, jamais ressaisi.** `GET
+/unique-items/:id/sources` agrège, à partir des relations existantes : les
+quêtes qui donnent l'objet, les contenants qui peuvent le produire (avec leur
+probabilité), les recettes qui le fabriquent (avec leurs ingrédients), les
+offres où on l'achète — et l'inverse (`usages`) : les crafts qui le consomment,
+les quêtes qui l'exigent, les offres où il sert de monnaie. Les compteurs du
+catalogue sont agrégés en 8 requêtes `GROUP BY`, jamais une par item. Le filtre
+« sans source connue » sert de radar à trous de documentation.
+
+**Vendre ou ouvrir ?** `src/components/quests/items/loot.js` (pur, testé dans
+`test/loot-math.test.js`) calcule l'espérance d'une ouverture et la compare au
+prix de revente, avec deux règles d'honnêteté : un résultat sans prix connu est
+**exclu** du calcul (et sa part de probabilité affichée) au lieu d'être compté
+zéro, et **aucun taux de change n'est inventé** entre monnaies — un prix libellé
+dans une autre monnaie que celle du contenant rejoint les non valorisés. Le
+verdict ne tranche qu'au-delà de ±10 % d'écart. Les taux observés sont assortis
+d'un intervalle de **Wilson à 95 %**, correct sur petits effectifs.
+
+La somme des probabilités n'est **jamais** contrainte : elle est affichée et
+signalée (< 100 % → reliquat « rien / commun » proposé ; > 100 % → avertissement),
+mais une table incomplète reste enregistrable — sinon on ne pourrait pas
+documenter une géode au fil des ouvertures.
+
+Validation serveur : bornes `[0,100]`, quantités ≥ 1, `min ≤ max`, FK vérifiées
+(rareté, faction, item cible, monnaie), et **refus des cycles** contenant →
+contenu, directs comme indirects (parcours en profondeur du graphe
+d'ouvertures).
 
 ### Le reset : `period_key` (pas de job qui mute la DB)
 
@@ -116,8 +171,15 @@ GET  /gains                    gains potentiels « si tu fais tout » par cadenc
 GET  /reputation               factions + paliers + quêtes qui en octroient
 GET  /maps                     liste des cartes
 GET  /map?map=<id>             { questPoints, pois } d'une carte (défaut si omis)
-GET  /custom-items             items custom (nom, refCode base, enchantements)
-GET  /quests?faction=&chain=&occurrence=   liste (+ `done` du membre)
+GET  /custom-items             alias historique du catalogue (forme préservée)
+GET  /rarities                 échelle de rareté
+GET  /unique-items             catalogue + compteurs de sources/usages
+GET  /unique-items/:id         fiche + table de butin + sources manuelles + observations
+GET  /unique-items/:id/sources index inversé : { sources, usages } — 100 % dérivé
+GET  /unique-items/:id/observations
+POST /unique-items/:id/observations   loguer une ouverture (voir ci-dessous)
+DELETE /observations/:id       la sienne, ou n'importe laquelle pour un éditeur
+GET  /quests?faction=&chain=&occurrence=&categorie=   liste (+ `done` du membre)
 GET  /quests/:id               fiche complète (+ `done` + mon historique)
 GET  /me/quests                { done: { questId: true } } (période courante)
 POST /quests/:id/complete      coche (member + period_key courante)
@@ -133,9 +195,22 @@ POST|PUT|DELETE  /chains[/:id]
 POST|PUT|DELETE  /groups[/:id]
 POST|PUT|DELETE  /pois[/:id]         (points d'intérêt libres de la carte)
 POST|PUT|DELETE  /maps[/:id]         (cartes ; DELETE refuse la dernière)
-POST|PUT|DELETE  /custom-items[/:id] (items custom : nom, refCode, enchantements)
-POST|PUT|DELETE  /quests[/:id]
+POST|PUT|DELETE  /custom-items[/:id] (alias historique — délègue au catalogue)
+POST|PUT|DELETE  /unique-items[/:id] (loot + sourcesManuelles dans le payload)
+POST|PUT|DELETE  /rarities[/:id]     (PUT /rarities { ids } réordonne l'échelle)
+POST|PUT|DELETE  /quests[/:id]       (+ categorie, craft{…}, offers[])
 ```
+
+**Le journal d'ouvertures est la seule écriture ouverte aux simples lecteurs**
+(`can_view_quests`) : une table de butin s'affine collectivement, exiger le flag
+d'édition la condamnerait à rester devinée. Chacun ne supprime que ses propres
+observations ; un éditeur peut toutes les retirer. Rien d'autre du catalogue
+n'est modifiable sans `can_edit_quests`.
+
+Les deux routes `/custom-items` restent servies pour ne rien casser, mais elles
+**délèguent** au catalogue : un seul chemin d'écriture, donc aucun item sans
+slug, et une édition par l'ancien formulaire ne peut pas effacer les champs
+qu'il ignore (lore, rareté, butin) — elle fusionne au lieu de remplacer.
 
 Réponses d'erreur : `{ error: 'code' }` (400 validation, 401/403 accès, 404).
 Toutes les entrées sont validées côté serveur (`quests-admin.js`) : enums,
@@ -278,3 +353,39 @@ cesse aussitôt de fonctionner.
 - **Ajouter une occurrence récurrente** : ajouter la valeur au `CHECK` de
   `quests.occurrence_type`, une entrée dans `RECURRING` + le calcul de clé dans
   `server/quests/period.js`, et l'entrée `OCCURRENCES` de `theme.js`.
+- **Ajouter une rareté** : rien à toucher, c'est une table éditable — onglet
+  « 📦 Items » → bouton « Raretés » (nom, couleur, ordre par ↑/↓). L'ordre porte
+  le sens : il pilote le tri du catalogue.
+- **Ajouter une monnaie** : rien à toucher non plus — créer un item unique de
+  catégorie « monnaie ». Il devient aussitôt sélectionnable comme unité de prix
+  (`prix_unite = 'custom:<id>'`) et comme ligne d'offre. Note : l'espérance
+  d'ouverture ne convertit pas entre monnaies, elle se calcule dans celle du
+  contenant.
+- **Ajouter une catégorie** (de quête ou d'item) : **deux endroits**, sans
+  migration —
+  `server/quests/enums.js` (`QUEST_CATEGORIES` / `UNIQUE_ITEM_CATEGORIES`, la
+  validation serveur) puis `src/components/quests/theme.js` (même nom, pour le
+  libellé, l'icône et la couleur). Ces deux colonnes n'ont **volontairement pas**
+  de contrainte `CHECK` : en SQLite un CHECK ne s'étend pas sans reconstruire la
+  table, ce qui aurait rendu l'ajout d'une catégorie bien plus lourd que le geste
+  qu'il doit être. Les énumérations réellement figées (type de résultat de butin,
+  source de probabilité, sens d'une ligne d'offre, type de source manuelle)
+  gardent, elles, leur `CHECK` en base **et** leur `Set` dans `enums.js`.
+- **Ajouter un type de source manuelle** : le `CHECK` de `unique_item_sources.kind`
+  (`server/db.js#migrate`), `MANUAL_SOURCE_KINDS` dans `enums.js`, puis le même
+  nom dans `theme.js`.
+
+### Seed du catalogue
+
+`server/seed-unique-items.js` installe les 5 raretés et les contenants relevés
+en jeu (les trois géodes + l'Écaille du devin). Il est **idempotent par ligne**
+(rareté par nom, item par slug), pas « si la table est vide » : il s'applique
+donc aussi à une base déjà remplie et ne réécrit jamais ce que tu as édité.
+`SEED_UNIQUE_ITEMS=off` le désactive. Les tables de butin sont laissées
+**vides** à dessein — elles se remplissent au fil des ouvertures, depuis la
+fiche de l'item.
+
+⚠️ L'**Écaille du devin** est seedée **sans item support** (`ref_code` NULL) :
+son id de codex n'a pas été communiqué et le module ne devine jamais un id. Elle
+s'affiche avec l'icône de repli 📦 jusqu'à ce que l'item de base soit renseigné
+dans l'éditeur.
