@@ -3,10 +3,11 @@ import { api } from '../../api/client';
 import { useConfirm } from '../../ui/ConfirmProvider';
 import { Button, Field, Input, Textarea } from '../admin/ui';
 import { CodexPicker } from '../admin/editors/minecraft/CodexPicker';
+import { CraftEditor, OffersEditor } from './CraftOffers';
 import { QuestMap } from './QuestMap';
 import {
   ACC, ACC_RGB, CRIMSON, GOLD, INK, MUTED, OCCURRENCE_ORDER, OCCURRENCES,
-  POINT_ROLES, panel,
+  POINT_ROLES, QUEST_CATEGORIES, QUEST_CATEGORY_ORDER, panel,
 } from './theme';
 
 const selectStyle = {
@@ -361,6 +362,9 @@ function QuestForm({ quest, factions, chains, groups = [], maps = [], quests, by
   const [titre, setTitre] = useState(quest?.titre || '');
   const [description, setDescription] = useState(quest?.description || '');
   const [occurrenceType, setOccurrenceType] = useState(quest?.occurrenceType || 'simple');
+  const [categorie, setCategorie] = useState(quest?.categorie || 'recolte');
+  const [craft, setCraft] = useState(quest?.craft || { grid: [], station: '', shapeless: false });
+  const [offers, setOffers] = useState(quest?.offers?.map(stripOffer) || []);
   const [factionId, setFactionId] = useState(quest?.factionId || '');
   const [chainId, setChainId] = useState(quest?.chainId || '');
   const [chainRank, setChainRank] = useState(quest?.chainRank || 0);
@@ -382,12 +386,16 @@ function QuestForm({ quest, factions, chains, groups = [], maps = [], quests, by
     setSaving(true); setErr(null);
     try {
       const body = {
-        titre, description, occurrenceType,
+        titre, description, occurrenceType, categorie,
         factionId: factionId ? Number(factionId) : null,
         chainId: chainId ? Number(chainId) : null,
         chainRank: Number(chainRank) || 0,
         dueDate: dueDate ? Math.floor(new Date(dueDate).getTime() / 1000) : null,
         inputs, rewards, prerequisites, mapPoints, groupIds,
+        // Envoyés toujours : changer une quête de famille ne doit pas laisser
+        // traîner la recette ou les offres de l'ancienne.
+        craft: categorie === 'craft' ? craft : { grid: [], station: '', shapeless: false },
+        offers: categorie === 'achat' ? offers : [],
       };
       if (quest) await api.quests.updateQuest(quest.id, body);
       else await api.quests.createQuest(body);
@@ -403,6 +411,13 @@ function QuestForm({ quest, factions, chains, groups = [], maps = [], quests, by
       <Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} /></Field>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+        <Field label="Famille">
+          <select value={categorie} onChange={(e) => setCategorie(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
+            {QUEST_CATEGORY_ORDER.map((c) => (
+              <option key={c} value={c}>{QUEST_CATEGORIES[c].icon} {QUEST_CATEGORIES[c].label}</option>
+            ))}
+          </select>
+        </Field>
         <Field label="Occurrence">
           <select value={occurrenceType} onChange={(e) => setOccurrenceType(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
             {OCCURRENCE_ORDER.map((o) => <option key={o} value={o}>{OCCURRENCES[o].label}</option>)}
@@ -463,6 +478,16 @@ function QuestForm({ quest, factions, chains, groups = [], maps = [], quests, by
         kinds={['item', 'pa', 'reputation', 'deblocage', 'autre']} factionArr={factionArr}
         byId={byId} catalog={catalog} otherQuests={otherQuests}
       />
+      {categorie === 'craft' && (
+        <CraftEditor
+          craft={craft} setCraft={setCraft} factions={factionArr} byId={byId} catalog={catalog}
+          resultRefCode={rewards.find((r) => r.kind === 'item' && r.refCode)?.refCode || ''}
+        />
+      )}
+      {categorie === 'achat' && (
+        <OffersEditor offers={offers} setOffers={setOffers} byId={byId} catalog={catalog} maps={maps} />
+      )}
+
       <PrereqSection rows={prerequisites} setRows={setPrereqs} factionArr={factionArr} otherQuests={otherQuests} byId={byId} catalog={catalog} />
       <PointsSection points={mapPoints} setPoints={setMapPoints} maps={maps} active={activePoint} setActive={setActivePoint} />
 
@@ -473,6 +498,15 @@ function QuestForm({ quest, factions, chains, groups = [], maps = [], quests, by
     </form>
   );
 }
+
+// Les offres reviennent avec leurs ids serveur : on ne renvoie que la saisie
+// (elles sont remplacées en bloc, comme les autres sous-entités).
+const stripOffer = (o) => ({
+  vendeur: o.vendeur, note: o.note, stock: o.stock, limite: o.limite,
+  mapId: o.mapId, x: o.x, y: o.y, z: o.z,
+  donne: (o.donne || []).map((l) => ({ kind: l.kind, refCode: l.refCode, quantite: l.quantite, label: l.label })),
+  recoit: (o.recoit || []).map((l) => ({ kind: l.kind, refCode: l.refCode, quantite: l.quantite, label: l.label })),
+});
 
 const strip = (l) => ({
   kind: l.kind, refCode: l.refCode, factionId: l.factionId, quantite: l.quantite,

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import {
-  ACC, ACC_RGB, GOLD, INK, MUTED, OCCURRENCES, OCCURRENCE_ORDER, fromNow, hexToRgb, panel,
+  ACC, ACC_RGB, GOLD, INK, MUTED, OCCURRENCES, OCCURRENCE_ORDER, QUEST_CATEGORIES,
+  QUEST_CATEGORY_ORDER, fromNow, hexToRgb, panel,
 } from './theme';
 
 const STATUS = [
@@ -36,6 +37,17 @@ export function QuestList({ quests, factions, chains, groups = [], filters, setF
     return out;
   }, [quests, filters.status]);
 
+  // Regroupement par famille, dans l'ordre de référence.
+  const sections = useMemo(() => {
+    const par = new Map();
+    for (const q of shown) {
+      const cle = QUEST_CATEGORIES[q.categorie] ? q.categorie : 'recolte';
+      if (!par.has(cle)) par.set(cle, []);
+      par.get(cle).push(q);
+    }
+    return QUEST_CATEGORY_ORDER.filter((c) => par.has(c)).map((c) => [c, par.get(c)]);
+  }, [shown]);
+
   return (
     <div>
       {/* facets */}
@@ -47,6 +59,12 @@ export function QuestList({ quests, factions, chains, groups = [], filters, setF
         <Select ariaLabel="Filtrer par occurrence" value={filters.occurrence || ''} onChange={(v) => setFilters((f) => ({ ...f, occurrence: v }))}>
           <option value="">Toutes occurrences</option>
           {OCCURRENCE_ORDER.map((o) => <option key={o} value={o}>{OCCURRENCES[o].label}</option>)}
+        </Select>
+        <Select ariaLabel="Filtrer par famille" value={filters.categorie || ''} onChange={(v) => setFilters((f) => ({ ...f, categorie: v }))}>
+          <option value="">Toutes familles</option>
+          {QUEST_CATEGORY_ORDER.map((c) => (
+            <option key={c} value={c}>{QUEST_CATEGORIES[c].icon} {QUEST_CATEGORIES[c].label}</option>
+          ))}
         </Select>
         <Select ariaLabel="Filtrer par chaîne" value={filters.chain || ''} onChange={(v) => setFilters((f) => ({ ...f, chain: v }))}>
           <option value="">Toutes les chaînes</option>
@@ -82,6 +100,30 @@ export function QuestList({ quests, factions, chains, groups = [], filters, setF
         <p style={{ ...panel, padding: 24, textAlign: 'center', color: MUTED, fontFamily: "'Inter',sans-serif" }}>
           Aucune quête ne correspond à ces filtres.
         </p>
+      ) : sections.length > 1 ? (
+        // Plusieurs familles présentes : on les sépare, sinon la liste mélange
+        // récoltes, crafts et achats sans qu'on voie ce qui est quoi.
+        sections.map(([cle, liste]) => {
+          const meta = QUEST_CATEGORIES[cle] || QUEST_CATEGORIES.autre;
+          return (
+            <div key={cle} style={{ marginBottom: 22 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
+                fontFamily: "'Space Grotesk',sans-serif", fontSize: 13, fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '1px', color: meta.color,
+              }}>
+                <span>{meta.icon} {meta.label}</span>
+                <span style={{ color: MUTED, fontWeight: 400, letterSpacing: 0, textTransform: 'none' }}>
+                  {liste.length}
+                </span>
+                <span style={{ flex: 1, height: 1, background: `rgba(${hexToRgb(meta.color)},0.25)` }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+                {liste.map((q) => <QuestCard key={q.id} q={q} factions={factions} onOpen={onOpen} />)}
+              </div>
+            </div>
+          );
+        })
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
           {shown.map((q) => <QuestCard key={q.id} q={q} factions={factions} onOpen={onOpen} />)}

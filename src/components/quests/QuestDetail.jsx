@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { CodexItem } from '../admin/editors/minecraft/CodexPicker';
+import { CraftPanel, OffersPanel } from './CraftOffers';
 import { QuestMap } from './QuestMap';
 import {
-  ACC, ACC_RGB, CRIMSON, GOLD, INK, MUTED, OCCURRENCES, PREREQ_KINDS, REWARD_KINDS,
-  INPUT_KINDS, formatDate, fromNow, hexToRgb, panel,
+  ACC, ACC_RGB, CRIMSON, GOLD, INK, MUTED, OCCURRENCES, PREREQ_KINDS, QUEST_CATEGORIES,
+  REWARD_KINDS, INPUT_KINDS, formatDate, fromNow, hexToRgb, panel,
 } from './theme';
 
 function Chip({ children, color = ACC, title }) {
@@ -82,6 +83,7 @@ function Column({ title, children, accent = ACC }) {
 
 export function QuestDetail({ quest, byId, factions, onComplete, onUncomplete, onOpenQuest, busy }) {
   const occ = OCCURRENCES[quest.occurrenceType] || OCCURRENCES.simple;
+  const cat = QUEST_CATEGORIES[quest.categorie] || QUEST_CATEGORIES.recolte;
   const faction = quest.factionId ? factions.get(quest.factionId) : null;
   const done = quest.done;
 
@@ -91,6 +93,9 @@ export function QuestDetail({ quest, byId, factions, onComplete, onUncomplete, o
       <div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
           <Chip color={occ.color}>{occ.icon} {occ.label}</Chip>
+          {quest.categorie && quest.categorie !== 'recolte' && (
+            <Chip color={cat.color} title="Famille de quête">{cat.icon} {cat.label}</Chip>
+          )}
           {faction && <Chip color={faction.couleur} title="Faction d'origine">{faction.nom}</Chip>}
           {quest.chainNom && (
             <Chip color="#7bd3e8">⛓ {quest.chainNom}{quest.chainRank ? ` · étape ${quest.chainRank}` : ''}</Chip>
@@ -140,7 +145,23 @@ export function QuestDetail({ quest, byId, factions, onComplete, onUncomplete, o
         {done && <span style={{ marginLeft: 10, fontSize: 12, color: MUTED }}>Clique pour décocher.</span>}
       </div>
 
-      {/* inputs / rewards */}
+      {/* recette de craft : la mise en scène des entrées/récompenses ci-dessous */}
+      {quest.categorie === 'craft' && (
+        <Column title="⚒️ Recette" accent={GOLD}>
+          <CraftPanel quest={quest} byId={byId} factions={factions} />
+        </Column>
+      )}
+
+      {/* offres d'achat */}
+      {(quest.categorie === 'achat' || (quest.offers || []).length > 0) && (
+        <Column title="🪙 Offres" accent="#7bd3e8">
+          <OffersPanel offers={quest.offers || []} byId={byId} />
+        </Column>
+      )}
+
+      {/* inputs / rewards — masqués sur une quête d'achat sans ligne : son
+          contenu vit dans les offres, deux colonnes vides n'apprennent rien. */}
+      {!(quest.inputs.length === 0 && quest.rewards.length === 0 && (quest.offers || []).length > 0) && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
         <Column title="Entrées" accent={CRIMSON}>
           {quest.inputs.length === 0 ? (
@@ -163,6 +184,7 @@ export function QuestDetail({ quest, byId, factions, onComplete, onUncomplete, o
           )}
         </Column>
       </div>
+      )}
 
       {/* où trouver les entrées dans les coffres des projets */}
       {quest.inputs.some((l) => l.kind === 'item') && <StockPanel questId={quest.id} />}
