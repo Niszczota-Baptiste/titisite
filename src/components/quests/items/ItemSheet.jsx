@@ -158,8 +158,15 @@ function Sources({ sources, itemsById, byId, onOpenQuest, onOpenItem }) {
       ))}
       {recompenses.map((q) => (
         <Row key={`r${q.questId}`} icon="🎯" onClick={() => onOpenQuest?.(q.questId)}>
+          {/* Une récompense peut être tirée au sort : on annonce alors la
+              probabilité en tête, comme pour un contenant. */}
+          {q.probabilite != null && (
+            <strong style={{ color: GOLD }}>{Math.round(q.probabilite * 10) / 10} % — </strong>
+          )}
           <strong>{q.titre}</strong>
-          {q.quantite != null && <Muted> · ×{q.quantite}</Muted>}
+          {q.quantiteMin != null ? (
+            <Muted> · ×{q.quantiteMin}{q.quantiteMax !== q.quantiteMin ? `–${q.quantiteMax}` : ''}</Muted>
+          ) : q.quantite != null && <Muted> · ×{q.quantite}</Muted>}
           {q.factionNom && <span style={{ color: q.factionCouleur }}> · {q.factionNom}</span>}
           <Muted> · {(OCCURRENCES[q.occurrenceType] || OCCURRENCES.simple).label}</Muted>
         </Row>

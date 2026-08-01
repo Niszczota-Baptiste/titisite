@@ -33,7 +33,9 @@ const withName = (l) => ({
 
 function rewardsBrief(questId) {
   return db.prepare(`
-    SELECT kind, label, quantite, faction_id AS factionId, ref_code AS refCode FROM quest_rewards
+    SELECT kind, label, quantite, faction_id AS factionId, ref_code AS refCode,
+           probabilite, quantite_min AS quantiteMin, quantite_max AS quantiteMax
+    FROM quest_rewards
     WHERE quest_id = ? ORDER BY ordre, id
   `).all(questId).map(withName);
 }

@@ -29,6 +29,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   intervalle de Wilson à 95 %, affichés à côté des probabilités déclarées, plus
   l'alerte « obtenu en jeu mais absent de la table ». Seule écriture ouverte aux
   simples lecteurs de quêtes.
+- **Récompenses aléatoires de quête** : une récolte peut ne rien donner, ou n
+  objets. Mêmes % de chance, mêmes fourchettes et même provenance de probabilité
+  que les tables de butin, mais portés par la ligne de récompense —
+  `probabilite` NULL = récompense garantie, le comportement historique. La fiche
+  sépare « garanties » et « 🎲 tirage aléatoire », vérifie la somme et donne le
+  gain moyen du tirage. Les **gains potentiels sont désormais pondérés** par la
+  probabilité (une prime à 3 % ne compte plus pour sa valeur pleine).
 - **Familles de quêtes** (`quests.categorie`) : récolte / craft / achat / PvP /
   autre, avec facette et sections dédiées dans la liste.
 - **Quêtes de craft** : grille 3×3, poste de craft, maîtrise requise,

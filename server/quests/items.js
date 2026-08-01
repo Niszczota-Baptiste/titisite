@@ -527,10 +527,17 @@ function linesForQuests(table, questIds) {
 }
 
 // Quêtes dont une ligne (`quest_inputs` ou `quest_rewards`) vise cet item.
+// Les récompenses peuvent être ALÉATOIRES : on remonte alors la probabilité et
+// la fourchette, pour que « où trouver quoi » affiche « 8 % dans … » comme il
+// le fait déjà pour les contenants. Les entrées n'ont pas ces colonnes.
 function questsReferencing(table, ref) {
+  const alea = table === 'quest_rewards';
+  const colonnes = alea
+    ? 'l.probabilite, l.probabilite_source, l.quantite_min, l.quantite_max'
+    : 'NULL AS probabilite, NULL AS probabilite_source, NULL AS quantite_min, NULL AS quantite_max';
   return db.prepare(`
     SELECT q.id, q.titre, q.categorie, q.occurrence_type, q.faction_id,
-           f.nom AS faction_nom, f.couleur AS faction_couleur, l.quantite
+           f.nom AS faction_nom, f.couleur AS faction_couleur, l.quantite, ${colonnes}
     FROM ${table} l
     JOIN quests q ON q.id = l.quest_id
     LEFT JOIN factions f ON f.id = q.faction_id
@@ -545,6 +552,10 @@ function questsReferencing(table, ref) {
     factionNom: q.faction_nom,
     factionCouleur: q.faction_couleur,
     quantite: q.quantite,
+    probabilite: q.probabilite ?? null,
+    probabiliteSource: q.probabilite_source ?? null,
+    quantiteMin: q.quantite_min ?? null,
+    quantiteMax: q.quantite_max ?? null,
   }));
 }
 

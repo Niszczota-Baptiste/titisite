@@ -1109,6 +1109,19 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_rewards_quest ON quest_rewards(quest_id, ordre);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_rewards_faction ON quest_rewards(faction_id);`);
+  // Récompenses ALÉATOIRES : une quête de récolte peut ne rien donner, ou n
+  // objets. Même modèle que les tables de butin des contenants, mais porté par
+  // la ligne elle-même plutôt que par une table à part — la liste des
+  // récompenses reste une seule liste, et l'index inversé « où trouver quoi »
+  // hérite des probabilités sans requête supplémentaire.
+  //   probabilite IS NULL → ligne GARANTIE (le cas historique, inchangé)
+  //   probabilite renseignée → ligne du tirage aléatoire de la quête
+  // quantite_min/max décrivent une fourchette ; quantite reste la valeur fixe
+  // quand il n'y a pas de fourchette.
+  ensureColumn('quest_rewards', 'probabilite', 'REAL');
+  ensureColumn('quest_rewards', 'probabilite_source', 'TEXT');
+  ensureColumn('quest_rewards', 'quantite_min', 'INTEGER');
+  ensureColumn('quest_rewards', 'quantite_max', 'INTEGER');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS quest_prerequisites (

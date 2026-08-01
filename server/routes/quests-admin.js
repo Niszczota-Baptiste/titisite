@@ -207,6 +207,29 @@ function validateOffers(offers) {
   }
 }
 
+// Aléa d'une ligne de récompense : `probabilite` absente = ligne garantie (le
+// cas historique). Mêmes bornes que les tables de butin des contenants — une
+// quête de récolte qui donne « rien ou 1–3 géodes » se décrit exactement comme
+// l'ouverture d'une géode.
+function validateRewardChance(l) {
+  const aleatoire = l?.probabilite != null && l.probabilite !== '';
+  if (aleatoire) {
+    const p = Number(l.probabilite);
+    if (!Number.isFinite(p) || p < 0 || p > 100) throw new Invalid('invalid_probabilite');
+    if (l.probabiliteSource && !PROBA_SOURCES.has(l.probabiliteSource)) {
+      throw new Invalid('invalid_probabilite_source');
+    }
+  }
+  const borne = (v) => (v == null || v === '' ? null : Number(v));
+  const min = borne(l?.quantiteMin);
+  const max = borne(l?.quantiteMax);
+  for (const [v, code] of [[min, 'invalid_quantite_min'], [max, 'invalid_quantite_max']]) {
+    if (v == null) continue;
+    if (!Number.isFinite(v) || v < 0 || !Number.isInteger(v)) throw new Invalid(code);
+  }
+  if (min != null && max != null && min > max) throw new Invalid('quantite_min_gt_max');
+}
+
 function validateQuest(b) {
   if (!nonEmpty(b?.titre)) throw new Invalid('titre_required');
   if (b.occurrenceType && !OCCURRENCES.has(b.occurrenceType)) throw new Invalid('invalid_occurrence');
@@ -224,6 +247,7 @@ function validateQuest(b) {
   }
   for (const l of b.rewards || []) {
     if (!REWARD_KINDS.has(l?.kind)) throw new Invalid('invalid_reward_kind');
+    validateRewardChance(l);
   }
   for (const p of b.prerequisites || []) {
     if (!PREREQ_KINDS.has(p?.kind)) throw new Invalid('invalid_prereq_kind');

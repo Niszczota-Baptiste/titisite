@@ -4,9 +4,11 @@ import { CodexItem } from '../admin/editors/minecraft/CodexPicker';
 import { CraftPanel, OffersPanel } from './CraftOffers';
 import { QuestMap } from './QuestMap';
 import {
-  ACC, ACC_RGB, CRIMSON, GOLD, INK, MUTED, OCCURRENCES, PREREQ_KINDS, QUEST_CATEGORIES,
-  REWARD_KINDS, INPUT_KINDS, formatDate, fromNow, hexToRgb, panel,
+  ACC, ACC_RGB, CRIMSON, GOLD, INK, MUTED, OCCURRENCES, PREREQ_KINDS, PROBA_SOURCES,
+  QUEST_CATEGORIES, REWARD_KINDS, INPUT_KINDS, formatDate, fromNow, hexToRgb, panel,
 } from './theme';
+import { SommeBanner } from './items/LootTable';
+import { esperance, sommeProbabilites } from './items/loot';
 
 function Chip({ children, color = ACC, title }) {
   const rgb = hexToRgb(color);
@@ -26,7 +28,14 @@ function Chip({ children, color = ACC, title }) {
 function Line({ line, kinds, byId, factions }) {
   const meta = kinds[line.kind] || {};
   const faction = line.factionId ? factions.get(line.factionId) : null;
-  const qty = line.quantite != null ? line.quantite : null;
+  // Une récompense aléatoire porte une fourchette (« 1 à 3 ») plutôt qu'une
+  // quantité fixe, et sa probabilité s'affiche à droite.
+  const fourchette = line.quantiteMin != null
+    ? `${line.quantiteMin}${line.quantiteMax != null && line.quantiteMax !== line.quantiteMin ? `–${line.quantiteMax}` : ''}`
+    : null;
+  const qty = fourchette ?? (line.quantite != null ? line.quantite : null);
+  const proba = line.probabilite != null ? line.probabilite : null;
+  const src = proba != null ? (PROBA_SOURCES[line.probabiliteSource] || PROBA_SOURCES.estimee) : null;
   const custom = (line.kind === 'item' && line.refCode) ? byId?.get(line.refCode) : null;
   const enchants = custom?.enchantements || [];
   const stats = custom?.stats || [];
@@ -65,7 +74,72 @@ function Line({ line, kinds, byId, factions }) {
           color: line.kind === 'pa' ? GOLD : ACC,
         }}>×{qty}</span>
       )}
+      {proba != null && (
+        <span title={src.title} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '1px 8px', borderRadius: 999,
+          fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, fontWeight: 700,
+          color: src.color, background: `rgba(${hexToRgb(src.color)},0.12)`,
+          border: `1px solid rgba(${hexToRgb(src.color)},0.4)`, whiteSpace: 'nowrap',
+        }}>{Math.round(proba * 10) / 10} %</span>
+      )}
     </li>
+  );
+}
+
+// Récompenses garanties d'un côté, tirage aléatoire de l'autre : mélanger les
+// deux ferait lire « 3 géodes » là où on n'a que 8 % de chances d'en voir une.
+function RewardLists({ rewards, byId, factions }) {
+  const garanties = rewards.filter((l) => l.probabilite == null);
+  const aleatoires = rewards
+    .filter((l) => l.probabilite != null)
+    .sort((a, b) => b.probabilite - a.probabilite);
+  const somme = sommeProbabilites(aleatoires);
+  // Gain moyen : mêmes règles que pour les géodes — une ligne sans prix connu
+  // n'est pas comptée zéro, elle est simplement hors du total en PA.
+  const enPa = aleatoires
+    .filter((l) => l.kind === 'pa')
+    .map((l) => ({
+      resultatType: 'pa',
+      probabilite: l.probabilite,
+      quantiteMin: l.quantiteMin ?? l.quantite ?? 0,
+      quantiteMax: l.quantiteMax ?? l.quantite ?? 0,
+    }));
+  const moyennePa = enPa.length > 0 ? esperance({ prixUnite: 'pa' }, enPa).valeur : 0;
+
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {garanties.length > 0 && (
+        <ul style={listStyle}>
+          {garanties.map((l) => (
+            <Line key={l.id} line={l} kinds={REWARD_KINDS} byId={byId} factions={factions} />
+          ))}
+        </ul>
+      )}
+
+      {aleatoires.length > 0 && (
+        <div style={{ display: 'grid', gap: 6 }}>
+          <span style={{
+            fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '1px',
+            color: '#7bd3e8', fontWeight: 700, fontFamily: "'Space Grotesk',sans-serif",
+          }}>🎲 Tirage aléatoire</span>
+          <ul style={listStyle}>
+            {aleatoires.map((l) => (
+              <Line key={l.id} line={l} kinds={REWARD_KINDS} byId={byId} factions={factions} />
+            ))}
+          </ul>
+          <SommeBanner somme={somme} manque={Math.max(0, 100 - somme)} />
+          {/* « du tirage », pas « par complétion » : les lignes garanties
+              listées au-dessus ne sont pas dans ce total. */}
+          {moyennePa > 0 && (
+            <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: MUTED }}>
+              Gain moyen <strong style={{ color: 'rgba(214,206,232,0.9)' }}>du tirage</strong> :{' '}
+              <strong style={{ color: GOLD }}>{Math.round(moyennePa * 10) / 10} PA</strong>
+              {' '}— hors récompenses garanties et hors objets sans prix estimé.
+            </span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -176,11 +250,7 @@ export function QuestDetail({ quest, byId, factions, onComplete, onUncomplete, o
           {quest.rewards.length === 0 ? (
             <p style={{ ...zero }}>Aucune récompense.</p>
           ) : (
-            <ul style={listStyle}>
-              {quest.rewards.map((l) => (
-                <Line key={l.id} line={l} kinds={REWARD_KINDS} byId={byId} factions={factions} />
-              ))}
-            </ul>
+            <RewardLists rewards={quest.rewards} byId={byId} factions={factions} />
           )}
         </Column>
       </div>

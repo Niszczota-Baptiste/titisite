@@ -41,6 +41,12 @@ function mapLine(r) {
     id: r.id, kind: r.kind, refCode: r.ref_code, factionId: r.faction_id,
     quantite: r.quantite, unlockQuestId: r.unlock_quest_id ?? null,
     label: r.label, icon: r.icon, ordre: r.ordre,
+    // Récompenses aléatoires : `probabilite` NULL = ligne garantie.
+    // (Colonnes absentes sur les entrées → undefined, ignoré par le front.)
+    probabilite: r.probabilite ?? null,
+    probabiliteSource: r.probabilite_source ?? null,
+    quantiteMin: r.quantite_min ?? null,
+    quantiteMax: r.quantite_max ?? null,
   };
 }
 
@@ -500,13 +506,29 @@ function replaceInputs(questId, rows) {
 function replaceRewards(questId, rows) {
   db.prepare(`DELETE FROM quest_rewards WHERE quest_id = ?`).run(questId);
   const ins = db.prepare(`
-    INSERT INTO quest_rewards (quest_id, kind, ref_code, faction_id, quantite, unlock_quest_id, label, icon, ordre)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO quest_rewards (quest_id, kind, ref_code, faction_id, quantite, unlock_quest_id,
+      label, icon, ordre, probabilite, probabilite_source, quantite_min, quantite_max)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  (rows || []).forEach((l, i) => ins.run(
-    questId, l.kind, l.refCode ?? null, l.factionId ?? null,
-    l.quantite ?? null, l.unlockQuestId ?? null, l.label || '', l.icon ?? null, i,
-  ));
+  const bornes = (l) => {
+    // Une fourchette n'a de sens que sur une ligne tirée au sort ; sans elle on
+    // garde la quantité fixe historique.
+    const min = l.quantiteMin == null || l.quantiteMin === '' ? null : Math.max(0, Math.trunc(+l.quantiteMin) || 0);
+    const max = l.quantiteMax == null || l.quantiteMax === '' ? null : Math.max(0, Math.trunc(+l.quantiteMax) || 0);
+    if (min == null && max == null) return [null, null];
+    return [min ?? max, max ?? min];
+  };
+  (rows || []).forEach((l, i) => {
+    const alea = l.probabilite != null && l.probabilite !== '';
+    const [min, max] = bornes(l);
+    ins.run(
+      questId, l.kind, l.refCode ?? null, l.factionId ?? null,
+      l.quantite ?? null, l.unlockQuestId ?? null, l.label || '', l.icon ?? null, i,
+      alea ? Math.min(100, Math.max(0, Number(l.probabilite))) : null,
+      alea ? (l.probabiliteSource || 'estimee') : null,
+      min, max,
+    );
+  });
 }
 
 function replacePrereqs(questId, rows) {
@@ -683,26 +705,39 @@ export function questHistory(questId, memberId = null) {
 
 // Gains potentiels par cadence — sur toutes les quêtes, ou restreints à un
 // groupe (partagé ou privé) quand `groupId` est fourni.
+// Gain ESPÉRÉ d'une ligne de récompense : quantité moyenne (fourchette si elle
+// existe, sinon la quantité fixe) pondérée par sa probabilité. Une ligne
+// garantie (probabilite NULL) vaut sa quantité — le comportement historique est
+// donc inchangé tant qu'aucune récompense n'est aléatoire.
+const REWARD_EXPECTED = `
+  COALESCE((r.quantite_min + r.quantite_max) / 2.0, r.quantite, 0)
+  * COALESCE(r.probabilite, 100) / 100.0
+`;
+
+const arrondi = (n) => Math.round((Number(n) || 0) * 10) / 10;
+
 export function potentialGains(groupId = null) {
   const groupJoin = groupId != null ? 'JOIN quest_group_items gi ON gi.quest_id = q.id AND gi.group_id = ?' : '';
   const groupArgs = groupId != null ? [groupId] : [];
   const out = {};
   for (const occ of ['journaliere', 'hebdomadaire', 'mensuelle', 'simple']) {
-    const pa = db.prepare(`
-      SELECT COALESCE(SUM(r.quantite), 0) AS n FROM quest_rewards r
+    const pa = arrondi(db.prepare(`
+      SELECT COALESCE(SUM(${REWARD_EXPECTED}), 0) AS n FROM quest_rewards r
       JOIN quests q ON q.id = r.quest_id
       ${groupJoin}
       WHERE q.occurrence_type = ? AND r.kind = 'pa'
-    `).get(...groupArgs, occ).n;
+    `).get(...groupArgs, occ).n);
     const reputations = db.prepare(`
-      SELECT r.faction_id, f.nom, f.couleur, COALESCE(SUM(r.quantite), 0) AS total
+      SELECT r.faction_id, f.nom, f.couleur, COALESCE(SUM(${REWARD_EXPECTED}), 0) AS total
       FROM quest_rewards r
       JOIN quests q ON q.id = r.quest_id
       ${groupJoin}
       LEFT JOIN factions f ON f.id = r.faction_id
       WHERE q.occurrence_type = ? AND r.kind = 'reputation' AND r.faction_id IS NOT NULL
       GROUP BY r.faction_id ORDER BY total DESC
-    `).all(...groupArgs, occ).map((x) => ({ factionId: x.faction_id, nom: x.nom, couleur: x.couleur, total: x.total }));
+    `).all(...groupArgs, occ).map((x) => ({
+      factionId: x.faction_id, nom: x.nom, couleur: x.couleur, total: arrondi(x.total),
+    }));
     const questCount = groupId != null
       ? db.prepare(`
           SELECT COUNT(*) AS n FROM quests q
@@ -722,12 +757,13 @@ export function reputationOverview() {
   const factions = listFactions();
   return factions.map((f) => {
     const quests = db.prepare(`
-      SELECT DISTINCT q.id, q.titre, q.occurrence_type, r.quantite
+      SELECT DISTINCT q.id, q.titre, q.occurrence_type, r.quantite, r.probabilite
       FROM quest_rewards r JOIN quests q ON q.id = r.quest_id
       WHERE r.kind = 'reputation' AND r.faction_id = ?
       ORDER BY q.titre
     `).all(f.id).map((q) => ({
       id: q.id, titre: q.titre, occurrenceType: q.occurrence_type, quantite: q.quantite,
+      probabilite: q.probabilite ?? null,
     }));
     return { ...f, grantingQuests: quests };
   });

@@ -105,6 +105,22 @@ Sur `quests` : `categorie` (`recolte`|`craft`|`achat`|`pvp`|`autre`) plus la mis
 en scène du craft (`craft_station`, `craft_grid` = 9 cases d'ids codex,
 `craft_shapeless`, `maitrise_faction_id`/`maitrise_tier_id`).
 
+**Une récompense de quête peut être aléatoire.** Une récolte de géodes donne
+« rien, ou 1 à 3 géodes » : les colonnes `probabilite`, `probabilite_source`,
+`quantite_min` et `quantite_max` sur `quest_rewards` décrivent ça sans table
+supplémentaire. La règle tient en une ligne : **`probabilite` NULL = récompense
+garantie** (le cas historique, inchangé), renseignée = ligne du tirage. La fiche
+sépare les deux blocs, affiche la somme du tirage (signalée si ≠ 100 %) et le
+gain moyen du tirage ; l'éditeur ouvre les champs « min / max / % chance » sur
+chaque ligne de récompense. Un tirage se complète avec une ligne « Rien »
+(kind `autre`).
+
+Conséquence sur les **gains potentiels** : ils sont désormais **pondérés par la
+probabilité** (`SUM(quantité moyenne × probabilité)`), sinon « si tu fais tout »
+promettrait 250 PA pour un jackpot à 3 %. Les données existantes ne bougent pas
+— une ligne garantie vaut toujours sa quantité. Un seul tirage par quête pour
+l'instant (toutes les lignes probabilisées appartiennent au même pool).
+
 **La recette d'une quête de craft n'a pas de table à elle** : ses ingrédients
 sont les `quest_inputs` et son résultat une `quest_rewards`. Conséquence
 directe et voulue — « 📦 Où trouver dans les coffres » et le flux cockpit

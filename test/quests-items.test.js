@@ -424,3 +424,90 @@ describe('compatibilité des items custom historiques', () => {
     assert.equal(legacy.json.refCode, 'potion', 'la modification demandée est bien appliquée');
   });
 });
+
+describe('récompenses aléatoires de quête', () => {
+  let admin;
+  let geode;
+
+  before(async () => {
+    admin = await login(ADMIN);
+    geode = (await admin.f.get('/api/quests/unique-items')).json.find((i) => i.slug === 'petite-geode');
+  });
+
+  it('une quête de récolte peut ne rien donner, ou n objets', async () => {
+    const r = await admin.f.post('/api/quests/quests', {
+      body: {
+        titre: 'Récolte de géodes', categorie: 'recolte', occurrenceType: 'journaliere',
+        rewards: [
+          // Garantie : pas de probabilité (comportement historique).
+          { kind: 'pa', quantite: 20, label: 'Prime de sortie' },
+          // Tirage : « rien », ou 1 à 3 géodes.
+          { kind: 'autre', label: 'Rien', probabilite: 55, probabiliteSource: 'observee' },
+          { kind: 'item', refCode: `custom:${geode.id}`, probabilite: 45,
+            quantiteMin: 1, quantiteMax: 3, probabiliteSource: 'estimee' },
+        ],
+      },
+    });
+    assert.equal(r.status, 201, JSON.stringify(r.json));
+    const garanties = r.json.rewards.filter((l) => l.probabilite == null);
+    const tirage = r.json.rewards.filter((l) => l.probabilite != null);
+    assert.equal(garanties.length, 1);
+    assert.equal(garanties[0].quantite, 20);
+    assert.equal(tirage.length, 2);
+    assert.equal(tirage[1].quantiteMin, 1);
+    assert.equal(tirage[1].quantiteMax, 3);
+    assert.equal(tirage[1].probabiliteSource, 'estimee');
+    assert.equal(tirage.reduce((s, l) => s + l.probabilite, 0), 100);
+  });
+
+  it('valide les bornes comme une table de butin', async () => {
+    const cases = [
+      [[{ kind: 'pa', probabilite: 140 }], 'invalid_probabilite'],
+      [[{ kind: 'pa', probabilite: -2 }], 'invalid_probabilite'],
+      [[{ kind: 'pa', probabilite: 10, probabiliteSource: 'au pif' }], 'invalid_probabilite_source'],
+      [[{ kind: 'pa', probabilite: 10, quantiteMin: 5, quantiteMax: 2 }], 'quantite_min_gt_max'],
+      [[{ kind: 'pa', probabilite: 10, quantiteMin: -1 }], 'invalid_quantite_min'],
+    ];
+    for (const [rewards, expected] of cases) {
+      const res = await admin.f.post('/api/quests/quests', { body: { titre: 'x', rewards } });
+      assert.equal(res.status, 400, JSON.stringify(rewards));
+      assert.equal(res.json.error, expected);
+    }
+  });
+
+  it('les gains potentiels sont PONDÉRÉS par la probabilité', async () => {
+    const q = await admin.f.post('/api/quests/quests', {
+      body: {
+        titre: 'Prime incertaine', categorie: 'recolte', occurrenceType: 'mensuelle',
+        rewards: [
+          { kind: 'pa', quantite: 100 },                                   // garanti → 100
+          { kind: 'pa', probabilite: 50, quantiteMin: 10, quantiteMax: 30 }, // 50 % × 20 → 10
+        ],
+      },
+    });
+    assert.equal(q.status, 201);
+    const gains = await admin.f.get('/api/quests/gains');
+    assert.equal(gains.json.mensuelle.pa, 110, 'et non 130 : la ligne aléatoire compte pour son espérance');
+  });
+
+  it('la probabilité remonte dans « où trouver quoi »', async () => {
+    const src = await admin.f.get(`/api/quests/unique-items/${geode.id}/sources`);
+    const recolte = src.json.sources.recompenses.find((r) => r.titre === 'Récolte de géodes');
+    assert.ok(recolte, 'la quête apparaît comme source');
+    assert.equal(recolte.probabilite, 45);
+    assert.equal(recolte.quantiteMin, 1);
+    assert.equal(recolte.quantiteMax, 3);
+  });
+
+  it('une récompense garantie reste sans probabilité après édition', async () => {
+    const liste = await admin.f.get('/api/quests/quests?categorie=recolte');
+    const cible = liste.json.find((x) => x.titre === 'Prime incertaine');
+    const full = (await admin.f.get(`/api/quests/quests/${cible.id}`)).json;
+    const maj = await admin.f.put(`/api/quests/quests/${cible.id}`, {
+      body: { titre: full.titre, rewards: full.rewards.map((l) => ({ ...l })) },
+    });
+    assert.equal(maj.status, 200);
+    assert.equal(maj.json.rewards[0].probabilite, null, 'aller-retour sans effet de bord');
+    assert.equal(maj.json.rewards[1].probabilite, 50);
+  });
+});

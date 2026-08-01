@@ -189,7 +189,11 @@ Single-process Node app:
   FK / codex id / PA / reputation / free text, quantity range, probability +
   its provenance), `loot_observations` (per-member opening log → empirical
   rates with a Wilson 95 % interval), `unique_item_sources` (manual sources
-  only). `quests.categorie` (`recolte|craft|achat|pvp|autre`) drives list
+  only). `quest_rewards` carry optional
+  `probabilite`/`probabilite_source`/`quantite_min`/`quantite_max` — NULL
+  probability = guaranteed line (unchanged), set = part of the quest's random
+  draw (« rien, ou 1–3 géodes »), so `potentialGains` is now weighted by
+  expectation. `quests.categorie` (`recolte|craft|achat|pvp|autre`) drives list
   facets + sections; a craft quest's **ingredients stay in `quest_inputs` and
   its result in `quest_rewards`** (only station/3×3 grid/mastery are new
   columns), so chest lookup and the cockpit feed work on crafts for free;

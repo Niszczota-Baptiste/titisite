@@ -4,10 +4,12 @@ import { useConfirm } from '../../ui/ConfirmProvider';
 import { Button, Field, Input, Textarea } from '../admin/ui';
 import { CodexPicker } from '../admin/editors/minecraft/CodexPicker';
 import { CraftEditor, OffersEditor } from './CraftOffers';
+import { SommeBanner } from './items/LootTable';
+import { sommeProbabilites } from './items/loot';
 import { QuestMap } from './QuestMap';
 import {
   ACC, ACC_RGB, CRIMSON, GOLD, INK, MUTED, OCCURRENCE_ORDER, OCCURRENCES,
-  POINT_ROLES, QUEST_CATEGORIES, QUEST_CATEGORY_ORDER, panel,
+  POINT_ROLES, PROBA_SOURCES, QUEST_CATEGORIES, QUEST_CATEGORY_ORDER, panel,
 } from './theme';
 
 const selectStyle = {
@@ -476,7 +478,7 @@ function QuestForm({ quest, factions, chains, groups = [], maps = [], quests, by
       <LineSection
         title="Récompenses" accent={GOLD} rows={rewards} setRows={setRewards}
         kinds={['item', 'pa', 'reputation', 'deblocage', 'autre']} factionArr={factionArr}
-        byId={byId} catalog={catalog} otherQuests={otherQuests}
+        byId={byId} catalog={catalog} otherQuests={otherQuests} aleatoire
       />
       {categorie === 'craft' && (
         <CraftEditor
@@ -511,6 +513,8 @@ const stripOffer = (o) => ({
 const strip = (l) => ({
   kind: l.kind, refCode: l.refCode, factionId: l.factionId, quantite: l.quantite,
   unlockQuestId: l.unlockQuestId, label: l.label, icon: l.icon,
+  probabilite: l.probabilite, probabiliteSource: l.probabiliteSource,
+  quantiteMin: l.quantiteMin, quantiteMax: l.quantiteMax,
 });
 
 function SectionShell({ title, accent, children, onAdd, addLabel }) {
@@ -534,9 +538,16 @@ function RowShell({ onRemove, children }) {
   );
 }
 
-function LineSection({ title, accent, rows, setRows, kinds, factionArr, byId, catalog, otherQuests }) {
+function LineSection({
+  title, accent, rows, setRows, kinds, factionArr, byId, catalog, otherQuests,
+  // `aleatoire` ouvre les champs « % de chance » sur chaque ligne : une
+  // récompense peut ne pas tomber (récolte de géodes, drop rare…).
+  aleatoire = false,
+}) {
   const set = (i, patch) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const add = () => setRows((rs) => [...rs, { kind: kinds[0], label: '', quantite: '' }]);
+  const somme = sommeProbabilites(rows.filter((r) => r.probabilite !== '' && r.probabilite != null));
+  const tirage = rows.some((r) => r.probabilite !== '' && r.probabilite != null);
   return (
     <SectionShell title={title} accent={accent} onAdd={add} addLabel="+ Ligne">
       {rows.map((r, i) => (
@@ -567,8 +578,35 @@ function LineSection({ title, accent, rows, setRows, kinds, factionArr, byId, ca
           {r.kind !== 'deblocage' && (
             <Input type="number" value={r.quantite ?? ''} placeholder="Qté" onChange={(e) => set(i, { quantite: e.target.value === '' ? null : Number(e.target.value) })} style={{ width: 80 }} />
           )}
+          {aleatoire && r.kind !== 'deblocage' && (
+            <>
+              <span style={{ fontSize: 11, color: MUTED, fontFamily: "'Inter',sans-serif" }}>ou</span>
+              <Input type="number" min="0" value={r.quantiteMin ?? ''} placeholder="min" aria-label="Quantité minimale"
+                onChange={(e) => set(i, { quantiteMin: e.target.value })} style={{ width: 66 }} />
+              <Input type="number" min="0" value={r.quantiteMax ?? ''} placeholder="max" aria-label="Quantité maximale"
+                onChange={(e) => set(i, { quantiteMax: e.target.value })} style={{ width: 66 }} />
+              <Input type="number" min="0" max="100" step="0.01" value={r.probabilite ?? ''} placeholder="% chance"
+                aria-label="Probabilité en pourcentage"
+                onChange={(e) => set(i, { probabilite: e.target.value })} style={{ width: 88 }} />
+              {r.probabilite !== '' && r.probabilite != null && (
+                <select value={r.probabiliteSource || 'estimee'} aria-label="Source de la probabilité"
+                  onChange={(e) => set(i, { probabiliteSource: e.target.value })}
+                  style={{ ...selectStyle, minWidth: 105 }}>
+                  {Object.entries(PROBA_SOURCES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              )}
+            </>
+          )}
         </RowShell>
       ))}
+      {aleatoire && (
+        <p style={{ margin: '2px 0 0', fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+          Laisse « % chance » vide pour une récompense <strong>garantie</strong>. Renseigne-la pour
+          une récompense tirée au sort — avec une fourchette min/max si la quantité varie
+          (« rien, ou 1 à 3 géodes »). Ajoute une ligne « Rien » pour compléter le tirage.
+        </p>
+      )}
+      {tirage && <div style={{ marginTop: 6 }}><SommeBanner somme={somme} manque={Math.max(0, 100 - somme)} /></div>}
     </SectionShell>
   );
 }
