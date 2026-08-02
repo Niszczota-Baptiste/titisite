@@ -8,6 +8,7 @@ import { Modal } from '../components/project/shared';
 import { EntryDetail } from '../components/lore/EntryDetail';
 import { EntryEditor } from '../components/lore/EntryEditor';
 import { EntryList } from '../components/lore/EntryList';
+import { MapTab } from '../components/lore/MapTab';
 import { ACC, ACC_RGB, GOLD, INK, MUTED } from '../components/lore/theme';
 
 // Salle d'enquête « Lore Nostra » — module global gaté par le tag lore
@@ -37,10 +38,11 @@ export default function Lore() {
   return <LoreApp user={user} />;
 }
 
-// Les étapes suivantes ajouteront 🗺 Carte, 🧪 Hypothèses, 🕸 Graphe,
-// 🕰 Timeline et 📤 Export — un onglet chacune.
+// Les étapes suivantes ajouteront 🧪 Hypothèses, 🕸 Graphe, 🕰 Timeline et
+// 📤 Export — un onglet chacune.
 const TABS = [
   ['entrees', '📖 Entrées'],
+  ['carte', '🗺 Carte'],
 ];
 
 function LoreApp({ user }) {
@@ -140,6 +142,7 @@ function LoreApp({ user }) {
             onOpen={setDetailId} onCreate={() => setEditing('new')}
           />
         )}
+        {tab === 'carte' && <MapTab onOpenEntry={setDetailId} />}
       </div>
 
       {/* fiche détail */}
