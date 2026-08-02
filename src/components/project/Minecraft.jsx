@@ -169,6 +169,7 @@ export function ItemIcon({ name, category, iconIndex, idIndex, block3d = false, 
 
 export function MinecraftTab({ mode = 'full' }) {
   const { workspace } = useWorkspace();
+  const { user } = useAuth();
   const ws = api.ws(workspace.slug);
   const confirm = useConfirm();
   const toast = useToast();
@@ -414,6 +415,9 @@ export function MinecraftTab({ mode = 'full' }) {
     <>
       <QuestsLink slug={workspace.slug} />
       <VaultLink slug={workspace.slug} />
+      {/* Salle d'enquête lore : réservée aux comptes tagués — les autres ne
+          voient même pas l'entrée (spec du module). */}
+      {user?.canViewLore && <LoreLink slug={workspace.slug} />}
     </>
   );
 
@@ -815,6 +819,26 @@ function QuestsLink({ slug }) {
       }}
     >
       📜 Quêtes
+    </Link>
+  );
+}
+
+// Salle d'enquête « Lore Nostra » (module global /lore). Rendu UNIQUEMENT si
+// user.canViewLore — contrairement aux quêtes, l'existence même du module ne
+// doit pas être visible des autres comptes. ?projet=<slug> pour le retour.
+function LoreLink({ slug }) {
+  return (
+    <Link
+      to={`/lore?projet=${slug}`}
+      title="Salle d'enquête — lore de Nostra"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '7px 12px', borderRadius: 8, textDecoration: 'none',
+        background: 'rgba(123,227,168,0.08)', border: '1px solid rgba(123,227,168,0.4)',
+        color: '#7be3a8', fontFamily: "'Inter',sans-serif", fontSize: 13, whiteSpace: 'nowrap',
+      }}
+    >
+      🔍 Lore
     </Link>
   );
 }
