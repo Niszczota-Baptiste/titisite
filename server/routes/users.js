@@ -43,10 +43,11 @@ usersRouter.post('/', requireAuth, ADMIN, (req, res) => {
   const canViewQuests = req.body?.canViewQuests ? 1 : 0;
   const canEditQuests = req.body?.canEditQuests ? 1 : 0;
   const canViewVault  = req.body?.canViewVault ? 1 : 0;
+  const canViewLore   = req.body?.canViewLore ? 1 : 0;
   const result = db
-    .prepare(`INSERT INTO users (email, name, password_hash, role, can_view_stairs, can_view_quests, can_edit_quests, can_view_vault) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(email.toLowerCase().trim(), (name || '').trim(), hash, role, canViewStairs, canViewQuests, canEditQuests, canViewVault);
-  const row = db.prepare(`SELECT id, email, name, role, can_view_stairs, can_view_quests, can_edit_quests, can_view_vault, created_at FROM users WHERE id = ?`).get(result.lastInsertRowid);
+    .prepare(`INSERT INTO users (email, name, password_hash, role, can_view_stairs, can_view_quests, can_edit_quests, can_view_vault, can_view_lore) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(email.toLowerCase().trim(), (name || '').trim(), hash, role, canViewStairs, canViewQuests, canEditQuests, canViewVault, canViewLore);
+  const row = db.prepare(`SELECT id, email, name, role, can_view_stairs, can_view_quests, can_edit_quests, can_view_vault, can_view_lore, created_at FROM users WHERE id = ?`).get(result.lastInsertRowid);
   res.status(201).json(row);
 });
 
@@ -91,6 +92,7 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
   const canViewQuests = flag(req.body?.canViewQuests);
   const canEditQuests = flag(req.body?.canEditQuests);
   const canViewVault  = flag(req.body?.canViewVault);
+  const canViewLore   = flag(req.body?.canViewLore);
 
   db.prepare(`
     UPDATE users SET
@@ -100,9 +102,10 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
       can_view_stairs = COALESCE(?, can_view_stairs),
       can_view_quests = COALESCE(?, can_view_quests),
       can_edit_quests = COALESCE(?, can_edit_quests),
-      can_view_vault  = COALESCE(?, can_view_vault)
+      can_view_vault  = COALESCE(?, can_view_vault),
+      can_view_lore   = COALESCE(?, can_view_lore)
     WHERE id = ?
-  `).run(name ?? null, role ?? null, newHash, canViewStairs, canViewQuests, canEditQuests, canViewVault, id);
+  `).run(name ?? null, role ?? null, newHash, canViewStairs, canViewQuests, canEditQuests, canViewVault, canViewLore, id);
 
   if (wantsPasswordChange) {
     bumpTokenVersion(id);
@@ -114,7 +117,7 @@ usersRouter.put('/:id', requireAuth, ADMIN, (req, res) => {
     );
   }
 
-  const row = db.prepare(`SELECT id, email, name, role, can_view_stairs, can_view_quests, can_edit_quests, can_view_vault, created_at FROM users WHERE id = ?`).get(id);
+  const row = db.prepare(`SELECT id, email, name, role, can_view_stairs, can_view_quests, can_edit_quests, can_view_vault, can_view_lore, created_at FROM users WHERE id = ?`).get(id);
   res.json(row);
 });
 

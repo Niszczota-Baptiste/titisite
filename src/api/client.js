@@ -58,6 +58,17 @@ export function trackClick(to, kind) {
   } catch { /* ignore */ }
 }
 
+// { a: 1, b: undefined } → '?a=1' ('' si rien à encoder). Les valeurs null /
+// undefined / '' sont omises pour ne pas polluer les URLs.
+function qs(params) {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v !== undefined && v !== null && v !== '') sp.set(k, v);
+  }
+  const s = sp.toString();
+  return s ? `?${s}` : '';
+}
+
 async function request(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
   const res = await fetch(`/api${path}`, {
@@ -433,6 +444,64 @@ export const api = {
       update: (id, b) => request('PUT', `/vault-categories/${id}`, b),
       remove: (id) => request('DELETE', `/vault-categories/${id}`),
     },
+  },
+
+  // Lore « Nostra » : enquête collaborative sur le lore de la map Minefield.
+  // Module global gated par canViewLore — tout est privé, médias compris
+  // (`media[].url` pointe vers /api/lore/media/file/*, servi derrière le gate).
+  lore: {
+    entries: {
+      list:      (params) => request('GET', `/lore/entries${qs(params)}`),
+      get:       (idOrSlug) => request('GET', `/lore/entries/${idOrSlug}`),
+      create:    (b) => request('POST', '/lore/entries', b),
+      update:    (id, b) => request('PUT', `/lore/entries/${id}`, b),
+      remove:    (id) => request('DELETE', `/lore/entries/${id}`),
+      revisions: (id) => request('GET', `/lore/entries/${id}/revisions`),
+    },
+    hypotheses: {
+      list:      (params) => request('GET', `/lore/hypotheses${qs(params)}`),
+      get:       (id) => request('GET', `/lore/hypotheses/${id}`),
+      create:    (b) => request('POST', '/lore/hypotheses', b),
+      update:    (id, b) => request('PUT', `/lore/hypotheses/${id}`, b),
+      remove:    (id) => request('DELETE', `/lore/hypotheses/${id}`),
+      revisions: (id) => request('GET', `/lore/hypotheses/${id}/revisions`),
+      addEvidence: (id, b) => request('POST', `/lore/hypotheses/${id}/evidence`, b),
+    },
+    evidence: {
+      update: (id, b) => request('PUT', `/lore/evidence/${id}`, b),
+      remove: (id) => request('DELETE', `/lore/evidence/${id}`),
+    },
+    tags: {
+      list:   () => request('GET', '/lore/tags'),
+      create: (b) => request('POST', '/lore/tags', b),
+      update: (id, b) => request('PUT', `/lore/tags/${id}`, b),
+      remove: (id) => request('DELETE', `/lore/tags/${id}`),
+    },
+    links: {
+      create: (b) => request('POST', '/lore/links', b),
+      remove: (id) => request('DELETE', `/lore/links/${id}`),
+    },
+    maps: {
+      list:   () => request('GET', '/lore/maps'),
+      create: (b) => request('POST', '/lore/maps', b),
+      update: (id, b) => request('PUT', `/lore/maps/${id}`, b),
+      remove: (id) => request('DELETE', `/lore/maps/${id}`),
+      // FormData { image } — fond de carte, remplace l'image précédente.
+      setImage: (id, formData, opts) => uploadFile(`/lore/maps/${id}/image`, formData, opts),
+    },
+    media: {
+      // FormData { image, entryId? | hypothesisId?, caption? }
+      upload:     (formData, opts) => uploadFile('/lore/media', formData, opts),
+      setCaption: (id, caption) => request('PUT', `/lore/media/${id}`, { caption }),
+      remove:     (id) => request('DELETE', `/lore/media/${id}`),
+    },
+    mapPoints: (dimension) => request('GET', `/lore/map/points${qs({ dimension })}`),
+    bearing:   (from, to) => request('POST', '/lore/geo/bearing', { from, to }),
+    ring:      (originX, originZ, params) => request('GET',
+      `/lore/geo/ring${qs({ origin_x: originX, origin_z: originZ, ...params })}`),
+    search:    (q) => request('GET', `/lore/search${qs({ q })}`),
+    graph:     () => request('GET', '/lore/graph'),
+    export:    () => request('GET', '/lore/export'),
   },
 
   // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.

@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { COLLECTIONS, count, insert, migrate } from './db.js';
 import { ensureSeedUsers } from './users.js';
 import { seedWritingIfEmpty } from './seed-writing.js';
+import { seedLoreIfEmpty } from './seed-lore.js';
 import { seedQuestsIfEmpty } from './seed-quests.js';
 import { seedUniqueItemsCatalogue } from './seed-unique-items.js';
 import { seedVaultCategoriesIfEmpty } from './vault/seed-categories.js';
@@ -55,6 +56,9 @@ export async function seedIfEmpty({ force = false } = {}) {
   // démo des quêtes, court-circuité dès qu'une faction existe.
   results.uniqueItems = seedUniqueItemsCatalogue();
   results.vaultCategories = seedVaultCategoriesIfEmpty();
+  // Lore « Nostra » : vraies données d'enquête (bâtiments, poèmes, hypothèses
+  // avec leur statut réel) — court-circuité dès la première entrée existante.
+  results.lore = seedLoreIfEmpty();
 
   return results;
 }

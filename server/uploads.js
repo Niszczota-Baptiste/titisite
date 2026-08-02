@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
 
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+export const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- UPLOADS_DIR comes from env/default, not user input
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -156,6 +156,16 @@ function makeMemoryUploader(allowed, maxBytes) {
 }
 export const SCREENSHOT_MAX_BYTES = Number(process.env.SCREENSHOT_MAX_BYTES || 15 * 1024 * 1024); // 15 MB
 export const uploadScreenshotMemory = makeMemoryUploader(ALLOWED_IMAGE, SCREENSHOT_MAX_BYTES);
+
+// Images du module Lore : allowlist plus stricte que ALLOWED_IMAGE (pas de
+// GIF — les pièces d'enquête sont des captures, et le pipeline lore recompresse
+// TOUT en WebP sans exception : un fichier que sharp ne décode pas est rejeté).
+export const ALLOWED_LORE_IMAGE = {
+  mime: new Set(['image/jpeg', 'image/png', 'image/webp']),
+  ext:  new Set(['.jpg', '.jpeg', '.png', '.webp']),
+};
+export const LORE_IMAGE_MAX_BYTES = Number(process.env.LORE_IMAGE_MAX_BYTES || 10 * 1024 * 1024); // 10 MB
+export const uploadLoreImage = makeUploader(ALLOWED_LORE_IMAGE, LORE_IMAGE_MAX_BYTES);
 
 // Schematics WorldEdit à importer (.schem Sponge / .litematic Litematica) :
 // NBT gzip sans MIME dédié → octet-stream toléré, l'extension fait foi. Lu en

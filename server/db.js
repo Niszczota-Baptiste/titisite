@@ -59,6 +59,9 @@ export function migrate() {
   // can_view_quests : le flag ouvre la section, la propriété du plan décide
   // ensuite de ce que le compte voit. Les admins passent outre.
   ensureColumn('users', 'can_view_vault', 'INTEGER NOT NULL DEFAULT 0');
+  // Lore « Nostra » — le « tag lore » : ouvre le module d'enquête, en lecture
+  // ET en écriture (l'outil est collaboratif, un seul flag). Admins outre.
+  ensureColumn('users', 'can_view_lore', 'INTEGER NOT NULL DEFAULT 0');
   // Secret token for the Minefield cockpit pull feed (no cookie, like ical_token).
   ensureColumn('users', 'cockpit_token', 'TEXT');
   // Per-member opt-in: include quest reminders in that member's cockpit feed.
@@ -1588,6 +1591,164 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_categories_sort ON vault_categories(sort_order, id);`);
+
+  // ── Lore « Nostra » (enquête collaborative sur le lore de la map Minefield) ──
+  // Module global comme les quêtes : accès gaté par users.can_view_lore (admins
+  // outre), tables relationnelles préfixées lore_. Les enums extensibles
+  // (entry_type, status, stance, relation_type, dimension) n'ont volontairement
+  // PAS de CHECK — listes dans server/lore/enums.js, même raison que
+  // quests.categorie : un CHECK SQLite ne s'étend pas sans rebuild de table.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_entries (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      title         TEXT NOT NULL,
+      slug          TEXT NOT NULL UNIQUE,
+      body_md       TEXT NOT NULL DEFAULT '',
+      entry_type    TEXT NOT NULL DEFAULT 'observation',
+      coord_x       INTEGER,
+      coord_y       INTEGER,
+      coord_z       INTEGER,
+      dimension     TEXT NOT NULL DEFAULT 'overworld',
+      is_canon      INTEGER NOT NULL DEFAULT 0,
+      discovered_at INTEGER,
+      author_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_entries_type ON lore_entries(entry_type);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_entries_coords ON lore_entries(dimension, coord_x, coord_z);`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_hypotheses (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      title           TEXT NOT NULL,
+      body_md         TEXT NOT NULL DEFAULT '',
+      status          TEXT NOT NULL DEFAULT 'open',
+      confidence      INTEGER NOT NULL DEFAULT 50,
+      created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      resolved_at     INTEGER,
+      resolution_note TEXT NOT NULL DEFAULT '',
+      created_at      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at      INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_hypotheses_status ON lore_hypotheses(status);`);
+
+  // Le cœur du système : une même observation peut soutenir une hypothèse et
+  // en contredire une autre. Une seule position par paire (hypothèse, entrée).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_evidence (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      hypothesis_id INTEGER NOT NULL REFERENCES lore_hypotheses(id) ON DELETE CASCADE,
+      entry_id      INTEGER NOT NULL REFERENCES lore_entries(id) ON DELETE CASCADE,
+      stance        TEXT NOT NULL DEFAULT 'neutral',
+      note          TEXT NOT NULL DEFAULT '',
+      created_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      UNIQUE (hypothesis_id, entry_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_evidence_entry ON lore_evidence(entry_id);`);
+
+  // Médias rattachés à une entrée OU une hypothèse (ou à rien : fond de carte).
+  // Fichiers WebP recompressés + miniature, servis UNIQUEMENT par
+  // /api/lore/media/file/:f derrière le gate lore — jamais en statique.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_media (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_id       INTEGER REFERENCES lore_entries(id) ON DELETE CASCADE,
+      hypothesis_id  INTEGER REFERENCES lore_hypotheses(id) ON DELETE CASCADE,
+      filename       TEXT NOT NULL,
+      thumb_filename TEXT,
+      original_name  TEXT NOT NULL DEFAULT '',
+      mime_type      TEXT,
+      width          INTEGER,
+      height         INTEGER,
+      size           INTEGER NOT NULL DEFAULT 0,
+      caption        TEXT NOT NULL DEFAULT '',
+      uploaded_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_media_entry ON lore_media(entry_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_media_hypothesis ON lore_media(hypothesis_id);`);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_lore_media_filename ON lore_media(filename);`);
+
+  // Tags libres avec couleur optionnelle + liaison N-N.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_tags (
+      id    INTEGER PRIMARY KEY AUTOINCREMENT,
+      name  TEXT NOT NULL UNIQUE,
+      color TEXT NOT NULL DEFAULT '#c9a8e8'
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_entry_tags (
+      entry_id INTEGER NOT NULL REFERENCES lore_entries(id) ON DELETE CASCADE,
+      tag_id   INTEGER NOT NULL REFERENCES lore_tags(id) ON DELETE CASCADE,
+      PRIMARY KEY (entry_id, tag_id)
+    );
+  `);
+
+  // Relations orientées entre entrées (same_system, points_to, contradicts,
+  // variant_of, located_in) — nourrit la vue graphe.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_links (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_entry_id INTEGER NOT NULL REFERENCES lore_entries(id) ON DELETE CASCADE,
+      to_entry_id   INTEGER NOT NULL REFERENCES lore_entries(id) ON DELETE CASCADE,
+      relation_type TEXT NOT NULL DEFAULT 'points_to',
+      note          TEXT NOT NULL DEFAULT '',
+      created_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      UNIQUE (from_entry_id, to_entry_id, relation_type)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_links_to ON lore_links(to_entry_id);`);
+
+  // Historique : snapshot du body_md à chaque save (pas de diff), cible
+  // 'entry' ou 'hypothesis' — même patron polymorphe que comments. Pas de FK
+  // (deux tables cibles) : purgé explicitement par store.deleteEntry/Hypothesis.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_revisions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_type TEXT NOT NULL,
+      target_id   INTEGER NOT NULL,
+      body_md     TEXT NOT NULL,
+      author_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_revisions_target ON lore_revisions(target_type, target_id, id);`);
+
+  // Fond(s) de carte calibrés : les deux points de référence saisis tels quels
+  // (X des coins bas-gauche / bas-droit + Z du bord bas du render) ; le client
+  // dérive centre + span et la hauteur du ratio naturel de l'image — même
+  // mécanique d'affichage que quest_maps / minecraft_maps.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_maps (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      name           TEXT NOT NULL,
+      dimension      TEXT NOT NULL DEFAULT 'overworld',
+      image_filename TEXT,
+      img_x_left     INTEGER,
+      img_x_right    INTEGER,
+      img_z_bottom   INTEGER,
+      position       INTEGER NOT NULL DEFAULT 0,
+      created_at     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+
+  // Recherche plein-texte (première utilisation de FTS5 du repo). Table FTS
+  // ordinaire (pas external-content) : le texte est dupliqué mais la synchro
+  // reste explicite et greppable dans server/lore/store.js — pas de triggers.
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS lore_fts USING fts5(
+      kind UNINDEXED, ref_id UNINDEXED, title, body
+    );
+  `);
 }
 
 // Donne un slug aux items uniques qui n'en ont pas encore (lignes créées avant

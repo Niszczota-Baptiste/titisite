@@ -6,7 +6,7 @@ import { isMember } from '../workspaces.js';
 export const commentsRouter = Router();
 
 const PROJECT = requireRole('admin', 'member');
-const TARGETS = ['document', 'feature', 'discussion', 'thread'];
+const TARGETS = ['document', 'feature', 'discussion', 'thread', 'lore_entry', 'lore_hypothesis'];
 
 const SELECT = `
   SELECT c.*, u.name AS author_name, u.email AS author_email, u.role AS author_role
@@ -38,6 +38,16 @@ function rowToComment(r, viewer) {
 function canAccessTarget(user, targetType, targetId) {
   if (user.role === 'admin') return true;
   if (targetType === 'discussion') return true;
+  // Cibles du module Lore : le tag can_view_lore fait office de membership
+  // (module global, pas de workspace), et la cible doit exister.
+  if (targetType === 'lore_entry') {
+    if (user.can_view_lore !== 1) return false;
+    return !!db.prepare(`SELECT 1 FROM lore_entries WHERE id = ?`).get(targetId);
+  }
+  if (targetType === 'lore_hypothesis') {
+    if (user.can_view_lore !== 1) return false;
+    return !!db.prepare(`SELECT 1 FROM lore_hypotheses WHERE id = ?`).get(targetId);
+  }
   let workspaceId;
   if (targetType === 'feature') {
     workspaceId = db.prepare(`SELECT workspace_id FROM features WHERE id = ?`).get(targetId)?.workspace_id;

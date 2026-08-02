@@ -33,6 +33,7 @@ import { minecraftRouter } from './routes/minecraft.js';
 import { blueprintsRouter, blueprintsPublicRouter } from './routes/blueprints.js';
 import { worldeditTokenRouter } from './routes/worldedit.js';
 import { minecraftAdminRouter } from './routes/minecraft-admin.js';
+import { loreRouter } from './routes/lore.js';
 import { questsRouter } from './routes/quests.js';
 import { questsAdminRouter } from './routes/quests-admin.js';
 import { recipesRouter } from './routes/recipes.js';
@@ -311,6 +312,11 @@ app.use('/api/craft', craftRouter);
 // mounted before the admin one so GETs win and writes fall through.
 app.use('/api/quests', questsRouter);
 app.use('/api/quests', questsAdminRouter);
+
+// Lore « Nostra » : enquête collaborative sur le lore de la map Minefield.
+// Module global gaté par users.can_view_lore (admins outre) — TOUT est privé,
+// GET et médias compris (servis par ce routeur, jamais en statique).
+app.use('/api/lore', loreRouter);
 
 // Atelier « Salle des coffres » : plans de rangement Minefield. Module global
 // comme les quêtes — un plan appartient à un compte et se partage explicitement.
