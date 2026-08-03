@@ -461,7 +461,10 @@ export function WorldEditPanel({ we, state, selection, setSelection, active, set
       <TextPanelTool we={we} selection={sel} onChanged={onChanged} refreshState={refreshState} />
 
       {/* Bibliothèque de schematics + import/export .schem/.litematic */}
-      <SchematicLibrary we={we} clipboard={clip} onLoaded={setClip} />
+      {/* Bibliothèque = scope workspace → sessions seulement (state.library).
+          Sur un lien de partage, le serveur répond 403 : on masque le panneau
+          plutôt que d'afficher des boutons qui échouent. */}
+      {state.library && <SchematicLibrary we={we} clipboard={clip} onLoaded={setClip} />}
 
       {/* Export + placement dans le monde */}
       <div style={{ marginTop: 12, borderTop: '1px solid rgba(80,50,130,0.18)', paddingTop: 10 }}>

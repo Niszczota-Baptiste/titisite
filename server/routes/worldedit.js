@@ -69,6 +69,20 @@ function requireEdit(req, res, next) {
   next();
 }
 
+// La bibliothèque de schematics est scopée au WORKSPACE, alors qu'un lien de
+// partage est scopé à UN build. Les deux ne doivent pas se confondre : sans ce
+// garde, un lien « edit » remis pour dépanner sur un seul build donnait accès
+// en lecture, en téléchargement ET EN SUPPRESSION à toutes les schematics du
+// workspace — donc au contenu de builds qui n'ont jamais été partagés.
+// On exige donc une session authentifiée (membre/admin du workspace) pour
+// tout ce qui touche à la bibliothèque partagée.
+function requireSession(req, res, next) {
+  if (!req.we?.session) {
+    return res.status(403).json({ error: 'forbidden', detail: 'session_required' });
+  }
+  next();
+}
+
 // ── Handlers (lisent req.we = { bp, actor, role, canEdit }) ───────────────────
 
 function getOperations(req, res) {
@@ -89,6 +103,9 @@ function getState(req, res) {
     undoDepth: undoDepth(bp.id),
     redoDepth: redoDepth(bp.id),
     maxSelectionVolume: Number(process.env.WORLDEDIT_MAX_SELECTION || 128_000_000),
+    // La bibliothèque (scope workspace) n'est offerte qu'aux sessions ; le
+    // client masque le panneau au lieu de le montrer et de se prendre un 403.
+    library: !!req.we.session,
   });
 }
 
@@ -287,7 +304,10 @@ async function postSchematicImport(req, res) {
     if (!schem || !schem.sx) throw new Error('bad_schematic');
     setClip(`${req.we.actor}`, schem);
     let saved = null;
-    if (String(req.body?.save) === 'true') {
+    // Importer dans SON presse-papier reste dans le périmètre d'un lien
+    // « edit » (coller le morceau dans le build partagé) ; l'écrire dans la
+    // bibliothèque du workspace, non — d'où le `req.we.session`.
+    if (req.we.session && String(req.body?.save) === 'true') {
       saved = saveSchematic({
         workspaceId: req.we.bp.workspace_id,
         name: req.body?.name || req.file.originalname.replace(/\.[^.]+$/, ''),
@@ -511,13 +531,17 @@ function attachRoutes(router) {
   router.post('/mapblocks', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postMapBlocks);
   router.post('/render-preview', worldeditLimiter, requireEdit, uploadScreenshotMemory.single('image'), postRenderPreview);
   router.get('/export', worldeditLimiter, requireEdit, getExport);
-  // Bibliothèque de schematics (scope workspace) + import/export .schem/.litematic.
-  router.get('/schematics', requireEdit, getSchematics);
-  router.post('/schematics/save', worldeditLimiter, requireEdit, postSchematicSave);
+  // Bibliothèque de schematics (scope WORKSPACE) : réservée aux sessions —
+  // un lien de partage ne porte que sur un build (cf. requireSession).
+  router.get('/schematics', requireEdit, requireSession, getSchematics);
+  router.post('/schematics/save', worldeditLimiter, requireEdit, requireSession, postSchematicSave);
+  router.post('/schematics/:sid/load', worldeditLimiter, requireEdit, requireSession, postSchematicLoad);
+  router.get('/schematics/:sid/export', worldeditLimiter, requireEdit, requireSession, getSchematicExport);
+  router.delete('/schematics/:sid', worldeditLimiter, requireEdit, requireSession, deleteSchematicHandler);
+  // Import : ouvert aux liens « edit » (presse-papier seulement — le handler
+  // ignore `save` hors session), car coller un morceau dans le build partagé
+  // est précisément ce que le lien autorise.
   router.post('/schematics/import', worldeditLimiter, requireEdit, uploadSchematicMemory.single('file'), postSchematicImport);
-  router.post('/schematics/:sid/load', worldeditLimiter, requireEdit, postSchematicLoad);
-  router.get('/schematics/:sid/export', worldeditLimiter, requireEdit, getSchematicExport);
-  router.delete('/schematics/:sid', worldeditLimiter, requireEdit, deleteSchematicHandler);
   return router;
 }
 
@@ -529,7 +553,15 @@ worldeditScopedRouter.use((req, res, next) => {
   const bp = db.prepare('SELECT * FROM minecraft_blueprints WHERE id = ? AND workspace_id = ?')
     .get(Number(req.params.id), req.workspace.id);
   if (!bp) return res.status(404).json({ error: 'not_found' });
-  req.we = { bp, actor: `user:${req.user.id}`, role: req.user.role === 'admin' ? 'owner' : 'editor', canEdit: true };
+  req.we = {
+    bp,
+    actor: `user:${req.user.id}`,
+    role: req.user.role === 'admin' ? 'owner' : 'editor',
+    canEdit: true,
+    // Session cookie + appartenance au workspace déjà vérifiées en amont :
+    // l'appelant a légitimement accès à TOUT le workspace, bibliothèque comprise.
+    session: true,
+  };
   next();
 });
 attachRoutes(worldeditScopedRouter);
@@ -547,6 +579,9 @@ worldeditTokenRouter.use('/shared/:token', (req, res, next) => {
     actor: `token:${share.id}`,
     role: share.scope === 'edit' ? 'editor' : 'viewer',
     canEdit: share.scope === 'edit',
+    // Le porteur du lien n'est pas authentifié et le partage ne porte que sur
+    // CE build : pas d'accès aux ressources de portée workspace.
+    session: false,
   };
   next();
 }, attachRoutes(Router({ mergeParams: true })));

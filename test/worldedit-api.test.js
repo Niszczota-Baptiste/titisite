@@ -464,6 +464,74 @@ test('Bibliothèque de schematics : copy → save → list → export .schem →
   assert.equal((await admin.get(`${root}/schematics`)).json.length, 0);
 });
 
+// Régression : un lien de partage est scopé à UN build, la bibliothèque de
+// schematics est scopée au WORKSPACE. Un token « edit » remis pour dépanner sur
+// un seul build ne doit pas donner accès — encore moins en suppression — aux
+// schematics issues de builds jamais partagés.
+test('Partage scopé : un token « edit » n’atteint pas la bibliothèque du workspace', async (t) => {
+  const srv = await bootServer();
+  t.after(() => srv.stop());
+  const admin = fetcher(srv.base);
+  await login(admin, 'admin@test.local', 'adminpw1-strong');
+  const slug = (await admin.get('/api/workspaces')).json[0].slug;
+
+  // Deux builds distincts : on ne partagera QUE le second.
+  const secretId = await uploadBuild(admin, slug);
+  const sharedId = await uploadBuild(admin, slug);
+  const secretRoot = `/api/workspaces/${slug}/blueprints/${secretId}/worldedit`;
+
+  // L'admin range une schematic issue du build NON partagé.
+  await admin.post(`${secretRoot}/transform`, {
+    body: { operation: 'copy', selection: { min: { x: 0, y: 0, z: 0 }, max: { x: 5, y: 0, z: 0 } } },
+  });
+  assert.equal((await admin.post(`${secretRoot}/schematics/save`, { body: { name: 'Plan confidentiel' } })).status, 200);
+  const sid = (await admin.get(`${secretRoot}/schematics`)).json[0].id;
+
+  // Lien « edit » sur l'AUTRE build.
+  const share = await admin.post(`/api/workspaces/${slug}/blueprints/${sharedId}/shares`, { body: { scope: 'edit' } });
+  assert.equal(share.status, 201, share.text);
+  const tokenRoot = `/api/worldedit/shared/${share.json.token}`;
+  const anon = fetcher(srv.base); // aucun cookie
+
+  // Le lien édite bien le build partagé (la fonctionnalité reste entière)…
+  const st = await anon.get(`${tokenRoot}/state`);
+  assert.equal(st.status, 200);
+  assert.equal(st.json.canEdit, true);
+  assert.equal(st.json.library, false, 'le client doit masquer la bibliothèque sur un partage');
+
+  // …mais toute la bibliothèque du workspace lui est fermée.
+  for (const [method, path] of [
+    ['get', `${tokenRoot}/schematics`],
+    ['post', `${tokenRoot}/schematics/save`],
+    ['post', `${tokenRoot}/schematics/${sid}/load`],
+    ['get', `${tokenRoot}/schematics/${sid}/export?format=schem`],
+    ['delete', `${tokenRoot}/schematics/${sid}`],
+  ]) {
+    const r = await anon[method](path, { body: method === 'post' ? { name: 'x' } : undefined });
+    assert.equal(r.status, 403, `${method.toUpperCase()} ${path} → ${r.status} (attendu 403)`);
+    assert.equal(r.json.detail, 'session_required');
+  }
+
+  // Importer dans SON presse-papier reste permis (coller dans le build partagé),
+  // mais `save=true` ne doit rien écrire dans la bibliothèque du workspace.
+  const buf = Buffer.from(await (await admin.get(`${secretRoot}/schematics/${sid}/export?format=schem`, { raw: true })).arrayBuffer());
+  const fd = new FormData();
+  fd.append('file', new Blob([buf]), 'x.schem');
+  fd.append('save', 'true');
+  const imp = await anon.post(`${tokenRoot}/schematics/import`, { body: fd });
+  assert.equal(imp.status, 200, imp.text);
+  assert.equal(imp.json.saved, null, 'un partage ne doit pas pouvoir écrire dans la bibliothèque');
+
+  // La schematic confidentielle est toujours là, intacte, et la bibliothèque
+  // n'a pas grossi.
+  const after = await admin.get(`${secretRoot}/schematics`);
+  assert.equal(after.json.length, 1);
+  assert.equal(after.json[0].name, 'Plan confidentiel');
+
+  // Le membre authentifié, lui, garde l'accès complet.
+  assert.equal((await admin.get(`${secretRoot}/schematics`)).status, 200);
+});
+
 test('Peindre biome : op biome via API + undo', async (t) => {
   const srv = await bootServer();
   t.after(() => srv.stop());
