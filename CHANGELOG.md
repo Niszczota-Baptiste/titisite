@@ -5,6 +5,40 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — lore-nostra-module
+
+### Lore « Nostra » — salle d'enquête collaborative (`/lore`)
+- **Module global** gated par le tag `users.can_view_lore` (lecture ET
+  écriture, admins outre) : documenter le lore de la map Minefield, le
+  géolocaliser, le relier, et faire vivre des hypothèses **confirmables ou
+  réfutables** — les pistes mortes restent consultables avec la raison de
+  l'abandon, jamais supprimées ni masquées définitivement.
+- **Entrées** : slug stable, coords nullables, dimension, canon/interprétation,
+  tags libres colorés, relations orientées, images (WebP + miniature, servies
+  UNIQUEMENT derrière le gate — un faux PNG est rejeté au décodage), snapshots
+  du corps à chaque save, recherche **FTS5** (première du repo), commentaires
+  via la table globale. Markdown maison XSS-safe avec liens internes
+  `[[Titre d'entrée]]` autocomplétés ; le champ coordonnées avale le collage F3.
+- **Carte** : render calibré par deux points de référence, formes par type,
+  mode **origine** (rose des vents 8 axes, relèvements servis par
+  `/api/lore/geo/ring` — nord = Z décroissant, verrouillé par tests, aucune
+  trigo côté client), alignements ±2° surlignés + table triée par angle,
+  mesure de distance, création d'entrée pré-remplie au clic, **tracés**
+  persistants entre points (`lore_shapes`), miniature au survol.
+- **Hypothèses** : kanban par statut (pistes mortes repliées par défaut,
+  dépliées en un clic), confiance 0-100, deux colonnes de preuves — une
+  observation a UNE position par hypothèse (soutient/contredit/neutre) mais
+  peut différer d'une hypothèse à l'autre ; clore en confirmed/refuted/
+  abandoned **exige la note de résolution** (API + UI).
+- **Vue graphe** (simulation de forces maison, zéro dépendance), **timeline**
+  (découvertes + résolutions intercalées), **export JSON** complet et
+  **dossier imprimable** (palette papier, `@media print`).
+- Seed = les vraies données relevées (KotaNostra, 21 bâtiments, 9 tours,
+  5 Poèmes de Jade, 7 hypothèses dont 4 réfutées — le comportement voulu).
+  Docs : `docs/lore.md` + `README-lore.md`. ~70 tests dédiés.
+
+---
+
 ## [Unreleased] — quetes-items-uniques-geodes
 
 ### Quêtes — catalogue d'items uniques, contenants aléatoires, crafts & achats

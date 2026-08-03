@@ -8,9 +8,12 @@ import { Modal } from '../components/project/shared';
 import { EntryDetail } from '../components/lore/EntryDetail';
 import { EntryEditor } from '../components/lore/EntryEditor';
 import { EntryList } from '../components/lore/EntryList';
+import { DossierView, ExportTab } from '../components/lore/ExportTab';
+import { GraphTab } from '../components/lore/GraphTab';
 import { HypothesesTab, HypothesisEditor } from '../components/lore/HypothesesTab';
 import { HypothesisDetail } from '../components/lore/HypothesisDetail';
 import { MapTab } from '../components/lore/MapTab';
+import { TimelineTab } from '../components/lore/TimelineTab';
 import { ACC, ACC_RGB, GOLD, INK, MUTED } from '../components/lore/theme';
 
 // Salle d'enquête « Lore Nostra » — module global gaté par le tag lore
@@ -40,11 +43,13 @@ export default function Lore() {
   return <LoreApp user={user} />;
 }
 
-// L'étape suivante ajoutera 🕸 Graphe, 🕰 Timeline et 📤 Export.
 const TABS = [
   ['entrees', '📖 Entrées'],
   ['carte', '🗺 Carte'],
   ['hypotheses', '🧪 Hypothèses'],
+  ['graphe', '🕸 Graphe'],
+  ['timeline', '🕰 Timeline'],
+  ['export', '📤 Export'],
 ];
 
 function LoreApp({ user }) {
@@ -63,6 +68,8 @@ function LoreApp({ user }) {
   const [hypId, setHypId] = useState(null);
   const [hypDetail, setHypDetail] = useState(null);
   const [hypEditing, setHypEditing] = useState(null); // { hyp: null | hypothèse complète }
+  // Dossier imprimable : remplace toute la page (fond papier, @media print).
+  const [dossier, setDossier] = useState(false);
   // Compteur incrémenté à chaque mutation : les onglets qui gèrent leurs
   // propres données (carte) rechargent quand il bouge.
   const [bump, setBump] = useState(0);
@@ -137,6 +144,10 @@ function LoreApp({ user }) {
     await refreshAll().catch(() => {});
   };
 
+  if (dossier) {
+    return <DossierView onBack={() => setDossier(false)} />;
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at 50% -10%, #0e2418, #070512 60%)', paddingBottom: 60 }}>
       <Banner backSlug={fromProject} />
@@ -184,6 +195,16 @@ function LoreApp({ user }) {
             onCreate={() => setHypEditing({ hyp: null })}
           />
         )}
+        {tab === 'graphe' && (
+          <GraphTab onOpenEntry={openEntry} onOpenHypothesis={openHyp} refreshKey={bump} />
+        )}
+        {tab === 'timeline' && (
+          <TimelineTab
+            entries={entriesAll} onOpenEntry={openEntry} onOpenHypothesis={openHyp}
+            refreshKey={bump}
+          />
+        )}
+        {tab === 'export' && <ExportTab onOpenDossier={() => setDossier(true)} />}
       </div>
 
       {/* fiche détail */}

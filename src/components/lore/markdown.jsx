@@ -25,8 +25,12 @@ function safeHref(url) {
 }
 
 // Lien interne [[…]] : bouton stylé lien si l'entrée existe, pointillé sinon
-// (le titre a pu changer — le texte reste lisible, jamais cassé).
-function EntryToken({ target, label, entry, accent, onOpenEntry }) {
+// (le titre a pu changer — le texte reste lisible, jamais cassé). En mode
+// print (dossier imprimable) : simple texte souligné, rien d'interactif.
+function EntryToken({ target, label, entry, accent, onOpenEntry, print }) {
+  if (print) {
+    return <span style={{ fontWeight: 600, textDecoration: 'underline' }}>{label}</span>;
+  }
   if (!entry) {
     return (
       <span
@@ -69,17 +73,19 @@ function parseInline(text, ctx, keyPrefix) {
         <EntryToken
           key={key} target={entryTitle.trim()} label={(entryLabel || entryTitle).trim()}
           entry={entry} accent={ctx.accent || ACC} onOpenEntry={ctx.onOpenEntry}
+          print={ctx.print}
         />,
       );
     } else if (bold !== undefined) {
-      nodes.push(<strong key={key} style={{ color: '#ede8f8', fontWeight: 700 }}>{parseInline(bold, ctx, key)}</strong>);
+      nodes.push(<strong key={key} style={{ color: ctx.print ? 'inherit' : '#ede8f8', fontWeight: 700 }}>{parseInline(bold, ctx, key)}</strong>);
     } else if (italic !== undefined) {
       nodes.push(<em key={key}>{parseInline(italic, ctx, key)}</em>);
     } else if (code !== undefined) {
       nodes.push(
         <code key={key} style={{
           fontFamily: "'JetBrains Mono',monospace", fontSize: '0.88em',
-          background: 'rgba(123,227,168,0.1)', padding: '1px 5px', borderRadius: 4,
+          background: ctx.print ? 'rgba(0,0,0,0.06)' : 'rgba(123,227,168,0.1)',
+          padding: '1px 5px', borderRadius: 4,
         }}>{code}</code>,
       );
     } else if (linkLabel !== undefined) {
@@ -87,7 +93,7 @@ function parseInline(text, ctx, keyPrefix) {
       nodes.push(href
         ? (
           <a key={key} href={href} target="_blank" rel="noopener noreferrer"
-            style={{ color: ctx.accent || ACC, textDecoration: 'underline' }}>{linkLabel}</a>
+            style={{ color: ctx.print ? 'inherit' : (ctx.accent || ACC), textDecoration: 'underline' }}>{linkLabel}</a>
         )
         : linkLabel);
     }
@@ -123,7 +129,7 @@ export function renderLoreMarkdown(content, ctx = {}) {
     if (line.trim() === '') { i += 1; continue; }
 
     if (/^\s*---+\s*$/.test(line)) {
-      blocks.push(<hr key={`b${blocks.length}`} style={{ border: 'none', borderTop: '1px solid rgba(60,130,90,0.3)', margin: '22px 0' }} />);
+      blocks.push(<hr key={`b${blocks.length}`} style={{ border: 'none', borderTop: ctx.print ? '1px solid rgba(0,0,0,0.25)' : '1px solid rgba(60,130,90,0.3)', margin: '22px 0' }} />);
       i += 1;
       continue;
     }
@@ -134,8 +140,8 @@ export function renderLoreMarkdown(content, ctx = {}) {
       const key = `b${blocks.length}`;
       blocks.push(
         <p key={key} style={{
-          fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700,
-          fontSize: size, color: '#ede8f8', margin: '6px 0 12px', letterSpacing: '-0.3px',
+          fontFamily: ctx.print ? 'inherit' : "'Space Grotesk',sans-serif", fontWeight: 700,
+          fontSize: size, color: ctx.print ? 'inherit' : '#ede8f8', margin: '6px 0 12px', letterSpacing: '-0.3px',
         }}>{parseInline(h[2], ctx, key)}</p>,
       );
       i += 1;
@@ -151,8 +157,9 @@ export function renderLoreMarkdown(content, ctx = {}) {
       const key = `b${blocks.length}`;
       blocks.push(
         <blockquote key={key} style={{
-          borderLeft: '3px solid rgba(123,227,168,0.4)', paddingLeft: 14, margin: '0 0 16px',
-          color: 'rgba(200,192,216,0.85)', fontStyle: 'italic', lineHeight: 1.7,
+          borderLeft: ctx.print ? '3px solid rgba(0,0,0,0.3)' : '3px solid rgba(123,227,168,0.4)',
+          paddingLeft: 14, margin: '0 0 16px',
+          color: ctx.print ? 'inherit' : 'rgba(200,192,216,0.85)', fontStyle: 'italic', lineHeight: 1.7,
         }}>{buf.map((b, j) => <Fragment key={j}>{parseInline(b, ctx, `${key}-${j}`)}{j < buf.length - 1 && <br />}</Fragment>)}</blockquote>,
       );
       continue;
@@ -179,10 +186,13 @@ export function renderLoreMarkdown(content, ctx = {}) {
   return blocks;
 }
 
-export function LoreMarkdown({ content, entries = [], onOpenEntry, accent = ACC, style }) {
+export function LoreMarkdown({ content, entries = [], onOpenEntry, accent = ACC, print = false, style }) {
   return (
-    <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 14.5, color: 'rgba(214,206,230,0.92)', ...style }}>
-      {renderLoreMarkdown(content, { entries, onOpenEntry, accent })}
+    <div style={print
+      ? { fontSize: 13.5, color: 'inherit', ...style }
+      : { fontFamily: "'Inter',sans-serif", fontSize: 14.5, color: 'rgba(214,206,230,0.92)', ...style }}
+    >
+      {renderLoreMarkdown(content, { entries, onOpenEntry, accent, print })}
     </div>
   );
 }

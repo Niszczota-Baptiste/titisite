@@ -281,6 +281,21 @@ Single-process Node app:
   three.js volume view) + `useVaultPlan.js` (2 s autosave, keepalive flush,
   revision handling). Entry point: the « 🗝️ Salle des coffres » link of a
   project's ⛏️ Minecraft tab (`?projet=<slug>` for the way back).
+- **Lore « Nostra »** (`/lore`, `docs/lore.md`) is a **global** investigation
+  module (like quests): gated by `users.can_view_lore` (single flag = read AND
+  write, admins bypass), relational `lore_*` tables, API under `/api/lore`
+  (`server/routes/lore.js` + `server/lore/{store,geo,enums}.js`), front in
+  `src/components/lore/` + page `src/pages/Lore.jsx`. Key invariants:
+  **north = decreasing Z** — all bearing math lives in `server/lore/geo.js`
+  (tested), the map's origin mode consumes `GET /geo/ring` and the client does
+  NO trigonometry; `lore_fts` (FTS5, first in the repo) is synced explicitly
+  by the store; media are WebP-recompressed (decode failure = 415) and served
+  ONLY via `/api/lore/media/file/:f` behind the gate — never statically;
+  terminal hypothesis statuses (confirmed/refuted/**abandoned**) require a
+  `resolution_note`, and dead pistes stay browsable (folded by default);
+  comments reuse the global `comments` table (`lore_entry`/`lore_hypothesis`);
+  entry menu link (Minecraft tab) renders only when `canViewLore`. Seed
+  `server/seed-lore.js` = real survey data, idempotent, `SEED_LORE=off`.
 - **SEO**: `GET /sitemap.xml` is generated from the DB
   (`server/routes/sitemap.js`); per-route meta via
   `src/hooks/usePageMeta.js`. Reader prefs (font size/width/theme) live in
@@ -396,3 +411,4 @@ First boot creates the DB at `DB_PATH` (default `./data.sqlite`) and seeds:
 | New writing-space field/resource | add the column/table in `server/db.js#migrate`, the mapper + route in `server/routes/writing.js` (public) / `writing-admin.js` (admin), an `api.*` helper in `src/api/client.js`, then the editor in `src/components/admin/editors/writing/` and reader UI in `src/components/writing/` |
 | New 3D-map biome/building | `src/components/writing/map/presets.js` (+ the mesh in `buildings.jsx` for a building), then the matching allowlist in `server/routes/writing-admin.js` — see `docs/carte-3d.md` |
 | New tool/field in the vault workshop | the field in `server/vault/validate.js#normalizeDoc` (it strips anything it doesn't know), then the tool in `src/components/vault/Toolbar.jsx` + its gesture in `PlanCanvas.jsx` + its fiche in `Inspector.jsx` — see `docs/salle-des-coffres.md` |
+| New lore entry type / status / tab | `server/lore/enums.js` + visual meta in `src/components/lore/theme.js`; tabs via `TABS` in `src/pages/Lore.jsx` — see `docs/lore.md` |

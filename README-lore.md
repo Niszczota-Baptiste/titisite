@@ -70,6 +70,7 @@ Tout est derrière `requireAuth` + `requireLoreView`. Écritures limitées à
 | Tags | `GET/POST /tags`, `PUT/DELETE /tags/:id` |
 | Liens | `POST /links`, `DELETE /links/:id` |
 | Cartes | `GET/POST /maps`, `PUT/DELETE /maps/:id`, `POST /maps/:id/image` |
+| Tracés | `GET/POST /shapes`, `PUT/DELETE /shapes/:id` (lignes/polygones, sommets `[[x,z],…]`) |
 | Médias | `POST /media` (multipart `image` + `entryId`\|`hypothesisId`), `PUT/DELETE /media/:id`, `GET /media/file/:filename` |
 | Carte | `GET /map/points` |
 | Géo | `POST /geo/bearing`, `GET /geo/ring?origin_x&origin_z&tolerance&dimension` |
@@ -139,3 +140,11 @@ variant_of, located_in) · `lore_revisions` (snapshots) · `lore_maps`
 
 Les listes de valeurs (`entry_type`, statuts, stances, relations) sont dans
 `server/lore/enums.js` — volontairement sans CHECK SQL pour rester extensibles.
+
+## Front — `/lore`
+
+Six onglets : 📖 Entrées (liste + filtres), 🗺 Carte (render calibré, rose des
+vents, mesure, ➕ point pré-rempli au clic, ✏️ tracés persistants, miniature au
+survol), 🧪 Hypothèses (kanban, pistes mortes repliées par défaut), 🕸 Graphe,
+🕰 Timeline, 📤 Export (JSON + dossier imprimable). Architecture détaillée :
+`docs/lore.md`.
