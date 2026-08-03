@@ -8,6 +8,8 @@ import { Modal } from '../components/project/shared';
 import { EntryDetail } from '../components/lore/EntryDetail';
 import { EntryEditor } from '../components/lore/EntryEditor';
 import { EntryList } from '../components/lore/EntryList';
+import { HypothesesTab, HypothesisEditor } from '../components/lore/HypothesesTab';
+import { HypothesisDetail } from '../components/lore/HypothesisDetail';
 import { MapTab } from '../components/lore/MapTab';
 import { ACC, ACC_RGB, GOLD, INK, MUTED } from '../components/lore/theme';
 
@@ -38,11 +40,11 @@ export default function Lore() {
   return <LoreApp user={user} />;
 }
 
-// Les étapes suivantes ajouteront 🧪 Hypothèses, 🕸 Graphe, 🕰 Timeline et
-// 📤 Export — un onglet chacune.
+// L'étape suivante ajoutera 🕸 Graphe, 🕰 Timeline et 📤 Export.
 const TABS = [
   ['entrees', '📖 Entrées'],
   ['carte', '🗺 Carte'],
+  ['hypotheses', '🧪 Hypothèses'],
 ];
 
 function LoreApp({ user }) {
@@ -53,7 +55,17 @@ function LoreApp({ user }) {
   const [tags, setTags] = useState([]);
   const [detailId, setDetailId] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [editing, setEditing] = useState(null); // 'new' | entrée complète
+  // { entry: null | entrée complète, coords: null | {x,z,dimension} } — coords
+  // vient du mode « ➕ Point » de la carte et préremplit l'éditeur.
+  const [editing, setEditing] = useState(null);
+  // Hypothèses : fiche + éditeur. Une seule fiche ouverte à la fois (entrée OU
+  // hypothèse) — les helpers openEntry/openHyp s'excluent mutuellement.
+  const [hypId, setHypId] = useState(null);
+  const [hypDetail, setHypDetail] = useState(null);
+  const [hypEditing, setHypEditing] = useState(null); // { hyp: null | hypothèse complète }
+  // Compteur incrémenté à chaque mutation : les onglets qui gèrent leurs
+  // propres données (carte) rechargent quand il bouge.
+  const [bump, setBump] = useState(0);
   const [err, setErr] = useState(null);
 
   // Projet d'origine (lien « 🔍 Lore » de l'onglet Minecraft → ?projet=<slug>),
@@ -85,7 +97,18 @@ function LoreApp({ user }) {
     return () => { alive = false; };
   }, [detailId]);
 
+  useEffect(() => {
+    if (hypId == null) { setHypDetail(null); return; }
+    let alive = true;
+    api.lore.hypotheses.get(hypId).then((d) => { if (alive) setHypDetail(d); }).catch((e) => setErr(e.message));
+    return () => { alive = false; };
+  }, [hypId]);
+
+  const openEntry = (id) => { setHypId(null); setDetailId(id); };
+  const openHyp = (id) => { setDetailId(null); setHypId(id); };
+
   const refreshAll = useCallback(async () => {
+    setBump((b) => b + 1);
     await Promise.all([loadRef(), loadFiltered()]);
   }, [loadRef, loadFiltered]);
 
@@ -95,6 +118,13 @@ function LoreApp({ user }) {
     }
     refreshAll().catch(() => {});
   }, [detailId, refreshAll]);
+
+  const refreshHyp = useCallback(() => {
+    if (hypId != null) {
+      api.lore.hypotheses.get(hypId).then(setHypDetail).catch((e) => setErr(e.message));
+    }
+    refreshAll().catch(() => {});
+  }, [hypId, refreshAll]);
 
   const onSaved = async (id) => {
     setEditing(null);
@@ -139,10 +169,21 @@ function LoreApp({ user }) {
         {tab === 'entrees' && (
           <EntryList
             entries={entries} tags={tags} filters={filters} setFilters={setFilters}
-            onOpen={setDetailId} onCreate={() => setEditing('new')}
+            onOpen={setDetailId} onCreate={() => setEditing({ entry: null, coords: null })}
           />
         )}
-        {tab === 'carte' && <MapTab onOpenEntry={setDetailId} />}
+        {tab === 'carte' && (
+          <MapTab
+            onOpenEntry={openEntry} refreshKey={bump}
+            onCreateAt={(coords) => setEditing({ entry: null, coords })}
+          />
+        )}
+        {tab === 'hypotheses' && (
+          <HypothesesTab
+            onOpen={openHyp} refreshKey={bump}
+            onCreate={() => setHypEditing({ hyp: null })}
+          />
+        )}
       </div>
 
       {/* fiche détail */}
@@ -150,24 +191,63 @@ function LoreApp({ user }) {
         {detail ? (
           <EntryDetail
             entry={detail} entries={entriesAll} user={user}
-            onEdit={() => setEditing(detail)}
+            onEdit={() => setEditing({ entry: detail, coords: null })}
             onDeleted={onDeleted}
-            onOpenEntry={(id) => setDetailId(id)}
+            onOpenEntry={openEntry}
+            onOpenHypothesis={openHyp}
             onChanged={refreshDetail}
           />
         ) : <p style={{ color: MUTED }}>Chargement…</p>}
+      </Modal>
+
+      {/* fiche hypothèse */}
+      <Modal open={hypId != null && hypEditing === null} onClose={() => setHypId(null)} title="" width={760}>
+        {hypDetail ? (
+          <HypothesisDetail
+            hypothesis={hypDetail} entries={entriesAll} user={user}
+            onEdit={() => setHypEditing({ hyp: hypDetail })}
+            onDeleted={() => { setHypId(null); refreshAll().catch(() => {}); }}
+            onOpenEntry={openEntry}
+            onChanged={refreshHyp}
+          />
+        ) : <p style={{ color: MUTED }}>Chargement…</p>}
+      </Modal>
+
+      {/* éditeur d'hypothèse */}
+      <Modal
+        open={hypEditing !== null}
+        onClose={() => setHypEditing(null)}
+        title={hypEditing?.hyp ? 'Modifier l\'hypothèse' : 'Nouvelle hypothèse'}
+        width={680}
+      >
+        {hypEditing !== null && (
+          <HypothesisEditor
+            hypothesis={hypEditing.hyp}
+            entries={entriesAll}
+            onSaved={async (id) => {
+              setHypEditing(null);
+              await refreshAll().catch(() => {});
+              openHyp(id);
+              // openHyp ne re-déclenche pas l'effet si l'id n'a pas changé
+              // (édition de la fiche déjà ouverte) — refetch explicite.
+              api.lore.hypotheses.get(id).then(setHypDetail).catch(() => {});
+            }}
+            onCancel={() => setHypEditing(null)}
+          />
+        )}
       </Modal>
 
       {/* éditeur */}
       <Modal
         open={editing !== null}
         onClose={() => setEditing(null)}
-        title={editing === 'new' ? 'Nouvelle entrée' : 'Modifier l\'entrée'}
+        title={editing?.entry ? 'Modifier l\'entrée' : 'Nouvelle entrée'}
         width={720}
       >
         {editing !== null && (
           <EntryEditor
-            entry={editing === 'new' ? null : editing}
+            entry={editing.entry}
+            initial={editing.coords}
             entries={entriesAll}
             onSaved={onSaved}
             onCancel={() => setEditing(null)}

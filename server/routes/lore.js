@@ -10,13 +10,14 @@ import {
 } from '../lore/enums.js';
 import { bearingInfo, ringFrom } from '../lore/geo.js';
 import {
-  addEvidence, createEntry, createHypothesis, createLink, createMap, createTag,
-  deleteEntry, deleteEvidence, deleteHypothesis, deleteLink, deleteMap,
-  deleteMedia, deleteTag, entryExists, exportAll, getEntry, getEntryBySlug,
-  getHypothesis, getMapRaw, graphData, hypothesisExists, insertMedia,
-  listEntries, listHypotheses, listMaps, listRevisions, listTags, mapPoints,
-  mediaFilenameKnown, searchLore, setMapImage, updateEntry, updateEvidence,
-  updateHypothesis, updateMap, updateMediaCaption, updateTag,
+  addEvidence, createEntry, createHypothesis, createLink, createMap, createShape,
+  createTag, deleteEntry, deleteEvidence, deleteHypothesis, deleteLink,
+  deleteMap, deleteMedia, deleteShape, deleteTag, entryExists, exportAll,
+  getEntry, getEntryBySlug, getHypothesis, getMapRaw, graphData,
+  hypothesisExists, insertMedia, listEntries, listHypotheses, listMaps,
+  listRevisions, listShapes, listTags, mapPoints, mediaFilenameKnown,
+  searchLore, setMapImage, updateEntry, updateEvidence, updateHypothesis,
+  updateMap, updateMediaCaption, updateShape, updateTag,
 } from '../lore/store.js';
 
 // Module Lore « Nostra » — TOUT est derrière requireAuth + requireLoreView,
@@ -334,6 +335,70 @@ loreRouter.get('/geo/ring', (req, res) => {
       deviationDeg: Math.round(p.deviationDeg * 100) / 100,
     }));
   res.json({ origin: { x: ox, z: oz }, dimension, tolerance, points });
+});
+
+// ── Tracés d'enquête (lignes / polygones reliant des points) ───────────────
+
+// 2 à 500 sommets [x, z] finis, arrondis au bloc. Tout le tracé est validé ou
+// rien — un sommet corrompu invaliderait la forme entière.
+function parseShapePoints(raw) {
+  if (!Array.isArray(raw) || raw.length < 2 || raw.length > 500) return null;
+  const out = [];
+  for (const p of raw) {
+    if (!Array.isArray(p) || p.length !== 2) return null;
+    const x = Number(p[0]);
+    const z = Number(p[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+    out.push([Math.round(x), Math.round(z)]);
+  }
+  return out;
+}
+
+const COLOR_RE = /^#[0-9a-f]{6}$/i;
+
+loreRouter.get('/shapes', (req, res) => {
+  const dimension = req.query.dimension ? String(req.query.dimension) : undefined;
+  if (dimension && !DIMENSIONS.includes(dimension)) return res.status(400).json({ error: 'invalid_dimension' });
+  res.json(listShapes(dimension));
+});
+
+loreRouter.post('/shapes', (req, res) => {
+  const b = req.body || {};
+  const dimension = b.dimension || 'overworld';
+  if (!DIMENSIONS.includes(dimension)) return res.status(400).json({ error: 'invalid_dimension' });
+  const points = parseShapePoints(b.points);
+  if (!points) return res.status(400).json({ error: 'invalid_points' });
+  res.status(201).json(createShape({
+    dimension,
+    name: String(b.name || '').trim().slice(0, 120),
+    color: COLOR_RE.test(b.color) ? b.color : '#e8c86a',
+    closed: !!b.closed,
+    points,
+  }, req.user.id));
+});
+
+loreRouter.put('/shapes/:id', (req, res) => {
+  const b = req.body || {};
+  const d = {};
+  if (b.name !== undefined) d.name = String(b.name || '').trim().slice(0, 120);
+  if (b.color !== undefined) {
+    if (!COLOR_RE.test(b.color)) return res.status(400).json({ error: 'invalid_color' });
+    d.color = b.color;
+  }
+  if (b.closed !== undefined) d.closed = !!b.closed;
+  if (b.points !== undefined) {
+    const points = parseShapePoints(b.points);
+    if (!points) return res.status(400).json({ error: 'invalid_points' });
+    d.points = points;
+  }
+  const shape = updateShape(idParam(req), d);
+  if (!shape) return res.status(404).json({ error: 'not_found' });
+  res.json(shape);
+});
+
+loreRouter.delete('/shapes/:id', (req, res) => {
+  if (!deleteShape(idParam(req))) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
 });
 
 // ── Fonds de carte calibrés ────────────────────────────────────────────────

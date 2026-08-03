@@ -489,6 +489,13 @@ export const api = {
       // FormData { image } — fond de carte, remplace l'image précédente.
       setImage: (id, formData, opts) => uploadFile(`/lore/maps/${id}/image`, formData, opts),
     },
+    // Tracés d'enquête : lignes/polygones reliant des points de la carte.
+    shapes: {
+      list:   (dimension) => request('GET', `/lore/shapes${qs({ dimension })}`),
+      create: (b) => request('POST', '/lore/shapes', b),
+      update: (id, b) => request('PUT', `/lore/shapes/${id}`, b),
+      remove: (id) => request('DELETE', `/lore/shapes/${id}`),
+    },
     media: {
       // FormData { image, entryId? | hypothesisId?, caption? }
       upload:     (formData, opts) => uploadFile('/lore/media', formData, opts),

@@ -263,6 +263,41 @@ describe('lore — accès, seed, enquête de bout en bout', () => {
 
     // Nom inconnu → 404 (le service ne sert que les fichiers en base).
     assert.equal((await member.f.get('/api/lore/media/file/inconnu.webp')).status, 404);
+
+    // La carte expose la miniature de la première image du point.
+    const pts = (await member.f.get('/api/lore/map/points')).json;
+    const pt = pts.find((p2) => p2.id === entryId);
+    assert.ok(pt.thumbUrl, 'thumbUrl exposé sur map/points');
+  });
+
+  it('tracés : CRUD + validation des sommets', async () => {
+    let r = await member.f.post('/api/lore/shapes', {
+      body: { name: 'Alignement des silos', color: '#7bd3e8', points: [[-364, -8800], [-353, -5636], [206, -7940]] },
+    });
+    assert.equal(r.status, 201);
+    const shapeId = r.json.id;
+    assert.equal(r.json.points.length, 3);
+    assert.equal(r.json.closed, false);
+
+    // Sommets invalides → 400 (un seul point, ou coordonnée non numérique).
+    r = await member.f.post('/api/lore/shapes', { body: { points: [[0, 0]] } });
+    assert.equal(r.status, 400);
+    r = await member.f.post('/api/lore/shapes', { body: { points: [[0, 0], ['nord', 3]] } });
+    assert.equal(r.status, 400);
+
+    r = await member.f.put(`/api/lore/shapes/${shapeId}`, { body: { closed: true, name: 'Triangle des silos' } });
+    assert.equal(r.json.closed, true);
+    assert.equal(r.json.name, 'Triangle des silos');
+
+    const list = (await member.f.get('/api/lore/shapes?dimension=overworld')).json;
+    assert.ok(list.some((s) => s.id === shapeId));
+    assert.equal((await member.f.get('/api/lore/shapes?dimension=nether')).json.length, 0);
+
+    const ex = (await member.f.get('/api/lore/export')).json;
+    assert.ok(ex.shapes.some((s) => s.id === shapeId));
+
+    assert.equal((await member.f.delete(`/api/lore/shapes/${shapeId}`)).status, 204);
+    assert.equal((await member.f.delete(`/api/lore/shapes/${shapeId}`)).status, 404);
   });
 
   it('graphe et export embarquent le travail du membre', async () => {

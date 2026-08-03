@@ -1741,6 +1741,24 @@ export function migrate() {
     );
   `);
 
+  // Tracés d'enquête sur la carte : lignes / polygones reliant des points
+  // (« les tours forment-elles une étoile ? »). Sommets en coordonnées monde,
+  // JSON [[x,z],…] — même choix que minecraft_sketches.strokes : un tracé est
+  // un tout, jamais requêté sommet par sommet.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_shapes (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      dimension  TEXT NOT NULL DEFAULT 'overworld',
+      name       TEXT NOT NULL DEFAULT '',
+      color      TEXT NOT NULL DEFAULT '#e8c86a',
+      closed     INTEGER NOT NULL DEFAULT 0,
+      points     TEXT NOT NULL DEFAULT '[]',
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_shapes_dim ON lore_shapes(dimension);`);
+
   // Recherche plein-texte (première utilisation de FTS5 du repo). Table FTS
   // ordinaire (pas external-content) : le texte est dupliqué mais la synchro
   // reste explicite et greppable dans server/lore/store.js — pas de triggers.

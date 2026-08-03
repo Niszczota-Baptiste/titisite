@@ -11,25 +11,32 @@ import {
 // surlignés — servie par GET /api/lore/geo/ring, aucune trigonométrie côté
 // client), et le panneau de calibration du render.
 
-export function MapTab({ onOpenEntry }) {
+const SHAPE_COLORS = ['#e8c86a', '#7bd3e8', '#7be3a8', '#e0526f', '#b79bff', '#f0ede5'];
+
+export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
   const [points, setPoints] = useState([]);
   const [maps, setMaps] = useState([]);
+  const [shapes, setShapes] = useState([]);
+  const [hiddenShapes, setHiddenShapes] = useState(() => new Set());
   const [dimension, setDimension] = useState('overworld');
   const [types, setTypes] = useState(() => new Set(ENTRY_TYPE_ORDER));
-  const [mode, setMode] = useState('pan'); // 'pan' | 'origin' | 'measure'
+  const [mode, setMode] = useState('pan'); // 'pan' | 'origin' | 'measure' | 'add' | 'draw'
   const [origin, setOrigin] = useState(null);
   const [tolerance, setTolerance] = useState(2);
   const [ring, setRing] = useState(null);
   const [measure, setMeasure] = useState({ a: null, b: null });
+  const [draft, setDraft] = useState(null); // tracé en cours { points, name, color, closed }
   const [err, setErr] = useState(null);
   // La carte n'est montée qu'une fois les points chargés : sa vue initiale est
   // cadrée sur eux au mount — la monter vide la laisserait centrée sur 0,0.
   const [loaded, setLoaded] = useState(false);
 
-  const load = () => Promise.all([api.lore.mapPoints(), api.lore.maps.list()])
-    .then(([pts, mp]) => { setPoints(pts); setMaps(mp); setLoaded(true); })
+  const load = () => Promise.all([api.lore.mapPoints(), api.lore.maps.list(), api.lore.shapes.list()])
+    .then(([pts, mp, sh]) => { setPoints(pts); setMaps(mp); setShapes(sh); setLoaded(true); })
     .catch((e) => setErr(e.message));
-  useEffect(() => { load(); }, []);
+  // refreshKey bouge quand une entrée est créée/modifiée ailleurs sur la page
+  // (fiche, éditeur) — la carte suit sans re-navigation.
+  useEffect(() => { load(); }, [refreshKey]);
 
   // Le calcul du relèvement de chaque point vit côté serveur (source de
   // vérité unique server/lore/geo.js) : une requête par choix d'origine.
@@ -53,6 +60,40 @@ export function MapTab({ onOpenEntry }) {
   });
 
   const onMeasureClick = (pt) => setMeasure((m) => ((!m.a || m.b) ? { a: pt, b: null } : { a: m.a, b: pt }));
+
+  // ➕ Point : le clic délègue à la page l'ouverture de l'éditeur pré-rempli.
+  const onAddAt = (pt) => {
+    setMode('pan');
+    onCreateAt?.({ x: pt.x, z: pt.z, dimension });
+  };
+
+  // ✏️ Tracé : chaque clic ajoute un sommet (accroché au marqueur cliqué).
+  const onDrawClick = (pt) => setDraft((d) => (d ? { ...d, points: [...d.points, [pt.x, pt.z]] } : d));
+  const startDraw = () => {
+    if (mode === 'draw') { setMode('pan'); setDraft(null); return; }
+    setMode('draw');
+    setDraft({ points: [], name: '', color: SHAPE_COLORS[0], closed: false });
+  };
+  const saveDraft = async () => {
+    if (!draft || draft.points.length < 2) return;
+    try {
+      await api.lore.shapes.create({
+        dimension, name: draft.name.trim(), color: draft.color,
+        closed: draft.closed, points: draft.points,
+      });
+      setDraft(null);
+      setMode('pan');
+      await load();
+    } catch (ex) { setErr(ex.message); }
+  };
+  const deleteShape = async (s) => {
+    // eslint-disable-next-line no-alert -- suppression d'un tracé partagé, confirmation volontaire
+    if (!window.confirm(`Supprimer le tracé « ${s.name || `#${s.id}`} » ?`)) return;
+    try { await api.lore.shapes.remove(s.id); await load(); } catch (ex) { setErr(ex.message); }
+  };
+
+  const dimShapes = shapes.filter((s) => s.dimension === dimension);
+  const visibleShapes = dimShapes.filter((s) => !hiddenShapes.has(s.id));
 
   return (
     <div>
@@ -107,7 +148,51 @@ export function MapTab({ onOpenEntry }) {
         <ModeBtn on={mode === 'measure'} color="#7bd3e8" onClick={() => setMode((m) => { if (m === 'measure') { setMeasure({ a: null, b: null }); return 'pan'; } return 'measure'; })}>
           📏 Mesurer
         </ModeBtn>
+        <ModeBtn on={mode === 'add'} color={ACC} onClick={() => setMode((m) => (m === 'add' ? 'pan' : 'add'))}>
+          ➕ Point
+        </ModeBtn>
+        <ModeBtn on={mode === 'draw'} color="#b79bff" onClick={startDraw}>
+          ✏️ Tracé
+        </ModeBtn>
       </div>
+
+      {/* panneau du tracé en cours */}
+      {mode === 'draw' && draft && (
+        <div style={{ ...panel, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '9px 12px', marginBottom: 8, fontFamily: "'Inter',sans-serif" }}>
+          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, color: '#b79bff' }}>
+            ✏️ {draft.points.length} sommet{draft.points.length > 1 ? 's' : ''}
+          </span>
+          <input
+            value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+            placeholder="Nom du tracé (Étoile des tours…)" maxLength={120}
+            style={{
+              flex: '1 1 180px', padding: '6px 10px', borderRadius: 7, fontSize: 12.5,
+              background: 'rgba(9,16,14,0.7)', border: '1px solid rgba(60,130,90,0.3)', color: INK, outline: 'none',
+            }}
+          />
+          {SHAPE_COLORS.map((c) => (
+            <button key={c} type="button" onClick={() => setDraft((d) => ({ ...d, color: c }))} title={c}
+              style={{
+                width: 18, height: 18, borderRadius: '50%', background: c, cursor: 'pointer',
+                border: draft.color === c ? '2px solid #fff' : '2px solid transparent', padding: 0,
+              }} />
+          ))}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: MUTED, cursor: 'pointer' }}>
+            <input type="checkbox" checked={draft.closed} onChange={(e) => setDraft((d) => ({ ...d, closed: e.target.checked }))}
+              style={{ accentColor: '#b79bff', width: 14, height: 14 }} />
+            fermer (polygone)
+          </label>
+          <button type="button" onClick={() => setDraft((d) => ({ ...d, points: d.points.slice(0, -1) }))}
+            disabled={draft.points.length === 0} title="Retirer le dernier sommet"
+            style={{ background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 13, opacity: draft.points.length ? 1 : 0.4 }}>⌫</button>
+          <button type="button" onClick={saveDraft} disabled={draft.points.length < 2} style={{
+            padding: '6px 13px', borderRadius: 7, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
+            background: '#b79bff', color: '#120b1e', border: 'none', opacity: draft.points.length < 2 ? 0.45 : 1,
+          }}>✔ Enregistrer</button>
+          <button type="button" onClick={() => { setDraft(null); setMode('pan'); }}
+            style={{ background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 12.5 }}>✕ annuler</button>
+        </div>
+      )}
 
       {/* légende / filtre par type */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
@@ -137,9 +222,38 @@ export function MapTab({ onOpenEntry }) {
           key={dimension}
           points={shown} map={map} mode={mode} origin={origin} onSetOrigin={setOrigin}
           ring={ring} tolerance={tolerance} measure={measure} onMeasureClick={onMeasureClick}
-          onOpenEntry={onOpenEntry}
+          onOpenEntry={onOpenEntry} onAddAt={onAddAt} onDrawClick={onDrawClick}
+          shapes={visibleShapes} draft={mode === 'draw' ? draft : null}
         />
       ) : <p style={{ color: MUTED, fontFamily: "'Inter',sans-serif", fontSize: 13 }}>Chargement de la carte…</p>}
+
+      {/* tracés enregistrés : visibilité + suppression */}
+      {dimShapes.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 10 }}>
+          <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: MUTED }}>✏️ Tracés :</span>
+          {dimShapes.map((s) => {
+            const hidden = hiddenShapes.has(s.id);
+            return (
+              <span key={s.id} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px', borderRadius: 999,
+                fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: hidden ? MUTED : s.color,
+                background: hidden ? 'transparent' : `rgba(${hexToRgb(s.color)},0.1)`,
+                border: `1px solid rgba(${hexToRgb(s.color)},${hidden ? 0.25 : 0.5})`, opacity: hidden ? 0.55 : 1,
+              }}>
+                <span style={{ width: 8, height: 8, borderRadius: s.closed ? 2 : '50%', background: s.color }} />
+                {s.name || `Tracé #${s.id}`} ({s.points.length})
+                <button type="button" title={hidden ? 'Afficher' : 'Masquer'}
+                  onClick={() => setHiddenShapes((h) => { const n = new Set(h); if (n.has(s.id)) n.delete(s.id); else n.add(s.id); return n; })}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, fontSize: 11 }}>
+                  {hidden ? '🙈' : '👁'}
+                </button>
+                <button type="button" title="Supprimer" onClick={() => deleteShape(s)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, fontSize: 10.5 }}>✕</button>
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       {origin && ring && <RingTable ring={ring} onOpenEntry={onOpenEntry} />}
 

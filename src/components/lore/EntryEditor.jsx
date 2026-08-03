@@ -13,13 +13,15 @@ import {
 
 const ACCEPTED = 'image/png,image/jpeg,image/webp';
 
-export function EntryEditor({ entry, entries, onSaved, onCancel }) {
+// `initial` : préremplissage à la création — coordonnées + dimension du clic
+// « ➕ Point » sur la carte.
+export function EntryEditor({ entry, entries, initial, onSaved, onCancel }) {
   const [title, setTitle] = useState(entry?.title || '');
   const [entryType, setEntryType] = useState(entry?.entryType || 'observation');
-  const [dimension, setDimension] = useState(entry?.dimension || 'overworld');
-  const [x, setX] = useState(entry?.x ?? '');
+  const [dimension, setDimension] = useState(entry?.dimension || initial?.dimension || 'overworld');
+  const [x, setX] = useState(entry?.x ?? initial?.x ?? '');
   const [y, setY] = useState(entry?.y ?? '');
-  const [z, setZ] = useState(entry?.z ?? '');
+  const [z, setZ] = useState(entry?.z ?? initial?.z ?? '');
   const [pasteMsg, setPasteMsg] = useState(null);
   const [discoveredAt, setDiscoveredAt] = useState(
     entry?.discoveredAt ? new Date(entry.discoveredAt * 1000).toISOString().slice(0, 10) : '',

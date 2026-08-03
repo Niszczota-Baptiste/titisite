@@ -612,20 +612,71 @@ export function deleteMap(id) {
 
 // ── Vues transverses ────────────────────────────────────────────────────────
 
-// Format léger pour la carte : uniquement les entrées géolocalisées.
+// Format léger pour la carte : uniquement les entrées géolocalisées, avec la
+// miniature de leur première image (aperçu au survol du marqueur).
 export function mapPoints(dimension) {
   const where = [`e.coord_x IS NOT NULL`, `e.coord_z IS NOT NULL`];
   const params = [];
   if (dimension) { where.push(`e.dimension = ?`); params.push(dimension); }
   return db.prepare(`
     SELECT e.id, e.title, e.slug, e.entry_type, e.coord_x, e.coord_y, e.coord_z,
-           e.dimension, e.is_canon
+           e.dimension, e.is_canon,
+           (SELECT COALESCE(m.thumb_filename, m.filename) FROM lore_media m
+            WHERE m.entry_id = e.id ORDER BY m.id LIMIT 1) AS thumb
     FROM lore_entries e WHERE ${where.join(' AND ')} ORDER BY e.id
   `).all(...params).map((r) => ({
     id: r.id, title: r.title, slug: r.slug, entryType: r.entry_type,
     x: r.coord_x, y: r.coord_y, z: r.coord_z, dimension: r.dimension,
     isCanon: r.is_canon === 1,
+    thumbUrl: r.thumb ? `/api/lore/media/file/${r.thumb}` : null,
   }));
+}
+
+// ── Tracés d'enquête (lignes / polygones sur la carte) ─────────────────────
+
+function rowToShape(r) {
+  let points = [];
+  try { points = JSON.parse(r.points); } catch { /* tracé corrompu → vide */ }
+  return {
+    id: r.id, dimension: r.dimension, name: r.name, color: r.color,
+    closed: r.closed === 1, points, createdBy: r.created_by, createdAt: r.created_at,
+  };
+}
+
+export function listShapes(dimension) {
+  const rows = dimension
+    ? db.prepare(`SELECT * FROM lore_shapes WHERE dimension = ? ORDER BY id`).all(dimension)
+    : db.prepare(`SELECT * FROM lore_shapes ORDER BY id`).all();
+  return rows.map(rowToShape);
+}
+
+export function createShape(d, userId) {
+  const info = db.prepare(`
+    INSERT INTO lore_shapes (dimension, name, color, closed, points, created_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(d.dimension, d.name, d.color, d.closed ? 1 : 0, JSON.stringify(d.points), userId ?? null);
+  return rowToShape(db.prepare(`SELECT * FROM lore_shapes WHERE id = ?`).get(info.lastInsertRowid));
+}
+
+export function updateShape(id, d) {
+  const existing = db.prepare(`SELECT * FROM lore_shapes WHERE id = ?`).get(id);
+  if (!existing) return null;
+  db.prepare(`
+    UPDATE lore_shapes SET
+      name = COALESCE(?, name), color = COALESCE(?, color),
+      closed = COALESCE(?, closed), points = COALESCE(?, points)
+    WHERE id = ?
+  `).run(
+    d.name ?? null, d.color ?? null,
+    d.closed === undefined ? null : (d.closed ? 1 : 0),
+    d.points === undefined ? null : JSON.stringify(d.points),
+    id,
+  );
+  return rowToShape(db.prepare(`SELECT * FROM lore_shapes WHERE id = ?`).get(id));
+}
+
+export function deleteShape(id) {
+  return db.prepare(`DELETE FROM lore_shapes WHERE id = ?`).run(id).changes > 0;
 }
 
 // Recherche unifiée entrées + hypothèses, classée par pertinence bm25, avec
@@ -701,6 +752,6 @@ export function exportAll() {
   return {
     exportedAt: Math.floor(Date.now() / 1000),
     entries, hypotheses, links, media,
-    tags: listTags(), maps: listMaps(), comments, revisions,
+    tags: listTags(), maps: listMaps(), shapes: listShapes(), comments, revisions,
   };
 }

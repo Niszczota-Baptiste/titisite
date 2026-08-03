@@ -23,7 +23,8 @@ const SHAPES = {
 
 export function LoreMap({
   points, map, mode, origin, onSetOrigin, ring, tolerance,
-  measure, onMeasureClick, onOpenEntry,
+  measure, onMeasureClick, onOpenEntry, onAddAt, onDrawClick,
+  shapes = [], draft = null,
 }) {
   const boxRef = useRef(null);
   const drag = useRef(null);
@@ -106,14 +107,27 @@ export function LoreMap({
     const w = worldAt(e.clientX, e.clientY);
     if (mode === 'origin') onSetOrigin(w);
     else if (mode === 'measure') onMeasureClick(w);
+    else if (mode === 'add') onAddAt?.(w);
+    else if (mode === 'draw') onDrawClick?.(w);
   };
 
+  // Un clic sur un marqueur s'accroche à ses coordonnées exactes (origine,
+  // mesure, sommet de tracé) — hors mode, il ouvre la fiche.
   const onMarkerClick = (e, p) => {
     e.stopPropagation();
     if (mode === 'origin') onSetOrigin({ x: p.x, z: p.z });
     else if (mode === 'measure') onMeasureClick({ x: p.x, z: p.z });
+    else if (mode === 'add') onAddAt?.({ x: p.x, z: p.z });
+    else if (mode === 'draw') onDrawClick?.({ x: p.x, z: p.z });
     else onOpenEntry?.(p.id);
   };
+
+  // Tracés : SVG en viewBox 0-100 non uniforme pour pouvoir donner des sommets
+  // en « pourcents » à <polyline> (les attributs points n'acceptent pas les %),
+  // avec non-scaling-stroke pour garder des traits nets.
+  const shapePts = (pts) => pts
+    .map(([sx, sz]) => { const p = toPct(view, sx, sz); return `${p.left},${p.top}`; })
+    .join(' ');
 
   const step = niceStep(view.span);
   const lines = gridLines(view, step);
@@ -149,6 +163,8 @@ export function LoreMap({
         <span style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: MUTED }}>
           {mode === 'origin' && '🧭 clique un point (ou le vide) pour poser l\'origine'}
           {mode === 'measure' && '📏 deux clics = une distance'}
+          {mode === 'add' && '➕ clique l\'emplacement de la nouvelle entrée'}
+          {mode === 'draw' && '✏️ clique les sommets (un marqueur = accroché dessus)'}
         </span>
       </div>
 
@@ -187,6 +203,45 @@ export function LoreMap({
             ))}
           </svg>
         )}
+
+        {/* tracés d'enquête (lignes / polygones) + brouillon en cours */}
+        {(shapes.length > 0 || draft) && (
+          <svg
+            width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none"
+            style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} aria-hidden
+          >
+            {shapes.map((s) => (s.points.length >= 2 ? (
+              s.closed ? (
+                <polygon key={s.id} points={shapePts(s.points)} fill={`rgba(${hexToRgb(s.color)},0.09)`}
+                  stroke={s.color} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+              ) : (
+                <polyline key={s.id} points={shapePts(s.points)} fill="none"
+                  stroke={s.color} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+              )
+            ) : null))}
+            {draft && draft.points.length >= 2 && (
+              <polyline points={shapePts(draft.points)} fill="none" stroke={draft.color}
+                strokeWidth="1.6" strokeDasharray="6 5" vectorEffect="non-scaling-stroke" />
+            )}
+          </svg>
+        )}
+        {/* étiquettes et sommets des tracés (hors SVG : le viewBox non uniforme déformerait le texte) */}
+        {shapes.map((s) => (s.name && s.points.length >= 2 ? (
+          <span key={`lb${s.id}`} style={{
+            position: 'absolute', ...pos(s.points[0][0], s.points[0][1]),
+            transform: 'translate(6px, -110%)', pointerEvents: 'none',
+            fontFamily: "'JetBrains Mono',monospace", fontSize: 10, whiteSpace: 'nowrap',
+            color: s.color, background: 'rgba(6,12,9,0.82)',
+            border: `1px solid rgba(${hexToRgb(s.color)},0.5)`, borderRadius: 5, padding: '0 5px',
+          }}>✏ {s.name}</span>
+        ) : null))}
+        {draft?.points.map(([dx2, dz2], i) => (
+          <span key={`dv${i}`} style={{
+            position: 'absolute', ...pos(dx2, dz2), transform: 'translate(-50%,-50%)',
+            width: 8, height: 8, borderRadius: '50%', background: draft.color,
+            boxShadow: '0 0 6px rgba(0,0,0,0.7)', pointerEvents: 'none',
+          }} />
+        ))}
 
         {/* rose des vents à 8 axes depuis l'origine */}
         {origin && (
@@ -324,6 +379,15 @@ function Marker({ p, pos, lit, ringInfo, onEnter, onLeave, onClick }) {
       }}
     >
       <span style={base} />
+      {lit && p.thumbUrl && (
+        <img
+          src={p.thumbUrl} alt=""
+          style={{
+            height: 64, maxWidth: 110, objectFit: 'cover', borderRadius: 6, display: 'block',
+            border: `1px solid rgba(${hexToRgb(t.color)},0.55)`, boxShadow: '0 4px 14px rgba(0,0,0,0.6)',
+          }}
+        />
+      )}
       {(lit || aligned) && (
         <span style={{
           fontFamily: "'JetBrains Mono',monospace", fontSize: 10, whiteSpace: 'nowrap',
