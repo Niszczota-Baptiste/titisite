@@ -12,7 +12,7 @@ import {
 // galerie, relations typées (ajout/suppression), hypothèses où elle sert de
 // preuve, historique des révisions, discussion.
 
-export function EntryDetail({ entry, entries, user, onEdit, onDeleted, onOpenEntry, onChanged }) {
+export function EntryDetail({ entry, entries, user, onEdit, onDeleted, onOpenEntry, onOpenHypothesis, onChanged }) {
   const [err, setErr] = useState(null);
   const type = ENTRY_TYPES[entry.entryType] || ENTRY_TYPES.observation;
   const hasCoords = entry.x !== null && entry.z !== null;
@@ -86,7 +86,10 @@ export function EntryDetail({ entry, entries, user, onEdit, onDeleted, onOpenEnt
         return (
           <div key={ev.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, marginBottom: 5 }}>
             <span style={{ color: stance.color, fontWeight: 700 }}>{stance.icon} {stance.label}</span>
-            <span style={{ color: INK }}>{ev.title}</span>
+            <button type="button" onClick={() => onOpenHypothesis?.(ev.hypothesisId)} style={{
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit',
+              color: INK, borderBottom: `1px solid ${ACC}44`, textAlign: 'left',
+            }}>{ev.title}</button>
             <Chip color={status.color}>{status.icon} {status.label}</Chip>
             {ev.note && <span style={{ color: MUTED, fontSize: 12 }}>— {ev.note}</span>}
           </div>
