@@ -13,6 +13,7 @@
     "start": "NODE_ENV=production node server/index.js",
     "seed": "node server/seed.js",
     "test": "node --test 'test/*.test.js'",
+    "audit:gate": "node scripts/audit-gate.mjs",
     "lint:security": "eslint server/ src/ test/",
     "lint:secrets": "secretlint --maskSecrets \"**/*.{js,jsx,json,yml,yaml,toml,env}\"",
     "prepare": "husky || true"
