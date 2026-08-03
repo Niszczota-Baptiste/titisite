@@ -305,6 +305,15 @@ Single-process Node app:
   `canViewLore`, plus a « 🔍 Lore — carte » shortcut in the admin dashboard
   (`/lore?tab=…` deep-links a tab). Seed
   `server/seed-lore.js` = real survey data, idempotent, `SEED_LORE=off`.
+  The **« 🛡 Admin » tab is role-`admin` only** (the `can_view_lore` flag is NOT
+  enough) — surveillance of what investigators do: per-member counts + bytes
+  uploaded, a media inventory sorted by weight (spot personal-photo dumping),
+  and an **append-only journal** (`lore_audit`). The journal exists because
+  everything else cascades: `auditLore` (`server/lore/audit.js`) is one
+  middleware mounted before all handlers that **snapshots the label and the
+  cascade cost before** the handler runs, so a deletion still says what it
+  destroyed and who did it. Only 2xx are logged. Adding a mutating lore route
+  means adding a line to its `ROUTES` table.
 - **SEO**: `GET /sitemap.xml` is generated from the DB
   (`server/routes/sitemap.js`); per-route meta via
   `src/hooks/usePageMeta.js`. Reader prefs (font size/width/theme) live in

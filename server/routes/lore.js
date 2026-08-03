@@ -2,8 +2,11 @@ import crypto from 'node:crypto';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import sharp from 'sharp';
-import { requireAuth } from '../auth.js';
+import { requireAuth, requireRole } from '../auth.js';
 import { UPLOADS_DIR, safeUnlink, uploadLoreImage, uploadPath } from '../uploads.js';
+import {
+  auditLore, listAudit, mediaInventory, memberStats, storageTotals,
+} from '../lore/audit.js';
 import {
   DIMENSIONS, ENTRY_TYPES, HYPOTHESIS_STATUSES, MONDES, RELATION_TYPES,
   STANCES, TERMINAL_STATUSES,
@@ -51,6 +54,11 @@ loreRouter.use((req, res, next) => {
   return writeLimiter(req, res, next);
 });
 
+// Journal d'audit : monté ici, donc APRÈS le gate lore et le limiteur, et AVANT
+// tous les handlers — il prend ses instantanés avant qu'une suppression n'efface
+// sa cible (cf. server/lore/audit.js).
+loreRouter.use(auditLore);
+
 // ── Petits validateurs ──────────────────────────────────────────────────────
 
 const asInt = (v) => {
@@ -62,6 +70,35 @@ const asInt = (v) => {
 // Id de route : un :id invalide devient -1 (aucune ligne → 404 propre) plutôt
 // qu'un binding undefined, que better-sqlite3 refuse en levant.
 const idParam = (req) => asInt(req.params.id) ?? -1;
+
+// ── Page « 🛡 Admin » — rôle admin STRICT ───────────────────────────────────
+// Tout le reste du module s'ouvre sur `can_view_lore` ; cette page-ci exige le
+// rôle admin. Un enquêteur ne doit voir ni qui surveille quoi, ni les adresses
+// e-mail de ses camarades, ni le poids de leurs dépôts.
+const ADMIN_ONLY = requireRole('admin');
+
+loreRouter.get('/admin/overview', ADMIN_ONLY, (_req, res) => {
+  res.json({ members: memberStats(), storage: storageTotals() });
+});
+
+loreRouter.get('/admin/media', ADMIN_ONLY, (req, res) => {
+  const limit = asInt(req.query.limit);
+  if (limit === undefined) return res.status(400).json({ error: 'invalid_limit' });
+  res.json(mediaInventory({ limit: limit ?? 300 }));
+});
+
+loreRouter.get('/admin/journal', ADMIN_ONLY, (req, res) => {
+  const actor = asInt(req.query.actor);
+  if (actor === undefined) return res.status(400).json({ error: 'invalid_actor' });
+  const limit = asInt(req.query.limit);
+  if (limit === undefined) return res.status(400).json({ error: 'invalid_limit' });
+  res.json(listAudit({
+    actorId: actor ?? undefined,
+    action: req.query.action ? String(req.query.action) : undefined,
+    targetType: req.query.type ? String(req.query.type) : undefined,
+    limit: limit ?? 200,
+  }));
+});
 
 // Coordonnées : x/z vont ensemble (une carte a besoin des deux), y est libre.
 function coordError(d) {

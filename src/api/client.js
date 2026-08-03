@@ -528,6 +528,13 @@ export const api = {
     search:    (q) => request('GET', `/lore/search${qs({ q })}`),
     graph:     () => request('GET', '/lore/graph'),
     export:    () => request('GET', '/lore/export'),
+    // Surveillance du module — rôle admin STRICT côté serveur (le flag
+    // can_view_lore ne suffit pas). Alimente l'onglet « 🛡 Admin ».
+    admin: {
+      overview: () => request('GET', '/lore/admin/overview'),
+      media:    (params) => request('GET', `/lore/admin/media${qs(params)}`),
+      journal:  (params) => request('GET', `/lore/admin/journal${qs(params)}`),
+    },
   },
 
   // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.

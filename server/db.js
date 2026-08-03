@@ -1821,6 +1821,35 @@ export function migrate() {
       kind UNINDEXED, ref_id UNINDEXED, title, body
     );
   `);
+
+  // Journal d'audit du module Lore (page « 🛡 Admin », réservée au rôle admin).
+  // Table EN AJOUT SEUL : aucune route ne la met à jour ni ne la supprime.
+  //
+  // Son intérêt tient entièrement aux SNAPSHOTS. Tout le reste du module est en
+  // cascade : supprimer une entrée efface ses médias, ses liens, ses preuves et
+  // ses révisions, et unlink les fichiers. Après coup, plus rien ne dit ce qui a
+  // disparu ni qui l'a fait. On fige donc au moment de l'action :
+  //   - `actor_name`  : survit à la suppression du compte (la FK est SET NULL) ;
+  //   - `label`       : titre/nom de la cible AVANT sa disparition ;
+  //   - `detail`      : JSON — poids, MIME, dimensions, et le décompte de ce que
+  //                     la cascade a emporté (médias + octets).
+  // Sans ces copies, la page d'audit ne montrerait que des identifiants morts.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_audit (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_name  TEXT NOT NULL DEFAULT '',
+      action      TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id   INTEGER,
+      label       TEXT NOT NULL DEFAULT '',
+      detail      TEXT NOT NULL DEFAULT '{}',
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_audit_created ON lore_audit(created_at DESC);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_audit_actor ON lore_audit(actor_id, created_at DESC);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_audit_action ON lore_audit(action, target_type);`);
 }
 
 // Donne un slug aux items uniques qui n'en ont pas encore (lignes créées avant

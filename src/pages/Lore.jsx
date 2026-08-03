@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { Login } from '../components/admin/Login';
 import { Modal } from '../components/project/shared';
+import { AdminTab } from '../components/lore/AdminTab';
 import { EntryDetail } from '../components/lore/EntryDetail';
 import { EntryEditor } from '../components/lore/EntryEditor';
 import { EntryList } from '../components/lore/EntryList';
@@ -54,12 +55,19 @@ const TABS = [
   ['export', '📤 Export'],
 ];
 
+// L'onglet de surveillance n'apparaît qu'au rôle admin. Le serveur refait le
+// contrôle sur /api/lore/admin/* : ce filtre est un confort d'affichage, pas
+// une mesure de sécurité — un membre qui forcerait ?tab=admin obtiendrait 403.
+const ADMIN_TAB = ['admin', '🛡 Admin'];
+const tabsFor = (user) => (user.role === 'admin' ? [...TABS, ADMIN_TAB] : TABS);
+
 function LoreApp({ user }) {
+  const tabs = useMemo(() => tabsFor(user), [user]);
   // ?tab=carte permet d'atterrir directement sur un onglet (raccourci « 🔍 Lore
   // — carte » du dashboard admin, liens partagés entre enquêteurs).
   const [tab, setTab] = useState(() => {
     const wanted = new URLSearchParams(window.location.search).get('tab');
-    return TABS.some(([k]) => k === wanted) ? wanted : 'entrees';
+    return tabsFor(user).some(([k]) => k === wanted) ? wanted : 'entrees';
   });
   const [filters, setFilters] = useState({});
   const [entries, setEntries] = useState([]);       // liste filtrée affichée
@@ -161,7 +169,7 @@ function LoreApp({ user }) {
 
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: '0 20px' }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 22 }}>
-          {TABS.map(([k, l]) => {
+          {tabs.map(([k, l]) => {
             const on = tab === k;
             return (
               <button
@@ -215,6 +223,7 @@ function LoreApp({ user }) {
           />
         )}
         {tab === 'export' && <ExportTab onOpenDossier={() => setDossier(true)} />}
+        {tab === 'admin' && user.role === 'admin' && <AdminTab />}
       </div>
 
       {/* fiche détail */}

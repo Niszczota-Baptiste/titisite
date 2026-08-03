@@ -109,11 +109,62 @@ statut réel, calibration de la carte). Idempotent (skip dès la première
 entrée), `SEED_LORE=off` pour couper. Il passe par le store, donc FTS et
 révisions restent cohérents.
 
+## Onglet « 🛡 Admin » — surveillance du module
+
+Réservé au **rôle admin** : le tag `can_view_lore` ouvre la salle d'enquête, pas
+la surveillance. Un enquêteur ne doit voir ni les adresses e-mail de ses
+camarades, ni le poids de leurs dépôts, ni qui regarde quoi. Le serveur refait
+le contrôle (`requireRole('admin')` sur `/api/lore/admin/*`) ; masquer l'onglet
+côté client n'est qu'un confort.
+
+Trois vues, trois questions :
+
+| Vue | Répond à |
+|---|---|
+| 👥 Membres | qui produit quoi ; combien d'octets chacun a déposés ; combien de suppressions à son actif |
+| 🖼 Médias | *le site sert-il d'hébergement d'images perso ?* — inventaire trié par poids, avec type MIME, dimensions, auteur, et un drapeau « rattaché à rien » |
+| 📜 Journal | *que s'est-il passé, et surtout qu'a-t-on effacé ?* — filtrable par membre / action / type d'objet |
+
+### Pourquoi une table plutôt qu'une requête
+
+Tout le module est en cascade : supprimer une entrée efface ses médias, ses
+liens, ses preuves et ses révisions, et `unlink` les fichiers. Après coup,
+**aucune requête ne peut dire ce qui a disparu** — c'est précisément le cas à
+surveiller.
+
+`lore_audit` est donc une table **en ajout seul** (aucune route ne la modifie ni
+ne la vide) qui fige au moment de l'action :
+
+- `actor_name` — survit à la suppression du compte (la FK est `SET NULL`) ;
+- `label` — le titre de la cible **avant** sa disparition ;
+- `detail` — JSON : poids, MIME, dimensions, et le décompte de ce que la cascade
+  a emporté (`mediaCount`, `mediaBytes`, `evidenceCount`).
+
+C'est ce qui permet d'afficher « *Suppr. · Entrée · Tablette gravée — avec
+1 média(s), 1 Ko · Member* » alors que plus rien de tout cela n'existe en base.
+
+### Comment c'est branché
+
+Un **middleware unique**, `auditLore` (`server/lore/audit.js`), monté sur
+`loreRouter` après le gate et avant tous les handlers — plutôt que d'instrumenter
+les ~40 handlers un par un : moins de code touché, et impossible d'oublier une
+route. Il fait correspondre `méthode + chemin` à une table `ROUTES`, prend son
+instantané *avant* `next()`, et n'écrit la ligne qu'en `res.on('finish')` si le
+statut est 2xx — une tentative rejetée n'est pas une action. Une erreur du
+journal est logguée mais ne casse jamais la requête observée.
+
+> ⚠️ **Ajouter une route mutante au module = ajouter sa ligne dans `ROUTES`.**
+> Sans quoi l'action se fera en silence.
+
+Le journal ne commence qu'à sa mise en place : l'historique antérieur n'existe
+pas, et la page le dit.
+
 ## Pour ajouter…
 
 | Ajouter… | …où |
 |---|---|
 | Un type d'entrée / statut / relation | `server/lore/enums.js` + le méta visuel dans `src/components/lore/theme.js` |
+| Une route mutante (toute méthode ≠ GET) | la route **et** sa ligne dans `ROUTES` (`server/lore/audit.js`), sinon elle échappe au journal |
 | Un monde (3e serveur) | `MONDES` dans `server/lore/enums.js` ET `src/components/lore/theme.js` (+ `MONDE_ORDER`) — rien d'autre, les cartes se créent à la demande |
 | Un champ d'entrée | colonne dans `db.js#migrate` (bloc lore_), mapper + validation dans `store.js`/`routes/lore.js`, éditeur `EntryEditor` |
 | Un onglet | `TABS` dans `src/pages/Lore.jsx` + composant dans `src/components/lore/` |
