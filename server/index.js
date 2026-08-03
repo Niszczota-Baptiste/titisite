@@ -395,7 +395,8 @@ if (boot.workspaces) {
   console.log('[seed] workspace migration:', JSON.stringify(boot.workspaces));
 }
 
-// RGPD retention: drop raw analytics beacons older than 180 days.
+// RGPD retention: drop raw analytics beacons older than RETENTION_DAYS
+// (7 days — the single source of truth is server/routes/analytics.js).
 purgeOldAnalytics();
 
 const server = app.listen(PORT, () => {
