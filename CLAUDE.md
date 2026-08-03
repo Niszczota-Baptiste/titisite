@@ -288,13 +288,22 @@ Single-process Node app:
   `src/components/lore/` + page `src/pages/Lore.jsx`. Key invariants:
   **north = decreasing Z** — all bearing math lives in `server/lore/geo.js`
   (tested), the map's origin mode consumes `GET /geo/ring` and the client does
-  NO trigonometry; `lore_fts` (FTS5, first in the repo) is synced explicitly
+  NO trigonometry; geography is scoped by **`monde`** (nostra/novum) ×
+  `dimension`, so every map/points/shapes/ring query carries both; the map
+  background is collaborative **128×128 tiles** (`lore_map_tiles`) on the real
+  Minecraft map grid — tile (i,j) covers `[i·128-64, i·128+64)`, re-uploading a
+  tile replaces it, and tiles are kept keyed by their map id client-side so a
+  world switch can never frame on the previous world's tiles; `lore_fts` (FTS5, first in the repo) is synced explicitly
   by the store; media are WebP-recompressed (decode failure = 415) and served
   ONLY via `/api/lore/media/file/:f` behind the gate — never statically;
   terminal hypothesis statuses (confirmed/refuted/**abandoned**) require a
   `resolution_note`, and dead pistes stay browsable (folded by default);
   comments reuse the global `comments` table (`lore_entry`/`lore_hypothesis`);
-  entry menu link (Minecraft tab) renders only when `canViewLore`. Seed
+  a **PNJ is an entry** of type `pnj` with a `peuple_id` (`lore_peuples`) and
+  carries N `lore_dialogues` (free-text `quest_name` label, not a FK to the
+  quest module); entry menu link (Minecraft tab) renders only when
+  `canViewLore`, plus a « 🔍 Lore — carte » shortcut in the admin dashboard
+  (`/lore?tab=…` deep-links a tab). Seed
   `server/seed-lore.js` = real survey data, idempotent, `SEED_LORE=off`.
 - **SEO**: `GET /sitemap.xml` is generated from the DB
   (`server/routes/sitemap.js`); per-route meta via

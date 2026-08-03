@@ -130,12 +130,10 @@ export function DossierView({ onBack }) {
               </h3>
               {list.map((e) => (
                 <div key={e.id} style={{ margin: '12px 0 16px', breakInside: 'avoid' }}>
-                  <div style={{ fontWeight: 700, fontSize: 14.5 }}>
-                    {e.title}
-                    {!e.isCanon && <span style={{ fontWeight: 400, fontSize: 11.5, color: '#7a7057' }}> — interprétation</span>}
-                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 14.5 }}>{e.title}</div>
                   <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: '#5a5344', margin: '1px 0 4px' }}>
                     {e.x !== null && e.z !== null ? formatCoords(e) : 'non localisée'}
+                    {` · ${e.monde || 'nostra'}`}
                     {e.dimension !== 'overworld' ? ` · ${e.dimension}` : ''}
                     {e.discoveredAt ? ` · découverte ${formatDay(e.discoveredAt)}` : ''}
                     {e.tags.length ? ` · ${e.tags.map((t) => t.name).join(', ')}` : ''}

@@ -4,8 +4,8 @@ import { formatCoords } from './coords';
 import { CommentsThread } from './CommentsThread';
 import { LoreMarkdown } from './markdown';
 import {
-  ACC, ACC_RGB, CRIMSON, DIMENSIONS, ENTRY_TYPES, INK, MUTED, RELATIONS,
-  STANCES, STATUSES, formatDate, formatDay, hexToRgb,
+  ACC, ACC_RGB, CRIMSON, DIMENSIONS, ENTRY_TYPES, INK, MONDES, MUTED,
+  RELATIONS, STANCES, STATUSES, formatDate, formatDay, hexToRgb,
 } from './theme';
 
 // Fiche complète d'une entrée : corps markdown (liens [[…]] cliquables),
@@ -39,10 +39,11 @@ export function EntryDetail({ entry, entries, user, onEdit, onDeleted, onOpenEnt
           </h2>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
             <Chip color={type.color}>{type.label}</Chip>
-            <Chip color={entry.isCanon ? ACC : '#8a80a0'}>
-              {entry.isCanon ? '✓ Canon' : 'Interprétation joueur'}
-            </Chip>
+            {MONDES[entry.monde] && (
+              <Chip color={MONDES[entry.monde].color}>{MONDES[entry.monde].icon} {MONDES[entry.monde].label}</Chip>
+            )}
             <Chip color="#7bd3e8">{DIMENSIONS[entry.dimension]?.icon} {DIMENSIONS[entry.dimension]?.label || entry.dimension}</Chip>
+            {entry.peupleName && <Chip color="#7be3a8">👥 {entry.peupleName}</Chip>}
             {entry.tags.map((t) => <Chip key={t.id} color={t.color}>{t.name}</Chip>)}
           </div>
         </div>
@@ -72,6 +73,29 @@ export function EntryDetail({ entry, entries, user, onEdit, onDeleted, onOpenEnt
               {m.caption && <div style={{ fontSize: 10.5, color: MUTED, maxWidth: 140, marginTop: 2 }}>{m.caption}</div>}
             </a>
           ))}
+        </div>
+      )}
+
+      {entry.dialogues?.length > 0 && (
+        <div style={{ margin: '4px 0 14px' }}>
+          <SectionTitle>💬 Dialogues relevés ({entry.dialogues.length})</SectionTitle>
+          {entry.dialogues.map((d) => (
+            <div key={d.id} style={{ borderLeft: `3px solid rgba(${ACC_RGB},0.45)`, paddingLeft: 11, marginBottom: 7 }}>
+              {d.questName && (
+                <span style={{
+                  display: 'inline-block', padding: '1px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 700,
+                  color: '#e8c86a', background: 'rgba(232,200,106,0.12)', border: '1px solid rgba(232,200,106,0.45)',
+                  marginBottom: 2,
+                }}>📜 {d.questName}</span>
+              )}
+              <div style={{ fontSize: 13.5, color: 'rgba(214,206,230,0.92)', whiteSpace: 'pre-wrap', fontStyle: 'italic' }}>
+                « {d.texte} »
+              </div>
+            </div>
+          ))}
+          <p style={{ fontSize: 11.5, color: MUTED, margin: '2px 0 0' }}>
+            Les dialogues s'ajoutent depuis l'onglet 👥 Peuples.
+          </p>
         </div>
       )}
 

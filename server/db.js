@@ -1618,6 +1618,10 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_entries_type ON lore_entries(entry_type);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_entries_coords ON lore_entries(dimension, coord_x, coord_z);`);
+  // Deux serveurs/mondes distincts (Nostra, Novum) partagent la salle
+  // d'enquête : chaque donnée géographique porte son monde. Liste extensible
+  // dans server/lore/enums.js (MONDES), pas de CHECK.
+  ensureColumn('lore_entries', 'monde', `TEXT NOT NULL DEFAULT 'nostra'`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS lore_hypotheses (
@@ -1740,6 +1744,55 @@ export function migrate() {
       updated_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
   `);
+  ensureColumn('lore_maps', 'monde', `TEXT NOT NULL DEFAULT 'nostra'`);
+
+  // Fond de carte en TUILES : la grille des cartes Minecraft niveau 0 —
+  // 128×128 blocs, alignée sur le monde réel (un joueur posé en 0,0 est au
+  // centre de sa carte) : la tuile (i, j) couvre X ∈ [i·128-64, i·128+64) et
+  // Z ∈ [j·128-64, j·128+64). Chacun uploade ses screens de cartes in-game ;
+  // ré-uploader une tuile la remplace (la carte se précise au fil du temps).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_map_tiles (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      map_id      INTEGER NOT NULL REFERENCES lore_maps(id) ON DELETE CASCADE,
+      tile_x      INTEGER NOT NULL,
+      tile_z      INTEGER NOT NULL,
+      filename    TEXT NOT NULL,
+      uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      UNIQUE (map_id, tile_x, tile_z)
+    );
+  `);
+
+  // Peuples du monde (Hewyr, Ondiens…) : un PNJ (lore_entries.peuple_id) y est
+  // rattaché, et porte ses dialogues relevés en jeu — plusieurs par PNJ, avec
+  // un nom de quête optionnel en étiquette libre.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_peuples (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT NOT NULL,
+      color         TEXT NOT NULL DEFAULT '#7be3a8',
+      description_md TEXT NOT NULL DEFAULT '',
+      created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lore_dialogues (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_id   INTEGER NOT NULL REFERENCES lore_entries(id) ON DELETE CASCADE,
+      texte      TEXT NOT NULL,
+      quest_name TEXT NOT NULL DEFAULT '',
+      position   INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_dialogues_entry ON lore_dialogues(entry_id, position, id);`);
+  // Un PNJ (entrée de type pnj) peut appartenir à un peuple — colonne ajoutée
+  // ici, APRÈS la création de lore_peuples (cible de la FK).
+  ensureColumn('lore_entries', 'peuple_id', 'INTEGER REFERENCES lore_peuples(id) ON DELETE SET NULL');
 
   // Tracés d'enquête sur la carte : lignes / polygones reliant des points
   // (« les tours forment-elles une étoile ? »). Sommets en coordonnées monde,
@@ -1758,6 +1811,7 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_shapes_dim ON lore_shapes(dimension);`);
+  ensureColumn('lore_shapes', 'monde', `TEXT NOT NULL DEFAULT 'nostra'`);
 
   // Recherche plein-texte (première utilisation de FTS5 du repo). Table FTS
   // ordinaire (pas external-content) : le texte est dupliqué mais la synchro

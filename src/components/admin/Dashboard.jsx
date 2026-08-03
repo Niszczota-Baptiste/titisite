@@ -52,6 +52,15 @@ export function Dashboard() {
 
   const headerLinks = (
     <>
+      {/* Accès direct à la carte de la salle d'enquête — le module vit hors
+          du dashboard, ce raccourci évite de passer par un projet. */}
+      {user?.canViewLore && (
+        <Link
+          to="/lore?tab=carte"
+          style={{ ...navLinkStyle, color: '#7be3a8', border: '1px solid rgba(123,227,168,0.45)', borderRadius: 8, padding: '6px 11px' }}
+          onClick={() => setMenuOpen(false)}
+        >🔍 Lore — carte</Link>
+      )}
       <Link to="/project" style={navLinkStyle} onClick={() => setMenuOpen(false)}>Espace projet</Link>
       <Link to="/" style={navLinkStyle} onClick={() => setMenuOpen(false)}>↗ Voir le site</Link>
       <Button variant="ghost" onClick={logout}>Déconnexion</Button>

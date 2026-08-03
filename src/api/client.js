@@ -489,12 +489,31 @@ export const api = {
       // FormData { image } — fond de carte, remplace l'image précédente.
       setImage: (id, formData, opts) => uploadFile(`/lore/maps/${id}/image`, formData, opts),
     },
+    // Tuiles 128×128 : la grille des cartes Minecraft. FormData
+    // { image, tileX, tileZ } ; ré-uploader une tuile remplace son image.
+    tiles: {
+      list:   (mapId) => request('GET', `/lore/maps/${mapId}/tiles`),
+      upload: (mapId, formData, opts) => uploadFile(`/lore/maps/${mapId}/tiles`, formData, opts),
+      remove: (id) => request('DELETE', `/lore/tiles/${id}`),
+    },
     // Tracés d'enquête : lignes/polygones reliant des points de la carte.
     shapes: {
-      list:   (dimension) => request('GET', `/lore/shapes${qs({ dimension })}`),
+      list:   (params) => request('GET', `/lore/shapes${qs(params)}`),
       create: (b) => request('POST', '/lore/shapes', b),
       update: (id, b) => request('PUT', `/lore/shapes/${id}`, b),
       remove: (id) => request('DELETE', `/lore/shapes/${id}`),
+    },
+    // Peuples + dialogues des PNJ (un PNJ = une entrée de type `pnj`).
+    peuples: {
+      list:   () => request('GET', '/lore/peuples'),
+      create: (b) => request('POST', '/lore/peuples', b),
+      update: (id, b) => request('PUT', `/lore/peuples/${id}`, b),
+      remove: (id) => request('DELETE', `/lore/peuples/${id}`),
+    },
+    dialogues: {
+      add:    (entryId, b) => request('POST', `/lore/entries/${entryId}/dialogues`, b),
+      update: (id, b) => request('PUT', `/lore/dialogues/${id}`, b),
+      remove: (id) => request('DELETE', `/lore/dialogues/${id}`),
     },
     media: {
       // FormData { image, entryId? | hypothesisId?, caption? }
@@ -502,7 +521,7 @@ export const api = {
       setCaption: (id, caption) => request('PUT', `/lore/media/${id}`, { caption }),
       remove:     (id) => request('DELETE', `/lore/media/${id}`),
     },
-    mapPoints: (dimension) => request('GET', `/lore/map/points${qs({ dimension })}`),
+    mapPoints: (params) => request('GET', `/lore/map/points${qs(params)}`),
     bearing:   (from, to) => request('POST', '/lore/geo/bearing', { from, to }),
     ring:      (originX, originZ, params) => request('GET',
       `/lore/geo/ring${qs({ origin_x: originX, origin_z: originZ, ...params })}`),

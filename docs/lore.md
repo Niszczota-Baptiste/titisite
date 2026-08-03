@@ -18,9 +18,11 @@ lien « 🔍 Lore » de l'onglet Minecraft des projets, rendu **uniquement** si
 ## Données (préfixe `lore_`, dans `db.js#migrate`)
 
 - `lore_entries` — l'unité de base (découverte/observation). Slug unique et
-  stable, coords nullables (x/z vont ensemble, y libre), `dimension`,
-  `is_canon` (posé par la modération du serveur vs interprétation joueur),
-  `discovered_at` nullable.
+  stable, coords nullables (x/z vont ensemble, y libre), `monde`
+  (nostra/novum) × `dimension`, `discovered_at` nullable, `peuple_id` pour les
+  PNJ. (`is_canon` existe encore en base mais n'est plus exposé dans l'UI :
+  tout le contenu est posé par la modération, la distinction n'avait plus de
+  sens.)
 - `lore_hypotheses` — `status` ∈ open/testing/confirmed/refuted/abandoned,
   `confidence` 0-100, `resolution_note` **exigée par l'API pour tout statut
   terminal** (refuted ET abandoned : la raison d'un abandon est la donnée
@@ -34,9 +36,24 @@ lien « 🔍 Lore » de l'onglet Minecraft des projets, rendu **uniquement** si
 - `lore_tags` + `lore_entry_tags`, `lore_links` (relations orientées,
   UNIQUE (from, to, type)), `lore_revisions` (snapshot du body_md à chaque
   save, purgé par les delete du store — pas de FK, deux tables cibles).
-- `lore_maps` — calibration du render par **deux points de référence** (X des
-  coins bas-gauche/bas-droit + Z du bord bas ; Nostra : -5353/4646/-636), la
-  hauteur se déduit du ratio naturel de l'image côté client.
+- `lore_maps` — une carte par couple (`monde`, `dimension`). Deux fonds
+  possibles, cumulables : les **tuiles** (ci-dessous) et/ou un render global
+  calibré par **deux points de référence** (X des coins bas-gauche/bas-droit +
+  Z du bord bas ; Nostra overworld : -5353/4646/-636), dont la hauteur se
+  déduit du ratio naturel de l'image côté client.
+- `lore_map_tiles` — le fond collaboratif : la **grille des cartes Minecraft**,
+  128×128 blocs, `UNIQUE (map_id, tile_x, tile_z)`. Un joueur posé en (0,0)
+  étant au centre de sa carte, la tuile (i, j) couvre
+  `[i·128-64, i·128+64)` × idem en Z — **le décalage de -64 est l'invariant**
+  qui fait coïncider la grille avec les cartes réelles du jeu (testé dans
+  `test/lore-map-math.test.js`). Chacun dépose la capture d'une case ;
+  re-déposer **remplace** l'image (upsert + suppression de l'ancien fichier),
+  la carte se précisant à mesure que le monde est exploré.
+- `lore_peuples` + `lore_dialogues` — les peuples, et les répliques relevées
+  des PNJ. Un PNJ **n'est pas** une table à part : c'est une `lore_entries` de
+  type `pnj` avec un `peuple_id`, donc il garde coordonnées, images, relations
+  et preuves. Un PNJ porte autant de dialogues qu'il en faut, chacun avec un
+  `quest_name` libre (étiquette, pas une FK vers le module Quêtes).
 - `lore_shapes` — tracés d'enquête (lignes/polygones, sommets JSON [[x,z]],
   2..500, validés serveur).
 - `lore_fts` — FTS5 (première du repo), synchronisée **explicitement** dans
@@ -61,12 +78,23 @@ d'affichage de la carte (placement du render, molette, %) sont dans
 ## Front (`src/components/lore/`)
 
 Onglets de la page : 📖 Entrées (liste + filtres serveur), 🗺 Carte
-(`LoreMap` + `MapTab` — pan/molette, formes par type, modes origine avec rose
-des vents / mesure / ➕ point → éditeur pré-rempli / ✏️ tracé, aperçu du
-screenshot au survol), 🧪 Hypothèses (kanban, pistes mortes repliées par
-défaut), 🕸 Graphe (`GraphTab`, simulation de forces maison — pas de
-d3-force), 🕰 Timeline, 📤 Export (JSON + `DossierView` imprimable, palette
-papier via le flag `print` du renderer markdown).
+(`LoreMap` + `MapTab` — onglets **monde** Nostra/Novum × **dimension**,
+pan/molette, formes par type, modes origine avec rose des vents / mesure /
+➕ point → éditeur pré-rempli / ✏️ tracé / 🧩 cartes 128×128, aperçu du
+screenshot au survol), 👥 Peuples (`PeuplesTab` — peuples dépliables, leurs
+PNJ et leurs dialogues, ajout en ligne), 🧪 Hypothèses (kanban, pistes mortes
+repliées par défaut), 🕸 Graphe (`GraphTab`, simulation de forces maison — pas
+de d3-force), 🕰 Timeline, 📤 Export (JSON + `DossierView` imprimable, palette
+papier via le flag `print` du renderer markdown). `/lore?tab=carte` ouvre
+directement un onglet — c'est ce qu'utilise le raccourci « 🔍 Lore — carte »
+du dashboard admin.
+
+**Piège de cadrage** (corrigé, à ne pas réintroduire) : les tuiles arrivent par
+une requête par carte, donc *après* le montage. Elles sont mémorisées avec
+l'id de leur carte (`tileState = { mapId, list }`) et n'alimentent le rendu que
+si cet id correspond à la carte courante — sinon, en changeant de monde, la
+vue se cadrait sur les tuiles du monde précédent et les nouvelles tombaient à
+des milliers de blocs hors champ.
 
 Markdown : renderer maison XSS-safe dédié (`markdown.jsx` — aucun HTML brut,
 pas de dépendance), token `[[Titre d'entrée|Label]]` résolu par titre ou slug,
@@ -86,6 +114,7 @@ révisions restent cohérents.
 | Ajouter… | …où |
 |---|---|
 | Un type d'entrée / statut / relation | `server/lore/enums.js` + le méta visuel dans `src/components/lore/theme.js` |
+| Un monde (3e serveur) | `MONDES` dans `server/lore/enums.js` ET `src/components/lore/theme.js` (+ `MONDE_ORDER`) — rien d'autre, les cartes se créent à la demande |
 | Un champ d'entrée | colonne dans `db.js#migrate` (bloc lore_), mapper + validation dans `store.js`/`routes/lore.js`, éditeur `EntryEditor` |
 | Un onglet | `TABS` dans `src/pages/Lore.jsx` + composant dans `src/components/lore/` |
 | Une règle géo | `server/lore/geo.js` + son test — jamais côté client |

@@ -43,7 +43,10 @@ function rowToEntry(r) {
     y: r.coord_y,
     z: r.coord_z,
     dimension: r.dimension,
+    monde: r.monde,
     isCanon: r.is_canon === 1,
+    peupleId: r.peuple_id,
+    peupleName: r.peuple_name ?? undefined,
     discoveredAt: r.discovered_at,
     authorId: r.author_id,
     authorName: r.author_name ?? undefined,
@@ -93,6 +96,7 @@ function rowToMap(r) {
     id: r.id,
     name: r.name,
     dimension: r.dimension,
+    monde: r.monde,
     imageUrl: r.image_filename ? `/api/lore/media/file/${r.image_filename}` : null,
     imgXLeft: r.img_x_left,
     imgXRight: r.img_x_right,
@@ -187,8 +191,10 @@ function tagsForEntries(ids) {
 // ── Entrées ─────────────────────────────────────────────────────────────────
 
 const ENTRY_SELECT = `
-  SELECT e.*, u.name AS author_name
-  FROM lore_entries e LEFT JOIN users u ON u.id = e.author_id
+  SELECT e.*, u.name AS author_name, p.name AS peuple_name
+  FROM lore_entries e
+  LEFT JOIN users u ON u.id = e.author_id
+  LEFT JOIN lore_peuples p ON p.id = e.peuple_id
 `;
 
 // Filtres combinables : type, dimension, canon (0/1), tag (id), q (FTS),
@@ -199,6 +205,8 @@ export function listEntries(filters = {}) {
   const params = [];
   if (filters.type) { where.push(`e.entry_type = ?`); params.push(filters.type); }
   if (filters.dimension) { where.push(`e.dimension = ?`); params.push(filters.dimension); }
+  if (filters.monde) { where.push(`e.monde = ?`); params.push(filters.monde); }
+  if (filters.peuple) { where.push(`e.peuple_id = ?`); params.push(filters.peuple); }
   if (filters.canon !== undefined) { where.push(`e.is_canon = ?`); params.push(filters.canon ? 1 : 0); }
   if (filters.tag) {
     where.push(`EXISTS (SELECT 1 FROM lore_entry_tags et WHERE et.entry_id = e.id AND et.tag_id = ?)`);
@@ -255,6 +263,12 @@ export function getEntry(id) {
     id: l.id, entryId: l.from_entry_id, title: l.other_title, slug: l.other_slug,
     entryType: l.other_type, relationType: l.relation_type, note: l.note,
   }));
+  entry.dialogues = db.prepare(`
+    SELECT d.id, d.texte, d.quest_name, d.position, d.created_at
+    FROM lore_dialogues d WHERE d.entry_id = ? ORDER BY d.position, d.id
+  `).all(id).map((r) => ({
+    id: r.id, texte: r.texte, questName: r.quest_name, position: r.position, createdAt: r.created_at,
+  }));
   entry.evidenceOf = db.prepare(`
     SELECT ev.id, ev.stance, ev.note, h.id AS hypothesis_id, h.title, h.status
     FROM lore_evidence ev JOIN lore_hypotheses h ON h.id = ev.hypothesis_id
@@ -276,11 +290,12 @@ export function createEntry(d, userId) {
   const info = db.prepare(`
     INSERT INTO lore_entries
       (title, slug, body_md, entry_type, coord_x, coord_y, coord_z, dimension,
-       is_canon, discovered_at, author_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       monde, peuple_id, is_canon, discovered_at, author_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     d.title, slug, d.bodyMd || '', d.entryType || 'observation',
     d.x ?? null, d.y ?? null, d.z ?? null, d.dimension || 'overworld',
+    d.monde || 'nostra', d.peupleId ?? null,
     d.isCanon ? 1 : 0, d.discoveredAt ?? null, userId ?? null,
   );
   const id = info.lastInsertRowid;
@@ -304,17 +319,20 @@ export function updateEntry(id, d, userId) {
     coord_y: d.y !== undefined ? d.y : existing.coord_y,
     coord_z: d.z !== undefined ? d.z : existing.coord_z,
     dimension: d.dimension ?? existing.dimension,
+    monde: d.monde ?? existing.monde,
+    peuple_id: d.peupleId !== undefined ? d.peupleId : existing.peuple_id,
     is_canon: d.isCanon !== undefined ? (d.isCanon ? 1 : 0) : existing.is_canon,
     discovered_at: d.discoveredAt !== undefined ? d.discoveredAt : existing.discovered_at,
   };
   db.prepare(`
     UPDATE lore_entries SET
       title = ?, body_md = ?, entry_type = ?, coord_x = ?, coord_y = ?, coord_z = ?,
-      dimension = ?, is_canon = ?, discovered_at = ?, updated_at = strftime('%s','now')
+      dimension = ?, monde = ?, peuple_id = ?, is_canon = ?, discovered_at = ?,
+      updated_at = strftime('%s','now')
     WHERE id = ?
   `).run(
     next.title, next.body_md, next.entry_type, next.coord_x, next.coord_y, next.coord_z,
-    next.dimension, next.is_canon, next.discovered_at, id,
+    next.dimension, next.monde, next.peuple_id, next.is_canon, next.discovered_at, id,
   );
   if (d.tags) setEntryTags(id, d.tags);
   if (d.bodyMd !== undefined && d.bodyMd !== existing.body_md) {
@@ -552,6 +570,7 @@ export function mediaFilenameKnown(filename) {
   return !!(
     db.prepare(`SELECT 1 FROM lore_media WHERE filename = ? OR thumb_filename = ?`).get(filename, filename)
     || db.prepare(`SELECT 1 FROM lore_maps WHERE image_filename = ?`).get(filename)
+    || db.prepare(`SELECT 1 FROM lore_map_tiles WHERE filename = ?`).get(filename)
   );
 }
 
@@ -568,9 +587,9 @@ export function getMapRaw(id) {
 export function createMap(d) {
   const pos = db.prepare(`SELECT COALESCE(MAX(position), -1) + 1 AS n FROM lore_maps`).get().n;
   const info = db.prepare(`
-    INSERT INTO lore_maps (name, dimension, img_x_left, img_x_right, img_z_bottom, position)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(d.name, d.dimension || 'overworld', d.imgXLeft ?? null, d.imgXRight ?? null, d.imgZBottom ?? null, pos);
+    INSERT INTO lore_maps (name, dimension, monde, img_x_left, img_x_right, img_z_bottom, position)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(d.name, d.dimension || 'overworld', d.monde || 'nostra', d.imgXLeft ?? null, d.imgXRight ?? null, d.imgZBottom ?? null, pos);
   return rowToMap(db.prepare(`SELECT * FROM lore_maps WHERE id = ?`).get(info.lastInsertRowid));
 }
 
@@ -605,29 +624,144 @@ export function setMapImage(id, filename) {
 export function deleteMap(id) {
   const existing = getMapRaw(id);
   if (!existing) return false;
-  db.prepare(`DELETE FROM lore_maps WHERE id = ?`).run(id);
+  const tiles = db.prepare(`SELECT filename FROM lore_map_tiles WHERE map_id = ?`).all(id);
+  db.prepare(`DELETE FROM lore_maps WHERE id = ?`).run(id); // cascade lore_map_tiles
   if (existing.image_filename) safeUnlink(existing.image_filename);
+  for (const t of tiles) safeUnlink(t.filename);
   return true;
+}
+
+// ── Tuiles 128×128 (grille des cartes Minecraft) ────────────────────────────
+
+function rowToTile(r) {
+  return {
+    id: r.id, mapId: r.map_id, tileX: r.tile_x, tileZ: r.tile_z,
+    url: `/api/lore/media/file/${r.filename}`,
+    uploadedBy: r.uploaded_by, updatedAt: r.updated_at,
+  };
+}
+
+export function listTiles(mapId) {
+  return db.prepare(`SELECT * FROM lore_map_tiles WHERE map_id = ? ORDER BY id`)
+    .all(mapId).map(rowToTile);
+}
+
+// Upsert par (carte, tuile) : ré-uploader une tuile remplace son image —
+// l'ancien fichier est supprimé du disque.
+export function upsertTile(mapId, tileX, tileZ, filename, userId) {
+  const existing = db.prepare(
+    `SELECT * FROM lore_map_tiles WHERE map_id = ? AND tile_x = ? AND tile_z = ?`,
+  ).get(mapId, tileX, tileZ);
+  if (existing) {
+    db.prepare(`
+      UPDATE lore_map_tiles SET filename = ?, uploaded_by = ?, updated_at = strftime('%s','now')
+      WHERE id = ?
+    `).run(filename, userId ?? null, existing.id);
+    safeUnlink(existing.filename);
+    return rowToTile(db.prepare(`SELECT * FROM lore_map_tiles WHERE id = ?`).get(existing.id));
+  }
+  const info = db.prepare(`
+    INSERT INTO lore_map_tiles (map_id, tile_x, tile_z, filename, uploaded_by)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(mapId, tileX, tileZ, filename, userId ?? null);
+  return rowToTile(db.prepare(`SELECT * FROM lore_map_tiles WHERE id = ?`).get(info.lastInsertRowid));
+}
+
+export function deleteTile(id) {
+  const row = db.prepare(`SELECT filename FROM lore_map_tiles WHERE id = ?`).get(id);
+  if (!row) return false;
+  db.prepare(`DELETE FROM lore_map_tiles WHERE id = ?`).run(id);
+  safeUnlink(row.filename);
+  return true;
+}
+
+// ── Peuples & dialogues des PNJ ─────────────────────────────────────────────
+
+function rowToPeuple(r) {
+  return {
+    id: r.id, name: r.name, color: r.color, descriptionMd: r.description_md,
+    pnjCount: r.pnj_count ?? undefined, createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function listPeuples() {
+  return db.prepare(`
+    SELECT p.*, (SELECT COUNT(*) FROM lore_entries e WHERE e.peuple_id = p.id) AS pnj_count
+    FROM lore_peuples p ORDER BY p.name COLLATE NOCASE
+  `).all().map(rowToPeuple);
+}
+
+export function peupleExists(id) {
+  return !!db.prepare(`SELECT 1 FROM lore_peuples WHERE id = ?`).get(id);
+}
+
+export function createPeuple(d) {
+  const info = db.prepare(`
+    INSERT INTO lore_peuples (name, color, description_md) VALUES (?, ?, ?)
+  `).run(d.name, d.color || '#7be3a8', d.descriptionMd || '');
+  return rowToPeuple(db.prepare(`SELECT * FROM lore_peuples WHERE id = ?`).get(info.lastInsertRowid));
+}
+
+export function updatePeuple(id, d) {
+  const existing = db.prepare(`SELECT * FROM lore_peuples WHERE id = ?`).get(id);
+  if (!existing) return null;
+  db.prepare(`
+    UPDATE lore_peuples SET
+      name = COALESCE(?, name), color = COALESCE(?, color),
+      description_md = COALESCE(?, description_md), updated_at = strftime('%s','now')
+    WHERE id = ?
+  `).run(d.name ?? null, d.color ?? null, d.descriptionMd ?? null, id);
+  return rowToPeuple(db.prepare(`SELECT * FROM lore_peuples WHERE id = ?`).get(id));
+}
+
+export function deletePeuple(id) {
+  // Les PNJ rattachés repassent à « sans peuple » (FK SET NULL).
+  return db.prepare(`DELETE FROM lore_peuples WHERE id = ?`).run(id).changes > 0;
+}
+
+export function addDialogue(entryId, d, userId) {
+  const pos = db.prepare(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM lore_dialogues WHERE entry_id = ?`,
+  ).get(entryId).n;
+  const info = db.prepare(`
+    INSERT INTO lore_dialogues (entry_id, texte, quest_name, position, created_by)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(entryId, d.texte, d.questName || '', pos, userId ?? null);
+  const r = db.prepare(`SELECT * FROM lore_dialogues WHERE id = ?`).get(info.lastInsertRowid);
+  return { id: r.id, texte: r.texte, questName: r.quest_name, position: r.position, createdAt: r.created_at };
+}
+
+export function updateDialogue(id, d) {
+  const existing = db.prepare(`SELECT * FROM lore_dialogues WHERE id = ?`).get(id);
+  if (!existing) return null;
+  db.prepare(`UPDATE lore_dialogues SET texte = COALESCE(?, texte), quest_name = COALESCE(?, quest_name) WHERE id = ?`)
+    .run(d.texte ?? null, d.questName ?? null, id);
+  const r = db.prepare(`SELECT * FROM lore_dialogues WHERE id = ?`).get(id);
+  return { id: r.id, texte: r.texte, questName: r.quest_name, position: r.position, createdAt: r.created_at };
+}
+
+export function deleteDialogue(id) {
+  return db.prepare(`DELETE FROM lore_dialogues WHERE id = ?`).run(id).changes > 0;
 }
 
 // ── Vues transverses ────────────────────────────────────────────────────────
 
 // Format léger pour la carte : uniquement les entrées géolocalisées, avec la
 // miniature de leur première image (aperçu au survol du marqueur).
-export function mapPoints(dimension) {
+export function mapPoints({ monde, dimension } = {}) {
   const where = [`e.coord_x IS NOT NULL`, `e.coord_z IS NOT NULL`];
   const params = [];
+  if (monde) { where.push(`e.monde = ?`); params.push(monde); }
   if (dimension) { where.push(`e.dimension = ?`); params.push(dimension); }
   return db.prepare(`
     SELECT e.id, e.title, e.slug, e.entry_type, e.coord_x, e.coord_y, e.coord_z,
-           e.dimension, e.is_canon,
+           e.dimension, e.monde,
            (SELECT COALESCE(m.thumb_filename, m.filename) FROM lore_media m
             WHERE m.entry_id = e.id ORDER BY m.id LIMIT 1) AS thumb
     FROM lore_entries e WHERE ${where.join(' AND ')} ORDER BY e.id
   `).all(...params).map((r) => ({
     id: r.id, title: r.title, slug: r.slug, entryType: r.entry_type,
-    x: r.coord_x, y: r.coord_y, z: r.coord_z, dimension: r.dimension,
-    isCanon: r.is_canon === 1,
+    x: r.coord_x, y: r.coord_y, z: r.coord_z, dimension: r.dimension, monde: r.monde,
     thumbUrl: r.thumb ? `/api/lore/media/file/${r.thumb}` : null,
   }));
 }
@@ -638,23 +772,27 @@ function rowToShape(r) {
   let points = [];
   try { points = JSON.parse(r.points); } catch { /* tracé corrompu → vide */ }
   return {
-    id: r.id, dimension: r.dimension, name: r.name, color: r.color,
+    id: r.id, dimension: r.dimension, monde: r.monde, name: r.name, color: r.color,
     closed: r.closed === 1, points, createdBy: r.created_by, createdAt: r.created_at,
   };
 }
 
-export function listShapes(dimension) {
-  const rows = dimension
-    ? db.prepare(`SELECT * FROM lore_shapes WHERE dimension = ? ORDER BY id`).all(dimension)
-    : db.prepare(`SELECT * FROM lore_shapes ORDER BY id`).all();
+export function listShapes({ monde, dimension } = {}) {
+  const where = [];
+  const params = [];
+  if (monde) { where.push(`monde = ?`); params.push(monde); }
+  if (dimension) { where.push(`dimension = ?`); params.push(dimension); }
+  const rows = db.prepare(
+    `SELECT * FROM lore_shapes${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY id`,
+  ).all(...params);
   return rows.map(rowToShape);
 }
 
 export function createShape(d, userId) {
   const info = db.prepare(`
-    INSERT INTO lore_shapes (dimension, name, color, closed, points, created_by)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(d.dimension, d.name, d.color, d.closed ? 1 : 0, JSON.stringify(d.points), userId ?? null);
+    INSERT INTO lore_shapes (dimension, monde, name, color, closed, points, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(d.dimension, d.monde || 'nostra', d.name, d.color, d.closed ? 1 : 0, JSON.stringify(d.points), userId ?? null);
   return rowToShape(db.prepare(`SELECT * FROM lore_shapes WHERE id = ?`).get(info.lastInsertRowid));
 }
 
@@ -749,9 +887,16 @@ export function exportAll() {
     id: r.id, targetType: r.target_type, targetId: r.target_id,
     bodyMd: r.body_md, authorId: r.author_id, createdAt: r.created_at,
   }));
+  const dialogues = db.prepare(`SELECT * FROM lore_dialogues ORDER BY entry_id, position, id`)
+    .all().map((r) => ({
+      id: r.id, entryId: r.entry_id, texte: r.texte, questName: r.quest_name,
+      position: r.position, createdAt: r.created_at,
+    }));
+  const tiles = db.prepare(`SELECT * FROM lore_map_tiles ORDER BY id`).all().map(rowToTile);
   return {
     exportedAt: Math.floor(Date.now() / 1000),
     entries, hypotheses, links, media,
-    tags: listTags(), maps: listMaps(), shapes: listShapes(), comments, revisions,
+    tags: listTags(), maps: listMaps(), shapes: listShapes(),
+    peuples: listPeuples(), dialogues, tiles, comments, revisions,
   };
 }

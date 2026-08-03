@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { computeView, gridLines, niceStep } from '../quests/mapGrid';
-import { bearingDirection, imagePlacement, measureDistance, toPct, zoomAt } from './mapMath';
+import {
+  TILE_SIZE, bearingDirection, imagePlacement, measureDistance, tileRect,
+  tilesInView, toPct, worldToTile, zoomAt,
+} from './mapMath';
 import { ACC, ACC_RGB, ENTRY_TYPES, GOLD, INK, MUTED, hexToRgb } from './theme';
 
 // La pièce maîtresse : carte pannable/zoomable (molette comprise) sur le
@@ -23,8 +26,8 @@ const SHAPES = {
 
 export function LoreMap({
   points, map, mode, origin, onSetOrigin, ring, tolerance,
-  measure, onMeasureClick, onOpenEntry, onAddAt, onDrawClick,
-  shapes = [], draft = null,
+  measure, onMeasureClick, onOpenEntry, onAddAt, onDrawClick, onTileClick,
+  shapes = [], draft = null, tiles = [],
 }) {
   const boxRef = useRef(null);
   const drag = useRef(null);
@@ -32,6 +35,7 @@ export function LoreMap({
   const [showGrid, setShowGrid] = useState(true);
   const [imgOpacity, setImgOpacity] = useState(1);
   const [hover, setHover] = useState(null);
+  const [tileHover, setTileHover] = useState(null); // { tileX, tileZ } en mode tuile
 
   const placement = map?.imageUrl && imgDim
     ? imagePlacement(map, imgDim.h / imgDim.w)
@@ -45,7 +49,19 @@ export function LoreMap({
         span: Math.max(placement.spanX, placement.spanZ) * 1.05,
       };
     }
-    return computeView(points, { defaultSpan: 2048, padFactor: 1.25, minSpan: 512 });
+    // Sans render global, on cadre sur ce qui existe : les points, sinon les
+    // tuiles déjà uploadées (leur centre), sinon le spawn.
+    if (points.length > 0) {
+      return computeView(points, { defaultSpan: 2048, padFactor: 1.25, minSpan: 512 });
+    }
+    if (tiles.length > 0) {
+      const centres = tiles.map((t) => {
+        const r = tileRect(t.tileX, t.tileZ);
+        return { x: r.left + r.size / 2, z: r.top + r.size / 2 };
+      });
+      return computeView(centres, { defaultSpan: 512, padFactor: 1.6, minSpan: 384 });
+    }
+    return { cx: 0, cz: 0, span: 1024 };
   };
   const [view, setView] = useState(fitAll);
 
@@ -58,6 +74,17 @@ export function LoreMap({
       setView(fitAll());
     }
   }, [placement]);
+
+  // Les tuiles arrivent elles aussi après le montage (une requête par carte).
+  // Sans ce recadrage, une carte SANS entrée géolocalisée resterait plantée
+  // sur la vue par défaut alors que ses cartes sont à des milliers de blocs.
+  const hadTiles = useRef(tiles.length > 0);
+  useEffect(() => {
+    if (tiles.length > 0 && !hadTiles.current) {
+      hadTiles.current = true;
+      if (points.length === 0 && !placement) setView(fitAll());
+    }
+  }, [tiles.length]);
 
   const pos = (x, z) => {
     const p = toPct(view, x, z);
@@ -89,6 +116,11 @@ export function LoreMap({
     drag.current = { x0: e.clientX, y0: e.clientY, cx: view.cx, cz: view.cz, moved: 0 };
   };
   const onMove = (e) => {
+    if (mode === 'tile' && boxRef.current) {
+      const w = worldAt(e.clientX, e.clientY);
+      const t = worldToTile(w.x, w.z);
+      setTileHover((prev) => (prev && prev.tileX === t.tileX && prev.tileZ === t.tileZ ? prev : t));
+    }
     if (!drag.current) return;
     const r = boxRef.current.getBoundingClientRect();
     const dx = e.clientX - drag.current.x0;
@@ -109,6 +141,7 @@ export function LoreMap({
     else if (mode === 'measure') onMeasureClick(w);
     else if (mode === 'add') onAddAt?.(w);
     else if (mode === 'draw') onDrawClick?.(w);
+    else if (mode === 'tile') onTileClick?.(worldToTile(w.x, w.z));
   };
 
   // Un clic sur un marqueur s'accroche à ses coordonnées exactes (origine,
@@ -129,9 +162,36 @@ export function LoreMap({
     .map(([sx, sz]) => { const p = toPct(view, sx, sz); return `${p.left},${p.top}`; })
     .join(' ');
 
-  const step = niceStep(view.span);
-  const lines = gridLines(view, step);
+  // Sous ~4000 blocs de large, la grille suit la trame des cartes (bords de
+  // tuiles à i·128−64) : on voit alors exactement les cartes à capturer.
+  // Au-delà elle redevient « ronde », sinon l'écran serait noir de traits.
+  const tileGrid = view.span <= 4096;
+  const step = tileGrid ? TILE_SIZE : niceStep(view.span);
+  const viewTiles = tilesInView(view);
+  const lines = tileGrid
+    ? {
+      v: [...new Set(viewTiles.map((t) => tileRect(t.tileX, 0).left))]
+        .map((world) => ({ world, pct: toPct(view, world, 0).left, axis: world === -64 })),
+      h: [...new Set(viewTiles.map((t) => tileRect(0, t.tileZ).top))]
+        .map((world) => ({ world, pct: toPct(view, 0, world).top, axis: world === -64 })),
+    }
+    : gridLines(view, step);
   const ringById = ring ? new Map(ring.map((r) => [r.id, r])) : null;
+
+  // Tuiles uploadées, indexées pour un rendu O(vue) et non O(toutes les tuiles).
+  const tileByKey = new Map(tiles.map((t) => [`${t.tileX},${t.tileZ}`, t]));
+  const tileStyle = (tileX, tileZ) => {
+    const r = tileRect(tileX, tileZ);
+    const p = toPct(view, r.left, r.top);
+    return {
+      position: 'absolute',
+      left: `${p.left}%`,
+      top: `${p.top}%`,
+      width: `${(r.size / view.span) * 100}%`,
+      height: `${(r.size / view.span) * 100}%`,
+    };
+  };
+  const hoverTile = mode === 'tile' ? tileHover : null;
 
   const imgStyle = () => ({
     position: 'absolute',
@@ -165,6 +225,7 @@ export function LoreMap({
           {mode === 'measure' && '📏 deux clics = une distance'}
           {mode === 'add' && '➕ clique l\'emplacement de la nouvelle entrée'}
           {mode === 'draw' && '✏️ clique les sommets (un marqueur = accroché dessus)'}
+          {mode === 'tile' && '🧩 clique une case pour y déposer ta capture de carte'}
         </span>
       </div>
 
@@ -174,7 +235,7 @@ export function LoreMap({
         onMouseDown={onDown}
         onMouseMove={onMove}
         onMouseUp={onUp}
-        onMouseLeave={() => { drag.current = null; }}
+        onMouseLeave={() => { drag.current = null; setTileHover(null); }}
         style={{
           position: 'relative', width: '100%', aspectRatio: '4 / 3',
           userSelect: 'none', overflow: 'hidden', borderRadius: 12,
@@ -190,6 +251,39 @@ export function LoreMap({
             style={placement ? imgStyle() : { display: 'none' }}
           />
         )}
+
+        {/* cartes uploadées : une image par case de 128×128 blocs */}
+        {viewTiles.map((t) => {
+          const tile = tileByKey.get(`${t.tileX},${t.tileZ}`);
+          if (!tile) return null;
+          return (
+            <img
+              key={`t${t.tileX},${t.tileZ}`} src={tile.url} alt="" draggable={false}
+              style={{ ...tileStyle(t.tileX, t.tileZ), opacity: imgOpacity, pointerEvents: 'none', userSelect: 'none' }}
+            />
+          );
+        })}
+
+        {/* mode tuile : cases vides esquissées + case survolée en surbrillance */}
+        {mode === 'tile' && viewTiles.map((t) => {
+          const filled = tileByKey.has(`${t.tileX},${t.tileZ}`);
+          const lit = hoverTile && hoverTile.tileX === t.tileX && hoverTile.tileZ === t.tileZ;
+          return (
+            <div
+              key={`th${t.tileX},${t.tileZ}`}
+              style={{
+                ...tileStyle(t.tileX, t.tileZ), pointerEvents: 'none',
+                border: lit ? `2px solid ${GOLD}` : `1px dashed rgba(${ACC_RGB},${filled ? 0.25 : 0.45})`,
+                background: lit ? `rgba(${hexToRgb(GOLD)},0.18)` : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: "'JetBrains Mono',monospace", fontSize: 10,
+                color: lit ? GOLD : `rgba(${ACC_RGB},0.6)`,
+              }}
+            >
+              {lit ? `${t.tileX} , ${t.tileZ}` : (filled ? '' : '+')}
+            </div>
+          );
+        })}
 
         {showGrid && (
           <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} aria-hidden>

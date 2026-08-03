@@ -13,6 +13,7 @@ import { GraphTab } from '../components/lore/GraphTab';
 import { HypothesesTab, HypothesisEditor } from '../components/lore/HypothesesTab';
 import { HypothesisDetail } from '../components/lore/HypothesisDetail';
 import { MapTab } from '../components/lore/MapTab';
+import { PeuplesTab } from '../components/lore/PeuplesTab';
 import { TimelineTab } from '../components/lore/TimelineTab';
 import { ACC, ACC_RGB, GOLD, INK, MUTED } from '../components/lore/theme';
 
@@ -46,6 +47,7 @@ export default function Lore() {
 const TABS = [
   ['entrees', '📖 Entrées'],
   ['carte', '🗺 Carte'],
+  ['peuples', '👥 Peuples'],
   ['hypotheses', '🧪 Hypothèses'],
   ['graphe', '🕸 Graphe'],
   ['timeline', '🕰 Timeline'],
@@ -53,7 +55,12 @@ const TABS = [
 ];
 
 function LoreApp({ user }) {
-  const [tab, setTab] = useState('entrees');
+  // ?tab=carte permet d'atterrir directement sur un onglet (raccourci « 🔍 Lore
+  // — carte » du dashboard admin, liens partagés entre enquêteurs).
+  const [tab, setTab] = useState(() => {
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    return TABS.some(([k]) => k === wanted) ? wanted : 'entrees';
+  });
   const [filters, setFilters] = useState({});
   const [entries, setEntries] = useState([]);       // liste filtrée affichée
   const [entriesAll, setEntriesAll] = useState([]); // liste complète (liens [[…]], relations)
@@ -188,6 +195,9 @@ function LoreApp({ user }) {
             onOpenEntry={openEntry} refreshKey={bump}
             onCreateAt={(coords) => setEditing({ entry: null, coords })}
           />
+        )}
+        {tab === 'peuples' && (
+          <PeuplesTab user={user} onOpenEntry={openEntry} refreshKey={bump} />
         )}
         {tab === 'hypotheses' && (
           <HypothesesTab

@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { parseCoords } from './coords';
 import { LoreMarkdown } from './markdown';
 import {
-  ACC, ACC_RGB, CRIMSON, DIMENSIONS, ENTRY_TYPES, ENTRY_TYPE_ORDER, INK, MUTED,
+  ACC, ACC_RGB, CRIMSON, DIMENSIONS, DIMENSION_ORDER, ENTRY_TYPES,
+  ENTRY_TYPE_ORDER, INK, MONDES, MONDE_ORDER, MUTED,
 } from './theme';
 
 // Éditeur d'entrée (création + édition) : markdown avec preview et
@@ -19,6 +20,9 @@ export function EntryEditor({ entry, entries, initial, onSaved, onCancel }) {
   const [title, setTitle] = useState(entry?.title || '');
   const [entryType, setEntryType] = useState(entry?.entryType || 'observation');
   const [dimension, setDimension] = useState(entry?.dimension || initial?.dimension || 'overworld');
+  const [monde, setMonde] = useState(entry?.monde || initial?.monde || 'nostra');
+  const [peupleId, setPeupleId] = useState(entry?.peupleId ?? '');
+  const [peuples, setPeuples] = useState([]);
   const [x, setX] = useState(entry?.x ?? initial?.x ?? '');
   const [y, setY] = useState(entry?.y ?? '');
   const [z, setZ] = useState(entry?.z ?? initial?.z ?? '');
@@ -26,7 +30,6 @@ export function EntryEditor({ entry, entries, initial, onSaved, onCancel }) {
   const [discoveredAt, setDiscoveredAt] = useState(
     entry?.discoveredAt ? new Date(entry.discoveredAt * 1000).toISOString().slice(0, 10) : '',
   );
-  const [isCanon, setIsCanon] = useState(entry?.isCanon || false);
   const [tagsText, setTagsText] = useState((entry?.tags || []).map((t) => t.name).join(', '));
   const [bodyMd, setBodyMd] = useState(entry?.bodyMd || '');
   const [preview, setPreview] = useState(false);
@@ -36,6 +39,13 @@ export function EntryEditor({ entry, entries, initial, onSaved, onCancel }) {
   const [err, setErr] = useState(null);
   const [sug, setSug] = useState(null); // { list, start } — autocomplétion [[
   const taRef = useRef(null);
+
+  // Les peuples ne servent qu'aux PNJ — chargés une fois, à l'ouverture.
+  useEffect(() => {
+    let alive = true;
+    api.lore.peuples.list().then((ps) => { if (alive) setPeuples(ps); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   // ── Coordonnées : collage intelligent ──
   const onPaste = (raw) => {
@@ -98,7 +108,8 @@ export function EntryEditor({ entry, entries, initial, onSaved, onCancel }) {
         title: title.trim(),
         entryType,
         dimension,
-        isCanon,
+        monde,
+        peupleId: entryType === 'pnj' && peupleId !== '' ? Number(peupleId) : null,
         bodyMd,
         x: coord(x), y: coord(y), z: coord(z),
         discoveredAt: discoveredAt ? Math.floor(new Date(`${discoveredAt}T12:00:00`).getTime() / 1000) : null,
@@ -134,9 +145,14 @@ export function EntryEditor({ entry, entries, initial, onSaved, onCancel }) {
             {ENTRY_TYPE_ORDER.map((t) => <option key={t} value={t}>{ENTRY_TYPES[t].icon} {ENTRY_TYPES[t].label}</option>)}
           </select>
         </Field>
+        <Field label="Monde" style={{ flex: '1 1 120px' }}>
+          <select value={monde} onChange={(e) => setMonde(e.target.value)} style={input}>
+            {MONDE_ORDER.map((k) => <option key={k} value={k}>{MONDES[k].icon} {MONDES[k].label}</option>)}
+          </select>
+        </Field>
         <Field label="Dimension" style={{ flex: '1 1 130px' }}>
           <select value={dimension} onChange={(e) => setDimension(e.target.value)} style={input}>
-            {Object.entries(DIMENSIONS).map(([k, d]) => <option key={k} value={k}>{d.icon} {d.label}</option>)}
+            {DIMENSION_ORDER.map((k) => <option key={k} value={k}>{DIMENSIONS[k].icon} {DIMENSIONS[k].label}</option>)}
           </select>
         </Field>
         <Field label="Découverte le" style={{ flex: '1 1 140px' }}>
@@ -164,14 +180,19 @@ export function EntryEditor({ entry, entries, initial, onSaved, onCancel }) {
         </div>
       </Field>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         <Field label="Tags (séparés par des virgules)" style={{ flex: '1 1 240px' }}>
           <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="fort, tour-des-vents…" style={input} />
         </Field>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: INK, paddingBottom: 14, cursor: 'pointer' }}>
-          <input type="checkbox" checked={isCanon} onChange={(e) => setIsCanon(e.target.checked)} style={{ accentColor: ACC, width: 15, height: 15 }} />
-          Canon <span style={{ color: MUTED, fontSize: 11 }}>(placé par la modération, pas une interprétation)</span>
-        </label>
+        {/* Le peuple ne concerne que les PNJ — le champ n'apparaît que pour eux. */}
+        {entryType === 'pnj' && (
+          <Field label="Peuple" style={{ flex: '1 1 170px' }}>
+            <select value={peupleId} onChange={(e) => setPeupleId(e.target.value)} style={input}>
+              <option value="">— sans peuple —</option>
+              {peuples.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+        )}
       </div>
 
       <Field label={(

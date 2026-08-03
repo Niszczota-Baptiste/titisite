@@ -33,9 +33,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Vue graphe** (simulation de forces maison, zéro dépendance), **timeline**
   (découvertes + résolutions intercalées), **export JSON** complet et
   **dossier imprimable** (palette papier, `@media print`).
+- **Mondes** : Nostra et Novum, chacun avec ses trois dimensions — points,
+  tracés et fonds de carte cloisonnés (six cartes indépendantes).
+- **Fond de carte collaboratif en tuiles 128×128**, sur la vraie grille des
+  cartes Minecraft (un joueur posé en 0/0 est au centre de la sienne) :
+  chacun clique une case et y dépose la capture de sa carte in-game,
+  re-déposer remplace l'image. La carte se précise au fil de l'exploration ;
+  le render global calibré reste possible en complément.
+- **Peuples & PNJ** : un PNJ est une *entrée* de type « PNJ » rattachée à un
+  peuple (il garde donc coordonnées, images et preuves), et porte autant de
+  dialogues que relevé, chacun avec un nom de quête optionnel.
+- Le tag « Canon / interprétation » disparaît de l'UI : tout le contenu est
+  posé par la modération, la distinction n'avait plus d'objet.
+- Raccourci « 🔍 Lore — carte » dans le dashboard admin (`/lore?tab=carte`).
 - Seed = les vraies données relevées (KotaNostra, 21 bâtiments, 9 tours,
   5 Poèmes de Jade, 7 hypothèses dont 4 réfutées — le comportement voulu).
-  Docs : `docs/lore.md` + `README-lore.md`. ~70 tests dédiés.
+  Docs : `docs/lore.md` + `README-lore.md`. ~75 tests dédiés.
 
 ---
 

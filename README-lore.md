@@ -71,13 +71,17 @@ Tout est derrière `requireAuth` + `requireLoreView`. Écritures limitées à
 | Liens | `POST /links`, `DELETE /links/:id` |
 | Cartes | `GET/POST /maps`, `PUT/DELETE /maps/:id`, `POST /maps/:id/image` |
 | Tracés | `GET/POST /shapes`, `PUT/DELETE /shapes/:id` (lignes/polygones, sommets `[[x,z],…]`) |
+| Tuiles | `GET /maps/:id/tiles`, `POST /maps/:id/tiles` (multipart `image` + `tileX` + `tileZ`, remplace si la case existe), `DELETE /tiles/:id` |
+| Peuples | `GET/POST /peuples`, `PUT/DELETE /peuples/:id` |
+| Dialogues | `POST /entries/:id/dialogues`, `PUT/DELETE /dialogues/:id` |
 | Médias | `POST /media` (multipart `image` + `entryId`\|`hypothesisId`), `PUT/DELETE /media/:id`, `GET /media/file/:filename` |
 | Carte | `GET /map/points` |
 | Géo | `POST /geo/bearing`, `GET /geo/ring?origin_x&origin_z&tolerance&dimension` |
 | Transverse | `GET /search?q=` (FTS5), `GET /graph`, `GET /export` |
 
-Filtres de `GET /entries` : `type`, `dimension`, `canon`, `tag` (id), `q`
-(full-text), `x1/z1/x2/z2` (rectangle). Réponses en camelCase comme le reste
+Filtres de `GET /entries` : `type`, `monde`, `dimension`, `peuple` (id),
+`tag` (id), `q` (full-text), `x1/z1/x2/z2` (rectangle). `map/points`,
+`geo/ring` et `shapes` acceptent aussi `monde` + `dimension`. Réponses en camelCase comme le reste
 de l'API du site (`bearingDeg`, `cardinal8`, `cardinal16`).
 
 Règles métier notables :
@@ -143,8 +147,30 @@ Les listes de valeurs (`entry_type`, statuts, stances, relations) sont dans
 
 ## Front — `/lore`
 
-Six onglets : 📖 Entrées (liste + filtres), 🗺 Carte (render calibré, rose des
-vents, mesure, ➕ point pré-rempli au clic, ✏️ tracés persistants, miniature au
-survol), 🧪 Hypothèses (kanban, pistes mortes repliées par défaut), 🕸 Graphe,
-🕰 Timeline, 📤 Export (JSON + dossier imprimable). Architecture détaillée :
-`docs/lore.md`.
+Sept onglets : 📖 Entrées (liste + filtres), 🗺 Carte, 👥 Peuples,
+🧪 Hypothèses (kanban, pistes mortes repliées par défaut), 🕸 Graphe,
+🕰 Timeline, 📤 Export (JSON + dossier imprimable).
+
+**Mondes** : la carte couvre deux mondes — **Nostra** et **Novum** — chacun
+avec ses trois dimensions (overworld / nether / end), soit six cartes
+indépendantes. Points, tracés et tuiles sont cloisonnés par monde.
+
+**Le fond de carte se construit à plusieurs** : mode 🧩 *Cartes*, la grille
+suit exactement les cartes Minecraft (128×128 blocs, un joueur posé en 0/0 est
+au centre de la sienne). On clique une case, on y dépose la capture de sa
+carte in-game ; re-déposer sur une case déjà remplie **remplace** l'image. La
+carte gagne en précision au fil de l'exploration, sans qu'aucun render global
+soit nécessaire — celui-ci reste possible en complément (panneau ⚙, calibré
+par deux points de référence).
+
+Autres outils de la carte : mode origine (rose des vents 8 axes + relèvements),
+mesure de distance, ➕ point (éditeur pré-rempli aux coordonnées du clic),
+✏️ tracés persistants, aperçu du screenshot au survol d'un marqueur.
+
+**Peuples** : un peuple regroupe des PNJ, qui sont des *entrées* de type
+« PNJ » (donc avec coordonnées, images et preuves comme toute pièce du
+dossier). Chaque PNJ porte autant de **dialogues** que relevé, chacun avec un
+nom de quête optionnel en étiquette.
+
+Raccourci : le dashboard admin porte un bouton « 🔍 Lore — carte » qui ouvre
+directement `/lore?tab=carte`. Architecture détaillée : `docs/lore.md`.

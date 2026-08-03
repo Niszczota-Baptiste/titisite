@@ -5,19 +5,21 @@ import sharp from 'sharp';
 import { requireAuth } from '../auth.js';
 import { UPLOADS_DIR, safeUnlink, uploadLoreImage, uploadPath } from '../uploads.js';
 import {
-  DIMENSIONS, ENTRY_TYPES, HYPOTHESIS_STATUSES, RELATION_TYPES, STANCES,
-  TERMINAL_STATUSES,
+  DIMENSIONS, ENTRY_TYPES, HYPOTHESIS_STATUSES, MONDES, RELATION_TYPES,
+  STANCES, TERMINAL_STATUSES,
 } from '../lore/enums.js';
 import { bearingInfo, ringFrom } from '../lore/geo.js';
 import {
-  addEvidence, createEntry, createHypothesis, createLink, createMap, createShape,
-  createTag, deleteEntry, deleteEvidence, deleteHypothesis, deleteLink,
-  deleteMap, deleteMedia, deleteShape, deleteTag, entryExists, exportAll,
+  addDialogue, addEvidence, createEntry, createHypothesis, createLink,
+  createMap, createPeuple, createShape, createTag, deleteDialogue, deleteEntry,
+  deleteEvidence, deleteHypothesis, deleteLink, deleteMap, deleteMedia,
+  deletePeuple, deleteShape, deleteTag, deleteTile, entryExists, exportAll,
   getEntry, getEntryBySlug, getHypothesis, getMapRaw, graphData,
   hypothesisExists, insertMedia, listEntries, listHypotheses, listMaps,
-  listRevisions, listShapes, listTags, mapPoints, mediaFilenameKnown,
-  searchLore, setMapImage, updateEntry, updateEvidence, updateHypothesis,
-  updateMap, updateMediaCaption, updateShape, updateTag,
+  listPeuples, listRevisions, listShapes, listTags, listTiles, mapPoints,
+  mediaFilenameKnown, peupleExists, searchLore, setMapImage, updateDialogue,
+  updateEntry, updateEvidence, updateHypothesis, updateMap, updateMediaCaption,
+  updatePeuple, updateShape, updateTag, upsertTile,
 } from '../lore/store.js';
 
 // Module Lore « Nostra » — TOUT est derrière requireAuth + requireLoreView,
@@ -78,6 +80,8 @@ function entryPayloadError(d, { partial = false } = {}) {
   }
   if (d.entryType !== undefined && !ENTRY_TYPES.includes(d.entryType)) return 'invalid_entry_type';
   if (d.dimension !== undefined && !DIMENSIONS.includes(d.dimension)) return 'invalid_dimension';
+  if (d.monde !== undefined && !MONDES.includes(d.monde)) return 'invalid_monde';
+  if (d.peupleId !== undefined && d.peupleId !== null && !peupleExists(d.peupleId)) return 'peuple_not_found';
   if (d.discoveredAt !== undefined && d.discoveredAt !== null && !Number.isFinite(Number(d.discoveredAt))) {
     return 'invalid_discovered_at';
   }
@@ -96,6 +100,9 @@ function normalizeEntryPayload(body) {
   if (d.discoveredAt !== undefined) {
     d.discoveredAt = d.discoveredAt === null ? null : Math.round(Number(d.discoveredAt));
   }
+  if (d.peupleId !== undefined) {
+    d.peupleId = d.peupleId === null || d.peupleId === '' ? null : asInt(d.peupleId);
+  }
   return d;
 }
 
@@ -105,6 +112,12 @@ loreRouter.get('/entries', (req, res) => {
   const f = {};
   if (req.query.type) f.type = String(req.query.type);
   if (req.query.dimension) f.dimension = String(req.query.dimension);
+  if (req.query.monde) f.monde = String(req.query.monde);
+  if (req.query.peuple) {
+    const peuple = asInt(req.query.peuple);
+    if (peuple === undefined) return res.status(400).json({ error: 'invalid_peuple' });
+    f.peuple = peuple;
+  }
   if (req.query.canon !== undefined) f.canon = req.query.canon === '1' || req.query.canon === 'true';
   if (req.query.tag) {
     const tag = asInt(req.query.tag);
@@ -298,7 +311,9 @@ loreRouter.delete('/evidence/:id', (req, res) => {
 loreRouter.get('/map/points', (req, res) => {
   const dimension = req.query.dimension ? String(req.query.dimension) : undefined;
   if (dimension && !DIMENSIONS.includes(dimension)) return res.status(400).json({ error: 'invalid_dimension' });
-  res.json(mapPoints(dimension));
+  const monde = req.query.monde ? String(req.query.monde) : undefined;
+  if (monde && !MONDES.includes(monde)) return res.status(400).json({ error: 'invalid_monde' });
+  res.json(mapPoints({ monde, dimension }));
 });
 
 loreRouter.post('/geo/bearing', (req, res) => {
@@ -327,14 +342,16 @@ loreRouter.get('/geo/ring', (req, res) => {
   tolerance = Math.min(Math.max(tolerance, 0), 45);
   const dimension = req.query.dimension ? String(req.query.dimension) : 'overworld';
   if (!DIMENSIONS.includes(dimension)) return res.status(400).json({ error: 'invalid_dimension' });
-  const points = ringFrom({ x: ox, z: oz }, mapPoints(dimension), { tolerance })
+  const monde = req.query.monde ? String(req.query.monde) : 'nostra';
+  if (!MONDES.includes(monde)) return res.status(400).json({ error: 'invalid_monde' });
+  const points = ringFrom({ x: ox, z: oz }, mapPoints({ monde, dimension }), { tolerance })
     .map((p) => ({
       ...p,
       distance: Math.round(p.distance * 10) / 10,
       bearingDeg: Math.round(p.bearingDeg * 100) / 100,
       deviationDeg: Math.round(p.deviationDeg * 100) / 100,
     }));
-  res.json({ origin: { x: ox, z: oz }, dimension, tolerance, points });
+  res.json({ origin: { x: ox, z: oz }, monde, dimension, tolerance, points });
 });
 
 // ── Tracés d'enquête (lignes / polygones reliant des points) ───────────────
@@ -359,17 +376,22 @@ const COLOR_RE = /^#[0-9a-f]{6}$/i;
 loreRouter.get('/shapes', (req, res) => {
   const dimension = req.query.dimension ? String(req.query.dimension) : undefined;
   if (dimension && !DIMENSIONS.includes(dimension)) return res.status(400).json({ error: 'invalid_dimension' });
-  res.json(listShapes(dimension));
+  const monde = req.query.monde ? String(req.query.monde) : undefined;
+  if (monde && !MONDES.includes(monde)) return res.status(400).json({ error: 'invalid_monde' });
+  res.json(listShapes({ monde, dimension }));
 });
 
 loreRouter.post('/shapes', (req, res) => {
   const b = req.body || {};
   const dimension = b.dimension || 'overworld';
   if (!DIMENSIONS.includes(dimension)) return res.status(400).json({ error: 'invalid_dimension' });
+  const monde = b.monde || 'nostra';
+  if (!MONDES.includes(monde)) return res.status(400).json({ error: 'invalid_monde' });
   const points = parseShapePoints(b.points);
   if (!points) return res.status(400).json({ error: 'invalid_points' });
   res.status(201).json(createShape({
     dimension,
+    monde,
     name: String(b.name || '').trim().slice(0, 120),
     color: COLOR_RE.test(b.color) ? b.color : '#e8c86a',
     closed: !!b.closed,
@@ -410,6 +432,7 @@ function mapPayloadError(d, { partial = false } = {}) {
     if (!d.name || !String(d.name).trim()) return 'missing_name';
   }
   if (d.dimension !== undefined && !DIMENSIONS.includes(d.dimension)) return 'invalid_dimension';
+  if (d.monde !== undefined && !MONDES.includes(d.monde)) return 'invalid_monde';
   for (const v of [d.imgXLeft, d.imgXRight, d.imgZBottom]) {
     if (v !== undefined && v !== null && !Number.isFinite(Number(v))) return 'invalid_calibration';
   }
@@ -509,6 +532,110 @@ loreRouter.post('/maps/:id/image', uploadLimiter, uploadLoreImage.single('image'
   const processed = await processLoreImage(req.file, { thumbnail: false });
   if (!processed) return res.status(415).json({ error: 'not_an_image' });
   res.json(setMapImage(id, processed.filename));
+});
+
+// ── Tuiles 128×128 (grille des cartes Minecraft) ───────────────────────────
+// La tuile (i, j) couvre X ∈ [i·128-64, i·128+64) et Z de même : un joueur
+// posé en (0,0) est au centre de la tuile (0,0), comme sa carte in-game.
+// Ré-uploader une tuile REMPLACE son image (la carte se précise au fil des
+// captures) — c'est le même endpoint, l'upsert est côté store.
+
+loreRouter.get('/maps/:id/tiles', (req, res) => {
+  const id = idParam(req);
+  if (!getMapRaw(id)) return res.status(404).json({ error: 'not_found' });
+  res.json(listTiles(id));
+});
+
+loreRouter.post('/maps/:id/tiles', uploadLimiter, uploadLoreImage.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'missing_file' });
+  const id = idParam(req);
+  const tileX = asInt(req.body?.tileX);
+  const tileZ = asInt(req.body?.tileZ);
+  // Bornes larges mais finies : ±4096 tuiles = ±524 288 blocs, au-delà de
+  // toute map jouable — cadre les saisies aberrantes sans gêner personne.
+  const bad = (v) => v === undefined || v === null || Math.abs(v) > 4096;
+  if (bad(tileX) || bad(tileZ)) {
+    safeUnlink(req.file.filename);
+    return res.status(400).json({ error: 'invalid_tile' });
+  }
+  if (!getMapRaw(id)) {
+    safeUnlink(req.file.filename);
+    return res.status(404).json({ error: 'not_found' });
+  }
+  const processed = await processLoreImage(req.file, { thumbnail: false });
+  if (!processed) return res.status(415).json({ error: 'not_an_image' });
+  res.status(201).json(upsertTile(id, tileX, tileZ, processed.filename, req.user.id));
+});
+
+loreRouter.delete('/tiles/:id', (req, res) => {
+  if (!deleteTile(idParam(req))) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Peuples & dialogues des PNJ ────────────────────────────────────────────
+
+loreRouter.get('/peuples', (_req, res) => res.json(listPeuples()));
+
+loreRouter.post('/peuples', (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 120);
+  if (!name) return res.status(400).json({ error: 'missing_name' });
+  if (req.body?.color !== undefined && !COLOR_RE.test(req.body.color)) {
+    return res.status(400).json({ error: 'invalid_color' });
+  }
+  res.status(201).json(createPeuple({
+    name, color: req.body?.color, descriptionMd: String(req.body?.descriptionMd || ''),
+  }));
+});
+
+loreRouter.put('/peuples/:id', (req, res) => {
+  const d = {};
+  if (req.body?.name !== undefined) {
+    d.name = String(req.body.name).trim().slice(0, 120);
+    if (!d.name) return res.status(400).json({ error: 'missing_name' });
+  }
+  if (req.body?.color !== undefined) {
+    if (!COLOR_RE.test(req.body.color)) return res.status(400).json({ error: 'invalid_color' });
+    d.color = req.body.color;
+  }
+  if (req.body?.descriptionMd !== undefined) d.descriptionMd = String(req.body.descriptionMd);
+  const peuple = updatePeuple(idParam(req), d);
+  if (!peuple) return res.status(404).json({ error: 'not_found' });
+  res.json(peuple);
+});
+
+loreRouter.delete('/peuples/:id', (req, res) => {
+  // Les PNJ rattachés survivent, simplement détachés (FK SET NULL).
+  if (!deletePeuple(idParam(req))) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// Un PNJ peut avoir plusieurs répliques ; `questName` est une étiquette libre
+// (le nom de la quête à laquelle le dialogue se rattache), pas une FK.
+loreRouter.post('/entries/:id/dialogues', (req, res) => {
+  const id = idParam(req);
+  if (!entryExists(id)) return res.status(404).json({ error: 'not_found' });
+  const texte = String(req.body?.texte || '').trim().slice(0, 4000);
+  if (!texte) return res.status(400).json({ error: 'missing_texte' });
+  res.status(201).json(addDialogue(id, {
+    texte, questName: String(req.body?.questName || '').trim().slice(0, 120),
+  }, req.user.id));
+});
+
+loreRouter.put('/dialogues/:id', (req, res) => {
+  const d = {};
+  if (req.body?.texte !== undefined) {
+    d.texte = String(req.body.texte).trim().slice(0, 4000);
+    if (!d.texte) return res.status(400).json({ error: 'missing_texte' });
+  }
+  if (req.body?.questName !== undefined) d.questName = String(req.body.questName).trim().slice(0, 120);
+  const dialogue = updateDialogue(idParam(req), d);
+  if (!dialogue) return res.status(404).json({ error: 'not_found' });
+  res.json(dialogue);
+});
+
+loreRouter.delete('/dialogues/:id', (req, res) => {
+  if (!deleteDialogue(idParam(req))) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
 });
 
 loreRouter.put('/media/:id', (req, res) => {

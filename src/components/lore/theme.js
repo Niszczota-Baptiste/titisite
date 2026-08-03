@@ -41,6 +41,22 @@ export const DIMENSIONS = {
   nether:    { label: 'Nether',    icon: '🔥' },
   end:       { label: 'End',       icon: '🌌' },
 };
+export const DIMENSION_ORDER = ['overworld', 'nether', 'end'];
+
+// Les mondes couverts par l'enquête, chacun avec ses trois dimensions. En
+// ajouter un : ici ET dans MONDES (server/lore/enums.js).
+export const MONDES = {
+  nostra: { label: 'Nostra', icon: '🗺️', color: GOLD },
+  novum:  { label: 'Novum',  icon: '✦',  color: '#7bd3e8' },
+};
+export const MONDE_ORDER = ['nostra', 'novum'];
+
+// Grille des cartes Minecraft niveau 0 : 128×128 blocs. Un joueur posé en
+// (0,0) est au CENTRE de sa carte, donc la tuile (i, j) couvre
+// [i·128-64, i·128+64) × [j·128-64, j·128+64) — le décalage de -64 est ce qui
+// fait coïncider la grille avec les cartes réelles du jeu.
+export const TILE_SIZE = 128;
+export const TILE_OFFSET = -64;
 
 // Relations entre entrées (miroir de RELATION_TYPES côté serveur).
 // `reverse` sert aux liens entrants : « X pointe vers cette entrée ».

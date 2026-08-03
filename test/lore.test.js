@@ -300,6 +300,142 @@ describe('lore — accès, seed, enquête de bout en bout', () => {
     assert.equal((await member.f.delete(`/api/lore/shapes/${shapeId}`)).status, 404);
   });
 
+  it('mondes : Nostra/Novum cloisonnent points, tracés et anneau', async () => {
+    // Une entrée dans Novum ne doit pas apparaître dans la carte de Nostra.
+    let r = await member.f.post('/api/lore/entries', {
+      body: { title: 'Balise de Novum', monde: 'novum', x: 10, z: -10 },
+    });
+    assert.equal(r.status, 201);
+    assert.equal(r.json.monde, 'novum');
+    const novumId = r.json.id;
+
+    const nostra = (await member.f.get('/api/lore/map/points?monde=nostra')).json;
+    const novum = (await member.f.get('/api/lore/map/points?monde=novum')).json;
+    assert.ok(nostra.every((p) => p.monde === 'nostra'));
+    assert.equal(novum.length, 1);
+    assert.equal(novum[0].id, novumId);
+
+    // L'anneau du monde Novum ne voit que ses propres points.
+    r = await member.f.get('/api/lore/geo/ring?origin_x=0&origin_z=0&monde=novum');
+    assert.equal(r.json.monde, 'novum');
+    assert.equal(r.json.points.length, 1);
+
+    // Monde inconnu → 400, jamais un filtre silencieux.
+    assert.equal((await member.f.get('/api/lore/map/points?monde=ailleurs')).status, 400);
+    assert.equal((await member.f.post('/api/lore/entries', {
+      body: { title: 'Nulle part', monde: 'ailleurs' },
+    })).status, 400);
+
+    await member.f.delete(`/api/lore/entries/${novumId}`);
+  });
+
+  it('tuiles 128×128 : upload, remplacement, suppression', async () => {
+    const map = (await admin.f.post('/api/lore/maps', {
+      body: { name: 'Novum overworld', monde: 'novum', dimension: 'overworld' },
+    })).json;
+
+    const png = async (color) => sharp({
+      create: { width: 128, height: 128, channels: 3, background: color },
+    }).png().toBuffer();
+
+    const send = async (buf, tileX, tileZ) => {
+      const fd = new FormData();
+      fd.append('image', new Blob([buf], { type: 'image/png' }), 'carte.png');
+      fd.append('tileX', String(tileX));
+      fd.append('tileZ', String(tileZ));
+      return member.f.post(`/api/lore/maps/${map.id}/tiles`, { body: fd });
+    };
+
+    let r = await send(await png({ r: 20, g: 120, b: 60 }), 0, 0);
+    assert.equal(r.status, 201);
+    assert.deepEqual([r.json.tileX, r.json.tileZ], [0, 0]);
+    const firstUrl = r.json.url;
+
+    // Ré-uploader la MÊME case remplace l'image (nouveau fichier, même ligne).
+    r = await send(await png({ r: 200, g: 40, b: 40 }), 0, 0);
+    assert.equal(r.status, 201);
+    assert.notEqual(r.json.url, firstUrl, 'nouvelle image');
+    const tileId = r.json.id;
+    assert.equal((await member.f.get(`/api/lore/maps/${map.id}/tiles`)).json.length, 1);
+    // L'ancien fichier n'est plus servi.
+    assert.equal((await member.f.get(firstUrl)).status, 404);
+
+    // Une autre case coexiste.
+    await send(await png({ r: 40, g: 40, b: 200 }), -3, -44);
+    const tiles = (await member.f.get(`/api/lore/maps/${map.id}/tiles`)).json;
+    assert.equal(tiles.length, 2);
+    // Les tuiles sont servies derrière le gate.
+    assert.equal((await member.f.get(tiles[0].url, { raw: true })).status, 200);
+    const anon = fetcher(server.base);
+    assert.equal((await anon.get(tiles[0].url)).status, 401);
+
+    // Case aberrante → 400.
+    assert.equal((await send(await png({ r: 1, g: 1, b: 1 }), 99999, 0)).status, 400);
+
+    assert.equal((await member.f.delete(`/api/lore/tiles/${tileId}`)).status, 204);
+    assert.equal((await member.f.get(`/api/lore/maps/${map.id}/tiles`)).json.length, 1);
+  });
+
+  it('peuples + dialogues : PNJ rattaché, plusieurs répliques, tag de quête', async () => {
+    let r = await member.f.post('/api/lore/peuples', {
+      body: { name: 'Ondiens', color: '#7bd3e8', descriptionMd: 'Le peuple du flux.' },
+    });
+    assert.equal(r.status, 201);
+    const peupleId = r.json.id;
+
+    // Couleur invalide refusée.
+    assert.equal((await member.f.post('/api/lore/peuples', {
+      body: { name: 'Bancal', color: 'rouge' },
+    })).status, 400);
+
+    // Un PNJ est une ENTRÉE de type pnj rattachée au peuple.
+    r = await member.f.post('/api/lore/entries', {
+      body: { title: 'Vieil Ondien', entryType: 'pnj', peupleId, x: 12, z: 34 },
+    });
+    assert.equal(r.status, 201);
+    const pnjId = r.json.id;
+    assert.equal(r.json.peupleId, peupleId);
+    assert.equal(r.json.peupleName, 'Ondiens');
+
+    // Peuple inexistant → 400 explicite.
+    assert.equal((await member.f.post('/api/lore/entries', {
+      body: { title: 'Fantôme', entryType: 'pnj', peupleId: 999999 },
+    })).status, 400);
+
+    // Plusieurs dialogues, dont un étiqueté d'un nom de quête.
+    await member.f.post(`/api/lore/entries/${pnjId}/dialogues`, {
+      body: { texte: 'Le flux ne ment pas.' },
+    });
+    r = await member.f.post(`/api/lore/entries/${pnjId}/dialogues`, {
+      body: { texte: 'Rapporte-moi trois géodes.', questName: 'Les géodes du lac' },
+    });
+    assert.equal(r.status, 201);
+    const dialogueId = r.json.id;
+    assert.equal((await member.f.post(`/api/lore/entries/${pnjId}/dialogues`, {
+      body: { texte: '   ' },
+    })).status, 400);
+
+    const detail = (await member.f.get(`/api/lore/entries/${pnjId}`)).json;
+    assert.equal(detail.dialogues.length, 2);
+    assert.equal(detail.dialogues[1].questName, 'Les géodes du lac');
+
+    // Filtre par peuple.
+    const byPeuple = (await member.f.get(`/api/lore/entries?peuple=${peupleId}`)).json;
+    assert.equal(byPeuple.length, 1);
+    assert.equal(byPeuple[0].id, pnjId);
+
+    assert.equal((await member.f.put(`/api/lore/dialogues/${dialogueId}`, {
+      body: { questName: 'Géodes du lac (v2)' },
+    })).json.questName, 'Géodes du lac (v2)');
+    assert.equal((await member.f.delete(`/api/lore/dialogues/${dialogueId}`)).status, 204);
+
+    // Supprimer le peuple DÉTACHE ses PNJ, sans les supprimer.
+    assert.equal((await member.f.delete(`/api/lore/peuples/${peupleId}`)).status, 204);
+    const after = (await member.f.get(`/api/lore/entries/${pnjId}`)).json;
+    assert.equal(after.peupleId, null);
+    assert.equal(after.dialogues.length, 1, 'les dialogues survivent au peuple');
+  });
+
   it('graphe et export embarquent le travail du membre', async () => {
     const g = (await member.f.get('/api/lore/graph')).json;
     assert.ok(g.nodes.some((n) => n.kind === 'entry' && n.id === entryId));
@@ -310,7 +446,10 @@ describe('lore — accès, seed, enquête de bout en bout', () => {
     assert.equal(ex.hypotheses.length, 8); // 7 seed + 1 du test
     assert.ok(ex.comments.length >= 1);
     assert.ok(ex.revisions.length >= 2);
-    assert.equal(ex.maps.length, 1);
+    // 2 cartes : celle du seed (Nostra overworld) + celle créée par le test des tuiles.
+    assert.equal(ex.maps.length, 2);
+    assert.ok(ex.tiles.length >= 1, 'les tuiles sont dans l\'export');
+    assert.ok(Array.isArray(ex.peuples) && Array.isArray(ex.dialogues));
   });
 
   it('suppression d\'entrée : cascade preuves/liens + purge FTS et révisions', async () => {

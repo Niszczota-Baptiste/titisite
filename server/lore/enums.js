@@ -18,4 +18,14 @@ export const RELATION_TYPES = ['same_system', 'points_to', 'contradicts', 'varia
 
 export const DIMENSIONS = ['overworld', 'nether', 'end'];
 
+// Les mondes (serveurs/maps) couverts par l'enquête — chacun avec ses trois
+// dimensions. En ajouter un = l'ajouter ici + son méta dans theme.js.
+export const MONDES = ['nostra', 'novum'];
+
+// Grille des cartes Minecraft niveau 0 : 128×128 blocs, un joueur posé en
+// (0,0) est au centre de sa carte → la tuile (i, j) couvre
+// [i·128-64, i·128+64) × [j·128-64, j·128+64).
+export const TILE_SIZE = 128;
+export const TILE_OFFSET = -64;
+
 export const REVISION_TARGETS = ['entry', 'hypothesis'];

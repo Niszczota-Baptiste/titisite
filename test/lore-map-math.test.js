@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  bearingDirection, imagePlacement, measureDistance, toPct, zoomAt,
+  bearingDirection, imagePlacement, measureDistance, tileRect, tilesInView,
+  toPct, worldToTile, zoomAt,
 } from '../src/components/lore/mapMath.js';
 
 // La carte affiche le nord en haut : Z croît vers le bas de l'écran. Ces
@@ -45,6 +46,36 @@ describe('imagePlacement — calibration deux points du render Nostra', () => {
     assert.equal(imagePlacement({ imgXLeft: null, imgXRight: 4646, imgZBottom: -636 }, 1), null);
     assert.equal(imagePlacement({ imgXLeft: 10, imgXRight: -10, imgZBottom: 0 }, 1), null); // gauche > droite
     assert.equal(imagePlacement(NOSTRA, 0), null);
+  });
+});
+
+describe('grille des cartes Minecraft (tuiles 128×128)', () => {
+  it('un joueur posé en (0,0) est au CENTRE de la tuile (0,0)', () => {
+    assert.deepEqual(worldToTile(0, 0), { tileX: 0, tileZ: 0 });
+    const r = tileRect(0, 0);
+    assert.deepEqual(r, { left: -64, top: -64, size: 128 });
+    // (0,0) est bien au centre du rectangle.
+    close(r.left + r.size / 2, 0);
+    close(r.top + r.size / 2, 0);
+  });
+  it('bornes de tuile : -64 appartient à 0, -65 à la tuile -1', () => {
+    assert.equal(worldToTile(-64, 0).tileX, 0);
+    assert.equal(worldToTile(-65, 0).tileX, -1);
+    assert.equal(worldToTile(63, 0).tileX, 0);
+    assert.equal(worldToTile(64, 0).tileX, 1);
+  });
+  it('coordonnées négatives : pas d\'arrondi vers zéro', () => {
+    // KotaNostra (-353, -5636) : floor, pas troncature (qui donnerait -2/-43).
+    assert.deepEqual(worldToTile(-353, -5636), { tileX: -3, tileZ: -44 });
+    const r = tileRect(-3, -44);
+    assert.ok(-353 >= r.left && -353 < r.left + r.size, 'X dans la tuile');
+    assert.ok(-5636 >= r.top && -5636 < r.top + r.size, 'Z dans la tuile');
+  });
+  it('tilesInView couvre la vue et se coupe quand on dézoome trop', () => {
+    const tiles = tilesInView({ cx: 0, cz: 0, span: 256 });
+    assert.ok(tiles.length >= 4 && tiles.length <= 9, `attendu 4..9, obtenu ${tiles.length}`);
+    assert.ok(tiles.some((t) => t.tileX === 0 && t.tileZ === 0));
+    assert.equal(tilesInView({ cx: 0, cz: 0, span: 200000 }).length, 0);
   });
 });
 

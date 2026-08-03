@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { formatCoords } from './coords';
 import {
-  ACC, ACC_RGB, DIMENSIONS, ENTRY_TYPES, ENTRY_TYPE_ORDER, INK, MUTED,
-  formatDay, hexToRgb, panel,
+  ACC, ACC_RGB, DIMENSIONS, ENTRY_TYPES, ENTRY_TYPE_ORDER, INK, MONDES,
+  MONDE_ORDER, MUTED, formatDay, hexToRgb, panel,
 } from './theme';
 
-// Liste + filtres combinés (type, tag, dimension, canon, plein-texte). Le
+// Liste + filtres combinés (type, monde, dimension, tag, plein-texte). Le
 // filtrage est fait côté serveur — la liste ne fait que refléter `filters`.
 
 export function EntryList({ entries, tags, filters, setFilters, onOpen, onCreate }) {
@@ -41,10 +41,9 @@ export function EntryList({ entries, tags, filters, setFilters, onOpen, onCreate
           <option value="">Toutes dimensions</option>
           {Object.entries(DIMENSIONS).map(([k, d]) => <option key={k} value={k}>{d.icon} {d.label}</option>)}
         </Select>
-        <Select value={filters.canon ?? ''} onChange={(v) => setFilters((f) => ({ ...f, canon: v === '' ? undefined : v }))}>
-          <option value="">Canon + interprétation</option>
-          <option value="1">Canon</option>
-          <option value="0">Interprétation</option>
+        <Select value={filters.monde || ''} onChange={(v) => set('monde', v)}>
+          <option value="">Tous mondes</option>
+          {MONDE_ORDER.map((k) => <option key={k} value={k}>{MONDES[k].icon} {MONDES[k].label}</option>)}
         </Select>
         <Select value={filters.tag || ''} onChange={(v) => set('tag', v)}>
           <option value="">Tous tags</option>
@@ -91,8 +90,9 @@ function EntryCard({ entry, onOpen }) {
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
         <Chip color={type.color}>{type.label}</Chip>
-        <Chip color={entry.isCanon ? ACC : '#8a80a0'}>{entry.isCanon ? 'Canon' : 'Interprétation'}</Chip>
+        {MONDES[entry.monde] && <Chip color={MONDES[entry.monde].color}>{MONDES[entry.monde].label}</Chip>}
         {entry.dimension !== 'overworld' && <Chip color="#e0913a">{DIMENSIONS[entry.dimension]?.label || entry.dimension}</Chip>}
+        {entry.peupleName && <Chip color="#7be3a8">👥 {entry.peupleName}</Chip>}
         {entry.tags.map((t) => <Chip key={t.id} color={t.color}>{t.name}</Chip>)}
       </div>
       <div style={{ display: 'flex', gap: 10, fontFamily: "'JetBrains Mono',monospace", fontSize: 10.5, color: MUTED }}>

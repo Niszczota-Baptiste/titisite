@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { LoreMap, SHAPES } from './LoreMap';
 import {
-  ACC, ACC_RGB, CRIMSON, DIMENSIONS, ENTRY_TYPES, ENTRY_TYPE_ORDER, GOLD, INK,
-  MUTED, hexToRgb, panel,
+  ACC, ACC_RGB, CRIMSON, DIMENSIONS, DIMENSION_ORDER, ENTRY_TYPES,
+  ENTRY_TYPE_ORDER, GOLD, INK, MONDES, MONDE_ORDER, MUTED, hexToRgb, panel,
 } from './theme';
+import { tileRect } from './mapMath';
 
-// Onglet 🗺 Carte : données + modes (origine / mesure), filtres par type,
-// table des relèvements du mode origine (triée par angle, alignements ±tolérance
+// Onglet 🗺 Carte : monde (Nostra/Novum) × dimension, modes (origine / mesure /
+// ➕ point / ✏️ tracé / 🧩 cartes 128×128), filtres par type, table des
+// relèvements du mode origine (triée par angle, alignements ±tolérance
 // surlignés — servie par GET /api/lore/geo/ring, aucune trigonométrie côté
-// client), et le panneau de calibration du render.
+// client), et le panneau de fond de carte (tuiles et/ou render calibré).
 
 const SHAPE_COLORS = ['#e8c86a', '#7bd3e8', '#7be3a8', '#e0526f', '#b79bff', '#f0ede5'];
 
@@ -18,9 +20,16 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
   const [maps, setMaps] = useState([]);
   const [shapes, setShapes] = useState([]);
   const [hiddenShapes, setHiddenShapes] = useState(() => new Set());
+  const [monde, setMonde] = useState('nostra');
   const [dimension, setDimension] = useState('overworld');
+  // Les tuiles sont mémorisées AVEC l'id de leur carte : au changement de
+  // monde/dimension le rendu ne peut donc jamais servir celles de la carte
+  // précédente (le fetch est asynchrone, l'ancien état survivrait un rendu —
+  // et fausserait le cadrage initial de la nouvelle carte).
+  const [tileState, setTileState] = useState({ mapId: null, list: [] });
+  const [tileTarget, setTileTarget] = useState(null); // { tileX, tileZ } en cours d'upload
   const [types, setTypes] = useState(() => new Set(ENTRY_TYPE_ORDER));
-  const [mode, setMode] = useState('pan'); // 'pan' | 'origin' | 'measure' | 'add' | 'draw'
+  const [mode, setMode] = useState('pan'); // 'pan' | 'origin' | 'measure' | 'add' | 'draw' | 'tile'
   const [origin, setOrigin] = useState(null);
   const [tolerance, setTolerance] = useState(2);
   const [ring, setRing] = useState(null);
@@ -38,20 +47,32 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
   // (fiche, éditeur) — la carte suit sans re-navigation.
   useEffect(() => { load(); }, [refreshKey]);
 
+  // La carte courante = celle du couple (monde, dimension) sélectionné.
+  const map = maps.find((m) => m.monde === monde && m.dimension === dimension) || null;
+  const mapId = map?.id ?? null;
+  const dimPoints = points.filter((p) => p.monde === monde && p.dimension === dimension);
+  const shown = dimPoints.filter((p) => types.has(p.entryType));
+
+  // Tuiles de la carte courante — rechargées quand on change de carte.
+  const loadTiles = useCallback(() => {
+    if (!mapId) { setTileState({ mapId: null, list: [] }); return Promise.resolve(); }
+    return api.lore.tiles.list(mapId)
+      .then((list) => setTileState({ mapId, list }))
+      .catch((e) => setErr(e.message));
+  }, [mapId]);
+  useEffect(() => { loadTiles(); }, [loadTiles]);
+  const tiles = tileState.mapId === mapId ? tileState.list : [];
+
   // Le calcul du relèvement de chaque point vit côté serveur (source de
   // vérité unique server/lore/geo.js) : une requête par choix d'origine.
   useEffect(() => {
     if (!origin) { setRing(null); return undefined; }
     let alive = true;
-    api.lore.ring(origin.x, origin.z, { tolerance, dimension })
+    api.lore.ring(origin.x, origin.z, { tolerance, dimension, monde })
       .then((r) => { if (alive) setRing(r.points); })
       .catch((e) => { if (alive) setErr(e.message); });
     return () => { alive = false; };
-  }, [origin, tolerance, dimension]);
-
-  const dimPoints = points.filter((p) => p.dimension === dimension);
-  const shown = dimPoints.filter((p) => types.has(p.entryType));
-  const map = maps.find((m) => m.dimension === dimension) || null;
+  }, [origin, tolerance, dimension, monde]);
 
   const toggleType = (t) => setTypes((s) => {
     const n = new Set(s);
@@ -64,7 +85,7 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
   // ➕ Point : le clic délègue à la page l'ouverture de l'éditeur pré-rempli.
   const onAddAt = (pt) => {
     setMode('pan');
-    onCreateAt?.({ x: pt.x, z: pt.z, dimension });
+    onCreateAt?.({ x: pt.x, z: pt.z, dimension, monde });
   };
 
   // ✏️ Tracé : chaque clic ajoute un sommet (accroché au marqueur cliqué).
@@ -78,7 +99,7 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
     if (!draft || draft.points.length < 2) return;
     try {
       await api.lore.shapes.create({
-        dimension, name: draft.name.trim(), color: draft.color,
+        dimension, monde, name: draft.name.trim(), color: draft.color,
         closed: draft.closed, points: draft.points,
       });
       setDraft(null);
@@ -92,7 +113,7 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
     try { await api.lore.shapes.remove(s.id); await load(); } catch (ex) { setErr(ex.message); }
   };
 
-  const dimShapes = shapes.filter((s) => s.dimension === dimension);
+  const dimShapes = shapes.filter((s) => s.monde === monde && s.dimension === dimension);
   const visibleShapes = dimShapes.filter((s) => !hiddenShapes.has(s.id));
 
   return (
@@ -103,10 +124,32 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
         </div>
       )}
 
+      {/* monde : Nostra / Novum — chacun a ses trois dimensions */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+        {MONDE_ORDER.map((k) => {
+          const m = MONDES[k];
+          const n = points.filter((p) => p.monde === k).length;
+          const on = monde === k;
+          return (
+            <button
+              key={k} type="button"
+              onClick={() => { setMonde(k); setOrigin(null); setMeasure({ a: null, b: null }); setDraft(null); setMode('pan'); }}
+              style={{
+                padding: '8px 16px', borderRadius: 10, cursor: 'pointer', fontFamily: "'Space Grotesk',sans-serif",
+                fontSize: 14, fontWeight: 700,
+                background: on ? m.color : 'transparent', color: on ? '#12100a' : m.color,
+                border: `1px solid ${m.color}`, opacity: on ? 1 : 0.75,
+              }}
+            >{m.icon} {m.label} ({n})</button>
+          );
+        })}
+      </div>
+
       {/* dimension + modes */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-        {Object.entries(DIMENSIONS).map(([k, d]) => {
-          const n = points.filter((p) => p.dimension === k).length;
+        {DIMENSION_ORDER.map((k) => {
+          const d = DIMENSIONS[k];
+          const n = points.filter((p) => p.monde === monde && p.dimension === k).length;
           const on = dimension === k;
           return (
             <button key={k} type="button" onClick={() => { setDimension(k); setOrigin(null); setMeasure({ a: null, b: null }); }}
@@ -154,6 +197,10 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
         <ModeBtn on={mode === 'draw'} color="#b79bff" onClick={startDraw}>
           ✏️ Tracé
         </ModeBtn>
+        <ModeBtn
+          on={mode === 'tile'} color={GOLD}
+          onClick={() => setMode((m) => (m === 'tile' ? 'pan' : 'tile'))}
+        >🧩 Cartes ({tiles.length})</ModeBtn>
       </div>
 
       {/* panneau du tracé en cours */}
@@ -217,15 +264,36 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
         })}
       </div>
 
+      {mode === 'tile' && (
+        <div style={{ ...panel, padding: '9px 12px', marginBottom: 8, fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: MUTED }}>
+          🧩 <strong style={{ color: GOLD }}>Cartes du monde</strong> — la grille suit les cartes Minecraft
+          (128×128 blocs, une case = une carte, un joueur posé en 0/0 est au centre de la sienne).
+          Clique une case pour y déposer ta capture ; re-déposer sur une case remplace l'image.
+          {!map && <span style={{ color: CRIMSON }}> Crée d'abord la carte de cette dimension ci-dessous.</span>}
+        </div>
+      )}
+
       {loaded ? (
         <LoreMap
-          key={dimension}
+          key={`${monde}-${dimension}`}
           points={shown} map={map} mode={mode} origin={origin} onSetOrigin={setOrigin}
           ring={ring} tolerance={tolerance} measure={measure} onMeasureClick={onMeasureClick}
           onOpenEntry={onOpenEntry} onAddAt={onAddAt} onDrawClick={onDrawClick}
+          onTileClick={(t) => { if (map) setTileTarget(t); else setErr('Crée d\'abord la carte de cette dimension.'); }}
           shapes={visibleShapes} draft={mode === 'draw' ? draft : null}
+          tiles={tiles}
         />
       ) : <p style={{ color: MUTED, fontFamily: "'Inter',sans-serif", fontSize: 13 }}>Chargement de la carte…</p>}
+
+      {tileTarget && map && (
+        <TileUpload
+          mapId={map.id} target={tileTarget}
+          existing={tiles.find((t) => t.tileX === tileTarget.tileX && t.tileZ === tileTarget.tileZ) || null}
+          onClose={() => setTileTarget(null)}
+          onDone={async () => { setTileTarget(null); await loadTiles(); }}
+          setErr={setErr}
+        />
+      )}
 
       {/* tracés enregistrés : visibilité + suppression */}
       {dimShapes.length > 0 && (
@@ -257,7 +325,7 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
 
       {origin && ring && <RingTable ring={ring} onOpenEntry={onOpenEntry} />}
 
-      <CalibrationPanel map={map} dimension={dimension} onChanged={load} setErr={setErr} />
+      <CalibrationPanel map={map} monde={monde} dimension={dimension} onChanged={load} setErr={setErr} />
     </div>
   );
 }
@@ -307,9 +375,86 @@ function RingTable({ ring, onOpenEntry }) {
   );
 }
 
+// Dépôt de la capture d'une case : la carte du jeu correspondant exactement
+// à ces 128×128 blocs. Ré-uploader remplace l'image (c'est l'intérêt : la
+// carte collective se précise à mesure que chacun explore).
+function TileUpload({ mapId, target, existing, onClose, onDone, setErr }) {
+  const [busy, setBusy] = useState(false);
+  const r = tileRect(target.tileX, target.tileZ);
+
+  const send = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      fd.append('tileX', String(target.tileX));
+      fd.append('tileZ', String(target.tileZ));
+      await api.lore.tiles.upload(mapId, fd);
+      await onDone();
+    } catch (ex) {
+      setErr(ex.message === 'not_an_image' ? 'Ce fichier n\'est pas une image lisible.' : ex.message);
+      setBusy(false);
+    }
+  };
+
+  const removeTile = async () => {
+    setBusy(true);
+    try { await api.lore.tiles.remove(existing.id); await onDone(); }
+    catch (ex) { setErr(ex.message); setBusy(false); }
+  };
+
+  return (
+    <div style={{ ...panel, padding: '14px 16px', marginTop: 10, fontFamily: "'Inter',sans-serif" }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+        <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14.5, color: INK }}>
+          🧩 Case {target.tileX} , {target.tileZ}
+        </span>
+        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, color: MUTED }}>
+          X {r.left} → {r.left + r.size - 1} · Z {r.top} → {r.top + r.size - 1}
+        </span>
+        <button type="button" onClick={onClose}
+          style={{ marginLeft: 'auto', background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 13 }}>✕</button>
+      </div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        {existing && (
+          <img src={existing.url} alt=""
+            style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 8, border: `1px solid rgba(${ACC_RGB},0.4)` }} />
+        )}
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); send(e.dataTransfer.files[0]); }}
+          style={{
+            flex: '1 1 240px', border: `1px dashed rgba(${ACC_RGB},0.45)`, borderRadius: 10,
+            padding: 14, textAlign: 'center', color: MUTED, fontSize: 12.5,
+          }}
+        >
+          {busy ? 'Envoi…' : (
+            <>
+              Glisse la capture de cette carte, ou{' '}
+              <label style={{ color: ACC, cursor: 'pointer', textDecoration: 'underline' }}>
+                choisis un fichier
+                <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }}
+                  onChange={(e) => { send(e.target.files[0]); e.target.value = ''; }} />
+              </label>
+              {existing && <div style={{ fontSize: 11, marginTop: 4 }}>Une image est déjà là — la nouvelle la remplacera.</div>}
+            </>
+          )}
+        </div>
+        {existing && !busy && (
+          <button type="button" onClick={removeTile} style={{
+            padding: '7px 13px', borderRadius: 8, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+            background: 'transparent', color: CRIMSON, border: '1px solid rgba(224,82,111,0.5)',
+          }}>Retirer</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Fond de carte : nom, calibration deux points (X gauche / X droit / Z bas du
 // render) et upload de l'image — replié par défaut, c'est de l'outillage.
-function CalibrationPanel({ map, dimension, onChanged, setErr }) {
+function CalibrationPanel({ map, monde, dimension, onChanged, setErr }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [xl, setXl] = useState('');
@@ -329,7 +474,10 @@ function CalibrationPanel({ map, dimension, onChanged, setErr }) {
   const save = async () => {
     setBusy(true);
     try {
-      const body = { name: name.trim() || `Carte ${dimension}`, dimension, imgXLeft: num(xl), imgXRight: num(xr), imgZBottom: num(zb) };
+      const body = {
+        name: name.trim() || `${MONDES[monde].label} — ${DIMENSIONS[dimension].label}`,
+        dimension, monde, imgXLeft: num(xl), imgXRight: num(xr), imgZBottom: num(zb),
+      };
       if (map) await api.lore.maps.update(map.id, body);
       else await api.lore.maps.create(body);
       await onChanged();
@@ -354,14 +502,17 @@ function CalibrationPanel({ map, dimension, onChanged, setErr }) {
         background: 'none', border: 'none', padding: 0, cursor: 'pointer',
         color: MUTED, fontSize: 12.5, fontFamily: "'Inter',sans-serif", textDecoration: 'underline',
       }}>
-        {open ? '▾' : '▸'} ⚙ Fond de carte ({DIMENSIONS[dimension].label}{map?.imageUrl ? ' — render en place' : ' — pas de render'})
+        {open ? '▾' : '▸'} ⚙ Fond de carte ({MONDES[monde].label} · {DIMENSIONS[dimension].label}
+        {map ? (map.imageUrl ? ' — render en place' : ' — pas de render global') : ' — carte à créer'})
       </button>
       {open && (
         <div style={{ ...panel, marginTop: 8, padding: '12px 14px', fontFamily: "'Inter',sans-serif" }}>
           <p style={{ margin: '0 0 10px', fontSize: 12, color: MUTED }}>
-            Calibration par deux points de référence du render : X du coin <strong>bas-gauche</strong>,
-            X du coin <strong>bas-droit</strong>, et Z du <strong>bord bas</strong>. La hauteur se déduit
-            du ratio de l'image. (Nostra : -5353 / 4646 / -636.)
+            Deux façons de peupler le fond : les <strong>cartes 128×128</strong> déposées case par case
+            (mode 🧩, recommandé — la précision monte avec l'exploration), et/ou un <strong>render
+            global</strong> calibré ici par deux points de référence : X du coin <strong>bas-gauche</strong>,
+            X du coin <strong>bas-droit</strong>, Z du <strong>bord bas</strong> — la hauteur se déduit du
+            ratio de l'image. (Nostra overworld : -5353 / 4646 / -636.)
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end' }}>
             <L label="Nom"><input value={name} onChange={(e) => setName(e.target.value)} style={{ ...inp, width: 190 }} /></L>
