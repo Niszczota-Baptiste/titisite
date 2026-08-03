@@ -121,8 +121,9 @@ Trois vues, trois questions :
 
 | Vue | Répond à |
 |---|---|
-| 👥 Membres | qui produit quoi ; combien d'octets chacun a déposés ; combien de suppressions à son actif |
+| 👥 Membres | qui produit quoi (entrées, hypothèses, **commentaires**) ; combien d'octets chacun a déposés ; combien de suppressions à son actif |
 | 🖼 Médias | *le site sert-il d'hébergement d'images perso ?* — inventaire trié par poids, avec type MIME, dimensions, auteur, et un drapeau « rattaché à rien » |
+| 💬 Discussions | les fils les plus actifs : nombre de messages, participants, dernière activité. Un fil dont le sujet a été supprimé est signalé (les messages survivent à leur cible) |
 | 📜 Journal | *que s'est-il passé, et surtout qu'a-t-on effacé ?* — filtrable par membre / action / type d'objet |
 
 ### Pourquoi une table plutôt qu'une requête
@@ -155,6 +156,22 @@ journal est logguée mais ne casse jamais la requête observée.
 
 > ⚠️ **Ajouter une route mutante au module = ajouter sa ligne dans `ROUTES`.**
 > Sans quoi l'action se fera en silence.
+
+### Le cas des commentaires
+
+Les fils de discussion des entrées et des hypothèses (`CommentsThread.jsx`)
+passent par la table **globale** `comments` et le routeur `/api/comments` —
+donc **hors** du middleware `auditLore`, monté sur `/api/lore`. Sans crochet
+dédié, la discussion serait le seul pan du module invisible au journal, alors
+que « X a effacé le message de Y » est précisément le genre de nuisance que la
+page doit montrer.
+
+`server/routes/comments.js` appelle donc `recordLoreComment()` sur POST et
+DELETE. C'est un **no-op pour toutes les autres cibles** (`document`,
+`feature`, `discussion`, `thread`) : le journal du lore ne contient que du lore.
+Le DELETE lit la ligne entière *avant* de l'effacer, pour figer le sujet et
+l'extrait du message ; il note aussi `ofSomeoneElse` quand l'acteur efface le
+message d'un autre — affiché en rouge dans le journal.
 
 Le journal ne commence qu'à sa mise en place : l'historique antérieur n'existe
 pas, et la page le dit.

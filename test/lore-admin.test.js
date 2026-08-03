@@ -167,6 +167,82 @@ describe('lore — page admin & journal d’audit', () => {
     assert.equal(after, before, 'seules les actions réussies sont journalisées');
   });
 
+  it('compte les commentaires par membre et globalement', async () => {
+    const e = await admin.f.post('/api/lore/entries', {
+      body: { title: 'Sujet de débat', bodyMd: 'x', entryType: 'texte' },
+    });
+    const post = (api, body) => api.post('/api/comments', {
+      body: { targetType: 'lore_entry', targetId: e.json.id, body },
+    });
+    assert.equal((await post(admin.f, 'Première lecture des glyphes.')).status, 201);
+    assert.equal((await post(member.f, 'Je confirme, deux se répètent.')).status, 201);
+    assert.equal((await post(member.f, 'Et un troisième plus bas.')).status, 201);
+
+    const o = (await admin.f.get('/api/lore/admin/overview')).json;
+    assert.equal(o.storage.commentCount, 3);
+    assert.equal(o.storage.threadCount, 1);
+    assert.equal(o.members.find((m) => m.id === memberId).comments, 2);
+    assert.ok(o.members.find((m) => m.role === 'admin').comments >= 1);
+
+    const threads = (await admin.f.get('/api/lore/admin/threads')).json;
+    const t = threads.find((x) => x.targetId === e.json.id);
+    assert.equal(t.count, 3);
+    assert.equal(t.participants, 2);
+    assert.equal(t.title, 'Sujet de débat');
+    assert.equal(t.targetType, 'lore_entry');
+  });
+
+  it('journalise les commentaires, et signale l’effacement du message d’autrui', async () => {
+    const e = await member.f.post('/api/lore/entries', {
+      body: { title: 'Fil surveillé', bodyMd: 'x', entryType: 'observation' },
+    });
+    const c = await member.f.post('/api/comments', {
+      body: { targetType: 'lore_entry', targetId: e.json.id, body: 'Message du membre' },
+    });
+    assert.equal(c.status, 201);
+
+    let log = (await admin.f.get('/api/lore/admin/journal?type=comment')).json;
+    const added = log.find((j) => j.targetId === c.json.id && j.action === 'create');
+    assert.ok(added, 'le message posté doit être journalisé');
+    // Le libellé est le SUJET, pas l'id — c'est ce qui se lit dans le journal.
+    assert.equal(added.label, 'Fil surveillé');
+    assert.equal(added.detail.excerpt, 'Message du membre');
+    assert.equal(added.actorId, memberId);
+
+    // L'admin efface le message du membre : le journal doit le dire.
+    assert.equal((await admin.f.delete(`/api/comments/${c.json.id}`)).status, 204);
+    log = (await admin.f.get('/api/lore/admin/journal?type=comment&action=delete')).json;
+    const removed = log.find((j) => j.targetId === c.json.id);
+    assert.ok(removed, 'la suppression doit être journalisée');
+    assert.equal(removed.label, 'Fil surveillé');
+    assert.equal(removed.detail.excerpt, 'Message du membre', 'le texte effacé doit être figé');
+    assert.equal(removed.detail.ofSomeoneElse, true, 'effacer le message d’un autre doit être signalé');
+
+    // Un membre qui efface SON message n'est pas signalé de la même façon.
+    const own = await member.f.post('/api/comments', {
+      body: { targetType: 'lore_entry', targetId: e.json.id, body: 'Le mien' },
+    });
+    assert.equal((await member.f.delete(`/api/comments/${own.json.id}`)).status, 204);
+    log = (await admin.f.get('/api/lore/admin/journal?type=comment&action=delete')).json;
+    assert.equal(log.find((j) => j.targetId === own.json.id).detail.ofSomeoneElse, false);
+  });
+
+  it('les commentaires hors lore ne polluent pas le journal du lore', async () => {
+    const before = (await admin.f.get('/api/lore/admin/journal')).json.length;
+    // 'discussion' est le fil d'équipe global, sans rapport avec le lore.
+    const r = await admin.f.post('/api/comments', {
+      body: { targetType: 'discussion', targetId: 0, body: 'Réunion demain' },
+    });
+    assert.equal(r.status, 201);
+    const after = (await admin.f.get('/api/lore/admin/journal')).json.length;
+    assert.equal(after, before, 'seules les cibles lore alimentent ce journal');
+    // …et ce commentaire ne doit pas non plus gonfler les compteurs du lore.
+    const o = (await admin.f.get('/api/lore/admin/overview')).json;
+    const threads = (await admin.f.get('/api/lore/admin/threads')).json;
+    assert.ok(threads.every((t) => t.targetType.startsWith('lore_')));
+    assert.equal(o.storage.threadCount, threads.length);
+  });
+
   it('le journal filtre par membre, action et type', async () => {
     const mine = (await admin.f.get(`/api/lore/admin/journal?actor=${memberId}`)).json;
     assert.ok(mine.length > 0);

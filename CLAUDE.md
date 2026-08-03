@@ -313,7 +313,10 @@ Single-process Node app:
   middleware mounted before all handlers that **snapshots the label and the
   cascade cost before** the handler runs, so a deletion still says what it
   destroyed and who did it. Only 2xx are logged. Adding a mutating lore route
-  means adding a line to its `ROUTES` table.
+  means adding a line to its `ROUTES` table. Lore **comments** live in the
+  global `comments` table, so they bypass that middleware: `comments.js` calls
+  `recordLoreComment()` on POST/DELETE (no-op for non-lore targets), flagging
+  `ofSomeoneElse` when someone erases another member's message.
 - **SEO**: `GET /sitemap.xml` is generated from the DB
   (`server/routes/sitemap.js`); per-route meta via
   `src/hooks/usePageMeta.js`. Reader prefs (font size/width/theme) live in

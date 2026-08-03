@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import { requireAuth, requireRole } from '../auth.js';
 import { UPLOADS_DIR, safeUnlink, uploadLoreImage, uploadPath } from '../uploads.js';
 import {
-  auditLore, listAudit, mediaInventory, memberStats, storageTotals,
+  auditLore, commentThreads, listAudit, mediaInventory, memberStats, storageTotals,
 } from '../lore/audit.js';
 import {
   DIMENSIONS, ENTRY_TYPES, HYPOTHESIS_STATUSES, MONDES, RELATION_TYPES,
@@ -79,6 +79,13 @@ const ADMIN_ONLY = requireRole('admin');
 
 loreRouter.get('/admin/overview', ADMIN_ONLY, (_req, res) => {
   res.json({ members: memberStats(), storage: storageTotals() });
+});
+
+// Fils de discussion les plus actifs (entrées + hypothèses confondues).
+loreRouter.get('/admin/threads', ADMIN_ONLY, (req, res) => {
+  const limit = asInt(req.query.limit);
+  if (limit === undefined) return res.status(400).json({ error: 'invalid_limit' });
+  res.json(commentThreads({ limit: limit ?? 30 }));
 });
 
 loreRouter.get('/admin/media', ADMIN_ONLY, (req, res) => {

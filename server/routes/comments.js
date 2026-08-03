@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../auth.js';
 import { db } from '../db.js';
+import { recordLoreComment } from '../lore/audit.js';
 import { isMember } from '../workspaces.js';
 
 export const commentsRouter = Router();
@@ -85,17 +86,39 @@ commentsRouter.post('/', requireAuth, PROJECT, (req, res) => {
     .prepare(`INSERT INTO comments (target_type, target_id, author_id, body) VALUES (?, ?, ?, ?)`)
     .run(targetType, tid, req.user.id, body.trim());
   const row = db.prepare(`${SELECT} WHERE c.id = ?`).get(result.lastInsertRowid);
+  // Les cibles lore sont journalisées : ce routeur est hors du middleware
+  // auditLore (monté sur /api/lore), la discussion échapperait sinon au journal
+  // de la page « 🛡 Admin ». No-op pour toutes les autres cibles.
+  recordLoreComment({
+    action: 'create',
+    targetType,
+    targetId: tid,
+    commentId: result.lastInsertRowid,
+    body: body.trim(),
+    user: req.user,
+  });
   res.status(201).json(rowToComment(row, req.user));
 });
 
 commentsRouter.delete('/:id', requireAuth, PROJECT, (req, res) => {
   const id = Number(req.params.id);
-  const row = db.prepare(`SELECT author_id FROM comments WHERE id = ?`).get(id);
+  // On lit la ligne ENTIÈRE : après le DELETE, ni le sujet ni le texte effacé
+  // ne seraient récupérables pour le journal.
+  const row = db.prepare(`SELECT * FROM comments WHERE id = ?`).get(id);
   if (!row) return res.status(404).json({ error: 'not_found' });
   // Author can delete own; admin can delete anyone's
   if (row.author_id !== req.user.id && req.user.role !== 'admin') {
     return res.status(403).json({ error: 'forbidden' });
   }
   db.prepare(`DELETE FROM comments WHERE id = ?`).run(id);
+  recordLoreComment({
+    action: 'delete',
+    targetType: row.target_type,
+    targetId: row.target_id,
+    commentId: id,
+    body: row.body,
+    user: req.user,
+    authorId: row.author_id,
+  });
   res.status(204).end();
 });

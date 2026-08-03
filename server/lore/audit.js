@@ -239,11 +239,17 @@ export function auditLore(req, res, next) {
 
 // ── Agrégats de la page admin ───────────────────────────────────────────────
 
+// Les commentaires du lore vivent dans la table GLOBALE `comments` (mêmes
+// que les documents/features), reconnaissables à leur target_type.
+export const LORE_COMMENT_TARGETS = ['lore_entry', 'lore_hypothesis'];
+const COMMENT_SCOPE = `c.target_type IN ('lore_entry', 'lore_hypothesis')`;
+
 const MEMBER_STATS = `
   SELECT
     u.id, u.name, u.email, u.role,
     (SELECT COUNT(*) FROM lore_entries    e WHERE e.author_id  = u.id) AS entries,
     (SELECT COUNT(*) FROM lore_hypotheses h WHERE h.created_by = u.id) AS hypotheses,
+    (SELECT COUNT(*) FROM comments c WHERE c.author_id = u.id AND ${COMMENT_SCOPE}) AS comments,
     (SELECT COUNT(*) FROM lore_media      m WHERE m.uploaded_by = u.id) AS mediaCount,
     (SELECT COALESCE(SUM(size), 0) FROM lore_media m WHERE m.uploaded_by = u.id) AS mediaBytes,
     (SELECT COUNT(*) FROM lore_audit a WHERE a.actor_id = u.id AND a.action = 'delete') AS deletions,
@@ -256,7 +262,7 @@ const MEMBER_STATS = `
 export function memberStats() {
   return db.prepare(MEMBER_STATS).all().map((r) => ({
     id: r.id, name: r.name, email: r.email, role: r.role,
-    entries: r.entries, hypotheses: r.hypotheses,
+    entries: r.entries, hypotheses: r.hypotheses, comments: r.comments,
     mediaCount: r.mediaCount, mediaBytes: r.mediaBytes,
     deletions: r.deletions, lastActionAt: r.lastActionAt,
   }));
@@ -274,12 +280,95 @@ export function storageTotals() {
            COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes
     FROM lore_media GROUP BY mimeType ORDER BY bytes DESC
   `).all();
+  const comments = one(`SELECT COUNT(*) AS n FROM comments c WHERE ${COMMENT_SCOPE}`);
+  const threads = one(`
+    SELECT COUNT(*) AS n FROM (
+      SELECT 1 FROM comments c WHERE ${COMMENT_SCOPE} GROUP BY c.target_type, c.target_id
+    )
+  `);
   return {
     mediaCount: media.n, mediaBytes: media.bytes,
     tileCount: tiles.n,
     orphanCount: orphans.n, orphanBytes: orphans.bytes,
     byType,
+    commentCount: comments.n,
+    threadCount: threads.n, // sujets ayant au moins un message
   };
+}
+
+/**
+ * Les fils les plus actifs — quels sujets discutent, et où la discussion
+ * s'emballe. Le titre est joint depuis l'entrée/l'hypothèse : un fil dont la
+ * cible a été supprimée garde ses messages en base mais n'a plus de titre, on
+ * le signale plutôt que de l'escamoter.
+ */
+export function commentThreads({ limit = 30 } = {}) {
+  return db.prepare(`
+    SELECT c.target_type, c.target_id,
+           COUNT(*) AS n,
+           MAX(c.created_at) AS lastAt,
+           COUNT(DISTINCT c.author_id) AS participants,
+           e.title AS entry_title, h.title AS hypothesis_title
+    FROM comments c
+    LEFT JOIN lore_entries e    ON c.target_type = 'lore_entry'      AND e.id = c.target_id
+    LEFT JOIN lore_hypotheses h ON c.target_type = 'lore_hypothesis' AND h.id = c.target_id
+    WHERE ${COMMENT_SCOPE}
+    GROUP BY c.target_type, c.target_id
+    ORDER BY n DESC, lastAt DESC
+    LIMIT ?
+  `).all(Math.min(200, Math.max(1, limit))).map((r) => ({
+    targetType: r.target_type,
+    targetId: r.target_id,
+    title: r.entry_title || r.hypothesis_title || null, // null = cible supprimée
+    count: r.n,
+    participants: r.participants,
+    lastAt: r.lastAt,
+  }));
+}
+
+// ── Commentaires : journalisation ───────────────────────────────────────────
+// Les commentaires passent par /api/comments (routeur global), donc HORS du
+// middleware auditLore monté sur /api/lore. Sans ce crochet, la discussion
+// serait le seul pan du module invisible au journal — et « X a effacé le
+// message de Y » est exactement le genre de nuisance que la page doit montrer.
+
+export const isLoreCommentTarget = (t) => LORE_COMMENT_TARGETS.includes(t);
+
+const PARENT_TITLE = {
+  lore_entry: `SELECT title FROM lore_entries WHERE id = ?`,
+  lore_hypothesis: `SELECT title FROM lore_hypotheses WHERE id = ?`,
+};
+
+/**
+ * Journalise un commentaire de lore. `action` vaut 'create' ou 'delete'.
+ * Ne lève jamais : le journal ne doit pas casser la publication d'un message.
+ */
+export function recordLoreComment({ action, targetType, targetId, commentId, body, user, authorId }) {
+  try {
+    if (!isLoreCommentTarget(targetType)) return;
+    // eslint-disable-next-line security/detect-object-injection -- targetType est validé par isLoreCommentTarget contre une liste blanche
+    const parent = one(PARENT_TITLE[targetType], targetId);
+    recordAudit({
+      actorId: user?.id ?? null,
+      actorName: user?.name || user?.email || '',
+      action,
+      targetType: 'comment',
+      targetId: commentId ?? null,
+      // Le libellé est le SUJET : c'est ce qu'on lit dans le journal.
+      label: parent?.title || `(sujet supprimé #${targetId})`,
+      detail: {
+        on: targetType,
+        onId: targetId,
+        excerpt: String(body || '').slice(0, 120),
+        // Sur une suppression, dire si l'acteur effaçait le message d'un autre.
+        ...(action === 'delete' && authorId != null
+          ? { authorId, ofSomeoneElse: authorId !== (user?.id ?? null) }
+          : {}),
+      },
+    });
+  } catch (e) {
+    console.error('[lore-audit:comment]', e?.message || e);
+  }
 }
 
 /**

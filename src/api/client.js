@@ -534,6 +534,7 @@ export const api = {
       overview: () => request('GET', '/lore/admin/overview'),
       media:    (params) => request('GET', `/lore/admin/media${qs(params)}`),
       journal:  (params) => request('GET', `/lore/admin/journal${qs(params)}`),
+      threads:  (params) => request('GET', `/lore/admin/threads${qs(params)}`),
     },
   },
 

@@ -29,15 +29,19 @@ const ACTIONS = { create: { label: 'Ajout', color: ACC }, update: { label: 'Modi
 const TYPE_LABELS = {
   entry: 'Entrée', hypothesis: 'Hypothèse', media: 'Média', link: 'Lien', tag: 'Tag',
   shape: 'Tracé', map: 'Carte', map_image: 'Fond de carte', tile: 'Tuile',
-  peuple: 'Peuple', dialogue: 'Dialogue', evidence: 'Preuve',
+  peuple: 'Peuple', dialogue: 'Dialogue', evidence: 'Preuve', comment: 'Commentaire',
 };
 
-const VIEWS = [['membres', '👥 Membres'], ['medias', '🖼 Médias'], ['journal', '📜 Journal']];
+const VIEWS = [
+  ['membres', '👥 Membres'], ['medias', '🖼 Médias'],
+  ['discussions', '💬 Discussions'], ['journal', '📜 Journal'],
+];
 
 export function AdminTab() {
   const [view, setView] = useState('membres');
   const [overview, setOverview] = useState(null);
   const [media, setMedia] = useState(null);
+  const [threads, setThreads] = useState(null);
   const [journal, setJournal] = useState(null);
   const [filter, setFilter] = useState({ actor: '', action: '', type: '' });
   const [err, setErr] = useState(null);
@@ -58,6 +62,15 @@ export function AdminTab() {
       .catch((e) => { if (alive) setErr(e.message); });
     return () => { alive = false; };
   }, [view, media]);
+
+  useEffect(() => {
+    if (view !== 'discussions' || threads !== null) return undefined;
+    let alive = true;
+    api.lore.admin.threads({ limit: 50 })
+      .then((d) => { if (alive) setThreads(d); })
+      .catch((e) => { if (alive) setErr(e.message); });
+    return () => { alive = false; };
+  }, [view, threads]);
 
   useEffect(() => {
     if (view !== 'journal') return undefined;
@@ -98,6 +111,7 @@ export function AdminTab() {
 
       {view === 'membres' && <MembersView members={overview.members} />}
       {view === 'medias' && <MediaView media={media} />}
+      {view === 'discussions' && <ThreadsView threads={threads} />}
       {view === 'journal' && (
         <JournalView
           journal={journal} members={overview.members}
@@ -121,6 +135,11 @@ function StorageBanner({ storage }) {
         accent={storage.orphanCount > 0 ? GOLD : undefined}
         title="Fichiers rattachés à aucune entrée ni hypothèse — les premiers suspects d'un dépôt perso."
       />
+      <Stat
+        label="Commentaires"
+        value={`${storage.commentCount} · ${storage.threadCount} sujet(s)`}
+        title="Messages postés sur les entrées et les hypothèses, et nombre de sujets où la discussion a démarré."
+      />
       {tiles && <Stat label="dont WebP" value={formatBytes(tiles.bytes)} />}
     </div>
   );
@@ -142,7 +161,7 @@ function MembersView({ members }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Inter',sans-serif", fontSize: 13, minWidth: 640 }}>
         <thead>
           <tr>
-            {['Membre', 'Entrées', 'Hypoth.', 'Médias', 'Poids déposé', 'Suppressions', 'Dernière action'].map((h, i) => (
+            {['Membre', 'Entrées', 'Hypoth.', 'Comm.', 'Médias', 'Poids déposé', 'Suppressions', 'Dernière action'].map((h, i) => (
               <th key={h} style={{ ...th, textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>
             ))}
           </tr>
@@ -161,6 +180,7 @@ function MembersView({ members }) {
                 </td>
                 <td style={td}>{m.entries}</td>
                 <td style={td}>{m.hypotheses}</td>
+                <td style={td}>{m.comments}</td>
                 <td style={td}>{m.mediaCount}</td>
                 <td style={{ ...td, color: heavy ? GOLD : INK, fontWeight: heavy ? 700 : 400 }}
                   title={heavy ? 'Volume inhabituel pour une enquête — à regarder dans l’onglet Médias.' : undefined}>
@@ -230,6 +250,40 @@ function MediaView({ media }) {
   );
 }
 
+function ThreadsView({ threads }) {
+  if (threads === null) return <Empty>Chargement des discussions…</Empty>;
+  if (threads.length === 0) return <Empty>Aucun message pour l’instant.</Empty>;
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <p style={note}>
+        Sujets où la discussion a démarré, du plus actif au plus calme. Le détail
+        des messages se lit dans la fiche de l’entrée ou de l’hypothèse.
+      </p>
+      {threads.map((t) => (
+        <div key={`${t.targetType}-${t.targetId}`} style={{ ...panel, padding: '9px 13px', display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <span style={{ color: MUTED, fontSize: 12, fontFamily: "'Inter',sans-serif", flexShrink: 0 }}>
+            {t.targetType === 'lore_entry' ? 'Entrée' : 'Hypothèse'}
+          </span>
+          <span style={{ color: t.title ? INK : GOLD, fontSize: 13, flex: 1, minWidth: 160, fontFamily: "'Inter',sans-serif" }}>
+            {/* Les messages survivent à la suppression de leur sujet : on le dit
+                plutôt que de masquer le fil, ça se voit dans le journal. */}
+            {t.title || `⚠ sujet supprimé (#${t.targetId}) — messages orphelins`}
+          </span>
+          <span style={{ color: MUTED, fontSize: 12, fontFamily: "'Inter',sans-serif", flexShrink: 0 }}>
+            {t.participants} participant(s)
+          </span>
+          <span style={{ color: MUTED, fontSize: 11.5, fontFamily: "'Inter',sans-serif", flexShrink: 0 }}>
+            {formatDate(t.lastAt)}
+          </span>
+          <span style={{ color: ACC, fontWeight: 700, fontSize: 14, fontFamily: "'Space Grotesk',sans-serif", flexShrink: 0 }}>
+            💬 {t.count}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function JournalView({ journal, members, filter, setFilter }) {
   const set = (k) => (e) => setFilter((f) => ({ ...f, [k]: e.target.value }));
   const types = useMemo(
@@ -280,6 +334,15 @@ function JournalView({ journal, members, filter, setFilter }) {
               )}
               {j.targetType === 'media' && d.size != null && (
                 <span style={{ color: MUTED, fontSize: 11.5 }}> · {formatBytes(d.size)} {d.mimeType || ''}</span>
+              )}
+              {/* Commentaire : le libellé est le SUJET, on ajoute l'extrait du
+                  message — et on signale l'effacement du message d'autrui, le
+                  cas qui justifie la surveillance. */}
+              {j.targetType === 'comment' && d.excerpt && (
+                <span style={{ color: MUTED, fontSize: 11.5, fontStyle: 'italic' }}> · « {d.excerpt} »</span>
+              )}
+              {j.targetType === 'comment' && d.ofSomeoneElse && (
+                <span style={{ color: CRIMSON, fontSize: 11.5, fontWeight: 700 }}> · message d’un autre membre</span>
               )}
             </span>
             <span style={{ color: MUTED, fontSize: 12, fontFamily: "'Inter',sans-serif", flexShrink: 0 }}>
