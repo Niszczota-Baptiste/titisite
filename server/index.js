@@ -41,6 +41,7 @@ import { craftRouter } from './routes/craft.js';
 import { settingsRouter } from './routes/settings.js';
 import { sitemapRouter } from './routes/sitemap.js';
 import { stairsRouter } from './routes/stairs.js';
+import { systemRouter } from './routes/system.js';
 import { summaryRouter } from './routes/summary.js';
 import { tagsRouter } from './routes/tags.js';
 import { usersRouter } from './routes/users.js';
@@ -290,6 +291,9 @@ app.use('/api/settings', settingsRouter);
 
 // Stairs catalogue — gated by users.can_view_stairs (admins always allowed).
 app.use('/api/stairs', stairsRouter);
+
+// État de la machine (disque, RAM, CPU) — rôle admin only, cf. routes/system.js.
+app.use('/api/system', systemRouter);
 
 // Current-user helpers (e.g. /api/me/events for the cross-project calendar)
 // Réglages perso du cockpit MF (items + quêtes suivies) : monté avant meRouter

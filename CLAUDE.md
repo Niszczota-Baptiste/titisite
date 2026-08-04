@@ -325,6 +325,22 @@ Single-process Node app:
   global `comments` table, so they bypass that middleware: `comments.js` calls
   `recordLoreComment()` on POST/DELETE (no-op for non-lore targets), flagging
   `ofSomeoneElse` when someone erases another member's message.
+- **Server health** (« 🖥 Serveur » tab, role `admin` only): `GET
+  /api/system/stats` (`server/routes/system.js` + pure helpers in
+  `server/system/metrics.js`, `api.system.stats`). Everything is read from the
+  **OS by the Node process itself** — no hosting-provider API, no agent, so it
+  is portable across hosts. Disk uses `fs.statfs` with the **`df` convention**
+  (`used = blocks - bfree`, available = `bavail`, percentage over
+  `used + available`) — deviating from it prints numbers that disagree with the
+  server's own `df`. RAM prefers `/proc/meminfo`'s **`MemAvailable`** (never
+  `MemFree`, which ignores reclaimable cache), and a **cgroup limit wins over
+  `os.totalmem()`** when lower (in a container `os.totalmem()` is the *host's*
+  RAM). CPU % comes from the delta between two `os.cpus()` snapshots — a
+  single reading means nothing. The per-item disk breakdown walks directories,
+  so it is memoised **5 min** server-side (the UI's 5 s auto-refresh must not
+  re-walk ~18 k files); `?rescan=1` forces it. `dirSize` never follows
+  symlinks and caps at `maxFiles`, reporting `truncated` rather than a wrong
+  total.
 - **SEO**: `GET /sitemap.xml` is generated from the DB
   (`server/routes/sitemap.js`); per-route meta via
   `src/hooks/usePageMeta.js`. Reader prefs (font size/width/theme) live in
@@ -432,7 +448,8 @@ First boot creates the DB at `DB_PATH` (default `./data.sqlite`) and seeds:
 
 | Add… | …in |
 |---|---|
-| New section in admin dashboard | `src/components/admin/Dashboard.jsx` (`TABS` array) + new file in `editors/` |
+| New section in admin dashboard | `src/components/admin/Dashboard.jsx` (`ADMIN_TABS` array) + new file in `editors/` |
+| New machine metric on the Serveur tab | a pure helper in `server/system/metrics.js` (+ its test), then wire it in `server/routes/system.js` and render it in `editors/SystemEditor.jsx` |
 | New per-workspace tab | `src/components/project/ProjectLayout.jsx` (`TABS`) + new file in `project/` + route in `src/pages/Project.jsx` |
 | New scoped API resource | new file in `server/routes/` with `Router({ mergeParams: true })`, then mount under the `scoped` router in `server/index.js` |
 | New public-site collection | append to `PUBLIC_COLLECTIONS` in `server/db.js`, create `src/data/<name>.js`, add seed mapping in `server/seed.js`, write the section + its admin editor |

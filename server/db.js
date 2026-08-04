@@ -4,7 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data.sqlite');
+// Exporté : la page « Serveur » du dashboard mesure la taille du fichier (et
+// de ses -wal/-shm) — une seule source de vérité pour le chemin.
+export const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data.sqlite');
 
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- DB_PATH comes from env/default, not user input
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });

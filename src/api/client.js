@@ -203,6 +203,12 @@ export const api = {
   },
 
   // Contact form: public send + admin inbox.
+  // État de la machine qui héberge le site (onglet « 🖥 Serveur »). Admin only.
+  // `rescan` force le re-parcours du disque, sinon la mesure est mémoïsée 60 s.
+  system: {
+    stats: ({ rescan = false } = {}) => request('GET', `/system/stats${rescan ? '?rescan=1' : ''}`),
+  },
+
   contact: {
     send:     (body) => request('POST', '/contact', body),
     list:     () => request('GET', '/contact'),

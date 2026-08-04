@@ -13,6 +13,7 @@ import { MinecraftAdminEditor } from './editors/minecraft/MinecraftAdminEditor';
 import { PhotosEditor } from './editors/PhotosEditor';
 import { ProjectsEditor } from './editors/ProjectsEditor';
 import { PublicSectionsEditor } from './editors/PublicSectionsEditor';
+import { SystemEditor } from './editors/SystemEditor';
 import { TracksEditor } from './editors/TracksEditor';
 import { WritingEditor } from './editors/writing/WritingEditor';
 import { UsersEditor } from './editors/UsersEditor';
@@ -32,6 +33,7 @@ const ADMIN_TABS = [
   { key: 'workspaces', label: 'Projets d\'équipe',      Editor: WorkspacesEditor },
   { key: 'minecraft',  label: '⛏️ Coffres & Shops',     Editor: MinecraftAdminEditor },
   { key: 'users',      label: 'Utilisateurs',           Editor: UsersEditor },
+  { key: 'system',     label: '🖥 Serveur',              Editor: SystemEditor },
 ];
 
 // Réglages perso du cockpit MF : réservé aux admins (comme tout le dashboard —
