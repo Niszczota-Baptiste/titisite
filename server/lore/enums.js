@@ -28,4 +28,11 @@ export const MONDES = ['nostra', 'novum'];
 export const TILE_SIZE = 128;
 export const TILE_OFFSET = -64;
 
+// Niveaux de zoom acceptés pour le fond en tuiles : 0 = la carte de base
+// (128×128 blocs), 2 = la carte deux crans dézoomée (512×512), qui sert
+// d'atlas de fond. Le décalage de -64 vaut aux deux niveaux, donc une case de
+// zoom 2 contient exactement 4×4 cases de zoom 0 (cf. src/components/lore/
+// mapMath.js, testé). En ajouter un (1, 3, 4) = l'ajouter ici.
+export const TILE_ZOOMS = [0, 2];
+
 export const REVISION_TARGETS = ['entry', 'hypothesis'];

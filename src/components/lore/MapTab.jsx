@@ -5,13 +5,23 @@ import {
   ACC, ACC_RGB, CRIMSON, DIMENSIONS, DIMENSION_ORDER, ENTRY_TYPES,
   ENTRY_TYPE_ORDER, GOLD, INK, MONDES, MONDE_ORDER, MUTED, hexToRgb, panel,
 } from './theme';
-import { tileRect } from './mapMath';
+import { ATLAS_ZOOM, DETAIL_ZOOM, TILE_ZOOMS, tileRect, tileSize } from './mapMath';
 
 // Onglet 🗺 Carte : monde (Nostra/Novum) × dimension, modes (origine / mesure /
-// ➕ point / ✏️ tracé / 🧩 cartes 128×128), filtres par type, table des
-// relèvements du mode origine (triée par angle, alignements ±tolérance
-// surlignés — servie par GET /api/lore/geo/ring, aucune trigonométrie côté
-// client), et le panneau de fond de carte (tuiles et/ou render calibré).
+// ➕ point / ✏️ tracé / 🧩 cartes), filtres par type, table des relèvements du
+// mode origine (triée par angle, alignements ±tolérance surlignés — servie par
+// GET /api/lore/geo/ring, aucune trigonométrie côté client), et le panneau de
+// fond de carte (tuiles et/ou render calibré).
+//
+// Le fond en tuiles a deux niveaux : l'atlas 512×512 (vue d'arrivée) et le
+// détail 128×128 qui se pose dessus au zoom. Le niveau de DÉPÔT est un choix
+// explicite du panneau 🧩 — pré-sélectionné sur ce que la vue regarde, mais
+// forçable : on peut déposer un 512 en étant zoomé, et inversement.
+
+const ZOOM_META = {
+  [ATLAS_ZOOM]: { label: 'Atlas 512', hint: 'carte deux crans dézoomée' },
+  [DETAIL_ZOOM]: { label: 'Détail 128', hint: 'carte de base' },
+};
 
 const SHAPE_COLORS = ['#e8c86a', '#7bd3e8', '#7be3a8', '#e0526f', '#b79bff', '#f0ede5'];
 
@@ -27,7 +37,8 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
   // précédente (le fetch est asynchrone, l'ancien état survivrait un rendu —
   // et fausserait le cadrage initial de la nouvelle carte).
   const [tileState, setTileState] = useState({ mapId: null, list: [] });
-  const [tileTarget, setTileTarget] = useState(null); // { tileX, tileZ } en cours d'upload
+  const [tileTarget, setTileTarget] = useState(null); // { tileX, tileZ, zoom } en cours d'upload
+  const [tileZoom, setTileZoom] = useState(DETAIL_ZOOM); // niveau de dépôt du mode 🧩
   const [types, setTypes] = useState(() => new Set(ENTRY_TYPE_ORDER));
   const [mode, setMode] = useState('pan'); // 'pan' | 'origin' | 'measure' | 'add' | 'draw' | 'tile'
   const [origin, setOrigin] = useState(null);
@@ -62,6 +73,7 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
   }, [mapId]);
   useEffect(() => { loadTiles(); }, [loadTiles]);
   const tiles = tileState.mapId === mapId ? tileState.list : [];
+  const tilesAt = (z) => tiles.filter((t) => (t.zoom ?? DETAIL_ZOOM) === z).length;
 
   // Le calcul du relèvement de chaque point vit côté serveur (source de
   // vérité unique server/lore/geo.js) : une requête par choix d'origine.
@@ -266,9 +278,30 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
 
       {mode === 'tile' && (
         <div style={{ ...panel, padding: '9px 12px', marginBottom: 8, fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: MUTED }}>
-          🧩 <strong style={{ color: GOLD }}>Cartes du monde</strong> — la grille suit les cartes Minecraft
-          (128×128 blocs, une case = une carte, un joueur posé en 0/0 est au centre de la sienne).
-          Clique une case pour y déposer ta capture ; re-déposer sur une case remplace l'image.
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 7 }}>
+            <strong style={{ color: GOLD }}>🧩 Cartes du monde</strong>
+            <span style={{ fontSize: 11.5 }}>niveau de dépôt :</span>
+            {TILE_ZOOMS.map((z) => {
+              const on = tileZoom === z;
+              return (
+                <button
+                  key={z} type="button" onClick={() => setTileZoom(z)}
+                  title={`${ZOOM_META[z].hint} — une case = ${tileSize(z)}×${tileSize(z)} blocs`}
+                  style={{
+                    padding: '5px 11px', borderRadius: 999, cursor: 'pointer', fontFamily: "'Inter',sans-serif",
+                    fontSize: 12, fontWeight: 700, color: on ? '#12100a' : GOLD,
+                    background: on ? GOLD : 'transparent',
+                    border: `1px solid ${GOLD}`, opacity: on ? 1 : 0.7,
+                  }}
+                >{ZOOM_META[z].label} ({tilesAt(z)})</button>
+              );
+            })}
+          </div>
+          La grille suit les cartes Minecraft (une case = une carte, un joueur posé en 0/0 est au
+          centre de la sienne). L'<strong>atlas 512</strong> est le fond qu'on voit en arrivant ; le
+          <strong> détail 128</strong> se pose par-dessus quand on zoome, là où il existe — une case
+          d'atlas couvre exactement 4×4 cases de détail. Clique une case pour y déposer ta capture ;
+          re-déposer remplace l'image <em>de ce niveau seulement</em>.
           {!map && <span style={{ color: CRIMSON }}> Crée d'abord la carte de cette dimension ci-dessous.</span>}
         </div>
       )}
@@ -281,14 +314,15 @@ export function MapTab({ onOpenEntry, onCreateAt, refreshKey = 0 }) {
           onOpenEntry={onOpenEntry} onAddAt={onAddAt} onDrawClick={onDrawClick}
           onTileClick={(t) => { if (map) setTileTarget(t); else setErr('Crée d\'abord la carte de cette dimension.'); }}
           shapes={visibleShapes} draft={mode === 'draw' ? draft : null}
-          tiles={tiles}
+          tiles={tiles} tileZoom={tileZoom} onSuggestTileZoom={setTileZoom}
         />
       ) : <p style={{ color: MUTED, fontFamily: "'Inter',sans-serif", fontSize: 13 }}>Chargement de la carte…</p>}
 
       {tileTarget && map && (
         <TileUpload
           mapId={map.id} target={tileTarget}
-          existing={tiles.find((t) => t.tileX === tileTarget.tileX && t.tileZ === tileTarget.tileZ) || null}
+          existing={tiles.find((t) => (t.zoom ?? DETAIL_ZOOM) === tileTarget.zoom
+            && t.tileX === tileTarget.tileX && t.tileZ === tileTarget.tileZ) || null}
           onClose={() => setTileTarget(null)}
           onDone={async () => { setTileTarget(null); await loadTiles(); }}
           setErr={setErr}
@@ -375,12 +409,13 @@ function RingTable({ ring, onOpenEntry }) {
   );
 }
 
-// Dépôt de la capture d'une case : la carte du jeu correspondant exactement
-// à ces 128×128 blocs. Ré-uploader remplace l'image (c'est l'intérêt : la
-// carte collective se précise à mesure que chacun explore).
+// Dépôt de la capture d'une case : la carte du jeu correspondant exactement à
+// ces 128×128 (niveau 0) ou 512×512 (niveau 2) blocs. Ré-uploader remplace
+// l'image de CE niveau (c'est l'intérêt : la carte collective se précise à
+// mesure que chacun explore, sans qu'un atlas n'efface le détail déjà posé).
 function TileUpload({ mapId, target, existing, onClose, onDone, setErr }) {
   const [busy, setBusy] = useState(false);
-  const r = tileRect(target.tileX, target.tileZ);
+  const r = tileRect(target.tileX, target.tileZ, target.zoom);
 
   const send = async (file) => {
     if (!file) return;
@@ -390,6 +425,7 @@ function TileUpload({ mapId, target, existing, onClose, onDone, setErr }) {
       fd.append('image', file);
       fd.append('tileX', String(target.tileX));
       fd.append('tileZ', String(target.tileZ));
+      fd.append('zoom', String(target.zoom));
       await api.lore.tiles.upload(mapId, fd);
       await onDone();
     } catch (ex) {
@@ -408,10 +444,10 @@ function TileUpload({ mapId, target, existing, onClose, onDone, setErr }) {
     <div style={{ ...panel, padding: '14px 16px', marginTop: 10, fontFamily: "'Inter',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
         <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14.5, color: INK }}>
-          🧩 Case {target.tileX} , {target.tileZ}
+          🧩 {ZOOM_META[target.zoom].label} — case {target.tileX} , {target.tileZ}
         </span>
         <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, color: MUTED }}>
-          X {r.left} → {r.left + r.size - 1} · Z {r.top} → {r.top + r.size - 1}
+          {r.size}×{r.size} blocs · X {r.left} → {r.left + r.size - 1} · Z {r.top} → {r.top + r.size - 1}
         </span>
         <button type="button" onClick={onClose}
           style={{ marginLeft: 'auto', background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 13 }}>✕</button>
@@ -508,8 +544,9 @@ function CalibrationPanel({ map, monde, dimension, onChanged, setErr }) {
       {open && (
         <div style={{ ...panel, marginTop: 8, padding: '12px 14px', fontFamily: "'Inter',sans-serif" }}>
           <p style={{ margin: '0 0 10px', fontSize: 12, color: MUTED }}>
-            Deux façons de peupler le fond : les <strong>cartes 128×128</strong> déposées case par case
-            (mode 🧩, recommandé — la précision monte avec l'exploration), et/ou un <strong>render
+            Deux façons de peupler le fond : les <strong>cartes déposées case par case</strong>
+            (mode 🧩, recommandé — atlas 512 pour la vue d'ensemble, détail 128 par-dessus là où
+            l'exploration est fine), et/ou un <strong>render
             global</strong> calibré ici par deux points de référence : X du coin <strong>bas-gauche</strong>,
             X du coin <strong>bas-droit</strong>, Z du <strong>bord bas</strong> — la hauteur se déduit du
             ratio de l'image. (Nostra overworld : -5353 / 4646 / -636.)

@@ -42,13 +42,22 @@ lien « 🔍 Lore » de l'onglet Minecraft des projets, rendu **uniquement** si
   Z du bord bas ; Nostra overworld : -5353/4646/-636), dont la hauteur se
   déduit du ratio naturel de l'image côté client.
 - `lore_map_tiles` — le fond collaboratif : la **grille des cartes Minecraft**,
-  128×128 blocs, `UNIQUE (map_id, tile_x, tile_z)`. Un joueur posé en (0,0)
-  étant au centre de sa carte, la tuile (i, j) couvre
-  `[i·128-64, i·128+64)` × idem en Z — **le décalage de -64 est l'invariant**
-  qui fait coïncider la grille avec les cartes réelles du jeu (testé dans
-  `test/lore-map-math.test.js`). Chacun dépose la capture d'une case ;
-  re-déposer **remplace** l'image (upsert + suppression de l'ancien fichier),
-  la carte se précisant à mesure que le monde est exploré.
+  sur **deux niveaux de zoom** (`zoom` ∈ `TILE_ZOOMS` = {0, 2}, cf.
+  `server/lore/enums.js`), `UNIQUE (map_id, zoom, tile_x, tile_z)`. Au niveau
+  `n` une case fait `128·2ⁿ` blocs : **0 = détail** (128×128, la carte de base)
+  et **2 = atlas** (512×512, la carte deux crans dézoomée). Un joueur posé en
+  (0,0) étant au centre de sa carte, la tuile (i, j) couvre
+  `[i·côté-64, i·côté-64+côté)` × idem en Z — **le décalage de -64 est
+  l'invariant**, et il vaut aux DEUX niveaux (formule du jeu :
+  `i = 128·2ⁿ ; centre = floor((pos+64)/i)·i + i/2 - 64`). Conséquence
+  exploitée partout : une case d'atlas contient **exactement 4×4 cases de
+  détail**, jamais à cheval — l'empilement des deux couches est un simple
+  z-order, sans recalage. Tout ça est testé dans
+  `test/lore-map-math.test.js` ; si ces tests tombent, le fond ment.
+  Chacun dépose la capture d'une case ; re-déposer **remplace** l'image
+  (upsert + suppression de l'ancien fichier) **à son niveau seulement** —
+  déposer un atlas n'efface donc jamais le détail déjà posé dessous. Le
+  niveau est facultatif à l'upload (absent = 0).
 - `lore_peuples` + `lore_dialogues` — les peuples, et les répliques relevées
   des PNJ. Un PNJ **n'est pas** une table à part : c'est une `lore_entries` de
   type `pnj` avec un `peuple_id`, donc il garde coordonnées, images, relations
@@ -80,7 +89,7 @@ d'affichage de la carte (placement du render, molette, %) sont dans
 Onglets de la page : 📖 Entrées (liste + filtres serveur), 🗺 Carte
 (`LoreMap` + `MapTab` — onglets **monde** Nostra/Novum × **dimension**,
 pan/molette, formes par type, modes origine avec rose des vents / mesure /
-➕ point → éditeur pré-rempli / ✏️ tracé / 🧩 cartes 128×128, aperçu du
+➕ point → éditeur pré-rempli / ✏️ tracé / 🧩 cartes, aperçu du
 screenshot au survol), 👥 Peuples (`PeuplesTab` — peuples dépliables, leurs
 PNJ et leurs dialogues, ajout en ligne), 🧪 Hypothèses (kanban, pistes mortes
 repliées par défaut), 🕸 Graphe (`GraphTab`, simulation de forces maison — pas
@@ -88,6 +97,26 @@ de d3-force), 🕰 Timeline, 📤 Export (JSON + `DossierView` imprimable, palet
 papier via le flag `print` du renderer markdown). `/lore?tab=carte` ouvre
 directement un onglet — c'est ce qu'utilise le raccourci « 🔍 Lore — carte »
 du dashboard admin.
+
+**Les deux couches du fond** (`LoreMap`) s'empilent du plus grossier au plus
+fin : render calibré, puis **atlas 512**, puis **détail 128**. Le détail
+n'apparaît qu'en dessous de `DETAIL_MAX_SPAN` (2048 blocs de large) — c'est
+tout le principe : on arrive sur l'atlas, on zoome sur une zone et le détail
+se pose dessus là où des cases y ont été déposées. Le bouton « 🧩 128 »
+de la barre de vue force ce choix (`auto` / `toujours` / `masqué`). Le budget
+de `tilesInView` fait le reste : trop dézoomé, une couche rend une liste vide
+plutôt que des milliers de `<img>` — et il coupe le détail ~4× plus tôt (par
+axe) que l'atlas, ce qui laisse toujours un fond visible.
+
+La **vue d'arrivée** est cadrée sur l'union rectangle des cases d'atlas
+(`fitTiles`, pas sur leurs centres — cadrer sur les centres couperait la
+moitié des cases du bord) ; à défaut, le render calibré, puis les points,
+puis les cases de détail.
+
+Le **niveau de dépôt** du mode 🧩 est un état de `MapTab` (`tileZoom`), pas une
+déduction du zoom courant : `LoreMap` ne fait que le *proposer* à l'entrée
+dans le mode (`onSuggestTileZoom`), et le panneau permet de le forcer — on
+peut déposer une case 512 en étant zoomé, et inversement.
 
 **Piège de cadrage** (corrigé, à ne pas réintroduire) : les tuiles arrivent par
 une requête par carte, donc *après* le montage. Elles sont mémorisées avec

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { computeView, gridLines, niceStep } from '../quests/mapGrid';
 import {
-  TILE_SIZE, bearingDirection, imagePlacement, measureDistance, tileRect,
-  tilesInView, toPct, worldToTile, zoomAt,
+  ATLAS_ZOOM, DETAIL_MAX_SPAN, DETAIL_ZOOM, bearingDirection, fitTiles,
+  imagePlacement, measureDistance, tileRect, tileSize, tilesInView, toPct,
+  worldToTile, zoomAt, zoomForView,
 } from './mapMath';
 import { ACC, ACC_RGB, ENTRY_TYPES, GOLD, INK, MUTED, hexToRgb } from './theme';
 
@@ -10,12 +11,26 @@ import { ACC, ACC_RGB, ENTRY_TYPES, GOLD, INK, MUTED, hexToRgb } from './theme';
 // patron de QuestWorldMap, avec l'image de fond calibrée par les deux points
 // de référence du render, des formes distinctes par type d'entrée, le mode
 // « origine » (rose des vents 8 axes + alignements) et la mesure de distance.
+//
+// Le fond en tuiles est à DEUX couches : l'atlas 512×512 (cartes deux crans
+// dézoomées) qu'on voit en arrivant, et le détail 128×128 qui se pose dessus
+// quand on zoome sur une zone — là où des cases ont été déposées à ce niveau.
+// Les deux grilles s'emboîtent exactement (cf. mapMath), donc l'empilement est
+// un simple z-order : rien à recaler, la couche fine masque l'atlas sous elle.
 
 const CLICK_SLOP = 4;
 const ROSE_AXES = [
   [0, 'N'], [45, 'NE'], [90, 'E'], [135, 'SE'],
   [180, 'S'], [225, 'SO'], [270, 'O'], [315, 'NO'],
 ];
+
+// Les trois états du bouton de la couche fine.
+const DETAIL_LABELS = { auto: 'auto', on: 'toujours', off: 'masqué' };
+const DETAIL_HINTS = {
+  auto: `Couche 128 : automatique — elle apparaît sous ${DETAIL_MAX_SPAN} blocs de large. Cliquer pour la forcer.`,
+  on: 'Couche 128 : toujours affichée, même dézoomé. Cliquer pour la masquer.',
+  off: 'Couche 128 : masquée — seul l\'atlas 512 est visible. Cliquer pour revenir en automatique.',
+};
 
 // Une forme par type — la couleur seule ne suffit pas (daltonisme, image de
 // fond chargée). clip-path pour triangle/hexagone, transform pour le losange.
@@ -27,13 +42,17 @@ const SHAPES = {
 export function LoreMap({
   points, map, mode, origin, onSetOrigin, ring, tolerance,
   measure, onMeasureClick, onOpenEntry, onAddAt, onDrawClick, onTileClick,
-  shapes = [], draft = null, tiles = [],
+  shapes = [], draft = null, tiles = [], tileZoom = DETAIL_ZOOM, onSuggestTileZoom,
 }) {
   const boxRef = useRef(null);
   const drag = useRef(null);
   const [imgDim, setImgDim] = useState(null); // { w, h } naturel du render
   const [showGrid, setShowGrid] = useState(true);
   const [imgOpacity, setImgOpacity] = useState(1);
+  // Couche fine : 'auto' = seuil de zoom (le comportement voulu), 'on'/'off'
+  // pour la forcer — utile pour vérifier l'alignement d'un atlas fraîchement
+  // déposé, ou pour ignorer une case 128 ratée.
+  const [detailMode, setDetailMode] = useState('auto');
   const [hover, setHover] = useState(null);
   const [tileHover, setTileHover] = useState(null); // { tileX, tileZ } en mode tuile
 
@@ -41,7 +60,16 @@ export function LoreMap({
     ? imagePlacement(map, imgDim.h / imgDim.w)
     : null;
 
+  // Les tuiles arrivent à plat, tous niveaux confondus : on les sépare une
+  // fois pour toutes (l'atlas est le fond, le détail se pose dessus).
+  const atlasTiles = tiles.filter((t) => t.zoom === ATLAS_ZOOM);
+  const detailTiles = tiles.filter((t) => t.zoom !== ATLAS_ZOOM);
+
   const fitAll = () => {
+    // Vue d'arrivée : la couverture de l'atlas 512 d'abord — c'est le layout
+    // qu'on veut voir en ouvrant la carte, le détail se révèle en zoomant.
+    const atlas = fitTiles(atlasTiles, ATLAS_ZOOM);
+    if (atlas) return atlas;
     if (placement) {
       return {
         cx: placement.left + placement.spanX / 2,
@@ -49,19 +77,13 @@ export function LoreMap({
         span: Math.max(placement.spanX, placement.spanZ) * 1.05,
       };
     }
-    // Sans render global, on cadre sur ce qui existe : les points, sinon les
-    // tuiles déjà uploadées (leur centre), sinon le spawn.
+    // Sans atlas ni render global, on cadre sur ce qui existe : les points,
+    // sinon les cases fines déjà uploadées, sinon le spawn.
     if (points.length > 0) {
       return computeView(points, { defaultSpan: 2048, padFactor: 1.25, minSpan: 512 });
     }
-    if (tiles.length > 0) {
-      const centres = tiles.map((t) => {
-        const r = tileRect(t.tileX, t.tileZ);
-        return { x: r.left + r.size / 2, z: r.top + r.size / 2 };
-      });
-      return computeView(centres, { defaultSpan: 512, padFactor: 1.6, minSpan: 384 });
-    }
-    return { cx: 0, cz: 0, span: 1024 };
+    return fitTiles(detailTiles, DETAIL_ZOOM, { pad: 1.3, minSpan: 384 })
+      || { cx: 0, cz: 0, span: 1024 };
   };
   const [view, setView] = useState(fitAll);
 
@@ -78,13 +100,20 @@ export function LoreMap({
   // Les tuiles arrivent elles aussi après le montage (une requête par carte).
   // Sans ce recadrage, une carte SANS entrée géolocalisée resterait plantée
   // sur la vue par défaut alors que ses cartes sont à des milliers de blocs.
+  // L'atlas, lui, est la vue d'arrivée décidée : il recadre même s'il y a des
+  // points ou un render — sans lui on ne recadre que faute de mieux.
   const hadTiles = useRef(tiles.length > 0);
   useEffect(() => {
-    if (tiles.length > 0 && !hadTiles.current) {
-      hadTiles.current = true;
-      if (points.length === 0 && !placement) setView(fitAll());
-    }
+    if (tiles.length === 0 || hadTiles.current) return;
+    hadTiles.current = true;
+    if (atlasTiles.length > 0 || (points.length === 0 && !placement)) setView(fitAll());
   }, [tiles.length]);
+
+  // À l'entrée en mode 🧩, le niveau de dépôt proposé suit le zoom courant
+  // (on remplit ce qu'on regarde) — le panneau permet de le forcer ensuite.
+  useEffect(() => {
+    if (mode === 'tile') onSuggestTileZoom?.(zoomForView(view));
+  }, [mode]);
 
   const pos = (x, z) => {
     const p = toPct(view, x, z);
@@ -118,7 +147,7 @@ export function LoreMap({
   const onMove = (e) => {
     if (mode === 'tile' && boxRef.current) {
       const w = worldAt(e.clientX, e.clientY);
-      const t = worldToTile(w.x, w.z);
+      const t = worldToTile(w.x, w.z, tileZoom);
       setTileHover((prev) => (prev && prev.tileX === t.tileX && prev.tileZ === t.tileZ ? prev : t));
     }
     if (!drag.current) return;
@@ -141,7 +170,7 @@ export function LoreMap({
     else if (mode === 'measure') onMeasureClick(w);
     else if (mode === 'add') onAddAt?.(w);
     else if (mode === 'draw') onDrawClick?.(w);
-    else if (mode === 'tile') onTileClick?.(worldToTile(w.x, w.z));
+    else if (mode === 'tile') onTileClick?.({ ...worldToTile(w.x, w.z, tileZoom), zoom: tileZoom });
   };
 
   // Un clic sur un marqueur s'accroche à ses coordonnées exactes (origine,
@@ -162,26 +191,35 @@ export function LoreMap({
     .map(([sx, sz]) => { const p = toPct(view, sx, sz); return `${p.left},${p.top}`; })
     .join(' ');
 
-  // Sous ~4000 blocs de large, la grille suit la trame des cartes (bords de
-  // tuiles à i·128−64) : on voit alors exactement les cartes à capturer.
-  // Au-delà elle redevient « ronde », sinon l'écran serait noir de traits.
-  const tileGrid = view.span <= 4096;
-  const step = tileGrid ? TILE_SIZE : niceStep(view.span);
-  const viewTiles = tilesInView(view);
+  // Couche fine : visible sous le seuil de zoom, ou forcée depuis la barre.
+  const showDetail = detailMode === 'on' || (detailMode === 'auto' && view.span <= DETAIL_MAX_SPAN);
+  // La grille suit la couche active — cases de 128 quand le détail est là,
+  // cases de 512 sinon : on voit toujours exactement les cartes à capturer.
+  const gridZoom = showDetail ? DETAIL_ZOOM : ATLAS_ZOOM;
+  const gridSize = tileSize(gridZoom);
+  // Tant qu'on tient sous ~32 cases de large, la grille suit la trame des
+  // cartes ; au-delà elle redevient « ronde », sinon l'écran serait noir de
+  // traits.
+  const tileGrid = view.span <= gridSize * 32;
+  const step = tileGrid ? gridSize : niceStep(view.span);
+  const gridTiles = tileGrid ? tilesInView(view, { zoom: gridZoom }) : [];
   const lines = tileGrid
     ? {
-      v: [...new Set(viewTiles.map((t) => tileRect(t.tileX, 0).left))]
+      v: [...new Set(gridTiles.map((t) => tileRect(t.tileX, 0, gridZoom).left))]
         .map((world) => ({ world, pct: toPct(view, world, 0).left, axis: world === -64 })),
-      h: [...new Set(viewTiles.map((t) => tileRect(0, t.tileZ).top))]
+      h: [...new Set(gridTiles.map((t) => tileRect(0, t.tileZ, gridZoom).top))]
         .map((world) => ({ world, pct: toPct(view, 0, world).top, axis: world === -64 })),
     }
     : gridLines(view, step);
   const ringById = ring ? new Map(ring.map((r) => [r.id, r])) : null;
 
-  // Tuiles uploadées, indexées pour un rendu O(vue) et non O(toutes les tuiles).
-  const tileByKey = new Map(tiles.map((t) => [`${t.tileX},${t.tileZ}`, t]));
-  const tileStyle = (tileX, tileZ) => {
-    const r = tileRect(tileX, tileZ);
+  // Tuiles uploadées, indexées par niveau pour un rendu O(vue) et non
+  // O(toutes les tuiles).
+  const keyOf = (t) => `${t.tileX},${t.tileZ}`;
+  const atlasByKey = new Map(atlasTiles.map((t) => [keyOf(t), t]));
+  const detailByKey = new Map(detailTiles.map((t) => [keyOf(t), t]));
+  const tileStyle = (tileX, tileZ, zoom) => {
+    const r = tileRect(tileX, tileZ, zoom);
     const p = toPct(view, r.left, r.top);
     return {
       position: 'absolute',
@@ -191,6 +229,18 @@ export function LoreMap({
       height: `${(r.size / view.span) * 100}%`,
     };
   };
+  // Une couche = les cases de ce niveau présentes dans la vue. Le budget de
+  // tilesInView fait le reste : trop dézoomé, la liste est vide et on ne peint
+  // pas 10 000 <img>.
+  const layer = (zoom, byKey) => tilesInView(view, { zoom })
+    .map((t) => byKey.get(`${t.tileX},${t.tileZ}`))
+    .filter(Boolean);
+  const atlasLayer = layer(ATLAS_ZOOM, atlasByKey);
+  const detailLayer = showDetail ? layer(DETAIL_ZOOM, detailByKey) : [];
+
+  // Mode 🧩 : la grille cliquable est celle du niveau de dépôt sélectionné.
+  const depotTiles = mode === 'tile' ? tilesInView(view, { zoom: tileZoom }) : [];
+  const depotByKey = tileZoom === ATLAS_ZOOM ? atlasByKey : detailByKey;
   const hoverTile = mode === 'tile' ? tileHover : null;
 
   const imgStyle = () => ({
@@ -210,11 +260,21 @@ export function LoreMap({
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
         <TB onClick={() => setView((v) => zoomAt(v, { x: v.cx, z: v.cz }, 0.75))} title="Zoom avant">＋</TB>
         <TB onClick={() => setView((v) => zoomAt(v, { x: v.cx, z: v.cz }, 1.3333))} title="Zoom arrière">－</TB>
-        <TB onClick={() => setView(fitAll())} title={placement ? 'Cadrer sur le render' : 'Cadrer sur les points'}>Recentrer</TB>
+        <TB
+          onClick={() => setView(fitAll())}
+          title={atlasTiles.length > 0 ? 'Cadrer sur l\'atlas 512' : (placement ? 'Cadrer sur le render' : 'Cadrer sur les points')}
+        >Recentrer</TB>
         <TB onClick={() => setView(computeView(points, { defaultSpan: 2048, padFactor: 1.25, minSpan: 512 }))} title="Cadrer sur tous les points">Ajuster</TB>
         <Toggle on={showGrid} onClick={() => setShowGrid((v) => !v)} color="#7bd3e8"># Grille</Toggle>
-        {map?.imageUrl && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: MUTED, fontFamily: "'Inter',sans-serif" }} title="Opacité du render">
+        {detailTiles.length > 0 && (
+          <Toggle
+            on={detailMode !== 'off'} color={GOLD}
+            onClick={() => setDetailMode((m) => (m === 'auto' ? 'on' : (m === 'on' ? 'off' : 'auto')))}
+            title={DETAIL_HINTS[detailMode]}
+          >🧩 128 : {DETAIL_LABELS[detailMode]}</Toggle>
+        )}
+        {(map?.imageUrl || tiles.length > 0) && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: MUTED, fontFamily: "'Inter',sans-serif" }} title="Opacité du fond de carte">
             🖼
             <input type="range" min="0.15" max="1" step="0.05" value={imgOpacity}
               onChange={(e) => setImgOpacity(+e.target.value)} style={{ accentColor: ACC, width: 70 }} />
@@ -225,7 +285,7 @@ export function LoreMap({
           {mode === 'measure' && '📏 deux clics = une distance'}
           {mode === 'add' && '➕ clique l\'emplacement de la nouvelle entrée'}
           {mode === 'draw' && '✏️ clique les sommets (un marqueur = accroché dessus)'}
-          {mode === 'tile' && '🧩 clique une case pour y déposer ta capture de carte'}
+          {mode === 'tile' && `🧩 clique une case de ${tileSize(tileZoom)} blocs pour y déposer ta capture`}
         </span>
       </div>
 
@@ -252,27 +312,38 @@ export function LoreMap({
           />
         )}
 
-        {/* cartes uploadées : une image par case de 128×128 blocs */}
-        {viewTiles.map((t) => {
-          const tile = tileByKey.get(`${t.tileX},${t.tileZ}`);
-          if (!tile) return null;
-          return (
-            <img
-              key={`t${t.tileX},${t.tileZ}`} src={tile.url} alt="" draggable={false}
-              style={{ ...tileStyle(t.tileX, t.tileZ), opacity: imgOpacity, pointerEvents: 'none', userSelect: 'none' }}
-            />
-          );
-        })}
+        {/* couche du dessous : l'atlas, une image par case de 512×512 blocs */}
+        {atlasLayer.map((tile) => (
+          <img
+            key={`a${tile.tileX},${tile.tileZ}`} src={tile.url} alt="" draggable={false}
+            style={{
+              ...tileStyle(tile.tileX, tile.tileZ, ATLAS_ZOOM),
+              opacity: imgOpacity, pointerEvents: 'none', userSelect: 'none',
+            }}
+          />
+        ))}
 
-        {/* mode tuile : cases vides esquissées + case survolée en surbrillance */}
-        {mode === 'tile' && viewTiles.map((t) => {
-          const filled = tileByKey.has(`${t.tileX},${t.tileZ}`);
+        {/* couche du dessus : le détail 128×128, là où il a été déposé */}
+        {detailLayer.map((tile) => (
+          <img
+            key={`d${tile.tileX},${tile.tileZ}`} src={tile.url} alt="" draggable={false}
+            style={{
+              ...tileStyle(tile.tileX, tile.tileZ, DETAIL_ZOOM),
+              opacity: imgOpacity, pointerEvents: 'none', userSelect: 'none',
+            }}
+          />
+        ))}
+
+        {/* mode tuile : cases vides esquissées + case survolée en surbrillance,
+            à la maille du niveau de dépôt sélectionné */}
+        {depotTiles.map((t) => {
+          const filled = depotByKey.has(`${t.tileX},${t.tileZ}`);
           const lit = hoverTile && hoverTile.tileX === t.tileX && hoverTile.tileZ === t.tileZ;
           return (
             <div
               key={`th${t.tileX},${t.tileZ}`}
               style={{
-                ...tileStyle(t.tileX, t.tileZ), pointerEvents: 'none',
+                ...tileStyle(t.tileX, t.tileZ, tileZoom), pointerEvents: 'none',
                 border: lit ? `2px solid ${GOLD}` : `1px dashed rgba(${ACC_RGB},${filled ? 0.25 : 0.45})`,
                 background: lit ? `rgba(${hexToRgb(GOLD)},0.18)` : 'transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -422,7 +493,10 @@ export function LoreMap({
       </div>
 
       <p style={{ textAlign: 'center', marginTop: 8, color: MUTED, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>
-        centre X {Math.round(view.cx)} / Z {Math.round(view.cz)} · grille {step} blocs · glisse pour te déplacer, molette pour zoomer
+        centre X {Math.round(view.cx)} / Z {Math.round(view.cz)} · grille {step} blocs
+        {atlasLayer.length > 0 && ` · atlas ${atlasLayer.length}`}
+        {detailLayer.length > 0 && ` · détail ${detailLayer.length}`}
+        {' '}· glisse pour te déplacer, molette pour zoomer
       </p>
     </div>
   );
@@ -507,9 +581,9 @@ function TB({ children, onClick, title }) {
   );
 }
 
-function Toggle({ children, on, onClick, color }) {
+function Toggle({ children, on, onClick, color, title }) {
   return (
-    <button type="button" onClick={onClick} style={{
+    <button type="button" onClick={onClick} title={title} style={{
       padding: '7px 11px', borderRadius: 8, cursor: 'pointer', fontFamily: "'Inter',sans-serif",
       fontSize: 12.5, fontWeight: 600, color: on ? color : MUTED,
       background: on ? `rgba(${hexToRgb(color)},0.14)` : 'transparent',

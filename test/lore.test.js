@@ -338,17 +338,19 @@ describe('lore — accès, seed, enquête de bout en bout', () => {
       create: { width: 128, height: 128, channels: 3, background: color },
     }).png().toBuffer();
 
-    const send = async (buf, tileX, tileZ) => {
+    const send = async (buf, tileX, tileZ, zoom) => {
       const fd = new FormData();
       fd.append('image', new Blob([buf], { type: 'image/png' }), 'carte.png');
       fd.append('tileX', String(tileX));
       fd.append('tileZ', String(tileZ));
+      if (zoom !== undefined) fd.append('zoom', String(zoom));
       return member.f.post(`/api/lore/maps/${map.id}/tiles`, { body: fd });
     };
 
+    // Sans `zoom` : niveau 0 (compat des clients antérieurs à l'atlas).
     let r = await send(await png({ r: 20, g: 120, b: 60 }), 0, 0);
     assert.equal(r.status, 201);
-    assert.deepEqual([r.json.tileX, r.json.tileZ], [0, 0]);
+    assert.deepEqual([r.json.tileX, r.json.tileZ, r.json.zoom], [0, 0, 0]);
     const firstUrl = r.json.url;
 
     // Ré-uploader la MÊME case remplace l'image (nouveau fichier, même ligne).
@@ -369,8 +371,29 @@ describe('lore — accès, seed, enquête de bout en bout', () => {
     const anon = fetcher(server.base);
     assert.equal((await anon.get(tiles[0].url)).status, 401);
 
-    // Case aberrante → 400.
+    // Case aberrante → 400. Niveau de zoom non exposé (1, 3…) → 400 aussi.
     assert.equal((await send(await png({ r: 1, g: 1, b: 1 }), 99999, 0)).status, 400);
+    assert.equal((await send(await png({ r: 1, g: 1, b: 1 }), 0, 0, 1)).status, 400);
+    assert.equal((await send(await png({ r: 1, g: 1, b: 1 }), 0, 0, 9)).status, 400);
+
+    // L'atlas 512 est une couche À PART : déposer la case (0,0) au niveau 2
+    // n'écrase pas la case (0,0) du niveau 0 — le niveau fait partie de la clé.
+    r = await send(await png({ r: 250, g: 250, b: 10 }), 0, 0, 2);
+    assert.equal(r.status, 201);
+    assert.equal(r.json.zoom, 2);
+    const atlasId = r.json.id;
+    let all = (await member.f.get(`/api/lore/maps/${map.id}/tiles`)).json;
+    assert.equal(all.length, 3, 'les deux cases 128 et la case 512 coexistent');
+    assert.equal(all.filter((t) => t.zoom === 2).length, 1);
+    assert.equal(all.filter((t) => t.zoom === 0).length, 2);
+    // Servi du plus grossier au plus fin : le client empile dans cet ordre.
+    assert.equal(all[0].zoom, 2, 'l\'atlas arrive en premier');
+
+    // …et supprimer l'atlas laisse le détail intact.
+    assert.equal((await member.f.delete(`/api/lore/tiles/${atlasId}`)).status, 204);
+    all = (await member.f.get(`/api/lore/maps/${map.id}/tiles`)).json;
+    assert.equal(all.length, 2);
+    assert.ok(all.every((t) => t.zoom === 0));
 
     assert.equal((await member.f.delete(`/api/lore/tiles/${tileId}`)).status, 204);
     assert.equal((await member.f.get(`/api/lore/maps/${map.id}/tiles`)).json.length, 1);

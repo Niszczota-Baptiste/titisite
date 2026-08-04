@@ -1746,24 +1746,55 @@ export function migrate() {
   `);
   ensureColumn('lore_maps', 'monde', `TEXT NOT NULL DEFAULT 'nostra'`);
 
-  // Fond de carte en TUILES : la grille des cartes Minecraft niveau 0 —
-  // 128×128 blocs, alignée sur le monde réel (un joueur posé en 0,0 est au
-  // centre de sa carte) : la tuile (i, j) couvre X ∈ [i·128-64, i·128+64) et
-  // Z ∈ [j·128-64, j·128+64). Chacun uploade ses screens de cartes in-game ;
-  // ré-uploader une tuile la remplace (la carte se précise au fil du temps).
+  // Fond de carte en TUILES : la grille des cartes Minecraft, sur DEUX niveaux
+  // de zoom. Au niveau `zoom`, une case fait 128·2^zoom blocs et la tuile
+  // (i, j) couvre X ∈ [i·côté-64, i·côté+64+côté-128) — le décalage de -64 est
+  // le même à tous les niveaux (formule du jeu), donc une case de zoom 2
+  // (512×512) contient EXACTEMENT 4×4 cases de zoom 0. On expose 0 (détail) et
+  // 2 (atlas) ; ré-uploader une case la remplace, à son niveau seulement.
   db.exec(`
     CREATE TABLE IF NOT EXISTS lore_map_tiles (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       map_id      INTEGER NOT NULL REFERENCES lore_maps(id) ON DELETE CASCADE,
+      zoom        INTEGER NOT NULL DEFAULT 0,
       tile_x      INTEGER NOT NULL,
       tile_z      INTEGER NOT NULL,
       filename    TEXT NOT NULL,
       uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
       updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-      UNIQUE (map_id, tile_x, tile_z)
+      UNIQUE (map_id, zoom, tile_x, tile_z)
     );
   `);
+  // Bases antérieures aux niveaux de zoom : la contrainte UNIQUE portait sur
+  // (map_id, tile_x, tile_z), ce qui interdirait la même case aux deux
+  // niveaux. SQLite ne sait pas modifier une contrainte de table → rebuild
+  // (les tuiles existantes sont toutes du niveau 0, d'où le `0` littéral).
+  // Rien ne référence lore_map_tiles : le rename ne casse aucune FK.
+  if (!db.prepare(`PRAGMA table_info(lore_map_tiles)`).all().some((c) => c.name === 'zoom')) {
+    db.exec(`
+      BEGIN;
+      ALTER TABLE lore_map_tiles RENAME TO lore_map_tiles_pre_zoom;
+      CREATE TABLE lore_map_tiles (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        map_id      INTEGER NOT NULL REFERENCES lore_maps(id) ON DELETE CASCADE,
+        zoom        INTEGER NOT NULL DEFAULT 0,
+        tile_x      INTEGER NOT NULL,
+        tile_z      INTEGER NOT NULL,
+        filename    TEXT NOT NULL,
+        uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+        updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+        UNIQUE (map_id, zoom, tile_x, tile_z)
+      );
+      INSERT INTO lore_map_tiles
+        (id, map_id, zoom, tile_x, tile_z, filename, uploaded_by, created_at, updated_at)
+        SELECT id, map_id, 0, tile_x, tile_z, filename, uploaded_by, created_at, updated_at
+        FROM lore_map_tiles_pre_zoom;
+      DROP TABLE lore_map_tiles_pre_zoom;
+      COMMIT;
+    `);
+  }
 
   // Peuples du monde (Hewyr, Ondiens…) : un PNJ (lore_entries.peuple_id) y est
   // rattaché, et porte ses dialogues relevés en jeu — plusieurs par PNJ, avec

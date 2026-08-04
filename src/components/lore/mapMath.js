@@ -36,38 +36,78 @@ export function toPct(view, x, z) {
   };
 }
 
-// ── Grille des cartes Minecraft (tuiles 128×128) ───────────────────────────
-// Un joueur posé en (0,0) est au CENTRE de sa carte : la tuile (i, j) couvre
-// [i·128-64, i·128+64) × [j·128-64, j·128+64). Ce décalage de -64 est ce qui
-// aligne la grille sur les cartes réelles du jeu — s'en écarter décalerait
-// toutes les captures d'un demi-carte.
+// ── Grille des cartes Minecraft (tuiles, deux niveaux de zoom) ─────────────
+// Un joueur posé en (0,0) est au CENTRE de sa carte : au niveau 0 la tuile
+// (i, j) couvre [i·128-64, i·128+64) × [j·128-64, j·128+64). Ce décalage de
+// -64 est ce qui aligne la grille sur les cartes réelles du jeu — s'en écarter
+// décalerait toutes les captures d'un demi-carte.
+//
+// Le jeu calcule le centre d'une carte de zoom n par
+//   i = 128·2ⁿ ; centre = floor((pos + 64) / i)·i + i/2 - 64
+// donc la tuile d'indice k couvre [k·i - 64, k·i + i - 64) : **le décalage de
+// -64 vaut à TOUS les niveaux**, et les grilles s'emboîtent exactement (une
+// case de zoom 2 = 4×4 cases de zoom 0, jamais à cheval). C'est cette
+// propriété qui permet d'empiler les couches sans couture ni recalage.
 export const TILE_SIZE = 128;
 export const TILE_OFFSET = -64;
 
+// Les deux niveaux exposés : l'atlas « deux crans dézoomé » (512×512 blocs)
+// qui sert de fond d'arrivée, et le détail (128×128) qui se pose dessus.
+export const ATLAS_ZOOM = 2;
+export const DETAIL_ZOOM = 0;
+// Du plus grossier au plus fin : c'est aussi l'ordre d'empilement au rendu.
+export const TILE_ZOOMS = [ATLAS_ZOOM, DETAIL_ZOOM];
+
+// Côté d'une tuile en blocs : 128 au niveau 0, 512 au niveau 2.
+export function tileSize(zoom = 0) {
+  return TILE_SIZE * (2 ** zoom);
+}
+
+// Au-delà de cette largeur de vue, une case de 128 blocs ne ferait plus que
+// quelques pixels : on ne montre que l'atlas. En dessous, le détail prend le
+// dessus là où il existe. (2048 blocs de large ⇒ 16 cases fines ⇒ ~50 px.)
+export const DETAIL_MAX_SPAN = 2048;
+
+// Le niveau que la vue « regarde » — celui que le mode 🧩 pré-sélectionne et
+// que la grille suit par défaut.
+export function zoomForView(view) {
+  return view.span <= DETAIL_MAX_SPAN ? DETAIL_ZOOM : ATLAS_ZOOM;
+}
+
 // Coordonnée monde → indice de tuile (le bloc -64 appartient déjà à la tuile 0).
-export function worldToTile(x, z) {
+export function worldToTile(x, z, zoom = 0) {
+  const s = tileSize(zoom);
   return {
-    tileX: Math.floor((x - TILE_OFFSET) / TILE_SIZE),
-    tileZ: Math.floor((z - TILE_OFFSET) / TILE_SIZE),
+    tileX: Math.floor((x - TILE_OFFSET) / s),
+    tileZ: Math.floor((z - TILE_OFFSET) / s),
   };
 }
 
 // Rectangle monde d'une tuile : { left, top, size } (top = Z le plus petit,
 // c'est-à-dire le bord NORD, puisque le nord est Z décroissant).
-export function tileRect(tileX, tileZ) {
+export function tileRect(tileX, tileZ, zoom = 0) {
+  const s = tileSize(zoom);
   return {
-    left: tileX * TILE_SIZE + TILE_OFFSET,
-    top: tileZ * TILE_SIZE + TILE_OFFSET,
-    size: TILE_SIZE,
+    left: tileX * s + TILE_OFFSET,
+    top: tileZ * s + TILE_OFFSET,
+    size: s,
   };
+}
+
+// Case parente d'une tuile au niveau supérieur (128 → 512). L'emboîtement
+// étant exact, c'est une simple division entière — floor, pas troncature,
+// sinon tout le quadrant négatif se décalerait d'une case.
+export function tileParent(tileX, tileZ, fromZoom, toZoom) {
+  const f = 2 ** (toZoom - fromZoom);
+  return { tileX: Math.floor(tileX / f), tileZ: Math.floor(tileZ / f) };
 }
 
 // Indices de tuiles couvrant la vue, bornés par `max` pour ne jamais générer
 // des milliers de rectangles quand on dézoome à l'échelle du monde.
-export function tilesInView(view, { max = 1200 } = {}) {
+export function tilesInView(view, { zoom = 0, max = 1200 } = {}) {
   const half = view.span / 2;
-  const a = worldToTile(view.cx - half, view.cz - half);
-  const b = worldToTile(view.cx + half, view.cz + half);
+  const a = worldToTile(view.cx - half, view.cz - half, zoom);
+  const b = worldToTile(view.cx + half, view.cz + half, zoom);
   const cols = b.tileX - a.tileX + 1;
   const rows = b.tileZ - a.tileZ + 1;
   if (cols * rows > max || cols <= 0 || rows <= 0) return [];
@@ -76,6 +116,27 @@ export function tilesInView(view, { max = 1200 } = {}) {
     for (let i = a.tileX; i <= b.tileX; i += 1) out.push({ tileX: i, tileZ: j });
   }
   return out;
+}
+
+// Vue cadrée sur un lot de tuiles : leur union RECTANGLE, pas leurs centres —
+// cadrer sur les centres couperait la moitié des cases du bord.
+export function fitTiles(tiles, zoom, { pad = 1.08, minSpan = 256 } = {}) {
+  if (!tiles || tiles.length === 0) return null;
+  const s = tileSize(zoom);
+  let minX = Infinity; let maxX = -Infinity;
+  let minZ = Infinity; let maxZ = -Infinity;
+  for (const t of tiles) {
+    const r = tileRect(t.tileX, t.tileZ, zoom);
+    minX = Math.min(minX, r.left);
+    maxX = Math.max(maxX, r.left + s);
+    minZ = Math.min(minZ, r.top);
+    maxZ = Math.max(maxZ, r.top + s);
+  }
+  return {
+    cx: (minX + maxX) / 2,
+    cz: (minZ + maxZ) / 2,
+    span: Math.max(minSpan, Math.max(maxX - minX, maxZ - minZ) * pad),
+  };
 }
 
 // Zoom molette centré sur le curseur : le point monde sous la souris ne bouge

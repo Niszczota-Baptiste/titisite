@@ -290,9 +290,17 @@ Single-process Node app:
   (tested), the map's origin mode consumes `GET /geo/ring` and the client does
   NO trigonometry; geography is scoped by **`monde`** (nostra/novum) ×
   `dimension`, so every map/points/shapes/ring query carries both; the map
-  background is collaborative **128×128 tiles** (`lore_map_tiles`) on the real
-  Minecraft map grid — tile (i,j) covers `[i·128-64, i·128+64)`, re-uploading a
-  tile replaces it, and tiles are kept keyed by their map id client-side so a
+  background is collaborative tiles (`lore_map_tiles`) on the real Minecraft
+  map grid, at **two zoom levels** (`zoom` ∈ {0, 2} — 128×128 *détail* and
+  512×512 *atlas*): tile (i,j) covers `[i·côté-64, i·côté-64+côté)`, and **the
+  -64 offset holds at both levels**, so an atlas cell contains exactly 4×4
+  detail cells and the two layers stack by plain z-order (no recalibration).
+  The atlas is the arrival view (`fitTiles` frames on its union rectangle);
+  the detail layer only shows below `DETAIL_MAX_SPAN` (2048 blocks wide),
+  overridable by the « 🧩 128 » button. The deposit level is an explicit
+  picker in the 🧩 panel (`tileZoom` in `MapTab`, merely *suggested* by the
+  current zoom). Re-uploading replaces a tile **at its level only**, and tiles
+  are kept keyed by their map id client-side so a
   world switch can never frame on the previous world's tiles; `lore_fts` (FTS5, first in the repo) is synced explicitly
   by the store; media are WebP-recompressed (decode failure = 415) and served
   ONLY via `/api/lore/media/file/:f` behind the gate — never statically;

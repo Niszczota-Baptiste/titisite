@@ -9,7 +9,7 @@ import {
 } from '../lore/audit.js';
 import {
   DIMENSIONS, ENTRY_TYPES, HYPOTHESIS_STATUSES, MONDES, RELATION_TYPES,
-  STANCES, TERMINAL_STATUSES,
+  STANCES, TERMINAL_STATUSES, TILE_ZOOMS,
 } from '../lore/enums.js';
 import { bearingInfo, ringFrom } from '../lore/geo.js';
 import {
@@ -578,11 +578,13 @@ loreRouter.post('/maps/:id/image', uploadLimiter, uploadLoreImage.single('image'
   res.json(setMapImage(id, processed.filename));
 });
 
-// ── Tuiles 128×128 (grille des cartes Minecraft) ───────────────────────────
-// La tuile (i, j) couvre X ∈ [i·128-64, i·128+64) et Z de même : un joueur
-// posé en (0,0) est au centre de la tuile (0,0), comme sa carte in-game.
-// Ré-uploader une tuile REMPLACE son image (la carte se précise au fil des
-// captures) — c'est le même endpoint, l'upsert est côté store.
+// ── Tuiles (grille des cartes Minecraft, niveaux 0 et 2) ───────────────────
+// Au niveau 0 la tuile (i, j) couvre X ∈ [i·128-64, i·128+64) et Z de même :
+// un joueur posé en (0,0) est au centre de la tuile (0,0), comme sa carte
+// in-game. Le niveau 2 est la même grille en 512×512 blocs (carte deux crans
+// dézoomée), même décalage de -64 — elle sert de fond d'atlas sous le détail.
+// Ré-uploader une tuile REMPLACE son image, à son niveau uniquement (la carte
+// se précise au fil des captures) — même endpoint, l'upsert est côté store.
 
 loreRouter.get('/maps/:id/tiles', (req, res) => {
   const id = idParam(req);
@@ -595,10 +597,13 @@ loreRouter.post('/maps/:id/tiles', uploadLimiter, uploadLoreImage.single('image'
   const id = idParam(req);
   const tileX = asInt(req.body?.tileX);
   const tileZ = asInt(req.body?.tileZ);
-  // Bornes larges mais finies : ±4096 tuiles = ±524 288 blocs, au-delà de
-  // toute map jouable — cadre les saisies aberrantes sans gêner personne.
+  // Niveau absent = 0 : les clients antérieurs à l'atlas continuent de
+  // déposer des cartes de base sans rien changer.
+  const zoom = req.body?.zoom === undefined ? 0 : asInt(req.body.zoom);
+  // Bornes larges mais finies : ±4096 tuiles = ±524 288 blocs (×4 au niveau 2),
+  // au-delà de toute map jouable — cadre les saisies aberrantes sans gêner.
   const bad = (v) => v === undefined || v === null || Math.abs(v) > 4096;
-  if (bad(tileX) || bad(tileZ)) {
+  if (bad(tileX) || bad(tileZ) || !TILE_ZOOMS.includes(zoom)) {
     safeUnlink(req.file.filename);
     return res.status(400).json({ error: 'invalid_tile' });
   }
@@ -608,7 +613,7 @@ loreRouter.post('/maps/:id/tiles', uploadLimiter, uploadLoreImage.single('image'
   }
   const processed = await processLoreImage(req.file, { thumbnail: false });
   if (!processed) return res.status(415).json({ error: 'not_an_image' });
-  res.status(201).json(upsertTile(id, tileX, tileZ, processed.filename, req.user.id));
+  res.status(201).json(upsertTile(id, zoom, tileX, tileZ, processed.filename, req.user.id));
 });
 
 loreRouter.delete('/tiles/:id', (req, res) => {

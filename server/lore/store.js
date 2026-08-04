@@ -631,27 +631,30 @@ export function deleteMap(id) {
   return true;
 }
 
-// ── Tuiles 128×128 (grille des cartes Minecraft) ────────────────────────────
+// ── Tuiles (grille des cartes Minecraft, niveaux 0 et 2) ────────────────────
 
 function rowToTile(r) {
   return {
-    id: r.id, mapId: r.map_id, tileX: r.tile_x, tileZ: r.tile_z,
+    id: r.id, mapId: r.map_id, zoom: r.zoom, tileX: r.tile_x, tileZ: r.tile_z,
     url: `/api/lore/media/file/${r.filename}`,
     uploadedBy: r.uploaded_by, updatedAt: r.updated_at,
   };
 }
 
+// Trié du niveau le plus grossier au plus fin : le client empile dans l'ordre
+// reçu, la couche de détail se pose donc naturellement au-dessus de l'atlas.
 export function listTiles(mapId) {
-  return db.prepare(`SELECT * FROM lore_map_tiles WHERE map_id = ? ORDER BY id`)
+  return db.prepare(`SELECT * FROM lore_map_tiles WHERE map_id = ? ORDER BY zoom DESC, id`)
     .all(mapId).map(rowToTile);
 }
 
-// Upsert par (carte, tuile) : ré-uploader une tuile remplace son image —
-// l'ancien fichier est supprimé du disque.
-export function upsertTile(mapId, tileX, tileZ, filename, userId) {
+// Upsert par (carte, niveau, tuile) : ré-uploader une case remplace son image
+// — l'ancien fichier est supprimé du disque. Le niveau fait partie de la clé :
+// déposer un 512 n'écrase donc jamais les 128 qu'il recouvre, et inversement.
+export function upsertTile(mapId, zoom, tileX, tileZ, filename, userId) {
   const existing = db.prepare(
-    `SELECT * FROM lore_map_tiles WHERE map_id = ? AND tile_x = ? AND tile_z = ?`,
-  ).get(mapId, tileX, tileZ);
+    `SELECT * FROM lore_map_tiles WHERE map_id = ? AND zoom = ? AND tile_x = ? AND tile_z = ?`,
+  ).get(mapId, zoom, tileX, tileZ);
   if (existing) {
     db.prepare(`
       UPDATE lore_map_tiles SET filename = ?, uploaded_by = ?, updated_at = strftime('%s','now')
@@ -661,9 +664,9 @@ export function upsertTile(mapId, tileX, tileZ, filename, userId) {
     return rowToTile(db.prepare(`SELECT * FROM lore_map_tiles WHERE id = ?`).get(existing.id));
   }
   const info = db.prepare(`
-    INSERT INTO lore_map_tiles (map_id, tile_x, tile_z, filename, uploaded_by)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(mapId, tileX, tileZ, filename, userId ?? null);
+    INSERT INTO lore_map_tiles (map_id, zoom, tile_x, tile_z, filename, uploaded_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(mapId, zoom, tileX, tileZ, filename, userId ?? null);
   return rowToTile(db.prepare(`SELECT * FROM lore_map_tiles WHERE id = ?`).get(info.lastInsertRowid));
 }
 
