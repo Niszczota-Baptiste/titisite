@@ -195,6 +195,10 @@ GET  /unique-items/:id/sources index inversé : { sources, usages } — 100 % d�
 GET  /unique-items/:id/observations
 POST /unique-items/:id/observations   loguer une ouverture (voir ci-dessous)
 DELETE /observations/:id       la sienne, ou n'importe laquelle pour un éditeur
+DELETE /unique-items/:id/observations[?scope=mine|all]
+                               remise à zéro du journal : `mine` = les siens
+                               (tout lecteur), `all` (défaut) = tous, éditeurs
+                               seulement → { supprimees, resume, recentes }
 GET  /quests?faction=&chain=&occurrence=&categorie=   liste (+ `done` du membre)
 GET  /quests/:id               fiche complète (+ `done` + mon historique)
 GET  /me/quests                { done: { questId: true } } (période courante)
@@ -222,6 +226,17 @@ POST|PUT|DELETE  /quests[/:id]       (+ categorie, craft{…}, offers[])
 d'édition la condamnerait à rester devinée. Chacun ne supprime que ses propres
 observations ; un éditeur peut toutes les retirer. Rien d'autre du catalogue
 n'est modifiable sans `can_edit_quests`.
+
+**Repartir de zéro après une mise à jour du serveur de jeu** : quand la table
+de butin change en jeu, les relevés décrivent une table qui n'existe plus et
+moyenner les deux versions ne veut rien dire. `DELETE
+/unique-items/:id/observations` vide le journal du contenant (bouton
+« ↺ Tout réinitialiser » de la fiche, éditeurs) ; `?scope=mine` n'efface que
+ses propres relevés et suit donc la même règle que la suppression ligne à
+ligne (« ↺ Mes relevés », tout lecteur). Dans les deux cas la table de butin
+**déclarée** (`loot_entries`) n'est pas touchée : c'est l'observation qui est
+périmée, pas la table — et l'appel est rejouable, ne plus rien avoir à effacer
+répond `{ supprimees: 0 }`, pas une erreur.
 
 Les deux routes `/custom-items` restent servies pour ne rien casser, mais elles
 **délèguent** au catalogue : un seul chemin d'écriture, donc aucun item sans

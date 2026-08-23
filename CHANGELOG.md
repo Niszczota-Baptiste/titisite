@@ -5,6 +5,26 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — reset-ouvertures-geodes
+
+### Quêtes — remise à zéro du journal d'ouvertures
+- **Le serveur de jeu a été mis à jour ⇒ les taux relevés sont périmés.**
+  Nouvelle route `DELETE /api/quests/unique-items/:id/observations` : elle vide
+  le journal d'ouvertures d'un contenant d'un coup, au lieu de supprimer les
+  relevés ligne à ligne. `?scope=mine` n'efface que ses propres relevés — même
+  règle que la suppression unitaire, donc ouverte à tout lecteur de quêtes ;
+  sans paramètre (`scope=all`) elle efface ceux de tout le monde et reste
+  **réservée aux éditeurs**. Réponse `{ supprimees, resume, recentes }`.
+- **La table de butin déclarée n'est jamais touchée** : c'est l'observation qui
+  est périmée, pas la table. L'appel est rejouable — n'avoir plus rien à
+  effacer répond `{ supprimees: 0 }`, pas une erreur.
+- **Fiche d'item** : deux boutons dans le bloc « Table de butin », visibles dès
+  qu'une ouverture est relevée — « ↺ Mes relevés » (tout le monde) et
+  « ↺ Tout réinitialiser » (éditeurs), tous deux derrière une confirmation qui
+  annonce ce qui sera effacé, et un retour chiffré une fois fait.
+
+---
+
 ## [Unreleased] — lore-nostra-module
 
 ### Lore « Nostra » — salle d'enquête collaborative (`/lore`)

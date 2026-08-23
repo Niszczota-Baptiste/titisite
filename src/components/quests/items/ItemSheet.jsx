@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../../api/client';
+import { useConfirm } from '../../../ui/ConfirmProvider';
 import { Button } from '../../admin/ui';
 import { CodexPicker } from '../../admin/editors/minecraft/CodexPicker';
 import { QuestMap } from '../QuestMap';
@@ -91,6 +92,7 @@ export function ItemSheet({
           />
           <ObservationLogger
             item={item} byId={byId} catalog={catalog} itemsById={itemsById}
+            canEdit={canEdit}
             onLogged={(fiche) => { setItem(fiche); onChanged?.(); }}
           />
         </Section>
@@ -232,20 +234,22 @@ function ligneEchange(offre) {
 // Ouvert à tout lecteur : c'est ce qui permet d'affiner les probabilités sans
 // les deviner. Le résultat se choisit dans la table déclarée, ou librement.
 
-function ObservationLogger({ item, byId, catalog, itemsById, onLogged }) {
+function ObservationLogger({ item, byId, catalog, itemsById, canEdit, onLogged }) {
+  const confirm = useConfirm();
   const [ouvert, setOuvert] = useState(false);
   const [choix, setChoix] = useState('');
   const [refCode, setRefCode] = useState('');
   const [quantite, setQuantite] = useState(1);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [reset, setReset] = useState(null); // { ok, texte } — retour du reset
 
   const options = useMemo(() => (item.loot || []).map((l, i) => ({
     value: `l${i}`, label: l.label, ligne: l,
   })), [item.loot]);
 
   const envoyer = async () => {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setReset(null);
     try {
       const opt = options.find((o) => o.value === choix);
       const body = opt
@@ -272,18 +276,69 @@ function ObservationLogger({ item, byId, catalog, itemsById, onLogged }) {
 
   const total = item.observations?.total || 0;
 
+  // Après une mise à jour du serveur de jeu, les taux relevés décrivent une
+  // table qui n'existe plus : on repart de zéro plutôt que de moyenner deux
+  // versions. La table de butin déclarée, elle, reste en place.
+  const reinitialiser = async (scope) => {
+    const ok = await confirm({
+      title: 'Repartir de zéro sur les ouvertures',
+      danger: true,
+      confirmLabel: 'Effacer les relevés',
+      message: scope === 'mine'
+        ? `Tes ouvertures de « ${item.nom} » seront effacées. Les relevés des autres membres et la table de butin déclarée ne bougent pas.`
+        : `Les ${total} ouverture${total > 1 ? 's' : ''} relevée${total > 1 ? 's' : ''} de « ${item.nom} », tous membres confondus, seront effacées — c'est ce qu'on fait après une mise à jour du serveur. La table de butin déclarée n'est pas touchée.`,
+    });
+    if (!ok) return;
+    setBusy(true); setErr(null); setReset(null);
+    try {
+      const r = await api.quests.uniqueItems.resetObservations(item.id, scope);
+      const fiche = await api.quests.uniqueItems.get(item.id);
+      onLogged?.(fiche);
+      setReset({
+        ok: true,
+        texte: r.supprimees > 0
+          ? `${r.supprimees} relevé${r.supprimees > 1 ? 's' : ''} effacé${r.supprimees > 1 ? 's' : ''} — les taux repartent de zéro.`
+          : 'Aucun relevé à ton nom sur ce contenant.',
+      });
+    } catch (e) {
+      setReset({ ok: false, texte: e.body?.error || e.message });
+    } finally { setBusy(false); }
+  };
+
   return (
     <div style={{ marginTop: 10, borderTop: '1px solid rgba(80,50,130,0.25)', paddingTop: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: MUTED }}>
+        <span style={{
+          fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: MUTED,
+          flex: 1, minWidth: 180,
+        }}>
           {total > 0
             ? `${total} ouverture${total > 1 ? 's' : ''} relevée${total > 1 ? 's' : ''} — les taux observés s'affichent au-dessus.`
             : 'Aucune ouverture relevée. Logue ce que tu obtiens : les taux réels se calculeront tout seuls.'}
         </span>
-        <Button variant="ghost" onClick={() => setOuvert((o) => !o)} style={{ marginLeft: 'auto' }}>
+        {total > 0 && (
+          <Button variant="ghost" onClick={() => reinitialiser('mine')} disabled={busy}
+            title="Efface tes propres relevés sur ce contenant">
+            ↺ Mes relevés
+          </Button>
+        )}
+        {total > 0 && canEdit && (
+          <Button variant="danger" onClick={() => reinitialiser('all')} disabled={busy}
+            title="Efface les relevés de tout le monde — après une mise à jour du serveur">
+            ↺ Tout réinitialiser
+          </Button>
+        )}
+        <Button variant="ghost" onClick={() => setOuvert((o) => !o)}>
           {ouvert ? 'Fermer' : "+ J'ai ouvert une géode"}
         </Button>
       </div>
+
+      {reset && (
+        <p style={{
+          margin: '7px 0 0', fontFamily: "'Inter',sans-serif", fontSize: 12,
+          color: reset.ok ? '#7be3a8' : '#ff8a9b',
+        }}>{reset.texte}</p>
+      )}
 
       {ouvert && (
         <div style={{

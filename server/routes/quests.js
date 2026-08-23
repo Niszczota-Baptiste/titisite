@@ -7,6 +7,7 @@ import { findByCockpitToken } from '../users.js';
 import { buildCockpitFeed } from '../quests/cockpit.js';
 import {
   addObservation,
+  clearObservations,
   deleteObservation,
   getObservation,
   getUniqueItem,
@@ -192,6 +193,26 @@ questsRouter.delete('/observations/:id', READ, (req, res) => {
   if (!isEditor && obs.memberId !== req.user.id) return res.status(403).json({ error: 'forbidden' });
   deleteObservation(obs.id);
   res.json({ resume: observationSummary(obs.uniqueItemId), recentes: listObservations(obs.uniqueItemId) });
+});
+
+// Remise à zéro du journal d'un contenant — le cas « le serveur a été mis à
+// jour, les taux relevés ne valent plus rien ». `?scope=mine` n'efface que ses
+// propres relevés (comme la suppression ligne à ligne, donc ouvert à tout
+// lecteur) ; le reset complet efface ceux de tout le monde et reste réservé
+// aux éditeurs de quêtes. La table de butin déclarée n'est pas touchée.
+questsRouter.delete('/unique-items/:id/observations', READ, (req, res) => {
+  const id = Number(req.params.id);
+  if (!uniqueItemExists(id)) return res.status(404).json({ error: 'not_found' });
+  const scope = String(req.query.scope || 'all');
+  if (scope !== 'all' && scope !== 'mine') return res.status(400).json({ error: 'invalid_scope' });
+  const isEditor = req.user.role === 'admin' || req.user.can_edit_quests === 1;
+  if (scope === 'all' && !isEditor) return res.status(403).json({ error: 'forbidden' });
+  const supprimees = clearObservations(id, scope === 'mine' ? req.user.id : null);
+  res.json({
+    supprimees,
+    resume: observationSummary(id),
+    recentes: listObservations(id),
+  });
 });
 
 questsRouter.get('/reputation', READ, (_req, res) => res.json(reputationOverview()));

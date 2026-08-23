@@ -355,6 +355,11 @@ export const api = {
       observations:    (id) => request('GET', `/quests/unique-items/${id}/observations`),
       logObservation:  (id, b) => request('POST', `/quests/unique-items/${id}/observations`, b),
       deleteObservation: (obsId) => request('DELETE', `/quests/observations/${obsId}`),
+      // Repartir de zéro après une mise à jour du serveur de jeu : 'mine' =
+      // mes relevés seulement, 'all' (défaut) = tous, réservé aux éditeurs.
+      resetObservations: (id, scope = 'all') => request(
+        'DELETE', `/quests/unique-items/${id}/observations?scope=${scope}`,
+      ),
     },
     // Échelle de rareté (table éditable, pas un enum).
     rarities: {

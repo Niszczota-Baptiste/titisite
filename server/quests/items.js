@@ -476,6 +476,22 @@ export function deleteObservation(id) {
   return db.prepare(`DELETE FROM loot_observations WHERE id = ?`).run(id).changes > 0;
 }
 
+/**
+ * Remise à zéro du journal d'ouvertures d'un contenant : après une mise à jour
+ * du serveur de jeu, les taux relevés ne décrivent plus la table actuelle et
+ * fausseraient le verdict « vendre ou ouvrir ? ». `memberId` non nul = on
+ * n'efface que les relevés de ce membre. La table DÉCLARÉE (`loot_entries`)
+ * n'est jamais touchée : c'est l'observation qui est périmée, pas la table.
+ * Renvoie le nombre de lignes effacées.
+ */
+export function clearObservations(uniqueItemId, memberId = null) {
+  return memberId == null
+    ? db.prepare(`DELETE FROM loot_observations WHERE unique_item_id = ?`)
+      .run(uniqueItemId).changes
+    : db.prepare(`DELETE FROM loot_observations WHERE unique_item_id = ? AND member_id = ?`)
+      .run(uniqueItemId, memberId).changes;
+}
+
 // ── Sources manuelles ─────────────────────────────────────────────────────
 
 function mapManualSource(r) {

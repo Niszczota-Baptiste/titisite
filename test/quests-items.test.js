@@ -217,6 +217,48 @@ describe('items uniques — table de butin', () => {
     const own = all.json.recentes.find((o) => o.memberId === member.user.id);
     assert.equal((await member.f.delete(`/api/quests/observations/${own.id}`)).status, 200);
   });
+
+  it('reset du journal : ses propres relevés pour un lecteur, tous pour un éditeur', async () => {
+    // Sur la PETITE géode, pour ne pas toucher au journal de la très rare que
+    // les compteurs du catalogue vérifient plus bas.
+    const member = await login(MEMBER);
+    const url = `/api/quests/unique-items/${petite.id}/observations`;
+    await admin.f.put(`/api/quests/unique-items/${petite.id}`, {
+      body: { ...petite, loot: [{ resultatType: 'pa', probabilite: 50, labelAffiche: 'Pièces' }] },
+    });
+    for (let i = 0; i < 2; i += 1) {
+      assert.equal((await admin.f.post(url, { body: { resultatType: 'pa', quantite: 4 } })).status, 201);
+    }
+    for (let i = 0; i < 3; i += 1) {
+      assert.equal((await member.f.post(url, { body: { resultatType: 'pa', quantite: 5 } })).status, 201);
+    }
+    assert.equal((await admin.f.get(url)).json.resume.total, 5);
+
+    // Un simple lecteur n'efface pas le journal des autres.
+    assert.equal((await member.f.delete(url)).status, 403);
+    assert.equal((await admin.f.delete(`${url}?scope=nimportequoi`)).json.error, 'invalid_scope');
+
+    const miens = await member.f.delete(`${url}?scope=mine`);
+    assert.equal(miens.status, 200);
+    assert.equal(miens.json.supprimees, 3);
+    assert.equal(miens.json.resume.total, 2, 'les relevés des autres restent');
+    assert.ok(miens.json.recentes.every((o) => o.memberId !== member.user.id));
+    // Rejouable : n'avoir plus rien à effacer n'est pas une erreur.
+    assert.equal((await member.f.delete(`${url}?scope=mine`)).json.supprimees, 0);
+
+    // Mise à jour du serveur de jeu : l'éditeur repart de zéro pour tout le monde.
+    const tout = await admin.f.delete(url);
+    assert.equal(tout.status, 200);
+    assert.equal(tout.json.supprimees, 2);
+    assert.equal(tout.json.resume.total, 0);
+    assert.equal(tout.json.recentes.length, 0);
+
+    const fiche = (await admin.f.get(`/api/quests/unique-items/${petite.id}`)).json;
+    assert.equal(fiche.observations.total, 0);
+    assert.equal(fiche.loot.length, 1, 'la table de butin DÉCLARÉE survit au reset');
+
+    assert.equal((await admin.f.delete('/api/quests/unique-items/999999/observations')).status, 404);
+  });
 });
 
 describe('quêtes de craft et d\'achat', () => {
