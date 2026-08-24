@@ -43,6 +43,7 @@ import {
   deletePoi,
   deleteQuest,
   getFaction,
+  questExists,
   updateChain,
   updateCustomItem,
   updateFaction,
@@ -191,6 +192,10 @@ function validateUniqueItem(b, { id = null } = {}) {
     for (const s of b.sourcesManuelles) {
       if (s?.kind && !MANUAL_SOURCE_KINDS.has(s.kind)) throw new Invalid('invalid_source_kind');
       if (!nonEmpty(s?.label)) throw new Invalid('source_label_required');
+      // Quête rattachée : facultative, mais elle doit exister.
+      if (s?.questId != null && s.questId !== '' && !questExists(Number(s.questId))) {
+        throw new Invalid('unknown_quest');
+      }
     }
   }
 }

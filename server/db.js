@@ -1437,6 +1437,12 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_item_sources_item ON unique_item_sources(unique_item_id, ordre);`);
+  // Une source manuelle peut RENVOYER à une quête (« le golem apparaît pendant
+  // la quête des grottes ») sans devenir pour autant une source dérivée : la
+  // quête ne donne pas l'objet en récompense, elle situe la source. Le lien est
+  // optionnel et retombe à NULL si la quête disparaît.
+  ensureColumn('unique_item_sources', 'quest_id', 'INTEGER REFERENCES quests(id) ON DELETE SET NULL');
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_item_sources_quest ON unique_item_sources(quest_id);`);
 
   // ── Quêtes d'achat : n offres par quête, chacune « ce qu'on donne » →
   //    « ce qu'on reçoit ». La monnaie est soit des PA, soit un item unique de

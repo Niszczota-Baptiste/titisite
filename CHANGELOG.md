@@ -25,6 +25,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - API : `GET /api/quests/sets` (lecture quêtes) et `POST|PUT|DELETE
   /api/quests/sets[/:id]` (éditeurs). Supprimer un set ne supprime aucun objet.
 
+### Quêtes — une source manuelle peut renvoyer à une quête
+- `unique_item_sources.quest_id` (optionnel, `ON DELETE SET NULL`) : « le golem
+  des grottes, croisé pendant *Les grottes hurlantes* ». Sélecteur de quête dans
+  l'éditeur de sources, ligne cliquable sur la fiche qui ouvre la quête.
+- La distinction tient : les quêtes qui **donnent** l'objet restent **dérivées**
+  des récompenses, jamais ressaisies ; ce lien-ci ne fait que **situer** une
+  source qu'aucune relation ne peut déduire. Le titre est résolu à la lecture,
+  et supprimer la quête laisse la source en place, sans lien.
+
 ### Quêtes — un résultat de butin ne s'affiche plus « custom:9 »
 - Le picker de résultat travaille sur le catalogue **augmenté** : il renvoie
   `custom:<id>` même quand le type resté sélectionné est « item du codex ». La

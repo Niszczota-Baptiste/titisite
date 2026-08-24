@@ -372,6 +372,11 @@ export function listQuests(filters = {}) {
   return quests.map((q) => ({ ...q, groups: groups[q.id] || [] }));
 }
 
+/** Existence seule — pour valider une FK sans monter la fiche complète. */
+export function questExists(id) {
+  return !!db.prepare(`SELECT id FROM quests WHERE id = ?`).get(id);
+}
+
 export function getQuest(id) {
   const r = db.prepare(`${QUEST_SUMMARY_SELECT} WHERE q.id = ?`).get(id);
   if (!r) return null;

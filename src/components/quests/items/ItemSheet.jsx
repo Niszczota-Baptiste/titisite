@@ -213,9 +213,11 @@ function Sources({ sources, itemsById, byId, onOpenQuest, onOpenItem }) {
       {manuelles.map((m) => {
         const meta = MANUAL_SOURCE_KINDS[m.kind] || MANUAL_SOURCE_KINDS.autre;
         return (
-          <Row key={`m${m.id}`} icon={meta.icon}>
+          <Row key={`m${m.id}`} icon={meta.icon}
+            onClick={m.questId && onOpenQuest ? () => onOpenQuest(m.questId) : undefined}>
             <strong>{m.label}</strong>
             <Muted> · {meta.label}</Muted>
+            {m.questTitre && <span style={{ color: ACC }}> · 📜 {m.questTitre}</span>}
             {m.note && <Muted> — {m.note}</Muted>}
             {(m.x != null || m.z != null) && (
               <Muted> · ⛏ {m.x ?? '?'} {m.y ?? '?'} {m.z ?? '?'}</Muted>

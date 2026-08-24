@@ -17,6 +17,9 @@ export function ItemsTab({ byId, catalog, factions, canEdit, onOpenQuest, onChan
   const [items, setItems] = useState([]);
   const [rarities, setRarities] = useState([]);
   const [sets, setSets] = useState([]);
+  // Liste COMPLÈTE des quêtes (pas celle filtrée par la page) : elle sert à
+  // rattacher une source manuelle à la quête où on la croise.
+  const [quests, setQuests] = useState([]);
   const [ficheId, setFicheId] = useState(null);
   const [edition, setEdition] = useState(null); // 'new' | fiche complète | null
   const [raretes, setRaretes] = useState(false);
@@ -24,14 +27,16 @@ export function ItemsTab({ byId, catalog, factions, canEdit, onOpenQuest, onChan
   const [err, setErr] = useState(null);
 
   const charger = useCallback(async () => {
-    const [list, rar, sts] = await Promise.all([
+    const [list, rar, sts, qs] = await Promise.all([
       api.quests.uniqueItems.list(),
       api.quests.rarities.list(),
       api.quests.sets.list(),
+      api.quests.list(),
     ]);
     setItems(list);
     setRarities(rar);
     setSets(sts);
+    setQuests(qs);
   }, []);
 
   useEffect(() => { charger().catch((e) => setErr(e.message)); }, [charger]);
@@ -76,7 +81,7 @@ export function ItemsTab({ byId, catalog, factions, canEdit, onOpenQuest, onChan
         </div>
         <ItemForm
           item={edition === 'new' ? null : edition}
-          items={items} rarities={rarities} sets={sets} factions={factionList}
+          items={items} rarities={rarities} sets={sets} factions={factionList} quests={quests}
           byId={byId} catalog={catalog}
           onDone={async (saved) => { setEdition(null); await rafraichir(); setFicheId(saved.id); }}
           onCancel={() => setEdition(null)}

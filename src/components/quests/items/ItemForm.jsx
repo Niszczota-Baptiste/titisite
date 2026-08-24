@@ -30,7 +30,7 @@ const RESULT_TYPES = [
 ];
 
 export function ItemForm({
-  item, items, rarities, sets = [], factions, byId, catalog, onDone, onCancel,
+  item, items, rarities, sets = [], factions, quests = [], byId, catalog, onDone, onCancel,
 }) {
   const [nom, setNom] = useState(item?.nom || '');
   const [refCode, setRefCode] = useState(item?.baseItemId || '');
@@ -325,7 +325,8 @@ export function ItemForm({
           <Button type="button" variant="ghost" style={{ padding: '4px 10px', fontSize: 12 }}
             onClick={() => setSources((ss) => [...ss, { kind: 'mob', label: '', note: '' }])}>+ Source</Button>
           <span style={{ fontSize: 11.5, color: MUTED, fontFamily: "'Inter',sans-serif" }}>
-            uniquement ce qui n'est pas déduit des quêtes, contenants et offres
+            uniquement ce qui n'est pas déduit des quêtes, contenants et offres —
+            une source peut tout de même renvoyer à la quête où on la croise
           </span>
         </div>
         <div style={{ display: 'grid', gap: 6 }}>
@@ -345,6 +346,14 @@ export function ItemForm({
                 onChange={(e) => setSource(i, { label: e.target.value })} style={{ minWidth: 140, flex: 1 }} />
               <Input value={s.note || ''} placeholder="Note (optionnel)"
                 onChange={(e) => setSource(i, { note: e.target.value })} style={{ minWidth: 120, flex: 1 }} />
+              {/* La quête où l'on rencontre cette source. Elle ne « donne » pas
+                  l'objet — sinon la ligne serait dérivée des récompenses. */}
+              <select value={s.questId || ''} aria-label="Quête liée"
+                onChange={(e) => setSource(i, { questId: e.target.value ? Number(e.target.value) : null })}
+                style={{ ...selectStyle, minWidth: 170, flex: 1 }}>
+                <option value="">Quête liée (optionnel)…</option>
+                {quests.map((q) => <option key={q.id} value={q.id}>{q.titre}</option>)}
+              </select>
               <Input type="number" value={s.x ?? ''} placeholder="X" aria-label="X"
                 onChange={(e) => setSource(i, { x: e.target.value })} style={{ width: 70 }} />
               <Input type="number" value={s.y ?? ''} placeholder="Y" aria-label="Y"
@@ -385,6 +394,7 @@ const stripLoot = (l) => ({
 
 const stripSource = (s) => ({
   kind: s.kind, label: s.label, note: s.note, mapId: s.mapId, x: s.x, y: s.y, z: s.z,
+  questId: s.questId ?? null,
 });
 
 function Check({ checked, onChange, label }) {

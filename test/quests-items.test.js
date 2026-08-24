@@ -560,6 +560,36 @@ describe('« Où trouver quoi » — index inversé dérivé', () => {
     assert.equal(g.json.sources.manuelles[0].x, 120);
   });
 
+  it('une source manuelle peut renvoyer à la quête où on la croise', async () => {
+    const quete = (await admin.f.post('/api/quests/quests', {
+      body: { titre: 'Les grottes hurlantes' },
+    })).json;
+    const r = await admin.f.put(`/api/quests/unique-items/${geode.id}`, {
+      body: {
+        ...geode,
+        sourcesManuelles: [{ kind: 'mob', label: 'Golem des grottes', questId: quete.id }],
+      },
+    });
+    assert.equal(r.status, 200);
+
+    const src = (await admin.f.get(`/api/quests/unique-items/${geode.id}/sources`)).json.sources.manuelles[0];
+    assert.equal(src.questId, quete.id);
+    assert.equal(src.questTitre, 'Les grottes hurlantes', 'le titre est résolu à la lecture, jamais recopié');
+
+    const bad = await admin.f.put(`/api/quests/unique-items/${geode.id}`, {
+      body: { ...geode, sourcesManuelles: [{ kind: 'mob', label: 'X', questId: 99999 }] },
+    });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.json.error, 'unknown_quest');
+
+    // La source survit à la quête : le lien retombe à NULL, la ligne reste.
+    assert.equal((await admin.f.delete(`/api/quests/quests/${quete.id}`)).status, 204);
+    const apres = (await admin.f.get(`/api/quests/unique-items/${geode.id}/sources`)).json.sources.manuelles[0];
+    assert.equal(apres.label, 'Golem des grottes');
+    assert.equal(apres.questId, null);
+    assert.equal(apres.questTitre, null);
+  });
+
   it('les compteurs du catalogue repèrent les items sans source connue', async () => {
     const list = await admin.f.get('/api/quests/unique-items');
     const byId = new Map(list.json.map((i) => [i.id, i]));

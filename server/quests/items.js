@@ -610,12 +610,20 @@ function mapManualSource(r) {
   return {
     id: r.id, uniqueItemId: r.unique_item_id, kind: r.kind, label: r.label, note: r.note,
     mapId: r.map_id ?? null, x: r.x, y: r.y, z: r.z, ordre: r.ordre,
+    // Quête RATTACHÉE à la main (celle où l'on croise cette source) — à ne pas
+    // confondre avec les quêtes qui donnent l'objet, elles sont dérivées.
+    questId: r.quest_id ?? null,
+    questTitre: r.quest_titre ?? null,
   };
 }
 
 export function listManualSources(uniqueItemId) {
-  return db.prepare(`SELECT * FROM unique_item_sources WHERE unique_item_id = ? ORDER BY ordre, id`)
-    .all(uniqueItemId).map(mapManualSource);
+  return db.prepare(`
+    SELECT s.*, q.titre AS quest_titre
+    FROM unique_item_sources s
+    LEFT JOIN quests q ON q.id = s.quest_id
+    WHERE s.unique_item_id = ? ORDER BY s.ordre, s.id
+  `).all(uniqueItemId).map(mapManualSource);
 }
 
 // ── Index inversé : « où trouver quoi » + « à quoi ça sert » ──────────────
@@ -795,13 +803,16 @@ export function itemSources(id) {
 function replaceManualSources(uniqueItemId, rows) {
   db.prepare(`DELETE FROM unique_item_sources WHERE unique_item_id = ?`).run(uniqueItemId);
   const ins = db.prepare(`
-    INSERT INTO unique_item_sources (unique_item_id, kind, label, note, map_id, x, y, z, ordre)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO unique_item_sources
+      (unique_item_id, kind, label, note, map_id, x, y, z, quest_id, ordre)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const num = (v) => (v == null || v === '' ? null : Math.trunc(+v) || 0);
   (rows || []).forEach((s, i) => ins.run(
     uniqueItemId, s.kind || 'autre', String(s.label || '').slice(0, 120),
     String(s.note || '').slice(0, 500), s.mapId ?? null,
-    num(s.x), num(s.y), num(s.z), i,
+    num(s.x), num(s.y), num(s.z),
+    s.questId == null || s.questId === '' ? null : Number(s.questId),
+    i,
   ));
 }

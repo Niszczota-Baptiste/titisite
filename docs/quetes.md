@@ -99,7 +99,7 @@ autonome, les quêtes le référencent.
 | `unique_item_sets` | les **sets** (« il existe 6 sets de joyaux ») : `nom`, `couleur`, `taille` = le nombre de pièces que le set compte EN JEU. Éditable en ligne comme l'échelle de rareté |
 | `loot_entries` | table de butin d'un contenant ouvrable : `resultat_type` (`unique_item` **FK** / `item_referentiel` (id codex) / `pa` / `reputation` / `autre`), fourchette `quantite_min`–`quantite_max`, `probabilite`, `probabilite_source` (`officielle`/`estimee`/`observee`) |
 | `loot_observations` | journal d'ouvertures : ce qu'un membre a réellement obtenu → taux empiriques |
-| `unique_item_sources` | sources **manuelles** uniquement (drop de mob, coffre, événement…) — tout le reste est dérivé |
+| `unique_item_sources` | sources **manuelles** uniquement (drop de mob, coffre, événement…) — tout le reste est dérivé. `quest_id` optionnel : la quête où l'on **croise** la source, à ne pas confondre avec les quêtes qui donnent l'objet (celles-là sont dérivées des récompenses) |
 | `quest_offers` / `quest_offer_lines` | offres d'une quête d'achat : `donne` ↔ `recoit`, payables en PA ou en items |
 
 Sur `quests` : `categorie` (`recolte`|`craft`|`achat`|`pvp`|`autre`) plus la mise
