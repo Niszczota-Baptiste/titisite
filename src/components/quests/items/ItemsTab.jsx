@@ -4,7 +4,7 @@ import { useConfirm } from '../../../ui/ConfirmProvider';
 import { Button } from '../../admin/ui';
 import { Modal } from '../../project/shared';
 import { MUTED } from '../theme';
-import { ItemForm, RaritiesManager } from './ItemForm';
+import { ItemForm, RaritiesManager, SetsManager } from './ItemForm';
 import { ItemSheet } from './ItemSheet';
 import { ItemsCatalog } from './ItemsCatalog';
 
@@ -16,18 +16,22 @@ export function ItemsTab({ byId, catalog, factions, canEdit, onOpenQuest, onChan
   const confirm = useConfirm();
   const [items, setItems] = useState([]);
   const [rarities, setRarities] = useState([]);
+  const [sets, setSets] = useState([]);
   const [ficheId, setFicheId] = useState(null);
   const [edition, setEdition] = useState(null); // 'new' | fiche complète | null
   const [raretes, setRaretes] = useState(false);
+  const [setsOuverts, setSetsOuverts] = useState(false);
   const [err, setErr] = useState(null);
 
   const charger = useCallback(async () => {
-    const [list, rar] = await Promise.all([
+    const [list, rar, sts] = await Promise.all([
       api.quests.uniqueItems.list(),
       api.quests.rarities.list(),
+      api.quests.sets.list(),
     ]);
     setItems(list);
     setRarities(rar);
+    setSets(sts);
   }, []);
 
   useEffect(() => { charger().catch((e) => setErr(e.message)); }, [charger]);
@@ -72,7 +76,7 @@ export function ItemsTab({ byId, catalog, factions, canEdit, onOpenQuest, onChan
         </div>
         <ItemForm
           item={edition === 'new' ? null : edition}
-          items={items} rarities={rarities} factions={factionList}
+          items={items} rarities={rarities} sets={sets} factions={factionList}
           byId={byId} catalog={catalog}
           onDone={async (saved) => { setEdition(null); await rafraichir(); setFicheId(saved.id); }}
           onCancel={() => setEdition(null)}
@@ -91,17 +95,26 @@ export function ItemsTab({ byId, catalog, factions, canEdit, onOpenQuest, onChan
         </div>
       )}
 
+      {setsOuverts && canEdit && (
+        <div style={{ marginBottom: 14 }}>
+          <SetsManager sets={sets} onChanged={rafraichir} onClose={() => setSetsOuverts(false)} />
+        </div>
+      )}
+
       <ItemsCatalog
-        items={items} rarities={rarities} factions={factionList} byId={byId} canEdit={canEdit}
+        items={items} rarities={rarities} sets={sets} factions={factionList}
+        byId={byId} canEdit={canEdit}
         onOpen={setFicheId}
         onCreate={() => setEdition('new')}
         onEditRarities={() => setRaretes((r) => !r)}
+        onEditSets={() => setSetsOuverts((v) => !v)}
       />
 
       <Modal open={ficheId != null} onClose={() => setFicheId(null)} title="" width={780}>
         {ficheId != null ? (
           <ItemSheet
             itemId={ficheId} byId={byId} itemsById={itemsById} catalog={catalog} canEdit={canEdit}
+            items={items}
             onOpenItem={setFicheId}
             onOpenQuest={(id) => { setFicheId(null); onOpenQuest?.(id); }}
             onEdit={editer}

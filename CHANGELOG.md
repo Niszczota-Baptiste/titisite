@@ -5,6 +5,43 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — sets-de-joyaux
+
+### Quêtes — sets d'items (« les 6 sets de joyaux »)
+- **Nouvelle entité `unique_item_sets`** (nom, couleur, `taille` = ce que le set
+  compte en jeu) + `quest_custom_items.set_id`. Un set est une **collection
+  attendue** : ses membres sont les items qui pointent dessus, et la complétude
+  affichée (« Joyaux bleus 3/5 ») se dérive des deux — jamais une liste saisie.
+  Table éditable en ligne comme l'échelle de rareté, parce que le jeu en ajoute.
+- **Rattachement automatique depuis le lore déjà écrit** (« Fait partie du set
+  des joyaux bleus ») : le classement est en toutes lettres dans les fiches, le
+  ressaisir en ferait une seconde source de vérité. Lecture pure et testée
+  (`server/quests/item-sets.js`), passe **unique** marquée en base — retirer un
+  set à la main tient, le boot suivant ne le rend pas.
+- **Catalogue** : bandeau des sets (« 💎 Joyaux bleus 3/5 », complet en vert) qui
+  filtre en un clic, filtre « set » dans la barre, pastille colorée sur chaque
+  carte, et un gestionnaire de sets pour les éditeurs. **Fiche d'item** : la
+  pastille du set et la liste des autres pièces connues, avec ce qu'il en manque.
+- API : `GET /api/quests/sets` (lecture quêtes) et `POST|PUT|DELETE
+  /api/quests/sets[/:id]` (éditeurs). Supprimer un set ne supprime aucun objet.
+
+### Quêtes — un résultat de butin ne s'affiche plus « custom:9 »
+- Le picker de résultat travaille sur le catalogue **augmenté** : il renvoie
+  `custom:<id>` même quand le type resté sélectionné est « item du codex ». La
+  ligne se rangeait alors en référence texte — nom brut à l'écran, pas de prix
+  (donc hors du calcul d'espérance), pas de lien, et **invisible dans « Où
+  l'obtenir »**, qui suit la clé étrangère.
+- `normalizeLootResult()` range désormais ces résultats sous leur FK à
+  l'écriture, table de butin **et** journal d'ouvertures — sinon le même objet
+  comptait comme deux résultats distincts selon le chemin de saisie. La
+  détection de cycle voit ces cibles, et l'éditeur bascule le type dès qu'on
+  choisit un item unique.
+- Les lignes déjà écrites sont rattrapées au boot
+  (`db.js#linkCustomRefsInLoot`), sur les deux tables à la fois pour garder la
+  clé de regroupement alignée.
+
+---
+
 ## [Unreleased] — reset-ouvertures-geodes
 
 ### Quêtes — remise à zéro du journal d'ouvertures

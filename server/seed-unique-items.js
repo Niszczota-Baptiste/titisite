@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { GEM_SETS, setSlugFromLore } from './quests/item-sets.js';
 
 // Seed du catalogue d'items uniques : l'échelle de rareté puis les objets
 // relevés en jeu (les géodes + la monnaie du devin).
@@ -86,6 +87,52 @@ export function seedRarities(userId = null) {
   return inserted;
 }
 
+/** Insère les sets d'items manquants (match par slug). */
+export function seedItemSets(userId = null) {
+  const existing = new Set(
+    db.prepare(`SELECT slug FROM unique_item_sets WHERE slug IS NOT NULL`).all().map((r) => r.slug),
+  );
+  const ins = db.prepare(`
+    INSERT INTO unique_item_sets (slug, nom, couleur, taille, ordre, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  let inserted = 0;
+  GEM_SETS.forEach((set, i) => {
+    if (existing.has(set.slug)) return;
+    ins.run(set.slug, set.nom, set.couleur, set.taille, i + 1, userId, userId);
+    inserted += 1;
+  });
+  return inserted;
+}
+
+/**
+ * Rattache les items à leur set d'après le lore DÉJÀ écrit (« Fait partie du
+ * set des joyaux bleus ») : le classement est en toutes lettres dans les
+ * fiches, le ressaisir à la main en ferait une seconde source de vérité.
+ *
+ * Passe UNIQUE, marquée en base : sans ce garde, retirer volontairement le set
+ * d'un item le lui rendrait au boot suivant — or le seed ne défait jamais une
+ * édition faite en ligne.
+ */
+export function backfillItemSets() {
+  const deja = db.prepare(`SELECT value FROM site_settings WHERE key = 'item_sets_backfilled'`).get();
+  if (deja) return 0;
+  const idBySlug = new Map(
+    db.prepare(`SELECT id, slug FROM unique_item_sets`).all().map((r) => [r.slug, r.id]),
+  );
+  const upd = db.prepare(`UPDATE quest_custom_items SET set_id = ? WHERE id = ?`);
+  let rattaches = 0;
+  for (const it of db.prepare(`SELECT id, lore FROM quest_custom_items WHERE set_id IS NULL`).all()) {
+    const setId = idBySlug.get(setSlugFromLore(it.lore));
+    if (!setId) continue;
+    upd.run(setId, it.id);
+    rattaches += 1;
+  }
+  db.prepare(`INSERT OR REPLACE INTO site_settings (key, value) VALUES ('item_sets_backfilled', ?)`)
+    .run(new Date().toISOString());
+  return rattaches;
+}
+
 /** Insère les items uniques manquants (match par slug). */
 export function seedUniqueItems(userId = null) {
   const rarityId = (nom) => db.prepare(
@@ -123,8 +170,12 @@ export function seedUniqueItemsCatalogue() {
   const uid = admin?.id ?? null;
   const tx = db.transaction(() => ({
     rarities: seedRarities(uid),
+    sets: seedItemSets(uid),
     items: seedUniqueItems(uid),
+    // Après les sets ET les items : le rattachement lit le lore des deux.
+    setsRattaches: backfillItemSets(),
   }));
   const out = tx();
-  return (out.rarities || out.items) ? out : { skipped: true };
+  const touche = out.rarities || out.sets || out.items || out.setsRattaches;
+  return touche ? out : { skipped: true };
 }

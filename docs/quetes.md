@@ -94,8 +94,9 @@ autonome, les quêtes le référencent.
 
 | Table | Rôle |
 |---|---|
-| `quest_custom_items` | l'item unique : `slug` (adresse stable, ne suit pas le renommage), `nom`, `ref_code` (= item support du codex, pour l'icône), `lore`, `rarete_id`, `categorie`, `faction_id`, `est_vendable` + `prix_vente` + `prix_unite`, `est_ouvrable`, `tags`, `enchantements`, `stats`, `note` |
+| `quest_custom_items` | l'item unique : `slug` (adresse stable, ne suit pas le renommage), `nom`, `ref_code` (= item support du codex, pour l'icône), `lore`, `rarete_id`, `categorie`, `faction_id`, `set_id`, `est_vendable` + `prix_vente` + `prix_unite`, `est_ouvrable`, `tags`, `enchantements`, `stats`, `note` |
 | `unique_item_rarities` | échelle **ordonnée et éditable en ligne** (commun → légendaire), avec couleur. Une table et non un enum : de nouveaux paliers apparaissent au fil des découvertes |
+| `unique_item_sets` | les **sets** (« il existe 6 sets de joyaux ») : `nom`, `couleur`, `taille` = le nombre de pièces que le set compte EN JEU. Éditable en ligne comme l'échelle de rareté |
 | `loot_entries` | table de butin d'un contenant ouvrable : `resultat_type` (`unique_item` **FK** / `item_referentiel` (id codex) / `pa` / `reputation` / `autre`), fourchette `quantite_min`–`quantite_max`, `probabilite`, `probabilite_source` (`officielle`/`estimee`/`observee`) |
 | `loot_observations` | journal d'ouvertures : ce qu'un membre a réellement obtenu → taux empiriques |
 | `unique_item_sources` | sources **manuelles** uniquement (drop de mob, coffre, événement…) — tout le reste est dérivé |
@@ -104,6 +105,16 @@ autonome, les quêtes le référencent.
 Sur `quests` : `categorie` (`recolte`|`craft`|`achat`|`pvp`|`autre`) plus la mise
 en scène du craft (`craft_station`, `craft_grid` = 9 cases d'ids codex,
 `craft_shapeless`, `maitrise_faction_id`/`maitrise_tier_id`).
+
+**Un set est une collection attendue, jamais une liste saisie.** Ses membres
+sont les items qui portent son `set_id` ; la complétude affichée (« Joyaux
+bleus 3/5 ») se dérive de ce compte et de `taille`. Un set incomplet reste un
+set : l'écart dit ce qu'il reste à identifier en jeu. Le premier boot **rattache
+les items d'après leur lore** (« Fait partie du set des joyaux bleus »,
+`server/quests/item-sets.js`, pur et testé) — le classement est déjà écrit dans
+les fiches, le ressaisir en ferait une seconde source de vérité. Ce passage est
+marqué en base (`site_settings.item_sets_backfilled`) et ne se rejoue **jamais** :
+retirer un set à la main tient.
 
 **Une récompense de quête peut être aléatoire.** Une récolte de géodes donne
 « rien, ou 1 à 3 géodes » : les colonnes `probabilite`, `probabilite_source`,
@@ -143,6 +154,16 @@ zéro, et **aucun taux de change n'est inventé** entre monnaies — un prix lib
 dans une autre monnaie que celle du contenant rejoint les non valorisés. Le
 verdict ne tranche qu'au-delà de ±10 % d'écart. Les taux observés sont assortis
 d'un intervalle de **Wilson à 95 %**, correct sur petits effectifs.
+
+**Un résultat qui désigne un item unique est toujours rangé sous sa FK.** Le
+picker travaille sur le catalogue augmenté (codex + items uniques) et renvoie
+« custom:<id> » même quand le type resté sélectionné est « item du codex » :
+`normalizeLootResult()` (`server/quests/items.js`) ramène ces lignes — table de
+butin ET journal d'ouvertures — vers `resultat_unique_id`, sans quoi elles
+s'affichaient « custom:9 », sans prix (donc hors espérance), sans lien, et
+invisibles dans « Où l'obtenir ». Les lignes déjà écrites sont rattrapées au
+boot (`db.js#linkCustomRefsInLoot`), sur les deux tables à la fois pour que la
+clé de regroupement reste alignée.
 
 La somme des probabilités n'est **jamais** contrainte : elle est affichée et
 signalée (< 100 % → reliquat « rien / commun » proposé ; > 100 % → avertissement),
@@ -189,6 +210,7 @@ GET  /maps                     liste des cartes
 GET  /map?map=<id>             { questPoints, pois } d'une carte (défaut si omis)
 GET  /custom-items             alias historique du catalogue (forme préservée)
 GET  /rarities                 échelle de rareté
+GET  /sets                     sets d'items (+ `membres` = ce qui est documenté)
 GET  /unique-items             catalogue + compteurs de sources/usages
 GET  /unique-items/:id         fiche + table de butin + sources manuelles + observations
 GET  /unique-items/:id/sources index inversé : { sources, usages } — 100 % dérivé
@@ -218,6 +240,7 @@ POST|PUT|DELETE  /maps[/:id]         (cartes ; DELETE refuse la dernière)
 POST|PUT|DELETE  /custom-items[/:id] (alias historique — délègue au catalogue)
 POST|PUT|DELETE  /unique-items[/:id] (loot + sourcesManuelles dans le payload)
 POST|PUT|DELETE  /rarities[/:id]     (PUT /rarities { ids } réordonne l'échelle)
+POST|PUT|DELETE  /sets[/:id]         (supprimer un set laisse ses membres sans set)
 POST|PUT|DELETE  /quests[/:id]       (+ categorie, craft{…}, offers[])
 ```
 

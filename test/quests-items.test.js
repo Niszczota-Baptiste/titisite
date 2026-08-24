@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import Database from 'better-sqlite3';
 import { bootServer, fetcher } from './harness.js';
 
 // Catalogue d'items uniques : contenants ouvrables (géodes), table de butin,
@@ -14,8 +18,8 @@ const MEMBER = { email: 'member@test.local', password: 'memberpw1-strong' };
 before(async () => { server = await bootServer({ env: { SEED_DEMO_QUESTS: 'off' } }); });
 after(async () => { await server.stop(); });
 
-function login(creds) {
-  const f = fetcher(server.base);
+function login(creds, base = server.base) {
+  const f = fetcher(base);
   return f.post('/api/auth/login', { body: creds }).then((r) => {
     assert.equal(r.status, 200, `login ${creds.email} → ${r.status}`);
     return { f, user: r.json.user };
@@ -92,11 +96,13 @@ describe('items uniques — catalogue', () => {
     assert.equal((await member.f.get('/api/quests/unique-items')).status, 200);
     assert.equal((await member.f.post('/api/quests/unique-items', { body: { nom: 'Nope' } })).status, 403);
     assert.equal((await member.f.post('/api/quests/rarities', { body: { nom: 'Nope' } })).status, 403);
+    assert.equal((await member.f.get('/api/quests/sets')).status, 200);
+    assert.equal((await member.f.post('/api/quests/sets', { body: { nom: 'Nope' } })).status, 403);
   });
 
   it('sans aucun flag : tout le catalogue est fermé (rien de public)', async () => {
     const anon = fetcher(server.base);
-    for (const url of ['/api/quests/unique-items', '/api/quests/rarities', '/api/quests/unique-items/1/sources']) {
+    for (const url of ['/api/quests/unique-items', '/api/quests/rarities', '/api/quests/sets', '/api/quests/unique-items/1/sources']) {
       assert.equal((await anon.get(url)).status, 401, url);
     }
   });
@@ -172,6 +178,41 @@ describe('items uniques — table de butin', () => {
     });
     assert.equal(indirect.status, 400);
     assert.equal(indirect.json.error, 'loot_cycle');
+
+    // Même cible, désignée en référence texte sous le type « item du codex » :
+    // elle est normalisée vers la FK, donc le cycle doit se voir aussi.
+    const parRef = await admin.f.put(`/api/quests/unique-items/${geode.id}`, {
+      body: { ...geode, loot: [{ resultatType: 'item_referentiel', resultatRef: `custom:${geode.id}`, probabilite: 5 }] },
+    });
+    assert.equal(parRef.status, 400);
+    assert.equal(parRef.json.error, 'loot_cycle');
+
+    await admin.f.put(`/api/quests/unique-items/${petite.id}`, { body: { ...petite, loot: [] } });
+  });
+
+  it('une cible saisie « custom:<id> » est rattachée à l\'item unique, pas affichée brute', async () => {
+    // Le picker de résultat voit le catalogue AUGMENTÉ : il renvoie
+    // 'custom:<id>' même quand le type resté sélectionné est « item du codex ».
+    const r = await admin.f.put(`/api/quests/unique-items/${petite.id}`, {
+      body: {
+        ...petite,
+        loot: [{ resultatType: 'item_referentiel', resultatRef: `custom:${ecaille.id}`, probabilite: 10 }],
+      },
+    });
+    assert.equal(r.status, 200);
+    const l = r.json.loot[0];
+    assert.equal(l.resultatType, 'unique_item');
+    assert.equal(l.resultatUniqueId, ecaille.id);
+    assert.equal(l.resultatRef, null);
+    assert.equal(l.label, 'Écaille du devin', 'plus jamais « custom:9 » à l\'écran');
+    assert.equal(l.ciblePrixUnite, 'pa', 'la ligne récupère le prix de la cible → espérance calculable');
+
+    // Et la ligne compte comme une vraie source dérivée de l'écaille.
+    const src = await admin.f.get(`/api/quests/unique-items/${ecaille.id}/sources`);
+    assert.ok(
+      src.json.sources.contenants.some((c) => c.uniqueItemId === petite.id),
+      '« Où l\'obtenir » suit la FK, pas la référence texte',
+    );
     await admin.f.put(`/api/quests/unique-items/${petite.id}`, { body: { ...petite, loot: [] } });
   });
 
@@ -258,6 +299,102 @@ describe('items uniques — table de butin', () => {
     assert.equal(fiche.loot.length, 1, 'la table de butin DÉCLARÉE survit au reset');
 
     assert.equal((await admin.f.delete('/api/quests/unique-items/999999/observations')).status, 404);
+  });
+
+  it('une ouverture loguée en « custom:<id> » rejoint la ligne de l\'item unique', async () => {
+    // (le journal de la petite géode vient d'être remis à zéro juste au-dessus)
+    const url = `/api/quests/unique-items/${petite.id}/observations`;
+    await admin.f.post(url, { body: { resultatType: 'unique_item', resultatUniqueId: ecaille.id } });
+    await admin.f.post(url, { body: { resultatType: 'item_referentiel', resultatRef: `custom:${ecaille.id}` } });
+
+    const { resume } = (await admin.f.get(url)).json;
+    assert.equal(resume.total, 2);
+    assert.equal(resume.parResultat.length, 1, 'un seul résultat, pas deux selon le chemin de saisie');
+    assert.equal(resume.parResultat[0].key, `unique:${ecaille.id}`);
+    assert.equal(resume.parResultat[0].label, 'Écaille du devin');
+  });
+});
+
+// Un set est une COLLECTION attendue : sa taille dit ce que le jeu contient,
+// ses membres sont les items qui pointent dessus. La complétude « 3/5 » se
+// dérive des deux — rien de tout cela n'est ressaisi.
+describe('sets d\'items uniques', () => {
+  let admin;
+  let sets;
+  let petite;
+
+  before(async () => {
+    admin = await login(ADMIN);
+    sets = (await admin.f.get('/api/quests/sets')).json;
+    petite = (await admin.f.get('/api/quests/unique-items')).json.find((i) => i.slug === 'petite-geode');
+  });
+
+  it('le seed installe les 6 sets du livre, avec le nombre de pièces de chacun', () => {
+    assert.deepEqual(
+      sets.map((s) => [s.slug, s.taille]),
+      [
+        ['joyaux-verts', 2],
+        ['joyaux-jaunes', 3],
+        ['joyaux-violets', 4],
+        ['joyaux-blancs', 5],
+        ['joyaux-bleus', 5],
+        ['joyaux-legendaires', 5],
+      ],
+    );
+  });
+
+  it('ranger un item dans un set fait suivre le compteur de membres', async () => {
+    const bleus = sets.find((s) => s.slug === 'joyaux-bleus');
+    const r = await admin.f.put(`/api/quests/unique-items/${petite.id}`, {
+      body: { ...petite, setId: bleus.id },
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.setId, bleus.id);
+    assert.equal(r.json.set.nom, 'Joyaux bleus');
+    assert.equal(r.json.set.taille, 5, 'la taille voyage avec l\'item → pastille « n/5 »');
+
+    const apres = (await admin.f.get('/api/quests/sets')).json.find((s) => s.id === bleus.id);
+    assert.equal(apres.membres, 1, 'la complétude est dérivée, jamais saisie');
+
+    const carte = (await admin.f.get('/api/quests/unique-items')).json.find((i) => i.id === petite.id);
+    assert.equal(carte.set.slug, 'joyaux-bleus', 'le catalogue porte le set (pastille + filtre)');
+  });
+
+  it('refuse un set inconnu, un nom vide ou une taille absurde', async () => {
+    const bad = await admin.f.put(`/api/quests/unique-items/${petite.id}`, {
+      body: { ...petite, setId: 99999 },
+    });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.json.error, 'unknown_set');
+    assert.equal((await admin.f.post('/api/quests/sets', { body: { nom: '  ' } })).json.error, 'set_nom_required');
+    assert.equal(
+      (await admin.f.post('/api/quests/sets', { body: { nom: 'Joyaux gris', taille: -1 } })).json.error,
+      'invalid_set_taille',
+    );
+  });
+
+  it('créer / renommer / supprimer un set — ses membres gardent leur fiche', async () => {
+    const cree = await admin.f.post('/api/quests/sets', {
+      body: { nom: 'Joyaux rouges', couleur: '#ff8a9b', taille: 1 },
+    });
+    assert.equal(cree.status, 201);
+    assert.equal(cree.json.slug, 'joyaux-rouges');
+    assert.equal(cree.json.membres, 0);
+
+    const maj = await admin.f.put(`/api/quests/sets/${cree.json.id}`, {
+      body: { ...cree.json, nom: 'Joyaux écarlates', taille: 2 },
+    });
+    assert.equal(maj.json.nom, 'Joyaux écarlates');
+    assert.equal(maj.json.taille, 2);
+
+    await admin.f.put(`/api/quests/unique-items/${petite.id}`, { body: { ...petite, setId: cree.json.id } });
+    assert.equal((await admin.f.delete(`/api/quests/sets/${cree.json.id}`)).status, 204);
+
+    const fiche = (await admin.f.get(`/api/quests/unique-items/${petite.id}`)).json;
+    assert.equal(fiche.nom, 'Petite géode');
+    assert.equal(fiche.setId, null, 'supprimer un set ne supprime aucun objet');
+    assert.equal(fiche.set, null);
+    assert.equal((await admin.f.delete('/api/quests/sets/99999')).status, 404);
   });
 });
 
@@ -551,5 +688,109 @@ describe('récompenses aléatoires de quête', () => {
     assert.equal(maj.status, 200);
     assert.equal(maj.json.rewards[0].probabilite, null, 'aller-retour sans effet de bord');
     assert.equal(maj.json.rewards[1].probabilite, 50);
+  });
+});
+
+// Les bases d'avant la normalisation portent des lignes « item du codex » dont
+// la référence est en fait un item unique (« custom:9 ») : elles s'affichaient
+// brutes. La migration du boot les rattache — sur les DEUX tables, sinon le
+// journal ne se rapprocherait plus de sa ligne déclarée.
+describe('migration : résultats de butin hérités « custom:<id> »', () => {
+  it('les rattache à leur item unique au boot suivant', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'titisite-migration-'));
+    const dbPath = path.join(dir, 'data.sqlite');
+    let s1;
+    let s2;
+    try {
+      s1 = await bootServer({ env: { DB_PATH: dbPath } });
+      const a1 = await login(ADMIN, s1.base);
+      const list = (await a1.f.get('/api/quests/unique-items')).json;
+      const petite = list.find((i) => i.slug === 'petite-geode');
+      const ecaille = list.find((i) => i.slug === 'ecaille-du-devin');
+      await s1.stop();          // ne supprime que SON workdir, pas `dir`
+      s1 = null;
+
+      // Écriture directe : le serveur normalise désormais, on ne peut plus
+      // produire ces lignes par l'API — c'est bien le sujet du test.
+      const raw = new Database(dbPath);
+      const ref = `custom:${ecaille.id}`;
+      raw.prepare(`INSERT INTO loot_entries (unique_item_id, resultat_type, resultat_ref, probabilite)
+                   VALUES (?, 'item_referentiel', ?, 12)`).run(petite.id, ref);
+      raw.prepare(`INSERT INTO loot_entries (unique_item_id, resultat_type, resultat_ref, probabilite)
+                   VALUES (?, 'item_referentiel', 'diamond', 8)`).run(petite.id);
+      raw.prepare(`INSERT INTO loot_observations (unique_item_id, resultat_type, resultat_ref)
+                   VALUES (?, 'item_referentiel', ?)`).run(petite.id, ref);
+      raw.close();
+
+      s2 = await bootServer({ env: { DB_PATH: dbPath } });
+      const a2 = await login(ADMIN, s2.base);
+      const fiche = (await a2.f.get(`/api/quests/unique-items/${petite.id}`)).json;
+
+      const migree = fiche.loot.find((l) => l.probabilite === 12);
+      assert.equal(migree.resultatType, 'unique_item');
+      assert.equal(migree.resultatUniqueId, ecaille.id);
+      assert.equal(migree.resultatRef, null);
+      assert.equal(migree.label, 'Écaille du devin');
+
+      const temoin = fiche.loot.find((l) => l.probabilite === 8);
+      assert.equal(temoin.resultatType, 'item_referentiel', 'une vraie ref codex ne bouge pas');
+      assert.equal(temoin.resultatRef, 'diamond');
+
+      assert.equal(fiche.observations.total, 1);
+      assert.equal(fiche.observations.parResultat[0].key, `unique:${ecaille.id}`);
+      assert.equal(fiche.observations.parResultat[0].label, 'Écaille du devin');
+    } finally {
+      await s1?.stop();
+      await s2?.stop();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// Le classement des joyaux est déjà écrit noir sur blanc dans leur lore : le
+// rattachement au set se fait donc tout seul, une seule fois, au boot.
+describe('seed : rattachement des items à leur set', () => {
+  it('lit le lore une fois, puis ne défait plus jamais une édition', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'titisite-sets-'));
+    const dbPath = path.join(dir, 'data.sqlite');
+    let s1;
+    let s2;
+    try {
+      s1 = await bootServer({ env: { DB_PATH: dbPath } });
+      const a1 = await login(ADMIN, s1.base);
+      // Créé APRÈS le passage de rattachement : il n'a pas encore de set.
+      const gem = (await a1.f.post('/api/quests/unique-items', {
+        body: {
+          nom: 'Aigue-marine',
+          lore: 'Très rare ! Fait partie du set des joyaux bleus. Vendez-le ou donnez-le.',
+        },
+      })).json;
+      assert.equal(gem.setId, null);
+      await s1.stop();
+      s1 = null;
+
+      // État d'une base d'avant la fonctionnalité : le drapeau n'existe pas.
+      const raw = new Database(dbPath);
+      raw.prepare(`DELETE FROM site_settings WHERE key = 'item_sets_backfilled'`).run();
+      raw.close();
+
+      s2 = await bootServer({ env: { DB_PATH: dbPath } });
+      const a2 = await login(ADMIN, s2.base);
+      const fiche = (await a2.f.get(`/api/quests/unique-items/${gem.id}`)).json;
+      assert.equal(fiche.set.slug, 'joyaux-bleus', 'rattaché d\'après son lore, sans ressaisie');
+      assert.equal(fiche.set.taille, 5);
+
+      // Le seed ne rejoue pas : le drapeau est reposé.
+      await s2.stop();
+      s2 = null;
+      const relu = new Database(dbPath);
+      const flag = relu.prepare(`SELECT value FROM site_settings WHERE key = 'item_sets_backfilled'`).get();
+      relu.close();
+      assert.ok(flag, 'le passage est marqué : retirer un set à la main tiendra');
+    } finally {
+      await s1?.stop();
+      await s2?.stop();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

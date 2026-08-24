@@ -184,7 +184,11 @@ Single-process Node app:
   in `/quetes` and in the projects' Minecraft tab (chest autocomplete + icons),
   and the stock endpoint matches them by normalized **custom name** so a chest
   row named after the item is tracked.
-  Around them: `unique_item_rarities` (ordered, editable in-app — a table, not
+  Around them: `unique_item_sets` (the 6 gem sets — `taille` = how many pieces
+  the set holds *in game*, membership on the item via `set_id`, so « 3/5 » is
+  derived and never typed; the first boot fills it from each item's lore via the
+  pure `server/quests/item-sets.js`, a one-shot pass flagged in `site_settings`),
+  `unique_item_rarities` (ordered, editable in-app — a table, not
   an enum), `loot_entries` (a container's loot table: result is a unique item
   FK / codex id / PA / reputation / free text, quantity range, probability +
   its provenance), `loot_observations` (per-member opening log → empirical

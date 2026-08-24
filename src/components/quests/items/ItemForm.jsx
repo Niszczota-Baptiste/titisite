@@ -30,7 +30,7 @@ const RESULT_TYPES = [
 ];
 
 export function ItemForm({
-  item, items, rarities, factions, byId, catalog, onDone, onCancel,
+  item, items, rarities, sets = [], factions, byId, catalog, onDone, onCancel,
 }) {
   const [nom, setNom] = useState(item?.nom || '');
   const [refCode, setRefCode] = useState(item?.baseItemId || '');
@@ -38,6 +38,7 @@ export function ItemForm({
   const [rareteId, setRareteId] = useState(item?.rareteId || '');
   const [categorie, setCategorie] = useState(item?.categorie || 'autre');
   const [factionId, setFactionId] = useState(item?.factionId || '');
+  const [setId, setSetId] = useState(item?.setId || '');
   const [estVendable, setEstVendable] = useState(!!item?.estVendable);
   const [prixVente, setPrixVente] = useState(item?.prixVente ?? '');
   const [prixUnite, setPrixUnite] = useState(item?.prixUnite || 'pa');
@@ -101,6 +102,7 @@ export function ItemForm({
         rareteId: rareteId ? Number(rareteId) : null,
         categorie,
         factionId: factionId ? Number(factionId) : null,
+        setId: setId ? Number(setId) : null,
         estVendable,
         prixVente: prixVente === '' ? null : Number(prixVente),
         prixUnite,
@@ -159,6 +161,16 @@ export function ItemForm({
               <select value={factionId} onChange={(e) => setFactionId(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
                 <option value="">—</option>
                 {factions.map((f) => <option key={f.id} value={f.id}>{f.nom}</option>)}
+              </select>
+            </Field>
+            <Field label="Set (collection)">
+              <select value={setId} onChange={(e) => setSetId(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
+                <option value="">—</option>
+                {sets.map((se) => (
+                  <option key={se.id} value={se.id}>
+                    {se.nom}{se.taille ? ` (${se.taille})` : ''}
+                  </option>
+                ))}
               </select>
             </Field>
           </div>
@@ -240,8 +252,17 @@ export function ItemForm({
 
                 {l.resultatType === 'item_referentiel' && (
                   <div style={{ minWidth: 190, flex: 1 }}>
+                    {/* Le picker voit le catalogue AUGMENTÉ : choisir un item
+                        unique ('custom:<id>') bascule la ligne sur son type —
+                        sinon elle resterait une référence texte, sans nom ni
+                        prix. Le serveur normalise de la même façon. */}
                     <CodexPicker catalog={catalog} byId={byId} value={l.resultatRef || ''}
-                      onChange={(id) => setLigne(i, { resultatRef: id })} />
+                      onChange={(id) => {
+                        const uid = /^custom:(\d+)$/.exec(String(id || ''));
+                        setLigne(i, uid
+                          ? { resultatType: 'unique_item', resultatRef: null, resultatUniqueId: Number(uid[1]) }
+                          : { resultatRef: id });
+                      }} />
                   </div>
                 )}
                 {l.resultatType === 'unique_item' && (
@@ -476,6 +497,84 @@ export function RaritiesManager({ rarities, onChanged, onClose }) {
         Supprimer un palier ne supprime aucun objet : ceux qui le portaient se retrouvent
         simplement sans rareté. <span style={{ color: CRIMSON }}>Les modifications sont
         enregistrées immédiatement.</span>
+      </p>
+    </div>
+  );
+}
+
+// Gestion des sets — même esprit que l'échelle de rareté : une table éditable
+// en ligne, parce que le jeu en ajoute. `taille` est ce que le set compte EN
+// JEU ; le compteur à côté dit ce qui est documenté (« 3/5 »), il se dérive des
+// items rattachés et ne se saisit jamais.
+export function SetsManager({ sets, onChanged, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [nouveau, setNouveau] = useState({ nom: '', couleur: '#c9a8e8', taille: 5 });
+
+  const run = async (fn) => {
+    setBusy(true); setErr(null);
+    try { await fn(); await onChanged(); }
+    catch (e) { setErr(e.body?.error || e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ ...panel, padding: 16, border: `1px solid rgba(${ACC_RGB},0.4)` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+        <strong style={{ fontFamily: "'Space Grotesk',sans-serif", color: INK, fontSize: 15 }}>
+          Sets d'items
+        </strong>
+        <span style={{ fontSize: 12, color: MUTED, fontFamily: "'Inter',sans-serif" }}>
+          nom, couleur, et le nombre de pièces que le set compte en jeu
+        </span>
+        <Button variant="ghost" onClick={onClose} style={{ marginLeft: 'auto' }}>Fermer</Button>
+      </div>
+      {err && <p style={{ color: '#ff8a9b', fontSize: 12 }}>{err}</p>}
+
+      <div style={{ display: 'grid', gap: 6 }}>
+        {sets.map((se) => (
+          <div key={se.id} style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            background: 'rgba(20,14,38,0.5)', border: '1px solid rgba(80,50,130,0.22)',
+            borderRadius: 8, padding: 8, borderLeft: `3px solid ${se.couleur}`,
+          }}>
+            <Input value={se.nom} style={{ flex: 1, minWidth: 130 }}
+              onChange={(e) => run(() => api.quests.sets.update(se.id, { ...se, nom: e.target.value }))} />
+            <input type="color" value={se.couleur} aria-label={`Couleur de ${se.nom}`}
+              onChange={(e) => run(() => api.quests.sets.update(se.id, { ...se, couleur: e.target.value }))}
+              style={{ width: 44, height: 34, background: 'none', border: '1px solid rgba(80,50,130,0.3)', borderRadius: 8 }} />
+            <Input type="number" min="0" value={se.taille} aria-label={`Nombre de pièces de ${se.nom}`}
+              onChange={(e) => run(() => api.quests.sets.update(se.id, { ...se, taille: e.target.value }))}
+              style={{ width: 74 }} />
+            <span style={{
+              fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, minWidth: 78,
+              color: se.taille && se.membres >= se.taille ? '#7be3a8' : MUTED,
+            }}>
+              {se.membres} documenté{se.membres > 1 ? 's' : ''}
+            </span>
+            <Button type="button" variant="danger" disabled={busy} style={{ padding: '6px 8px' }}
+              onClick={() => run(() => api.quests.sets.remove(se.id))}>×</Button>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Input value={nouveau.nom} placeholder="Nouveau set (ex. Joyaux rouges)"
+          onChange={(e) => setNouveau((n) => ({ ...n, nom: e.target.value }))} style={{ flex: 1, minWidth: 160 }} />
+        <input type="color" value={nouveau.couleur} aria-label="Couleur du nouveau set"
+          onChange={(e) => setNouveau((n) => ({ ...n, couleur: e.target.value }))}
+          style={{ width: 44, height: 34, background: 'none', border: '1px solid rgba(80,50,130,0.3)', borderRadius: 8 }} />
+        <Input type="number" min="0" value={nouveau.taille} aria-label="Nombre de pièces"
+          onChange={(e) => setNouveau((n) => ({ ...n, taille: e.target.value }))} style={{ width: 74 }} />
+        <Button type="button" disabled={busy || !nouveau.nom.trim()}
+          onClick={() => run(async () => {
+            await api.quests.sets.create(nouveau);
+            setNouveau({ nom: '', couleur: '#c9a8e8', taille: 5 });
+          })}>+ Set</Button>
+      </div>
+      <p style={{ margin: '10px 0 0', fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+        Supprimer un set ne supprime aucun objet : ses membres se retrouvent simplement sans
+        set. <span style={{ color: CRIMSON }}>Les modifications sont enregistrées
+        immédiatement.</span>
       </p>
     </div>
   );

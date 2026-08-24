@@ -9,17 +9,21 @@ import {
   UNIQUE_ITEM_CATEGORIES,
 } from '../quests/enums.js';
 import {
+  createItemSet,
   createRarity,
   createUniqueItem,
+  deleteItemSet,
   deleteRarity,
   deleteUniqueItem,
   factionExists,
   getUniqueItem,
+  itemSetExists,
   lootWouldCycle,
   parseUniqueRef,
   rarityExists,
   reorderRarities,
   uniqueItemExists,
+  updateItemSet,
   updateRarity,
   updateUniqueItem,
 } from '../quests/items.js';
@@ -117,6 +121,14 @@ function validateRarity(b) {
   if (asStr(b.nom).trim().length > 60) throw new Invalid('rarity_nom_too_long');
 }
 
+function validateItemSet(b) {
+  if (!nonEmpty(b?.nom)) throw new Invalid('set_nom_required');
+  if (asStr(b.nom).trim().length > 80) throw new Invalid('set_nom_too_long');
+  // `taille` = nombre de pièces attendues en jeu ; 0 = « on ne sait pas encore ».
+  const t = Number(b?.taille ?? 0);
+  if (!Number.isFinite(t) || t < 0 || t > 999) throw new Invalid('invalid_set_taille');
+}
+
 // Une ligne de butin. `probabilite` est bornée à [0,100] mais la SOMME n'est
 // jamais contrainte : une table incomplète doit rester enregistrable, elle est
 // seulement signalée à l'écran.
@@ -151,6 +163,9 @@ function validateUniqueItem(b, { id = null } = {}) {
   }
   if (b.factionId != null && b.factionId !== '' && !factionExists(Number(b.factionId))) {
     throw new Invalid('unknown_faction');
+  }
+  if (b.setId != null && b.setId !== '' && !itemSetExists(Number(b.setId))) {
+    throw new Invalid('unknown_set');
   }
   if (b.prixVente != null && b.prixVente !== '') {
     const p = Number(b.prixVente);
@@ -409,6 +424,25 @@ questsAdminRouter.put('/rarities', handle((req, res) => {
 // Les items concernés gardent leur ligne : rarete_id retombe à NULL (FK).
 questsAdminRouter.delete('/rarities/:id', (req, res) => {
   if (!deleteRarity(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
+  res.status(204).end();
+});
+
+// ── Sets d'items (les 6 sets de joyaux, et ce qui viendra après) ────────────
+questsAdminRouter.post('/sets', handle((req, res) => {
+  validateItemSet(req.body);
+  res.status(201).json(createItemSet(req.body, req.user.id));
+}));
+
+questsAdminRouter.put('/sets/:id', handle((req, res) => {
+  validateItemSet(req.body);
+  const out = updateItemSet(Number(req.params.id), req.body, req.user.id);
+  if (!out) return res.status(404).json({ error: 'not_found' });
+  res.json(out);
+}));
+
+// Les items membres gardent leur fiche : set_id retombe à NULL (FK).
+questsAdminRouter.delete('/sets/:id', (req, res) => {
+  if (!deleteItemSet(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
   res.status(204).end();
 });
 

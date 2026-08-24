@@ -1320,6 +1320,30 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_item_rarities_ordre ON unique_item_rarities(ordre, id);`);
 
+  // Sets d'items uniques (« il existe 6 sets de joyaux, plus le set contient de
+  // joyaux plus il est précieux »). `taille` = le nombre de pièces que le set
+  // compte EN JEU : c'est ce qui permet d'afficher « 3/5 documentés » sans
+  // ressaisir la liste, les membres étant simplement les items qui pointent
+  // dessus. Table éditable pour la même raison que l'échelle de rareté : de
+  // nouveaux sets apparaissent au fil des mises à jour du serveur.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS unique_item_sets (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug       TEXT,
+      nom        TEXT NOT NULL,
+      couleur    TEXT NOT NULL DEFAULT '#c9a8e8',
+      taille     INTEGER NOT NULL DEFAULT 0,
+      note       TEXT NOT NULL DEFAULT '',
+      ordre      INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_item_sets_ordre ON unique_item_sets(ordre, id);`);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_item_sets_slug ON unique_item_sets(slug) WHERE slug IS NOT NULL AND slug <> '';`);
+
   // Champs d'item unique. `ref_code` (existant) porte l'item support du codex —
   // c'est le `base_item_id` de la spec, gardé sous son nom historique pour ne
   // pas réécrire les lignes existantes. `note` (existant) sert de champ Notes.
@@ -1338,9 +1362,11 @@ export function migrate() {
   ensureColumn('quest_custom_items', 'prix_unite', "TEXT NOT NULL DEFAULT 'pa'");
   ensureColumn('quest_custom_items', 'est_ouvrable', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('quest_custom_items', 'tags', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn('quest_custom_items', 'set_id', 'INTEGER REFERENCES unique_item_sets(id) ON DELETE SET NULL');
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_items_slug ON quest_custom_items(slug) WHERE slug IS NOT NULL AND slug <> '';`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_items_rarete ON quest_custom_items(rarete_id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_items_categorie ON quest_custom_items(categorie);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_items_set ON quest_custom_items(set_id);`);
   backfillUniqueItemSlugs();
 
   // Table de butin d'un contenant ouvrable (« géode »). Un résultat est soit un
@@ -1390,6 +1416,7 @@ export function migrate() {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_loot_observations_item ON loot_observations(unique_item_id, created_at);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_loot_observations_member ON loot_observations(member_id);`);
+  linkCustomRefsInLoot();
 
   // Sources MANUELLES d'un item : ce qui n'entre dans aucune source dérivée
   // (drop de mob, coffre, événement…). Le reste de la page « Où trouver quoi »
@@ -1883,6 +1910,30 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_audit_created ON lore_audit(created_at DESC);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_audit_actor ON lore_audit(actor_id, created_at DESC);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_audit_action ON lore_audit(action, target_type);`);
+}
+
+// Rattache à leur item unique les résultats de butin saisis en référence texte
+// « custom:<id> ». Le picker de résultat travaille sur le catalogue AUGMENTÉ
+// (codex + items uniques) : choisir un item unique alors que le type « item du
+// codex » était resté sélectionné écrivait `item_referentiel` +
+// `resultat_ref = 'custom:9'`, affiché brut (« custom:9 »), sans prix — donc
+// hors du calcul d'espérance — et invisible dans « Où l'obtenir », qui suit la
+// FK. Les DEUX tables migrent ensemble : la clé de regroupement passe de
+// `item:custom:9` à `unique:9`, et le journal d'ouvertures ne se rapprocherait
+// plus de sa ligne déclarée si une seule des deux bougeait.
+// Rejouable : ne touche que les lignes dont la cible existe encore.
+function linkCustomRefsInLoot() {
+  for (const table of ['loot_entries', 'loot_observations']) {
+    db.exec(`
+      UPDATE ${table}
+         SET resultat_type = 'unique_item',
+             resultat_unique_id = CAST(substr(resultat_ref, 8) AS INTEGER),
+             resultat_ref = NULL
+       WHERE resultat_type = 'item_referentiel'
+         AND resultat_ref GLOB 'custom:[0-9]*'
+         AND CAST(substr(resultat_ref, 8) AS INTEGER) IN (SELECT id FROM quest_custom_items)
+    `);
+  }
 }
 
 // Donne un slug aux items uniques qui n'en ont pas encore (lignes créées avant

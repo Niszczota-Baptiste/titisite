@@ -19,12 +19,14 @@ const FLAGS = [
 ];
 
 export function ItemsCatalog({
-  items, rarities, factions, byId, canEdit, onOpen, onCreate, onEditRarities,
+  items, rarities, sets = [], factions, byId, canEdit,
+  onOpen, onCreate, onEditRarities, onEditSets,
 }) {
   const [q, setQ] = useState('');
   const [rarete, setRarete] = useState('');
   const [categorie, setCategorie] = useState('');
   const [faction, setFaction] = useState('');
+  const [set, setSet] = useState('');
   const [flags, setFlags] = useState([]);
   const [dense, setDense] = useState(false);
 
@@ -36,6 +38,8 @@ export function ItemsCatalog({
       if (rarete && String(i.rareteId ?? '') !== String(rarete)) return false;
       if (categorie && i.categorie !== categorie) return false;
       if (faction && String(i.factionId ?? '') !== String(faction)) return false;
+      if (set === 'aucun' && i.setId != null) return false;
+      if (set && set !== 'aucun' && String(i.setId ?? '') !== String(set)) return false;
       for (const k of flags) {
         const f = FLAGS.find((x) => x.key === k);
         if (f && !f.test(i)) return false;
@@ -46,7 +50,7 @@ export function ItemsCatalog({
       const foin = normalise([i.nom, i.lore, (i.tags || []).join(' '), i.baseNom, i.baseItemId].join(' '));
       return tokens.every((t) => foin.includes(t));
     });
-  }, [items, q, rarete, categorie, faction, flags]);
+  }, [items, q, rarete, categorie, faction, set, flags]);
 
   // Tri : rareté décroissante puis nom — les objets remarquables en tête.
   const triees = useMemo(() => [...shown].sort((a, b) => {
@@ -88,6 +92,13 @@ export function ItemsCatalog({
             <option key={k} value={k}>{ITEM_CATEGORIES[k].label}</option>
           ))}
         </Select>
+        {sets.length > 0 && (
+          <Select value={set} onChange={setSet} ariaLabel="Filtrer par set">
+            <option value="">Tous les sets</option>
+            {sets.map((se) => <option key={se.id} value={se.id}>{se.nom}</option>)}
+            <option value="aucun">— Hors set —</option>
+          </Select>
+        )}
         {factions.length > 0 && (
           <Select value={faction} onChange={setFaction} ariaLabel="Filtrer par faction">
             <option value="">Toutes factions</option>
@@ -113,6 +124,7 @@ export function ItemsCatalog({
             {dense ? '▦ Grille' : '☰ Liste'}
           </Button>
           {canEdit && <Button variant="ghost" onClick={onEditRarities}>Raretés</Button>}
+          {canEdit && <Button variant="ghost" onClick={onEditSets}>Sets</Button>}
           {canEdit && <Button onClick={onCreate}>+ Item unique</Button>}
         </div>
       </div>
@@ -122,6 +134,10 @@ export function ItemsCatalog({
         {triees.length !== items.length && ` sur ${items.length}`}
         {flags.includes('orphelins') && triees.length > 0 && ' — autant de trous à documenter.'}
       </div>
+
+      {sets.length > 0 && (
+        <SetsStrip sets={sets} actif={set} onPick={(id) => setSet((v) => (String(v) === String(id) ? '' : String(id)))} />
+      )}
 
       {triees.length === 0 ? (
         <p style={{ ...panel, padding: 24, textAlign: 'center', color: MUTED, fontFamily: "'Inter',sans-serif" }}>
@@ -138,6 +154,44 @@ export function ItemsCatalog({
           {triees.map((i) => <ItemCard key={i.id} item={i} byId={byId} onOpen={onOpen} />)}
         </div>
       )}
+    </div>
+  );
+}
+
+// Les sets en un coup d'œil : « Joyaux bleus 3/5 ». La complétude est DÉRIVÉE
+// (membres documentés / taille du set en jeu) — un set complet passe au vert,
+// un set incomplet dit combien il reste à trouver. Un clic filtre le catalogue.
+function SetsStrip({ sets, actif, onPick }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      {sets.map((se) => {
+        const on = String(actif) === String(se.id);
+        const complet = se.taille > 0 && se.membres >= se.taille;
+        const rgb = hexToRgb(se.couleur);
+        return (
+          <button
+            key={se.id} type="button" onClick={() => onPick(se.id)}
+            title={se.taille
+              ? `${se.membres} item${se.membres > 1 ? 's' : ''} documenté${se.membres > 1 ? 's' : ''} sur ${se.taille} en jeu`
+              : 'Taille du set inconnue'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7, padding: '6px 11px',
+              borderRadius: 999, cursor: 'pointer', fontFamily: "'Inter',sans-serif",
+              fontSize: 12.5, fontWeight: 600, color: se.couleur,
+              background: `rgba(${rgb},${on ? 0.3 : 0.1})`,
+              border: `1px solid rgba(${rgb},${on ? 0.9 : 0.35})`,
+            }}
+          >
+            <span>💎 {se.nom}</span>
+            <span style={{
+              fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5,
+              color: complet ? '#7be3a8' : 'rgba(232,228,248,0.75)',
+            }}>
+              {se.membres}/{se.taille || '?'}{complet ? ' ✓' : ''}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -181,6 +235,14 @@ function ItemCard({ item, byId, onOpen }) {
         <span style={{ fontSize: 11, color: MUTED, fontFamily: "'Inter',sans-serif" }}>
           {cat.icon} {cat.label}
         </span>
+        {item.set && (
+          <span style={{
+            fontSize: 10.5, fontFamily: "'Inter',sans-serif", fontWeight: 600,
+            color: item.set.couleur, border: `1px solid rgba(${hexToRgb(item.set.couleur)},0.4)`,
+            background: `rgba(${hexToRgb(item.set.couleur)},0.12)`,
+            borderRadius: 999, padding: '1px 8px',
+          }}>💎 {item.set.nom}</span>
+        )}
         {item.estOuvrable && (
           <span style={{ fontSize: 11, color: '#7be3a8', fontFamily: "'Inter',sans-serif" }}>
             🔓 {item.counts?.loot || 0} résultat{(item.counts?.loot || 0) > 1 ? 's' : ''}

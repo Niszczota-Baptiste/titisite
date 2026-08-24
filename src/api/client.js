@@ -361,6 +361,14 @@ export const api = {
         'DELETE', `/quests/unique-items/${id}/observations?scope=${scope}`,
       ),
     },
+    // Sets d'items (« les 6 sets de joyaux ») : la complétude « 3/5 » se lit
+    // de `taille` (attendu en jeu) et `membres` (documenté).
+    sets: {
+      list:   () => request('GET', '/quests/sets'),
+      create: (b) => request('POST', '/quests/sets', b),
+      update: (id, b) => request('PUT', `/quests/sets/${id}`, b),
+      remove: (id) => request('DELETE', `/quests/sets/${id}`),
+    },
     // Échelle de rareté (table éditable, pas un enum).
     rarities: {
       list:    () => request('GET', '/quests/rarities'),

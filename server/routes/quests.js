@@ -12,6 +12,7 @@ import {
   getObservation,
   getUniqueItem,
   itemSources,
+  listItemSets,
   listObservations,
   listRarities,
   listUniqueItems,
@@ -140,6 +141,10 @@ questsRouter.put('/my-groups/:id/quests', READ, (req, res) => {
 // exception, le journal d'ouvertures ci-dessous, qu'un simple lecteur alimente
 // — c'est le principe même d'une table de butin affinée collectivement.
 questsRouter.get('/rarities', READ, (_req, res) => res.json(listRarities()));
+
+// Sets d'items (« les 6 sets de joyaux ») : `taille` = ce que le set compte en
+// jeu, `membres` = ce qui est documenté. La complétude se lit des deux.
+questsRouter.get('/sets', READ, (_req, res) => res.json(listItemSets()));
 
 questsRouter.get('/unique-items', READ, (_req, res) => res.json(listUniqueItems()));
 

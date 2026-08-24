@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../../api/client';
 import { useConfirm } from '../../../ui/ConfirmProvider';
 import { Button } from '../../admin/ui';
-import { CodexPicker } from '../../admin/editors/minecraft/CodexPicker';
+import { CodexItem, CodexPicker } from '../../admin/editors/minecraft/CodexPicker';
 import { QuestMap } from '../QuestMap';
 import {
   ACC, ACC_RGB, GOLD, INK, ITEM_CATEGORIES, MANUAL_SOURCE_KINDS, MUTED,
@@ -18,7 +18,8 @@ import { formatPrix } from './loot';
 // existantes — rien n'y est ressaisi.
 
 export function ItemSheet({
-  itemId, byId, itemsById, catalog, canEdit, onOpenItem, onOpenQuest, onEdit, onChanged,
+  itemId, byId, itemsById, catalog, items = [], canEdit,
+  onOpenItem, onOpenQuest, onEdit, onChanged,
 }) {
   const [item, setItem] = useState(null);
   const [sources, setSources] = useState(null);
@@ -56,6 +57,7 @@ export function ItemSheet({
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <Chip>{cat.icon} {cat.label}</Chip>
             {item.factionNom && <Chip color={item.factionCouleur}>{item.factionNom}</Chip>}
+            {item.set && <Chip color={item.set.couleur}>💎 {item.set.nom}</Chip>}
             {item.estOuvrable && <Chip color="#7be3a8">🔓 Ouvrable</Chip>}
             {item.categorie === 'monnaie' && <Chip color={GOLD}>🪙 Sert de monnaie</Chip>}
             {item.estVendable && item.prixVente != null && (
@@ -98,6 +100,12 @@ export function ItemSheet({
         </Section>
       )}
 
+      {item.set && (
+        <Section title={`💎 ${item.set.nom}`} accent={item.set.couleur}>
+          <SetMembres item={item} items={items} byId={byId} onOpenItem={onOpenItem} />
+        </Section>
+      )}
+
       <Section title="📍 Où l'obtenir" accent="#7be3a8">
         <Sources sources={sources?.sources} itemsById={itemsById} byId={byId}
           onOpenQuest={onOpenQuest} onOpenItem={onOpenItem} />
@@ -112,6 +120,35 @@ export function ItemSheet({
           <QuestMap points={points} />
         </Section>
       )}
+    </div>
+  );
+}
+
+// Les autres pièces du set. La liste n'est pas stockée : ce sont les items qui
+// pointent sur le même set, et l'écart avec sa `taille` dit ce qu'il reste à
+// trouver — « il manque 2 joyaux » est une information, pas un trou de saisie.
+function SetMembres({ item, items, byId, onOpenItem }) {
+  const membres = items.filter((i) => i.setId === item.setId);
+  const autres = membres.filter((i) => i.id !== item.id);
+  const manque = Math.max(0, (item.set.taille || 0) - membres.length);
+
+  return (
+    <div style={{ display: 'grid', gap: 5 }}>
+      <p style={{ ...zero, marginBottom: 3 }}>
+        {item.set.taille
+          ? `${membres.length} pièce${membres.length > 1 ? 's' : ''} documentée${membres.length > 1 ? 's' : ''} sur ${item.set.taille} en jeu`
+          : `${membres.length} pièce${membres.length > 1 ? 's' : ''} documentée${membres.length > 1 ? 's' : ''}`}
+        {manque > 0 && <Muted> — il en manque {manque} à identifier.</Muted>}
+      </p>
+      {autres.map((m) => (
+        <Row key={m.id} icon={m.baseItemId
+          ? <CodexItem byId={byId} id={m.baseItemId} size={18} showName={false} />
+          : '💎'} onClick={onOpenItem ? () => onOpenItem(m.id) : undefined}>
+          <span style={{ color: m.rarete?.couleur || INK }}>{m.nom}</span>
+          {m.rarete && <Muted> · {m.rarete.nom}</Muted>}
+        </Row>
+      ))}
+      {autres.length === 0 && <p style={zero}>Aucune autre pièce documentée pour l'instant.</p>}
     </div>
   );
 }

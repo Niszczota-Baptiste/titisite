@@ -77,6 +77,78 @@ export function reorderRarities(ids, userId) {
   return listRarities();
 }
 
+// ── Sets d'items ──────────────────────────────────────────────────────────
+// Un set est une COLLECTION attendue (« il existe 6 sets de joyaux ») : `taille`
+// dit combien de pièces il compte EN JEU, ses membres sont les items qui
+// pointent dessus. La complétude affichée (« 3/5 ») est donc dérivée des deux,
+// jamais ressaisie — et un set incomplet reste un set, il signale juste ce
+// qu'il reste à documenter.
+
+function mapSet(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    slug: r.slug || null,
+    nom: r.nom,
+    couleur: r.couleur,
+    taille: r.taille,
+    note: r.note || '',
+    ordre: r.ordre,
+    membres: r.membres ?? 0,
+  };
+}
+
+export function listItemSets() {
+  return db.prepare(`
+    SELECT s.*, COUNT(i.id) AS membres
+    FROM unique_item_sets s
+    LEFT JOIN quest_custom_items i ON i.set_id = s.id
+    GROUP BY s.id ORDER BY s.ordre, s.id
+  `).all().map(mapSet);
+}
+
+export function getItemSet(id) {
+  return mapSet(db.prepare(`
+    SELECT s.*, (SELECT COUNT(*) FROM quest_custom_items i WHERE i.set_id = s.id) AS membres
+    FROM unique_item_sets s WHERE s.id = ?
+  `).get(id));
+}
+
+const setColumns = (data) => [
+  String(data.nom).trim().slice(0, 80),
+  data.couleur || '#c9a8e8',
+  Math.max(0, Math.min(999, Math.trunc(+data.taille || 0))),
+  String(data.note || '').trim().slice(0, 500),
+];
+
+export function createItemSet(data, userId) {
+  const slug = uniqueSlug('unique_item_sets', data.slug || data.nom);
+  const info = db.prepare(`
+    INSERT INTO unique_item_sets (nom, couleur, taille, note, slug, ordre, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, COALESCE((SELECT MAX(ordre)+1 FROM unique_item_sets), 1), ?, ?)
+  `).run(...setColumns(data), slug, userId, userId);
+  return getItemSet(info.lastInsertRowid);
+}
+
+export function updateItemSet(id, data, userId) {
+  if (!itemSetExists(id)) return null;
+  db.prepare(`
+    UPDATE unique_item_sets SET nom = ?, couleur = ?, taille = ?, note = ?,
+      ordre = COALESCE(?, ordre), updated_by = ?, updated_at = strftime('%s','now')
+    WHERE id = ?
+  `).run(
+    ...setColumns(data),
+    data.ordre == null ? null : Math.trunc(+data.ordre) || 0,
+    userId, id,
+  );
+  return getItemSet(id);
+}
+
+// Les items membres gardent leur fiche (set_id → NULL par la FK).
+export function deleteItemSet(id) {
+  return db.prepare(`DELETE FROM unique_item_sets WHERE id = ?`).run(id).changes > 0;
+}
+
 // ── Items uniques ─────────────────────────────────────────────────────────
 
 // Garde les clés historiques (`refCode`, `note`) : /quests/custom-items et
@@ -99,6 +171,10 @@ function mapItem(r) {
     factionId: r.faction_id ?? null,
     factionNom: r.faction_nom ?? null,
     factionCouleur: r.faction_couleur ?? null,
+    setId: r.set_id ?? null,
+    set: r.set_nom
+      ? { id: r.set_id, slug: r.set_slug, nom: r.set_nom, couleur: r.set_couleur, taille: r.set_taille }
+      : null,
     estVendable: !!r.est_vendable,
     prixVente: r.prix_vente ?? null,
     prixUnite: r.prix_unite || 'pa',
@@ -114,10 +190,12 @@ function mapItem(r) {
 
 const ITEM_SELECT = `
   SELECT i.*, ra.nom AS rarete_nom, ra.couleur AS rarete_couleur, ra.ordre AS rarete_ordre,
-         f.nom AS faction_nom, f.couleur AS faction_couleur
+         f.nom AS faction_nom, f.couleur AS faction_couleur,
+         se.nom AS set_nom, se.couleur AS set_couleur, se.taille AS set_taille, se.slug AS set_slug
   FROM quest_custom_items i
   LEFT JOIN unique_item_rarities ra ON ra.id = i.rarete_id
   LEFT JOIN factions f ON f.id = i.faction_id
+  LEFT JOIN unique_item_sets se ON se.id = i.set_id
 `;
 
 /**
@@ -208,6 +286,10 @@ export function rarityExists(id) {
   return !!db.prepare(`SELECT id FROM unique_item_rarities WHERE id = ?`).get(id);
 }
 
+export function itemSetExists(id) {
+  return !!db.prepare(`SELECT id FROM unique_item_sets WHERE id = ?`).get(id);
+}
+
 export function factionExists(id) {
   return !!db.prepare(`SELECT id FROM factions WHERE id = ?`).get(id);
 }
@@ -230,6 +312,7 @@ function itemColumns(data) {
     listJson(data.stats),
     listJson(data.tags, { max: 20, len: 40 }),
     String(data.note || '').trim().slice(0, 4000),
+    data.setId == null || data.setId === '' ? null : Number(data.setId),
   ];
 }
 
@@ -239,8 +322,8 @@ const createItemTx = db.transaction((data, userId) => {
     INSERT INTO quest_custom_items
       (nom, ref_code, lore, rarete_id, categorie, faction_id, icone_override,
        est_vendable, prix_vente, prix_unite, est_ouvrable, enchantements, stats, tags, note,
-       slug, sort_order, created_by, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       set_id, slug, sort_order, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
             ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_custom_items), 0), ?, ?)
   `).run(...itemColumns(data), slug, userId, userId);
   const id = info.lastInsertRowid;
@@ -262,7 +345,7 @@ const updateItemTx = db.transaction((id, data, userId) => {
   db.prepare(`
     UPDATE quest_custom_items SET nom = ?, ref_code = ?, lore = ?, rarete_id = ?, categorie = ?,
       faction_id = ?, icone_override = ?, est_vendable = ?, prix_vente = ?, prix_unite = ?,
-      est_ouvrable = ?, enchantements = ?, stats = ?, tags = ?, note = ?,
+      est_ouvrable = ?, enchantements = ?, stats = ?, tags = ?, note = ?, set_id = ?,
       slug = ?, updated_by = ?, updated_at = strftime('%s','now')
     WHERE id = ?
   `).run(...itemColumns(data), slug, userId, id);
@@ -281,6 +364,33 @@ export function deleteUniqueItem(id) {
 }
 
 // ── Table de butin ────────────────────────────────────────────────────────
+
+/**
+ * Forme canonique d'un résultat (ligne de butin ou ouverture loguée) : un
+ * résultat qui désigne un item unique se range TOUJOURS sous sa FK, quel que
+ * soit le chemin d'entrée.
+ *
+ * Le picker de résultat travaille sur le catalogue augmenté (codex + items
+ * uniques) et renvoie donc « custom:<id> » même quand le type resté
+ * sélectionné est « item du codex ». Sans normalisation la ligne s'affiche
+ * brute (« custom:9 »), n'a ni prix — donc ne compte pas dans l'espérance — ni
+ * lien, et n'apparaît pas dans « Où l'obtenir », qui suit la FK.
+ *
+ * Une cible inexistante n'est jamais promue en FK : la contrainte est active
+ * (`foreign_keys = ON`), la ligne reste alors telle qu'elle a été saisie.
+ */
+export function normalizeLootResult(resultatType, resultatRef, resultatUniqueId) {
+  const type = resultatType || 'item_referentiel';
+  const brut = resultatUniqueId ?? parseUniqueRef(resultatRef);
+  const cible = Number.isFinite(Number(brut)) && uniqueItemExists(Number(brut))
+    ? Number(brut)
+    : null;
+  if (type === 'unique_item') return { type, ref: null, uniqueId: cible };
+  if (type === 'item_referentiel' && cible != null) {
+    return { type: 'unique_item', ref: null, uniqueId: cible };
+  }
+  return { type, ref: resultatRef ?? null, uniqueId: null };
+}
 
 function mapLoot(r) {
   const label = r.label_affiche
@@ -330,16 +440,14 @@ function replaceLoot(uniqueItemId, rows) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   (rows || []).forEach((l, i) => {
-    const type = l.resultatType || 'item_referentiel';
-    // Un résultat « item unique » peut arriver sous forme de ref 'custom:<id>'
-    // (le picker renvoie ça) : on normalise vers la FK, seule source de vérité.
-    const uid = type === 'unique_item'
-      ? (l.resultatUniqueId ?? parseUniqueRef(l.resultatRef))
-      : null;
+    // Un résultat « item unique » arrive souvent sous forme de ref
+    // 'custom:<id>' (c'est ce que renvoie le picker), avec ou sans le bon
+    // type : on normalise vers la FK, seule source de vérité.
+    const { type, ref, uniqueId } = normalizeLootResult(
+      l.resultatType, l.resultatRef, l.resultatUniqueId,
+    );
     ins.run(
-      uniqueItemId, type,
-      type === 'unique_item' ? null : (l.resultatRef ?? null),
-      uid ?? null,
+      uniqueItemId, type, ref, uniqueId,
       l.factionId ?? null,
       String(l.labelAffiche || '').slice(0, 120),
       Math.max(0, Math.trunc(+l.quantiteMin || 0)) || 1,
@@ -358,10 +466,13 @@ function replaceLoot(uniqueItemId, rows) {
  * Renvoie true si `candidates` introduirait un cycle.
  */
 export function lootWouldCycle(containerId, candidates) {
+  // Normalisé d'abord : une cible passée en ref texte ('custom:<id>' sous le
+  // type « item du codex ») devient une vraie ouverture à l'écriture, elle doit
+  // donc compter dans la détection de cycle.
   const targets = (candidates || [])
-    .filter((l) => (l.resultatType || 'item_referentiel') === 'unique_item')
-    .map((l) => l.resultatUniqueId ?? parseUniqueRef(l.resultatRef))
-    .filter((x) => Number.isFinite(x));
+    .map((l) => normalizeLootResult(l.resultatType, l.resultatRef, l.resultatUniqueId))
+    .filter((r) => r.type === 'unique_item' && r.uniqueId != null)
+    .map((r) => r.uniqueId);
   if (targets.length === 0) return false;
   if (targets.includes(Number(containerId))) return true;
 
@@ -446,10 +557,11 @@ export function listObservations(uniqueItemId, limit = 50) {
 }
 
 export function addObservation(uniqueItemId, data, memberId) {
-  const type = data.resultatType || 'item_referentiel';
-  const uid = type === 'unique_item'
-    ? (data.resultatUniqueId ?? parseUniqueRef(data.resultatRef))
-    : null;
+  // Même normalisation que la table déclarée, sinon la même géode obtenue deux
+  // fois compterait comme deux résultats distincts selon le chemin de saisie.
+  const { type, ref, uniqueId } = normalizeLootResult(
+    data.resultatType, data.resultatRef, data.resultatUniqueId,
+  );
   const info = db.prepare(`
     INSERT INTO loot_observations
       (unique_item_id, loot_entry_id, resultat_type, resultat_ref, resultat_unique_id,
@@ -459,8 +571,8 @@ export function addObservation(uniqueItemId, data, memberId) {
     uniqueItemId,
     data.lootEntryId ?? null,
     type,
-    type === 'unique_item' ? null : (data.resultatRef ?? null),
-    uid ?? null,
+    ref,
+    uniqueId,
     String(data.labelAffiche || '').slice(0, 120),
     Math.max(1, Math.trunc(+data.quantite || 1)),
     memberId,
