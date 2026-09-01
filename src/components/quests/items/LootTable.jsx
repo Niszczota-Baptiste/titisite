@@ -393,7 +393,18 @@ export function EsperancePanel({ item, loot, itemsById, base = 'declaree', total
                   <td style={{ ...td, textAlign: 'right' }}>{pct(x.probabilite)}</td>
                   <td style={{ ...td, textAlign: 'right' }}>{Math.round(x.quantiteMoyenne * 100) / 100}</td>
                   <td style={{ ...td, textAlign: 'right' }}>
-                    {x.valorisee ? Math.round(x.prixUnitaire * 100) / 100 : <em>inconnu</em>}
+                    {x.valorisee ? (
+                      <>
+                        {Math.round(x.prixUnitaire * 100) / 100}
+                        {/* Un prix issu du barème de rachat d'un PNJ n'est pas
+                            une estimation : le dire évite de croire à un
+                            chiffre inventé. */}
+                        {x.ligne.ciblePrixSource === 'rachat' && (
+                          <span title="Prix de rachat à l'unité chez un PNJ"
+                            style={{ color: MUTED, fontSize: 10.5 }}> rachat</span>
+                        )}
+                      </>
+                    ) : <em>inconnu</em>}
                   </td>
                   <td style={{ ...td, textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>
                     {x.valorisee ? `+${Math.round(x.apport * 100) / 100}` : '—'}

@@ -99,19 +99,106 @@ function mapSet(r) {
 }
 
 export function listItemSets() {
-  return db.prepare(`
+  const sets = db.prepare(`
     SELECT s.*, COUNT(i.id) AS membres
     FROM unique_item_sets s
     LEFT JOIN quest_custom_items i ON i.set_id = s.id
     GROUP BY s.id ORDER BY s.ordre, s.id
   `).all().map(mapSet);
+  if (sets.length === 0) return sets;
+  // Barèmes de rachat de TOUS les sets en une requête : la bande de sets du
+  // catalogue les affiche tous, une requête par set serait un N+1 déguisé.
+  const parSet = new Map();
+  for (const r of buyoutRows()) {
+    if (!parSet.has(r.set_id)) parSet.set(r.set_id, []);
+    parSet.get(r.set_id).push(mapBuyout(r));
+  }
+  return sets.map((se) => ({ ...se, rachats: parSet.get(se.id) || [] }));
 }
 
 export function getItemSet(id) {
-  return mapSet(db.prepare(`
+  const set = mapSet(db.prepare(`
     SELECT s.*, (SELECT COUNT(*) FROM quest_custom_items i WHERE i.set_id = s.id) AS membres
     FROM unique_item_sets s WHERE s.id = ?
   `).get(id));
+  return set ? { ...set, rachats: listBuyouts(id) } : null;
+}
+
+// ── Barèmes de rachat d'un set ────────────────────────────────────────────
+// « Les joyaux blancs se vendent 5 PA pièce chez le Comptoir, ou 40 PA le set
+// complet ; le Doyen les reprend contre de la réputation, au même choix. »
+// Une ligne = une combinaison (unité|lot) × (PA|réputation|objet) × un PNJ.
+// Les comparaisons — et le refus d'en faire entre deux monnaies — vivent côté
+// client dans `items/rachat.js`, pure et testée.
+
+function mapBuyout(r) {
+  return {
+    id: r.id,
+    setId: r.set_id,
+    // NULL = vaut pour toutes les pièces du set ; renseigné = barème propre à
+    // une pièce (un joyau qui vaut plus que ses camarades).
+    uniqueItemId: r.unique_item_id ?? null,
+    lot: !!r.lot,
+    paiement: r.paiement,
+    montant: r.montant,
+    factionId: r.faction_id ?? null,
+    factionNom: r.faction_nom ?? null,
+    factionCouleur: r.faction_couleur ?? null,
+    refCode: r.ref_code ?? null,
+    pnj: r.pnj || '',
+    questId: r.quest_id ?? null,
+    questTitre: r.quest_titre ?? null,
+    note: r.note || '',
+    ordre: r.ordre,
+  };
+}
+
+const BUYOUT_SELECT = `
+  SELECT b.*, f.nom AS faction_nom, f.couleur AS faction_couleur, q.titre AS quest_titre
+  FROM unique_item_buyouts b
+  LEFT JOIN factions f ON f.id = b.faction_id
+  LEFT JOIN quests q ON q.id = b.quest_id
+`;
+
+const buyoutRows = () => db.prepare(`${BUYOUT_SELECT} ORDER BY b.set_id, b.ordre, b.id`).all();
+
+export function listBuyouts(setId) {
+  return db.prepare(`${BUYOUT_SELECT} WHERE b.set_id = ? ORDER BY b.ordre, b.id`)
+    .all(setId).map(mapBuyout);
+}
+
+/** Barèmes qui s'appliquent à un item : ceux de son set (globaux ou pour lui). */
+export function buyoutsForItem(uniqueItemId) {
+  return db.prepare(`
+    ${BUYOUT_SELECT}
+    WHERE b.set_id = (SELECT set_id FROM quest_custom_items WHERE id = ?)
+      AND (b.unique_item_id IS NULL OR b.unique_item_id = ?)
+    ORDER BY b.ordre, b.id
+  `).all(uniqueItemId, uniqueItemId).map(mapBuyout);
+}
+
+function replaceBuyouts(setId, rows) {
+  db.prepare(`DELETE FROM unique_item_buyouts WHERE set_id = ?`).run(setId);
+  const ins = db.prepare(`
+    INSERT INTO unique_item_buyouts
+      (set_id, unique_item_id, lot, paiement, montant, faction_id, ref_code, pnj, quest_id, note, ordre)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const idOrNull = (v) => (v == null || v === '' ? null : Number(v) || null);
+  (rows || []).forEach((r, i) => ins.run(
+    setId,
+    idOrNull(r.uniqueItemId),
+    r.lot ? 1 : 0,
+    r.paiement || 'pa',
+    Math.max(0, Number(r.montant) || 0),
+    // La faction ne veut dire quelque chose que sur un paiement en réputation.
+    r.paiement === 'reputation' ? idOrNull(r.factionId) : null,
+    r.paiement === 'item' ? String(r.refCode || '').slice(0, 80) || null : null,
+    String(r.pnj || '').trim().slice(0, 120),
+    idOrNull(r.questId),
+    String(r.note || '').trim().slice(0, 300),
+    i,
+  ));
 }
 
 const setColumns = (data) => [
@@ -127,6 +214,7 @@ export function createItemSet(data, userId) {
     INSERT INTO unique_item_sets (nom, couleur, taille, note, slug, ordre, created_by, updated_by)
     VALUES (?, ?, ?, ?, ?, COALESCE((SELECT MAX(ordre)+1 FROM unique_item_sets), 1), ?, ?)
   `).run(...setColumns(data), slug, userId, userId);
+  if (Array.isArray(data.rachats)) replaceBuyouts(info.lastInsertRowid, data.rachats);
   return getItemSet(info.lastInsertRowid);
 }
 
@@ -141,6 +229,9 @@ export function updateItemSet(id, data, userId) {
     data.ordre == null ? null : Math.trunc(+data.ordre) || 0,
     userId, id,
   );
+  // Absent du payload = inchangé : l'édition en ligne du set (nom, couleur,
+  // taille) ne doit pas effacer les barèmes qu'elle ignore.
+  if (Array.isArray(data.rachats)) replaceBuyouts(id, data.rachats);
   return getItemSet(id);
 }
 
@@ -315,6 +406,8 @@ export function getUniqueItem(id) {
     loot: listLoot(id),
     sourcesManuelles: listManualSources(id),
     observations: observationSummary(id),
+    // Où le revendre : barèmes du set, à l'unité comme en lot.
+    rachats: item.setId ? buyoutsForItem(id) : [],
   };
 }
 
@@ -451,6 +544,8 @@ function mapLoot(r) {
     // aller rechercher chaque item unique un par un.
     ciblePrix: r.cible_prix ?? null,
     ciblePrixUnite: r.cible_prix_unite ?? null,
+    // 'fiche' = prix saisi sur l'objet, 'rachat' = ce qu'un PNJ en donne.
+    ciblePrixSource: r.cible_prix_source ?? null,
     cibleRareteCouleur: r.cible_rarete_couleur ?? null,
     quantiteMin: r.quantite_min,
     quantiteMax: r.quantite_max,
@@ -460,9 +555,27 @@ function mapLoot(r) {
   };
 }
 
+// Prix de repli d'un item : ce qu'un PNJ le rachète À L'UNITÉ en PA. Un joyau
+// sans prix estimé mais racheté 5 PA ne vaut pas « inconnu » — et sans ça
+// l'espérance d'une géode reste vide alors que son contenu a un prix affiché
+// en jeu. Le prix du LOT n'entre jamais ici : il suppose le set complet.
+const PRIX_RACHAT_UNITE = `(
+  SELECT MAX(b.montant) FROM unique_item_buyouts b
+  WHERE b.set_id = c.set_id AND b.lot = 0 AND b.paiement = 'pa' AND b.montant > 0
+    AND (b.unique_item_id IS NULL OR b.unique_item_id = c.id)
+)`;
+
 export function listLoot(uniqueItemId) {
   return db.prepare(`
-    SELECT l.*, c.nom AS cible_nom, c.prix_vente AS cible_prix, c.prix_unite AS cible_prix_unite,
+    SELECT l.*, c.nom AS cible_nom,
+           COALESCE(c.prix_vente, ${PRIX_RACHAT_UNITE}) AS cible_prix,
+           -- Un prix de rachat est libellé en PA par construction ; l'unité de
+           -- la fiche ne vaut que pour le prix de la fiche.
+           CASE WHEN c.prix_vente IS NOT NULL THEN c.prix_unite ELSE 'pa' END AS cible_prix_unite,
+           CASE
+             WHEN c.prix_vente IS NOT NULL THEN 'fiche'
+             WHEN ${PRIX_RACHAT_UNITE} IS NOT NULL THEN 'rachat'
+           END AS cible_prix_source,
            ra.couleur AS cible_rarete_couleur
     FROM loot_entries l
     LEFT JOIN quest_custom_items c ON c.id = l.resultat_unique_id

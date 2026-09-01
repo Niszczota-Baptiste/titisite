@@ -189,7 +189,18 @@ Single-process Node app:
   derived and never typed; the first boot fills it from each item's lore via the
   pure `server/quests/item-sets.js`, a one-shot pass flagged in `site_settings`),
   `unique_item_rarities` (ordered, editable in-app — a table, not
-  an enum), `loot_entries` (a container's loot table: result is a unique item
+  an enum), `unique_item_buyouts` (**buyback scales** of a set: what an NPC
+  gives per piece — `lot = 0` — or for the complete set, paid in PA /
+  reputation+faction / an item; an `unique_item_id` overrides one piece).
+  A set sells two ways that cross — per unit or as a lot, for PA at one NPC or
+  reputation at another — so `items/rachat.js` (pure, tested) pits
+  `unit × set size` against the lot price, **per currency only** (no invented
+  exchange rate, reputation split by faction) and stays silent when the set
+  size or one of the two scales is unknown. A unit buyback in PA **counts as a
+  price**: `listLoot` surfaces it as `ciblePrix` with
+  `ciblePrixSource: 'rachat'`, so a geode full of gems stops reading « 100 % of
+  the table isn't valued »; the lot price never does (it assumes the full set).
+  `loot_entries` (a container's loot table: result is a unique item
   FK / codex id / PA / reputation / free text, quantity range, probability +
   its provenance), `loot_observations` (per-member opening log → empirical
   rates with a Wilson 95 % interval), `unique_item_sources` (manual sources

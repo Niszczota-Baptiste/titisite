@@ -37,6 +37,12 @@ export const MANUAL_SOURCE_KINDS = new Set([
   'mob', 'coffre', 'evenement', 'pnj', 'peche', 'minage', 'autre',
 ]);
 
+/**
+ * Ce qu'un PNJ donne en échange d'un joyau (barème de rachat d'un set) :
+ * des PA, de la réputation chez une faction, ou un objet.
+ */
+export const BUYOUT_PAIEMENTS = new Set(['pa', 'reputation', 'item']);
+
 /** Sens d'une ligne d'offre : ce qu'on donne ↔ ce qu'on reçoit. */
 export const OFFER_SENS = new Set(['donne', 'recoit']);
 

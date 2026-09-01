@@ -836,3 +836,170 @@ describe('seed : rattachement des items à leur set', () => {
     }
   });
 });
+
+// ── Barèmes de rachat des sets ─────────────────────────────────────────────
+// Un joyau se revend à l'unité ou en lot (le set complet), chez un PNJ contre
+// des PA ou chez un autre contre de la réputation. Le serveur stocke les
+// barèmes ; la comparaison « lot ou unité ? » est pure et testée à part
+// (test/rachat.test.js) — ici on vérifie l'aller-retour et ses gardes.
+
+describe('rachat des joyaux : à l\'unité ou en lot', () => {
+  let admin;
+  let set;
+  let agate;
+  let perle;
+  let faction;
+
+  before(async () => {
+    admin = await login(ADMIN);
+    faction = (await admin.f.post('/api/quests/factions', { body: { nom: 'Ondiens' } })).json;
+    set = (await admin.f.post('/api/quests/sets', {
+      body: { nom: 'Joyaux blancs', couleur: '#dddddd', taille: 5 },
+    })).json;
+    agate = (await admin.f.post('/api/quests/unique-items', {
+      body: { nom: 'Agate', categorie: 'ressource', setId: set.id },
+    })).json;
+    perle = (await admin.f.post('/api/quests/unique-items', {
+      body: { nom: 'Perle', categorie: 'ressource', setId: set.id },
+    })).json;
+  });
+
+  it('enregistre les quatre combinaisons (unité|lot) × (PA|réputation)', async () => {
+    const r = await admin.f.put(`/api/quests/sets/${set.id}`, {
+      body: {
+        ...set,
+        rachats: [
+          { lot: false, paiement: 'pa', montant: 5, pnj: 'Comptoir' },
+          { lot: true, paiement: 'pa', montant: 40, pnj: 'Comptoir' },
+          { lot: false, paiement: 'reputation', montant: 2, factionId: faction.id, pnj: 'Doyen' },
+          { lot: true, paiement: 'reputation', montant: 15, factionId: faction.id, pnj: 'Doyen' },
+        ],
+      },
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.rachats.length, 4);
+    const lotPa = r.json.rachats.find((x) => x.lot && x.paiement === 'pa');
+    assert.equal(lotPa.montant, 40);
+    assert.equal(lotPa.pnj, 'Comptoir');
+    // La faction n'a de sens que sur un paiement en réputation.
+    assert.equal(lotPa.factionId, null);
+    const rep = r.json.rachats.find((x) => x.paiement === 'reputation' && !x.lot);
+    assert.equal(rep.factionNom, 'Ondiens', 'le nom est résolu pour l\'affichage');
+  });
+
+  it('les barèmes remontent sur la fiche de chaque pièce du set', async () => {
+    const fiche = (await admin.f.get(`/api/quests/unique-items/${agate.id}`)).json;
+    assert.equal(fiche.rachats.length, 4);
+    assert.equal(fiche.set.taille, 5, 'la taille du set sert au total à l\'unité');
+  });
+
+  it('un barème propre à une pièce ne vaut que pour elle', async () => {
+    await admin.f.put(`/api/quests/sets/${set.id}`, {
+      body: {
+        ...set,
+        rachats: [
+          { lot: false, paiement: 'pa', montant: 5, pnj: 'Comptoir' },
+          { lot: false, paiement: 'pa', montant: 30, pnj: 'Comptoir', uniqueItemId: perle.id },
+        ],
+      },
+    });
+    const surPerle = (await admin.f.get(`/api/quests/unique-items/${perle.id}`)).json.rachats;
+    const surAgate = (await admin.f.get(`/api/quests/unique-items/${agate.id}`)).json.rachats;
+    assert.equal(surPerle.length, 2, 'le barème du set + le sien');
+    assert.equal(surAgate.length, 1, 'la surcharge d\'une autre pièce ne la concerne pas');
+  });
+
+  it('un prix de rachat vaut prix quand la fiche n\'en donne pas', async () => {
+    // Sans ça, une géode pleine de joyaux affiche « 100 % de la table n'est
+    // pas valorisée » alors que le PNJ affiche un prix en jeu.
+    const geode = (await admin.f.get('/api/quests/unique-items')).json
+      .find((i) => i.slug === 'geode-tres-rare');
+    await admin.f.put(`/api/quests/unique-items/${geode.id}`, {
+      body: {
+        ...geode,
+        loot: [{ resultatType: 'unique_item', resultatUniqueId: agate.id, probabilite: 20, quantiteMin: 1, quantiteMax: 1 }],
+      },
+    });
+    const ligne = (await admin.f.get(`/api/quests/unique-items/${geode.id}`)).json.loot[0];
+    assert.equal(ligne.ciblePrix, 5, 'le rachat à l\'unité fait office de prix');
+    assert.equal(ligne.ciblePrixUnite, 'pa');
+    assert.equal(ligne.ciblePrixSource, 'rachat', 'la provenance est dite, jamais devinée');
+
+    // Un prix saisi sur la fiche reprend la main.
+    await admin.f.put(`/api/quests/unique-items/${agate.id}`, {
+      body: { ...agate, estVendable: true, prixVente: 12, prixUnite: 'pa' },
+    });
+    const apres = (await admin.f.get(`/api/quests/unique-items/${geode.id}`)).json.loot[0];
+    assert.equal(apres.ciblePrix, 12);
+    assert.equal(apres.ciblePrixSource, 'fiche');
+  });
+
+  it('le prix du LOT ne sert jamais de prix unitaire', async () => {
+    // Un set complet à 40 PA ne fait pas un joyau isolé à 8 PA : le lot
+    // suppose de posséder toutes les pièces.
+    const seul = (await admin.f.post('/api/quests/sets', {
+      body: {
+        nom: 'Joyaux muets', taille: 4,
+        rachats: [{ lot: true, paiement: 'pa', montant: 40, pnj: 'Comptoir' }],
+      },
+    })).json;
+    const item = (await admin.f.post('/api/quests/unique-items', {
+      body: { nom: 'Muet', categorie: 'ressource', setId: seul.id },
+    })).json;
+    const geode = (await admin.f.get('/api/quests/unique-items')).json
+      .find((i) => i.slug === 'petite-geode');
+    await admin.f.put(`/api/quests/unique-items/${geode.id}`, {
+      body: {
+        ...geode,
+        loot: [{ resultatType: 'unique_item', resultatUniqueId: item.id, probabilite: 10, quantiteMin: 1, quantiteMax: 1 }],
+      },
+    });
+    const ligne = (await admin.f.get(`/api/quests/unique-items/${geode.id}`)).json.loot[0];
+    assert.equal(ligne.ciblePrix, null);
+    assert.equal(ligne.ciblePrixSource, null);
+  });
+
+  it('refuse un barème incohérent', async () => {
+    const cases = [
+      [[{ paiement: 'troc' }], 'invalid_buyout_paiement'],
+      [[{ paiement: 'pa', montant: -3 }], 'invalid_buyout_montant'],
+      [[{ paiement: 'reputation', montant: 2 }], 'buyout_faction_required'],
+      [[{ paiement: 'reputation', montant: 2, factionId: 99999 }], 'unknown_faction'],
+      [[{ paiement: 'item', montant: 1 }], 'buyout_ref_required'],
+      [[{ paiement: 'pa', montant: 1, uniqueItemId: 99999 }], 'unknown_unique_item'],
+      [[{ paiement: 'pa', montant: 1, questId: 99999 }], 'unknown_quest'],
+      ['pas-un-tableau', 'invalid_rachats'],
+    ];
+    for (const [rachats, expected] of cases) {
+      const r = await admin.f.put(`/api/quests/sets/${set.id}`, { body: { ...set, rachats } });
+      assert.equal(r.status, 400, JSON.stringify(rachats));
+      assert.equal(r.json.error, expected);
+    }
+  });
+
+  it('éditer un set sans parler des barèmes ne les efface pas', async () => {
+    const avant = (await admin.f.get('/api/quests/sets')).json.find((x) => x.id === set.id);
+    assert.equal(avant.rachats.length, 2, 'l\'échec de validation n\'a rien écrasé');
+    const r = await admin.f.put(`/api/quests/sets/${set.id}`, {
+      body: { nom: 'Joyaux blancs', couleur: '#eeeeee', taille: 5 },
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.rachats.length, 2, 'absent du payload = inchangé');
+    // Un tableau vide, lui, efface bien.
+    const vide = await admin.f.put(`/api/quests/sets/${set.id}`, {
+      body: { nom: 'Joyaux blancs', taille: 5, rachats: [] },
+    });
+    assert.deepEqual(vide.json.rachats, []);
+  });
+
+  it('supprimer le set emporte ses barèmes, pas ses pièces', async () => {
+    await admin.f.put(`/api/quests/sets/${set.id}`, {
+      body: { ...set, rachats: [{ lot: false, paiement: 'pa', montant: 5, pnj: 'Comptoir' }] },
+    });
+    assert.equal((await admin.f.delete(`/api/quests/sets/${set.id}`)).status, 204);
+    const fiche = (await admin.f.get(`/api/quests/unique-items/${agate.id}`)).json;
+    assert.equal(fiche.nom, 'Agate', 'la pièce survit');
+    assert.equal(fiche.setId, null);
+    assert.deepEqual(fiche.rachats, [], 'plus de set, plus de barème');
+  });
+});

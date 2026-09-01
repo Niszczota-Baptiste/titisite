@@ -102,7 +102,10 @@ export function ItemsTab({ byId, catalog, factions, canEdit, onOpenQuest, onChan
 
       {setsOuverts && canEdit && (
         <div style={{ marginBottom: 14 }}>
-          <SetsManager sets={sets} onChanged={rafraichir} onClose={() => setSetsOuverts(false)} />
+          <SetsManager
+            sets={sets} factions={factionList} quests={quests} items={items}
+            onChanged={rafraichir} onClose={() => setSetsOuverts(false)}
+          />
         </div>
       )}
 

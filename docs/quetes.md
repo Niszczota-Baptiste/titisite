@@ -109,6 +109,7 @@ autonome, les quêtes le référencent.
 | `quest_custom_items` | l'item unique : `slug` (adresse stable, ne suit pas le renommage), `nom`, `ref_code` (= item support du codex, pour l'icône), `lore`, `rarete_id`, `categorie`, `faction_id`, `set_id`, `est_vendable` + `prix_vente` + `prix_unite`, `est_ouvrable`, `tags`, `enchantements`, `stats`, `note` |
 | `unique_item_rarities` | échelle **ordonnée et éditable en ligne** (commun → légendaire), avec couleur. Une table et non un enum : de nouveaux paliers apparaissent au fil des découvertes |
 | `unique_item_sets` | les **sets** (« il existe 6 sets de joyaux ») : `nom`, `couleur`, `taille` = le nombre de pièces que le set compte EN JEU. Éditable en ligne comme l'échelle de rareté |
+| `unique_item_buyouts` | **barèmes de rachat** d'un set : ce qu'un PNJ donne pour une pièce (`lot = 0`) ou pour le set complet (`lot = 1`), payé en `pa` / `reputation` (+ `faction_id`) / `item`. `unique_item_id` renseigné = barème propre à une pièce. Voir « Revendre un set » |
 | `loot_entries` | table de butin d'un contenant ouvrable : `resultat_type` (`unique_item` **FK** / `item_referentiel` (id codex) / `pa` / `reputation` / `autre`), fourchette `quantite_min`–`quantite_max`, `probabilite`, `probabilite_source` (`officielle`/`estimee`/`observee`) |
 | `loot_observations` | journal d'ouvertures : ce qu'un membre a réellement obtenu → taux empiriques |
 | `unique_item_sources` | sources **manuelles** uniquement (drop de mob, coffre, événement…) — tout le reste est dérivé. `quest_id` optionnel : la quête où l'on **croise** la source, à ne pas confondre avec les quêtes qui donnent l'objet (celles-là sont dérivées des récompenses) |
@@ -127,6 +128,43 @@ les items d'après leur lore** (« Fait partie du set des joyaux bleus »,
 les fiches, le ressaisir en ferait une seconde source de vérité. Ce passage est
 marqué en base (`site_settings.item_sets_backfilled`) et ne se rejoue **jamais** :
 retirer un set à la main tient.
+
+### Revendre un set : à l'unité ou en lot
+
+Un joyau se revend de deux façons qui se croisent — **à l'unité** ou **en lot**
+(le set complet, qui rapporte davantage), et payé en **PA** chez un PNJ ou en
+**réputation** chez un autre. Quatre combinaisons possibles, dont aucune n'est
+obligatoire : d'où une ligne par barème (`unique_item_buyouts`) plutôt que des
+colonnes sur le set, ce qui laisse arriver un troisième acheteur sans migration.
+
+Le barème est porté par le **set** et non par l'objet : c'est la couleur du
+joyau qui fixe le prix, et le lot n'a de sens qu'au niveau du set. Un
+`unique_item_id` renseigné surcharge le barème pour une pièce particulière ;
+sinon la ligne vaut pour tous les membres.
+
+La seule question que l'écran tranche est « garder pour compléter le lot, ou
+écouler à l'unité ? ». `src/components/quests/items/rachat.js` (pur, testé dans
+`test/rachat.test.js`) confronte `unité × taille du set` au prix du lot, avec
+les deux mêmes règles d'honnêteté que les tables de butin :
+
+- **jamais de comparaison entre deux monnaies.** 40 PA et 15 points de
+  réputation ne se soustraient pas, et la réputation est distinguée **par
+  faction** — gagner chez les Ondiens n'est pas gagner chez les Marchands.
+  Chaque monnaie a son propre bloc et son propre verdict ;
+- **tant que la taille du set est inconnue** (`taille = 0`), le total à l'unité
+  n'existe pas : on l'affiche comme tel au lieu de comparer le lot à une somme
+  inventée. Idem quand un seul des deux barèmes est renseigné.
+
+Quand plusieurs PNJ paient dans la même monnaie, c'est la **meilleure offre**
+qui est retenue — c'est celle où l'on ira.
+
+**Un prix de rachat vaut prix.** Un joyau sans `prix_vente` saisi mais racheté
+5 PA à l'unité ne vaut pas « inconnu » : `listLoot` remonte ce montant comme
+`ciblePrix` (avec `ciblePrixSource = 'rachat'`, la provenance n'est jamais
+devinée), et l'espérance d'une géode pleine de joyaux cesse d'afficher
+« 100 % de la table n'est pas valorisée ». Le prix saisi sur la fiche reprend
+toujours la main. Le prix du **lot**, lui, n'entre jamais dans ce calcul : il
+suppose de posséder le set complet, ce n'est pas la valeur d'une pièce isolée.
 
 **Une récompense de quête peut être aléatoire.** Une récolte de géodes donne
 « rien, ou 1 à 3 géodes » : les colonnes `probabilite`, `probabilite_source`,
@@ -347,7 +385,8 @@ POST|PUT|DELETE  /maps[/:id]         (cartes ; DELETE refuse la dernière)
 POST|PUT|DELETE  /custom-items[/:id] (alias historique — délègue au catalogue)
 POST|PUT|DELETE  /unique-items[/:id] (loot + sourcesManuelles dans le payload)
 POST|PUT|DELETE  /rarities[/:id]     (PUT /rarities { ids } réordonne l'échelle)
-POST|PUT|DELETE  /sets[/:id]         (supprimer un set laisse ses membres sans set)
+POST|PUT|DELETE  /sets[/:id]         (+ `rachats[]` — absent du payload = inchangé ;
+                                      supprimer un set laisse ses membres sans set)
 POST|PUT|DELETE  /quests[/:id]       (+ categorie, craft{…}, offers[])
 ```
 
@@ -529,6 +568,10 @@ cesse aussitôt de fonctionner.
   `multiple: true`, ce qui fait dire à l'écran que la somme des sections
   dépasse le nombre d'objets. Rappel : les **filtres retirent**, les
   **sections rangent** — ce sont deux gestes distincts.
+- **Ajouter un mode de paiement au rachat d'un set** : `BUYOUT_PAIEMENTS`
+  (`server/quests/enums.js`) **et** le `CHECK` de `unique_item_buyouts.paiement`
+  (celui-là est figé en base, comme les autres énumérations fermées), puis le
+  rendu dans `items/rachat.js#monnaieLabel` et le select de l'éditeur.
 - **Ajouter une monnaie** : rien à toucher non plus — créer un item unique de
   catégorie « monnaie ». Il devient aussitôt sélectionnable comme unité de prix
   (`prix_unite = 'custom:<id>'`) et comme ligne d'offre. Note : l'espérance

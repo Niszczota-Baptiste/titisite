@@ -10,7 +10,9 @@ import {
 } from '../theme';
 import { ItemTooltip } from './ItemTooltip';
 import { LootTable } from './LootTable';
+import { RachatPanel } from './RachatPanel';
 import { formatPrix } from './loot';
+import { prixUnitaireRachat } from './rachat';
 
 // Fiche d'un item unique : ce qu'il est (infobulle), sa table de butin s'il
 // s'ouvre, TOUTES les façons de l'obtenir et tout ce à quoi il sert. Les deux
@@ -45,6 +47,7 @@ export function ItemSheet({
   if (!item) return <p style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}>Chargement…</p>;
 
   const cat = ITEM_CATEGORIES[item.categorie] || ITEM_CATEGORIES.autre;
+  const prixRachat = prixUnitaireRachat(item.rachats, item.id);
   const points = (item.sourcesManuelles || [])
     .filter((s) => s.x != null || s.z != null)
     .map((s) => ({ label: s.label, role: 'autre', x: s.x ?? 0, y: s.y ?? 0, z: s.z ?? 0 }));
@@ -62,6 +65,11 @@ export function ItemSheet({
             {item.categorie === 'monnaie' && <Chip color={GOLD}>🪙 Sert de monnaie</Chip>}
             {item.estVendable && item.prixVente != null && (
               <Chip color={GOLD}>Revente ≈ {formatPrix(item.prixVente, item.prixUnite, itemsById)}</Chip>
+            )}
+            {/* Prix non saisi mais racheté par un PNJ : c'est un prix connu,
+                pas une valeur inconnue — et c'est celui qui sert aux calculs. */}
+            {item.prixVente == null && prixRachat != null && (
+              <Chip color={GOLD}>Racheté {prixRachat} PA pièce</Chip>
             )}
           </div>
           {(item.tags || []).length > 0 && (
@@ -103,6 +111,17 @@ export function ItemSheet({
       {item.set && (
         <Section title={`💎 ${item.set.nom}`} accent={item.set.couleur}>
           <SetMembres item={item} items={items} byId={byId} onOpenItem={onOpenItem} />
+        </Section>
+      )}
+
+      {/* Où le revendre : à l'unité ou en lot, contre des PA ou de la
+          réputation. La comparaison ne se fait qu'à monnaie égale. */}
+      {item.set && (
+        <Section title="💰 Où le revendre" accent={GOLD}>
+          <RachatPanel
+            rachats={item.rachats} taille={item.set.taille} itemId={item.id}
+            itemsById={itemsById} onOpenQuest={onOpenQuest}
+          />
         </Section>
       )}
 

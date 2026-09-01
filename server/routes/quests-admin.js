@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
 import {
+  BUYOUT_PAIEMENTS,
   LOOT_RESULT_TYPES,
   MANUAL_SOURCE_KINDS,
   OFFER_LINE_KINDS,
@@ -139,6 +140,32 @@ function validateItemSet(b) {
   // `taille` = nombre de pièces attendues en jeu ; 0 = « on ne sait pas encore ».
   const t = Number(b?.taille ?? 0);
   if (!Number.isFinite(t) || t < 0 || t > 999) throw new Invalid('invalid_set_taille');
+  if (b?.rachats != null) {
+    if (!Array.isArray(b.rachats)) throw new Invalid('invalid_rachats');
+    for (const r of b.rachats) validateBuyout(r);
+  }
+}
+
+// Un barème de rachat : combien un PNJ donne pour une pièce, ou pour le set
+// complet. Les FK sont vérifiées ici — un barème qui pointe une faction ou une
+// pièce disparue afficherait un prix sans acheteur.
+function validateBuyout(r) {
+  const paiement = r?.paiement || 'pa';
+  if (!BUYOUT_PAIEMENTS.has(paiement)) throw new Invalid('invalid_buyout_paiement');
+  const montant = Number(r?.montant ?? 0);
+  if (!Number.isFinite(montant) || montant < 0) throw new Invalid('invalid_buyout_montant');
+  // La réputation se gagne CHEZ QUELQU'UN : sans faction, la ligne ne dit rien.
+  if (paiement === 'reputation') {
+    if (r?.factionId == null || r.factionId === '') throw new Invalid('buyout_faction_required');
+    if (!factionExists(Number(r.factionId))) throw new Invalid('unknown_faction');
+  }
+  if (paiement === 'item' && !nonEmpty(r?.refCode)) throw new Invalid('buyout_ref_required');
+  if (r?.uniqueItemId != null && r.uniqueItemId !== '' && !uniqueItemExists(Number(r.uniqueItemId))) {
+    throw new Invalid('unknown_unique_item');
+  }
+  if (r?.questId != null && r.questId !== '' && !questExists(Number(r.questId))) {
+    throw new Invalid('unknown_quest');
+  }
 }
 
 // Une ligne de butin. `probabilite` est bornée à [0,100] mais la SOMME n'est

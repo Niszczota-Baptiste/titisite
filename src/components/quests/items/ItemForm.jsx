@@ -3,11 +3,12 @@ import { api } from '../../../api/client';
 import { Button, Field, Input, Textarea } from '../../admin/ui';
 import { CodexPicker } from '../../admin/editors/minecraft/CodexPicker';
 import {
-  ACC, ACC_RGB, CRIMSON, GOLD, INK, ITEM_CATEGORIES, ITEM_CATEGORY_ORDER,
+  ACC, ACC_RGB, CRIMSON, GOLD, INK, ITEM_CATEGORIES, ITEM_CATEGORY_ORDER, hexToRgb,
   MANUAL_SOURCE_KINDS, MUTED, PROBA_SOURCES, panel,
 } from '../theme';
 import { ItemTooltip } from './ItemTooltip';
 import { EsperancePanel, SommeBanner } from './LootTable';
+import { RachatPanel } from './RachatPanel';
 import { reliquat, sommeProbabilites } from './loot';
 
 // Éditeur d'item unique. Deux partis pris :
@@ -529,10 +530,11 @@ export function RaritiesManager({ rarities, onChanged, onClose }) {
 // en ligne, parce que le jeu en ajoute. `taille` est ce que le set compte EN
 // JEU ; le compteur à côté dit ce qui est documenté (« 3/5 »), il se dérive des
 // items rattachés et ne se saisit jamais.
-export function SetsManager({ sets, onChanged, onClose }) {
+export function SetsManager({ sets, factions = [], quests = [], items = [], onChanged, onClose }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [nouveau, setNouveau] = useState({ nom: '', couleur: '#c9a8e8', taille: 5 });
+  const [rachatsOuverts, setRachatsOuverts] = useState(null); // id du set déplié
 
   const run = async (fn) => {
     setBusy(true); setErr(null);
@@ -574,8 +576,19 @@ export function SetsManager({ sets, onChanged, onClose }) {
             }}>
               {se.membres} documenté{se.membres > 1 ? 's' : ''}
             </span>
+            <Button type="button" variant="ghost" style={{ padding: '6px 9px', fontSize: 12 }}
+              title="Ce que les PNJ donnent pour une pièce, et pour le set complet"
+              onClick={() => setRachatsOuverts((v) => (v === se.id ? null : se.id))}>
+              💰 {(se.rachats || []).length || ''}
+            </Button>
             <Button type="button" variant="danger" disabled={busy} style={{ padding: '6px 8px' }}
               onClick={() => run(() => api.quests.sets.remove(se.id))}>×</Button>
+            {rachatsOuverts === se.id && (
+              <BuyoutsEditor
+                set={se} factions={factions} quests={quests} items={items}
+                onSaved={onChanged}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -596,9 +609,131 @@ export function SetsManager({ sets, onChanged, onClose }) {
       </div>
       <p style={{ margin: '10px 0 0', fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
         Supprimer un set ne supprime aucun objet : ses membres se retrouvent simplement sans
-        set. <span style={{ color: CRIMSON }}>Les modifications sont enregistrées
-        immédiatement.</span>
+        set. Le bouton 💰 ouvre les <strong>barèmes de rachat</strong> : ce qu'un PNJ donne pour
+        une pièce et pour le set complet. <span style={{ color: CRIMSON }}>Les modifications du
+        set sont enregistrées immédiatement</span> (les barèmes, eux, ont leur propre bouton).
       </p>
     </div>
   );
 }
+
+// Les barèmes de rachat d'un set. Contrairement au reste du gestionnaire, ils
+// ne s'enregistrent PAS à chaque frappe : une ligne se saisit en plusieurs
+// champs (montant, PNJ, faction…) et sauver à chaque caractère enverrait une
+// requête par touche pour une ligne encore incomplète.
+function BuyoutsEditor({ set, factions, quests, items, onSaved }) {
+  const [rows, setRows] = useState(() => (set.rachats || []).map((r) => ({ ...r })));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [ok, setOk] = useState(false);
+
+  const membres = useMemo(
+    () => items.filter((i) => i.setId === set.id),
+    [items, set.id],
+  );
+  const set0 = (i, patch) => {
+    setOk(false);
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  };
+
+  const enregistrer = async () => {
+    setBusy(true); setErr(null); setOk(false);
+    try {
+      await api.quests.sets.update(set.id, { ...set, rachats: rows });
+      await onSaved();
+      setOk(true);
+    } catch (e) { setErr(e.body?.error || e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{
+      flexBasis: '100%', marginTop: 8, padding: 11, borderRadius: 9,
+      background: 'rgba(14,9,28,0.6)', border: `1px solid rgba(${hexToRgb(GOLD)},0.3)`,
+      display: 'grid', gap: 8,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <strong style={{ fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: GOLD }}>
+          💰 Rachat de « {set.nom} »
+        </strong>
+        <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: MUTED }}>
+          une ligne par PNJ × (à l'unité | le set complet)
+        </span>
+      </div>
+      {err && <p style={{ margin: 0, color: '#ff8a9b', fontSize: 12 }}>{err}</p>}
+
+      {rows.map((r, i) => (
+        <div key={i} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={r.lot ? 'lot' : 'unite'} aria-label="Unité ou lot"
+            onChange={(e) => set0(i, { lot: e.target.value === 'lot' })}
+            style={{ ...selectStyle, minWidth: 128 }}>
+            <option value="unite">À l'unité</option>
+            <option value="lot">Le set complet</option>
+          </select>
+          <select value={r.paiement || 'pa'} aria-label="Payé en"
+            onChange={(e) => set0(i, { paiement: e.target.value })}
+            style={{ ...selectStyle, minWidth: 118 }}>
+            <option value="pa">Payé en PA</option>
+            <option value="reputation">En réputation</option>
+            <option value="item">En objet</option>
+          </select>
+          <Input type="number" min="0" step="0.01" value={r.montant ?? ''} aria-label="Montant"
+            placeholder="Combien ?" onChange={(e) => set0(i, { montant: e.target.value })}
+            style={{ width: 96 }} />
+          {r.paiement === 'reputation' && (
+            <select value={r.factionId ?? ''} aria-label="Faction de la réputation"
+              onChange={(e) => set0(i, { factionId: e.target.value || null })}
+              style={{ ...selectStyle, minWidth: 140 }}>
+              <option value="">Quelle faction ?</option>
+              {factions.map((f) => <option key={f.id} value={f.id}>{f.nom}</option>)}
+            </select>
+          )}
+          <Input value={r.pnj || ''} placeholder="Chez qui ?" aria-label="PNJ"
+            onChange={(e) => set0(i, { pnj: e.target.value })} style={{ minWidth: 130, flex: 1 }} />
+          <select value={r.questId ?? ''} aria-label="Quête de vente"
+            onChange={(e) => set0(i, { questId: e.target.value || null })}
+            style={{ ...selectStyle, minWidth: 150 }}>
+            <option value="">Sans quête</option>
+            {quests.map((q) => <option key={q.id} value={q.id}>{q.titre}</option>)}
+          </select>
+          {/* Surcharge : une pièce qui ne vaut pas le prix de ses camarades. */}
+          <select value={r.uniqueItemId ?? ''} aria-label="Pièce concernée"
+            onChange={(e) => set0(i, { uniqueItemId: e.target.value || null })}
+            style={{ ...selectStyle, minWidth: 140 }}>
+            <option value="">Tout le set</option>
+            {membres.map((m) => <option key={m.id} value={m.id}>{m.nom} seulement</option>)}
+          </select>
+          <Button type="button" variant="danger" style={{ padding: '6px 8px' }}
+            onClick={() => { setOk(false); setRows((rs) => rs.filter((_, j) => j !== i)); }}>×</Button>
+        </div>
+      ))}
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Button type="button" variant="ghost"
+          onClick={() => setRows((rs) => [...rs, { lot: false, paiement: 'pa', montant: '', pnj: '' }])}>
+          + Barème
+        </Button>
+        <Button type="button" onClick={enregistrer} disabled={busy}>
+          {busy ? '…' : 'Enregistrer les barèmes'}
+        </Button>
+        {ok && <span style={{ color: '#7be3a8', fontSize: 12, fontFamily: "'Inter',sans-serif" }}>Enregistré.</span>}
+      </div>
+
+      {/* Aperçu du même calcul que la fiche : on voit tout de suite si le lot
+          vaut le coup, sans quitter l'éditeur. */}
+      {rows.length > 0 && (
+        <div style={{ marginTop: 2 }}>
+          <RachatPanel rachats={rows.map(normaliserApercu(factions))} taille={set.taille} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// L'aperçu travaille sur des lignes en cours de saisie : montants en texte,
+// faction non résolue. On les remet en forme sans toucher à l'état édité.
+const normaliserApercu = (factions) => (r) => ({
+  ...r,
+  montant: Number(r.montant) || 0,
+  factionId: r.factionId == null || r.factionId === '' ? null : Number(r.factionId),
+  factionNom: factions.find((f) => String(f.id) === String(r.factionId))?.nom || null,
+});

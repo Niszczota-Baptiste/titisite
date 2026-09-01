@@ -1405,6 +1405,39 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_item_sets_ordre ON unique_item_sets(ordre, id);`);
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_item_sets_slug ON unique_item_sets(slug) WHERE slug IS NOT NULL AND slug <> '';`);
 
+  // Barèmes de RACHAT d'un set (« les joyaux blancs »). Le jeu propose deux
+  // axes indépendants qui se combinent :
+  //   • à l'UNITÉ ou en LOT (le set complet, qui rapporte davantage) ;
+  //   • payé en PA chez un PNJ, ou en RÉPUTATION chez un autre.
+  // D'où une ligne par combinaison plutôt que des colonnes sur le set : rien
+  // n'oblige les quatre cases à exister, et un troisième acheteur n'imposerait
+  // pas de migration.
+  //
+  // Le barème est porté par le SET et non par l'item : c'est la couleur du
+  // joyau qui fixe le prix, et le lot n'a de sens qu'au niveau du set. Un
+  // `unique_item_id` renseigné surcharge le barème pour une pièce particulière
+  // (un joyau qui vaut plus que ses camarades) — sinon la ligne vaut pour tous
+  // les membres.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS unique_item_buyouts (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      set_id         INTEGER NOT NULL REFERENCES unique_item_sets(id) ON DELETE CASCADE,
+      unique_item_id INTEGER REFERENCES quest_custom_items(id) ON DELETE CASCADE,
+      lot            INTEGER NOT NULL DEFAULT 0,
+      paiement       TEXT NOT NULL DEFAULT 'pa'
+                     CHECK (paiement IN ('pa','reputation','item')),
+      montant        REAL NOT NULL DEFAULT 0,
+      faction_id     INTEGER REFERENCES factions(id) ON DELETE SET NULL,
+      ref_code       TEXT,
+      pnj            TEXT NOT NULL DEFAULT '',
+      quest_id       INTEGER REFERENCES quests(id) ON DELETE SET NULL,
+      note           TEXT NOT NULL DEFAULT '',
+      ordre          INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_item_buyouts_set ON unique_item_buyouts(set_id, ordre);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_unique_item_buyouts_item ON unique_item_buyouts(unique_item_id);`);
+
   // Champs d'item unique. `ref_code` (existant) porte l'item support du codex —
   // c'est le `base_item_id` de la spec, gardé sous son nom historique pour ne
   // pas réécrire les lignes existantes. `note` (existant) sert de champ Notes.
