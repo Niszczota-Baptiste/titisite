@@ -1177,6 +1177,34 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_member ON quest_completions(member_id, period_key);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_quest ON quest_completions(quest_id, period_key);`);
 
+  // Journal de TIRAGE des récompenses : ce qu'un membre a réellement obtenu
+  // en rendant la quête. Pendant que quest_completions dit « fait », ceci dit
+  // « et j'ai eu ça » — la distinction compte, une quête récurrente peut être
+  // faite cent fois avec cent résultats différents.
+  //
+  // Raison d'être : les probabilités de `quest_rewards` sont SAISIES À LA MAIN
+  // alors que le serveur ne publie pas ses tables. Elles ne valent donc que
+  // comme point de départ ; le taux mesuré ici les remplace dès la première
+  // ligne relevée (même règle que les tables de butin des contenants).
+  //
+  // `reward_id` NULL = résultat obtenu hors de la liste déclarée (ou « Rien »).
+  // `label` fige le libellé : une ligne de récompense supprimée ne doit pas
+  // effacer l'historique de ce qu'on a vu tomber.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_reward_observations (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      quest_id   INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      reward_id  INTEGER REFERENCES quest_rewards(id) ON DELETE SET NULL,
+      label      TEXT NOT NULL DEFAULT '',
+      quantite   INTEGER NOT NULL DEFAULT 1,
+      member_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_reward_obs_quest ON quest_reward_observations(quest_id, created_at);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_reward_obs_reward ON quest_reward_observations(reward_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_reward_obs_member ON quest_reward_observations(member_id);`);
+
   // User-defined quest groups — a free organizational axis on top of the fixed
   // faction (origin) and chain (sequence) structure. A quest can belong to
   // several groups (many-to-many). Shared/editable like factions & chains.
@@ -1206,6 +1234,39 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_group_items_quest ON quest_group_items(quest_id);`);
+
+  // ── Rotations (« une quête par jour, tirée au sort chez le même PNJ ») ────
+  // La Fédération des Marchands propose dix livraisons mais n'en donne QU'UNE
+  // par jour, au hasard. Les lister toutes comme disponibles ment sur ce qu'il
+  // y a à faire ; les fusionner en une seule quête perdrait les destinations.
+  // Un groupe de quêtes existant devient donc une ROTATION : ses membres sont
+  // les tirages possibles, et l'on relève lequel est sorti.
+  //
+  // `rotation_partagee` : 1 = le serveur tire la même quête pour tout le monde
+  // (un relevé par période suffit, les doublons entre membres sont fusionnés),
+  // 0 = chaque joueur a son propre tirage (chaque relevé compte). Le choix
+  // change la statistique, pas la saisie.
+  ensureColumn('quest_groups', 'rotation', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('quest_groups', 'rotation_occurrence', "TEXT NOT NULL DEFAULT 'journaliere'");
+  ensureColumn('quest_groups', 'rotation_pnj', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('quest_groups', 'rotation_partagee', 'INTEGER NOT NULL DEFAULT 1');
+
+  // Un tirage relevé. La clé unique porte le membre : deux joueurs peuvent
+  // rapporter la même période (rotation partagée → on dédoublonne à la
+  // lecture) ou deux tirages différents (rotation personnelle → deux mesures).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quest_rotation_draws (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id   INTEGER NOT NULL REFERENCES quest_groups(id) ON DELETE CASCADE,
+      quest_id   INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      period_key TEXT NOT NULL,
+      member_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      UNIQUE (group_id, period_key, member_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_rotation_draws_group ON quest_rotation_draws(group_id, period_key);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quest_rotation_draws_quest ON quest_rotation_draws(quest_id);`);
 
   // Standalone points of interest on the quest world map — NOT tied to a quest.
   // Special buildings, quest-item farming zones, NPCs, etc. Shared/editable.

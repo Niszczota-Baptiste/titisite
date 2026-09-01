@@ -56,6 +56,7 @@ function QuestsApp({ user }) {
   const [groups, setGroups] = useState([]);
   const [maps, setMaps] = useState([]);
   const [customItems, setCustomItems] = useState([]);
+  const [rotations, setRotations] = useState([]);
   const [quests, setQuests] = useState([]);
   const [doneMap, setDoneMap] = useState({});
   const [filters, setFilters] = useState({ status: 'all' });
@@ -87,15 +88,16 @@ function QuestsApp({ user }) {
   }, [byId, customEntries]);
 
   const loadRef = useCallback(async () => {
-    const [fac, ch, gr, mp, ci] = await Promise.all([
+    const [fac, ch, gr, mp, ci, rot] = await Promise.all([
       api.quests.factions(), api.quests.chains(), api.quests.groups(), api.quests.maps(),
-      api.quests.customItems(),
+      api.quests.customItems(), api.quests.rotations.list(),
     ]);
     setFactions(new Map(fac.map((f) => [f.id, f])));
     setChains(ch);
     setGroups(gr);
     setMaps(mp);
     setCustomItems(ci);
+    setRotations(rot);
   }, []);
 
   const loadQuests = useCallback(async () => {
@@ -123,6 +125,13 @@ function QuestsApp({ user }) {
   const refreshAll = useCallback(async () => {
     await Promise.all([loadRef(), loadQuests()]);
   }, [loadRef, loadQuests]);
+
+  // Recharge la fiche ouverte : un tirage relevé change les % affichés, et le
+  // calcul se fait à partir du résumé renvoyé par le serveur.
+  const reloadDetail = useCallback(async () => {
+    if (detailId == null) return;
+    setDetail(await api.quests.get(detailId));
+  }, [detailId]);
 
   const setDone = (id, done) => {
     setQuests((qs) => qs.map((q) => (q.id === id ? { ...q, done } : q)));
@@ -172,7 +181,14 @@ function QuestsApp({ user }) {
         )}
 
         {tab === 'quetes' && (
-          <QuestList quests={quests} factions={factions} chains={chains} groups={groups} filters={filters} setFilters={setFilters} onOpen={setDetailId} />
+          <QuestList
+            quests={quests} factions={factions} chains={chains} groups={groups}
+            rotations={rotations} filters={filters} setFilters={setFilters}
+            onOpen={setDetailId}
+            /* Relever un tirage change le « du jour » des cartes : les deux
+               listes se rechargent ensemble. */
+            onRotationChanged={refreshAll}
+          />
         )}
         {tab === 'items' && (
           <ItemsTab
@@ -192,9 +208,10 @@ function QuestsApp({ user }) {
       <Modal open={detailId != null} onClose={() => setDetailId(null)} title="" width={720}>
         {detail ? (
           <QuestDetail
-            quest={detail} byId={byIdPlus} factions={factions}
+            quest={detail} byId={byIdPlus} factions={factions} canEdit={canEdit}
             onComplete={complete} onUncomplete={uncomplete} busy={busy}
             onOpenQuest={(id) => setDetailId(id)}
+            onRefresh={reloadDetail}
           />
         ) : <p style={{ color: MUTED }}>Chargement…</p>}
       </Modal>

@@ -287,9 +287,24 @@ export function GainsView({ groups = [], onGroupsChanged }) {
   );
 }
 
-// Sélecteur des quêtes d'un groupe privé : toutes les quêtes, groupées par
-// cadence, à cocher. Remplacement complet à l'enregistrement.
-function QuestPicker({ group, onClose, onSaved }) {
+// Sélecteur des quêtes d'un groupe : toutes les quêtes, groupées par cadence, à
+// cocher. Remplacement complet à l'enregistrement.
+//
+// `load`/`save` sont injectables parce que le même écran sert deux endpoints :
+// les groupes PRIVÉS (sélections perso de la projection de gains) et les
+// groupes PARTAGÉS de l'éditeur — dont les rotations, qu'on ne monterait pas
+// en éditant les dix quêtes une par une.
+// Défauts DÉFINIS AU NIVEAU MODULE, pas dans la signature : un défaut inline
+// serait une fonction neuve à chaque rendu, donc une dépendance d'effet
+// toujours différente — et la liste se rechargerait en boucle.
+const CHARGER_GROUPE_PRIVE = (id) => api.quests.myGroups.questIds(id);
+const ENREGISTRER_GROUPE_PRIVE = (id, ids) => api.quests.myGroups.setQuests(id, ids);
+
+export function QuestPicker({
+  group, onClose, onSaved,
+  load = CHARGER_GROUPE_PRIVE,
+  save: enregistrer = ENREGISTRER_GROUPE_PRIVE,
+}) {
   const [quests, setQuests] = useState(null);
   const [checked, setChecked] = useState(new Set());
   const [saving, setSaving] = useState(false);
@@ -297,7 +312,7 @@ function QuestPicker({ group, onClose, onSaved }) {
 
   useEffect(() => {
     let alive = true;
-    Promise.all([api.quests.list(), api.quests.myGroups.questIds(group.id)])
+    Promise.all([api.quests.list(), load(group.id)])
       .then(([qs, m]) => {
         if (!alive) return;
         setQuests(qs);
@@ -305,7 +320,7 @@ function QuestPicker({ group, onClose, onSaved }) {
       })
       .catch((e) => { if (alive) setErr(e.message || 'Erreur'); });
     return () => { alive = false; };
-  }, [group.id]);
+  }, [group.id, load]);
 
   const toggle = (id) => setChecked((prev) => {
     const next = new Set(prev);
@@ -316,7 +331,7 @@ function QuestPicker({ group, onClose, onSaved }) {
   const save = async () => {
     setSaving(true); setErr(null);
     try {
-      await api.quests.myGroups.setQuests(group.id, [...checked]);
+      await enregistrer(group.id, [...checked]);
       onSaved();
     } catch (e) { setErr(e.message || 'Enregistrement impossible'); setSaving(false); }
   };

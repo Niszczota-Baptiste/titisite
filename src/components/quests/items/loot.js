@@ -194,14 +194,21 @@ export function fiabilite(n) {
  * qui est le seul moyen pour qu'une table lue « à l'envers » somme à 100 %.
  * `itemsById` (optionnel) sert à leur retrouver un prix : sans lui ils sont
  * comptés comme non valorisés plutôt que comme valant zéro.
+ *
+ * `cle` permet de réutiliser tout ceci sur un autre journal que celui des
+ * contenants : le tirage des récompenses de quête pose exactement la même
+ * question (mesure contre supposition) et mérite le même code, à la clé
+ * d'identité près (`reward:<id>` au lieu de `unique:<id>`).
  */
-export function croiserObservations(loot, resume, { mode = 'auto', itemsById = null } = {}) {
+export function croiserObservations(
+  loot, resume, { mode = 'auto', itemsById = null, cle = resultatKey } = {},
+) {
   const total = resume?.total || 0;
   const base = (mode !== 'declare' && total > 0) ? 'observee' : 'declaree';
   const parKey = new Map((resume?.parResultat || []).map((o) => [o.key, o]));
 
   const lignes = (loot || []).map((l) => {
-    const obs = parKey.get(resultatKey(l));
+    const obs = parKey.get(cle(l));
     const observations = obs ? { ...wilson(obs.n, total), k: obs.n } : null;
     return {
       ...l,
@@ -214,7 +221,7 @@ export function croiserObservations(loot, resume, { mode = 'auto', itemsById = n
     };
   });
 
-  const declarees = new Set(lignes.map(resultatKey));
+  const declarees = new Set(lignes.map(cle));
   // L'intervalle va dans `observations`, jamais à plat : `wilson()` renvoie lui
   // aussi un `n` (la taille d'échantillon), qui écraserait le `n` de
   // l'observation (le nombre d'occurrences) et afficherait « 23× sur 23 ».

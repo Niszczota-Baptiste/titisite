@@ -8,6 +8,7 @@ import {
   createUniqueItem, deleteUniqueItem, getUniqueItem, listUniqueItems, updateUniqueItem,
 } from './items.js';
 import { currentPeriodKey, nextResetAt, RECURRING } from './period.js';
+import { drawSummary, rotationsForQuests } from './releves.js';
 
 // ── Mappers ──────────────────────────────────────────────────────────────
 
@@ -202,7 +203,26 @@ function mapGroup(r) {
     id: r.id, nom: r.nom, couleur: r.couleur, description: r.description,
     sortOrder: r.sort_order, questCount: r.quest_count ?? undefined,
     prive: r.owner_id != null, ownerId: r.owner_id ?? null,
+    // Rotation : le groupe ne liste pas n quêtes à faire mais n tirages
+    // possibles dont UN sort par période (cf. quests/releves.js).
+    rotation: !!r.rotation,
+    rotationOccurrence: r.rotation_occurrence || 'journaliere',
+    rotationPnj: r.rotation_pnj || '',
+    rotationPartagee: r.rotation_partagee == null ? true : !!r.rotation_partagee,
   };
+}
+
+// Colonnes de rotation, partagées création/mise à jour. Un groupe privé ne peut
+// pas être une rotation : la rotation décrit ce que le SERVEUR propose, pas une
+// sélection perso.
+function rotationColumns(data, ownerId = null) {
+  const rotation = ownerId == null && (data.rotation === true || data.rotation === 1) ? 1 : 0;
+  return [
+    rotation,
+    RECURRING.has(data.rotationOccurrence) ? data.rotationOccurrence : 'journaliere',
+    String(data.rotationPnj || '').trim().slice(0, 120),
+    data.rotationPartagee === false || data.rotationPartagee === 0 ? 0 : 1,
+  ];
 }
 
 // Groupes visibles par un utilisateur : les partagés (owner_id NULL) + LES
@@ -225,9 +245,14 @@ export function groupVisibleBy(groupId, userId) {
 
 export function createGroup(data, userId, ownerId = null) {
   const info = db.prepare(`
-    INSERT INTO quest_groups (nom, couleur, description, owner_id, sort_order, created_by, updated_by)
-    VALUES (?, ?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_groups), 0), ?, ?)
-  `).run(data.nom, data.couleur || '#c9a8e8', data.description || '', ownerId, userId, userId);
+    INSERT INTO quest_groups (nom, couleur, description, owner_id,
+      rotation, rotation_occurrence, rotation_pnj, rotation_partagee,
+      sort_order, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(sort_order)+1 FROM quest_groups), 0), ?, ?)
+  `).run(
+    data.nom, data.couleur || '#c9a8e8', data.description || '', ownerId,
+    ...rotationColumns(data, ownerId), userId, userId,
+  );
   return mapGroup(db.prepare(`SELECT * FROM quest_groups WHERE id = ?`).get(info.lastInsertRowid));
 }
 
@@ -258,12 +283,16 @@ export function groupQuestIds(groupId) {
 }
 
 export function updateGroup(id, data, userId) {
-  const exists = db.prepare(`SELECT id FROM quest_groups WHERE id = ?`).get(id);
+  const exists = db.prepare(`SELECT id, owner_id FROM quest_groups WHERE id = ?`).get(id);
   if (!exists) return null;
   db.prepare(`
     UPDATE quest_groups SET nom = ?, couleur = ?, description = ?,
+      rotation = ?, rotation_occurrence = ?, rotation_pnj = ?, rotation_partagee = ?,
       updated_by = ?, updated_at = strftime('%s','now') WHERE id = ?
-  `).run(data.nom, data.couleur || '#c9a8e8', data.description || '', userId, id);
+  `).run(
+    data.nom, data.couleur || '#c9a8e8', data.description || '',
+    ...rotationColumns(data, exists.owner_id ?? null), userId, id,
+  );
   return mapGroup(db.prepare(`SELECT * FROM quest_groups WHERE id = ?`).get(id));
 }
 
@@ -353,7 +382,7 @@ export function deleteCustomItem(id) {
 
 // ── Quests ───────────────────────────────────────────────────────────────
 
-export function listQuests(filters = {}) {
+export function listQuests(filters = {}, memberId = null) {
   const where = [];
   const args = [];
   if (filters.factionId != null) { where.push('q.faction_id = ?'); args.push(filters.factionId); }
@@ -368,8 +397,14 @@ export function listQuests(filters = {}) {
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY q.chain_id IS NULL, q.chain_id, q.chain_rank, q.titre`;
   const quests = db.prepare(sql).all(...args).map(mapQuestSummary);
-  const groups = groupsForQuests(quests.map((q) => q.id));
-  return quests.map((q) => ({ ...q, groups: groups[q.id] || [] }));
+  const ids = quests.map((q) => q.id);
+  const groups = groupsForQuests(ids);
+  // Rotations : dire d'une carte qu'elle est « celle du jour » (ou pas) évite
+  // d'annoncer dix livraisons quand le PNJ n'en propose qu'une.
+  const rotations = rotationsForQuests(ids, memberId);
+  return quests.map((q) => ({
+    ...q, groups: groups[q.id] || [], rotations: rotations[q.id] || [],
+  }));
 }
 
 /** Existence seule — pour valider une FK sans monter la fiche complète. */
@@ -377,7 +412,7 @@ export function questExists(id) {
   return !!db.prepare(`SELECT id FROM quests WHERE id = ?`).get(id);
 }
 
-export function getQuest(id) {
+export function getQuest(id, memberId = null) {
   const r = db.prepare(`${QUEST_SUMMARY_SELECT} WHERE q.id = ?`).get(id);
   if (!r) return null;
   const base = mapQuestSummary(r);
@@ -397,6 +432,11 @@ export function getQuest(id) {
   return {
     ...base, inputs, rewards, prerequisites, mapPoints, nextQuests, prevQuests, groups,
     craft: mapCraft(r), offers: listOffers(id),
+    // Journal de tirage : ce qu'on a réellement obtenu en rendant la quête.
+    // C'est lui qui pilote les % à l'écran dès qu'il n'est pas vide — les
+    // probabilités saisies ne sont qu'un point de départ.
+    tirages: drawSummary(id),
+    rotations: Object.values(rotationsForQuests([id], memberId))[0] || [],
   };
 }
 
@@ -714,9 +754,28 @@ export function questHistory(questId, memberId = null) {
 // existe, sinon la quantité fixe) pondérée par sa probabilité. Une ligne
 // garantie (probabilite NULL) vaut sa quantité — le comportement historique est
 // donc inchangé tant qu'aucune récompense n'est aléatoire.
+// La probabilité RETENUE d'une ligne, dans l'ordre :
+//   1. ligne garantie (probabilite NULL) → 100 %, inchangé ;
+//   2. la quête a des tirages relevés → le taux MESURÉ (relevés de la ligne /
+//      relevés de la quête). Comme pour les tables de butin, le % saisi n'est
+//      qu'une supposition tant que personne n'a compté ;
+//   3. sinon, la probabilité saisie.
+// Une ligne aléatoire jamais tirée sur n relevés vaut donc 0 % : c'est un
+// résultat de mesure, pas une donnée manquante.
+const REWARD_PROBA = `
+  CASE
+    WHEN r.probabilite IS NULL THEN 100.0
+    WHEN (SELECT COUNT(*) FROM quest_reward_observations o WHERE o.quest_id = r.quest_id) > 0
+      THEN 100.0
+           * (SELECT COUNT(*) FROM quest_reward_observations o WHERE o.reward_id = r.id)
+           / (SELECT COUNT(*) FROM quest_reward_observations o WHERE o.quest_id = r.quest_id)
+    ELSE r.probabilite
+  END
+`;
+
 const REWARD_EXPECTED = `
   COALESCE((r.quantite_min + r.quantite_max) / 2.0, r.quantite, 0)
-  * COALESCE(r.probabilite, 100) / 100.0
+  * ${REWARD_PROBA} / 100.0
 `;
 
 const arrondi = (n) => Math.round((Number(n) || 0) * 10) / 10;

@@ -237,6 +237,19 @@ export function ItemForm({
             )}
           </div>
 
+          {/* Ce que valent réellement ces % : rien tant que personne n'a ouvert.
+              Le dire ici évite de passer une heure à peaufiner des chiffres que
+              la fiche remplacera dès la première géode ouverte. */}
+          <p style={{
+            margin: '0 0 8px', fontFamily: "'Inter',sans-serif", fontSize: 11.5,
+            color: MUTED, lineHeight: 1.5, maxWidth: 640,
+          }}>
+            Ces probabilités sont un <strong style={{ color: 'rgba(214,206,232,0.85)' }}>point de
+            départ</strong> : dès qu'une ouverture est relevée sur la fiche, ce sont les taux
+            mesurés qui font foi (à l'affichage comme dans « vendre ou ouvrir ? »). Inutile de
+            deviner au dixième — une ligne sans idée de taux se laisse à 0.
+          </p>
+
           <div style={{ display: 'grid', gap: 6 }}>
             {loot.map((l, i) => (
               <div key={i} style={{

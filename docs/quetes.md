@@ -70,6 +70,13 @@ membre). Exposés au front en camelCase via `/auth/me`
 - `quest_prerequisites` — `kind` + réf (quête / faction+palier / item / valeur).
 - `quest_map_points` — 1–2 points **X/Y/Z** bruts + `role`.
 - `quest_completions` — `(quest_id, member_id, period_key)` **unique**.
+- `quest_reward_observations` — **journal de tirage** : ce qu'un membre a
+  réellement obtenu en rendant la quête. `quest_completions` dit « fait »,
+  ceci dit « et j'ai eu ça ». `reward_id` NULL = résultat hors liste déclarée
+  (ou « Rien ») identifié par son `label`, figé pour survivre à la suppression
+  de la ligne de récompense. Voir « La mesure prime sur la déclaration ».
+- `quest_rotation_draws` — quelle quête d'une **rotation** est sortie pour une
+  période (`(group_id, period_key, member_id)` unique). Voir « Rotations ».
 - `quest_maps` — **plusieurs cartes** nommées (Overworld, Nether, régions…),
   chacune avec son **centre + zoom** propre (`center_x/center_z/default_span`)
   car un monde n'est pas toujours centré en 0,0. Éditables, non supprimable s'il
@@ -85,6 +92,11 @@ membre). Exposés au front en camelCase via `/auth/me`
   un axe de rangement libre en plus des factions (origine) et chaînes (séquence).
   Une quête peut appartenir à plusieurs groupes ; gérés dans l'onglet « Groupes »
   de l'éditeur, filtrables dans la liste, affichés en puces sur les cartes/fiches.
+  Le contenu d'un groupe partagé se remplace **en bloc** (bouton « 📋 Quêtes »,
+  `PUT /groups/:id/quests`) : monter une rotation de dix livraisons en éditant
+  les dix quêtes une par une n'aurait aucun sens. Quatre colonnes en font une
+  **rotation** (`rotation`, `rotation_occurrence`, `rotation_pnj`,
+  `rotation_partagee`) — voir plus bas.
 
 ### Catalogue d'items uniques, contenants et familles de quêtes
 
@@ -165,6 +177,57 @@ invisibles dans « Où l'obtenir ». Les lignes déjà écrites sont rattrapées
 boot (`db.js#linkCustomRefsInLoot`), sur les deux tables à la fois pour que la
 clé de regroupement reste alignée.
 
+### La mesure prime sur la déclaration
+
+Le serveur de jeu **ne publie aucune table**. Toute `probabilite` saisie à la
+main est donc une supposition — en pratique laissée à 0 ou posée à 100 % faute
+de mieux — alors qu'un journal de relevés est une mesure. D'où la règle qui
+traverse tout le module :
+
+> **Dès qu'un relevé existe, c'est lui qui fait foi. Le % saisi devient un
+> point de départ, plus une vérité.**
+
+Elle vaut pour les deux tables aléatoires, avec le même code
+(`croiserObservations`, `src/components/quests/items/loot.js`, pur et testé —
+seule change la clé d'identité d'un résultat) :
+
+| Table aléatoire | Journal | Clé de résultat |
+|---|---|---|
+| butin d'un contenant (`loot_entries`) | `loot_observations` | `unique:<id>` / `item:<ref>` |
+| tirage d'une quête (`quest_rewards` probabilisées) | `quest_reward_observations` | `reward:<id>` / `libre:<label normalisé>` |
+
+Ce que ça change concrètement :
+
+- **espérance, verdict « vendre ou ouvrir », tri des lignes et gains
+  potentiels** partent du taux mesuré. Côté serveur, `REWARD_PROBA`
+  (`quests/store.js`) applique la même règle en SQL pour `potentialGains` ;
+- une **répartition mesurée somme à 100 % par construction** (chaque tirage a
+  donné exactement un résultat), ce qu'une table devinée ne fait jamais — la
+  bannière de somme le dit au lieu de réclamer un reliquat imaginaire ;
+- un **résultat sorti mais jamais déclaré compte** dans le calcul au lieu
+  d'être seulement signalé : l'ignorer amputerait l'espérance de tirages bien
+  réels. Il reste marqué « hors table » pour inviter à le ficher (une ligne
+  déclarée porte un prix, un relevé nu n'en a pas) ;
+- une **ligne déclarée jamais tirée vaut 0 %** — « 0 sur 114 » est un résultat
+  de mesure, pas une donnée manquante ; l'intervalle de Wilson dit jusqu'où ça
+  peut monter ;
+- « Où l'obtenir » liste aussi les **contenants d'où l'objet est seulement
+  sorti** (`declaree: false`), et le filtre « sans source connue » cesse donc
+  de désigner un objet qu'on vient de tirer.
+
+Une bascule « ✎ Déclaré » reste offerte partout où le calcul est affiché : elle
+sert à comparer supposé et mesuré, pas à choisir sa vérité. La taille de
+l'échantillon est qualifiée (`fiabilite()` : < 10 relevés « faible », < 30
+« moyenne ») — l'observé fait foi dès le premier relevé, mais l'écran ne
+prétend pas qu'un tirage vaut une statistique.
+
+**Relever est ouvert à tout lecteur** (`can_view_quests`), pour les deux
+journaux : exiger le flag d'édition pour dire « j'ai eu 2 géodes »
+condamnerait ces tables à rester devinées, ce qui est exactement le problème
+qu'on règle. Chacun ne supprime que ses propres relevés ; un éditeur peut tout
+retirer (`?scope=all`), le cas « le serveur a changé sa table » — les lignes
+DÉCLARÉES ne sont jamais touchées, c'est l'observation qui est périmée.
+
 La somme des probabilités n'est **jamais** contrainte : elle est affichée et
 signalée (< 100 % → reliquat « rien / commun » proposé ; > 100 % → avertissement),
 mais une table incomplète reste enregistrable — sinon on ne pourrait pas
@@ -174,6 +237,38 @@ Validation serveur : bornes `[0,100]`, quantités ≥ 1, `min ≤ max`, FK véri
 (rareté, faction, item cible, monnaie), et **refus des cycles** contenant →
 contenu, directs comme indirects (parcours en profondeur du graphe
 d'ouvertures).
+
+### Rotations : « une quête par jour, tirée au sort chez le même PNJ »
+
+La Fédération des Marchands affiche dix livraisons — mais n'en propose **qu'une
+par jour**, au hasard, au même endroit. Les lister toutes comme disponibles ment
+sur la journée ; les fusionner en une quête perdrait les destinations. Un
+**groupe** existant devient donc une rotation : ses membres sont les tirages
+possibles, et l'on relève lequel est sorti.
+
+- `quest_groups.rotation` = 1, avec `rotation_occurrence` (cadence du tirage,
+  récurrente obligatoirement — « une quête *unique* par jour » n'a pas de sens),
+  `rotation_pnj` (le point de rendez-vous) et `rotation_partagee`.
+- `rotation_partagee` ne change **pas la saisie, seulement le comptage** :
+  à 1 (défaut) le serveur tire la même quête pour tout le monde, donc une
+  période ne vaut qu'**une** observation même si trois membres la relèvent —
+  sinon la journée pèserait trois fois. À 0, chaque joueur a son tirage et
+  chaque relevé compte. Deux membres qui rapportent des quêtes différentes pour
+  la même période sont comptés pour la majoritaire et **signalés** (`conflits`,
+  badge « relevés contradictoires ») : c'est un désaccord à trancher, pas une
+  moyenne à faire en silence.
+- Le tirage du jour n'est **pas déduit des complétions** : on peut relever ce
+  que le PNJ propose sans le faire, et faire une quête sans que ce soit celle du
+  jour.
+- Conséquences à l'écran (`src/components/quests/Rotations.jsx`) : un panneau en
+  tête de la liste (tirage de la période, sélecteur, fréquences relevées avec
+  intervalle de Wilson et comparaison au tirage uniforme), une pastille
+  « 🎲 du jour / pas tirée / rotation » sur les cartes, un filtre
+  « 🎲 Proposées », et une note sur la fiche. Tant que personne n'a relevé
+  (`duJour === null`) rien n'est masqué — on ne sait pas, on ne prétend pas.
+
+Couper la rotation d'un groupe **n'efface aucun relevé** : le groupe redevient
+un simple rangement et retrouve son historique si on la rallume.
 
 ### Le reset : `period_key` (pas de job qui mute la DB)
 
@@ -221,8 +316,19 @@ DELETE /unique-items/:id/observations[?scope=mine|all]
                                remise à zéro du journal : `mine` = les siens
                                (tout lecteur), `all` (défaut) = tous, éditeurs
                                seulement → { supprimees, resume, recentes }
-GET  /quests?faction=&chain=&occurrence=&categorie=   liste (+ `done` du membre)
-GET  /quests/:id               fiche complète (+ `done` + mon historique)
+GET  /quests?faction=&chain=&occurrence=&categorie=   liste (+ `done` du membre
+                               + `rotations` : la quête est-elle le tirage du jour ?)
+GET  /quests/:id               fiche complète (+ `done` + mon historique
+                               + `tirages` : le résumé du journal de tirage)
+GET  /quests/:id/draws         journal de tirage { resume, recentes }
+POST /quests/:id/draws         relever un tirage { rewardId? | label, quantite }
+DELETE /draws/:id              le sien, ou n'importe lequel pour un éditeur
+DELETE /quests/:id/draws[?scope=mine|all]
+                               remise à zéro (mine = tout lecteur, all = éditeurs)
+GET  /rotations                rotations + tirage de la période + fréquences
+GET  /rotations/:id            une rotation
+POST /rotations/:id/draw       relever le tirage de la période { questId }
+DELETE /rotations/:id/draw     annuler SON relevé de la période
 GET  /me/quests                { done: { questId: true } } (période courante)
 POST /quests/:id/complete      coche (member + period_key courante)
 POST /quests/:id/uncomplete    décoche
@@ -234,7 +340,8 @@ inputs/rewards/prerequisites/mapPoints sont remplacées en bloc) :
 ```
 POST|PUT|DELETE  /factions[/:id]     (tiers dans le payload)
 POST|PUT|DELETE  /chains[/:id]
-POST|PUT|DELETE  /groups[/:id]
+POST|PUT|DELETE  /groups[/:id]        (+ rotation{Occurrence,Pnj,Partagee})
+GET|PUT          /groups/:id/quests  contenu du groupe, remplacé en bloc
 POST|PUT|DELETE  /pois[/:id]         (points d'intérêt libres de la carte)
 POST|PUT|DELETE  /maps[/:id]         (cartes ; DELETE refuse la dernière)
 POST|PUT|DELETE  /custom-items[/:id] (alias historique — délègue au catalogue)
@@ -244,11 +351,13 @@ POST|PUT|DELETE  /sets[/:id]         (supprimer un set laisse ses membres sans s
 POST|PUT|DELETE  /quests[/:id]       (+ categorie, craft{…}, offers[])
 ```
 
-**Le journal d'ouvertures est la seule écriture ouverte aux simples lecteurs**
-(`can_view_quests`) : une table de butin s'affine collectivement, exiger le flag
-d'édition la condamnerait à rester devinée. Chacun ne supprime que ses propres
-observations ; un éditeur peut toutes les retirer. Rien d'autre du catalogue
-n'est modifiable sans `can_edit_quests`.
+**Les journaux de relevés sont les seules écritures ouvertes aux simples
+lecteurs** (`can_view_quests`) : ouvertures de contenants, tirages de quête et
+tirage d'une rotation. Une table s'affine collectivement — exiger le flag
+d'édition la condamnerait à rester devinée (cf. « La mesure prime sur la
+déclaration »). Chacun ne supprime que ses propres relevés ; un éditeur peut
+tous les retirer. Rien d'autre du référentiel n'est modifiable sans
+`can_edit_quests`.
 
 **Repartir de zéro après une mise à jour du serveur de jeu** : quand la table
 de butin change en jeu, les relevés décrivent une table qui n'existe plus et
@@ -409,7 +518,17 @@ cesse aussitôt de fonctionner.
   `server/quests/period.js`, et l'entrée `OCCURRENCES` de `theme.js`.
 - **Ajouter une rareté** : rien à toucher, c'est une table éditable — onglet
   « 📦 Items » → bouton « Raretés » (nom, couleur, ordre par ↑/↓). L'ordre porte
-  le sens : il pilote le tri du catalogue.
+  le sens : il pilote le tri du catalogue. Pour en ajouter une au **seed**
+  (`server/seed-unique-items.js`), la placer à sa position dans `RARITIES` :
+  `seedRarities` l'insère à cet endroit de l'échelle et décale ce qui suit,
+  au lieu de la coller derrière « Légendaire » comme le ferait un `MAX+1`.
+- **Ajouter un axe de rangement au catalogue d'items** : une entrée dans `AXES`
+  (`src/components/quests/items/grouping.js`) + son nom dans `AXES_ORDRE`, et
+  un test dans `test/item-grouping.test.js`. Un axe **multivalué** (un objet
+  sort de plusieurs contenants → il apparaît sous chacun) se déclare avec
+  `multiple: true`, ce qui fait dire à l'écran que la somme des sections
+  dépasse le nombre d'objets. Rappel : les **filtres retirent**, les
+  **sections rangent** — ce sont deux gestes distincts.
 - **Ajouter une monnaie** : rien à toucher non plus — créer un item unique de
   catégorie « monnaie ». Il devient aussitôt sélectionnable comme unité de prix
   (`prix_unite = 'custom:<id>'`) et comme ligne d'offre. Note : l'espérance
@@ -431,8 +550,9 @@ cesse aussitôt de fonctionner.
 
 ### Seed du catalogue
 
-`server/seed-unique-items.js` installe les 5 raretés et les contenants relevés
-en jeu (les trois géodes + l'Écaille du devin). Il est **idempotent par ligne**
+`server/seed-unique-items.js` installe l'échelle de rareté (Commun, Peu commun,
+Inhabituel, Rare, Très rare, Légendaire) et les contenants relevés en jeu (les
+trois géodes + l'Écaille du devin). Il est **idempotent par ligne**
 (rareté par nom, item par slug), pas « si la table est vide » : il s'applique
 donc aussi à une base déjà remplie et ne réécrit jamais ce que tu as édité.
 `SEED_UNIQUE_ITEMS=off` le désactive. Les tables de butin sont laissées

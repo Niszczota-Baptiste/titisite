@@ -193,11 +193,17 @@ function Sources({ sources, itemsById, byId, onOpenQuest, onOpenItem }) {
       {recompenses.map((q) => (
         <Row key={`r${q.questId}`} icon="🎯" onClick={() => onOpenQuest?.(q.questId)}>
           {/* Une récompense peut être tirée au sort : on annonce alors la
-              probabilité en tête, comme pour un contenant. */}
+              probabilité en tête, comme pour un contenant — et c'est le taux
+              MESURÉ sur les tirages relevés qui prime sur le % saisi. */}
           {q.probabilite != null && (
-            <strong style={{ color: GOLD }}>{Math.round(q.probabilite * 10) / 10} % — </strong>
+            <strong style={{ color: q.observations ? '#7bd3e8' : GOLD }}>
+              {Math.round((q.observations ? q.observations.p : q.probabilite) * 10) / 10} % —{' '}
+            </strong>
           )}
           <strong>{q.titre}</strong>
+          {q.observations && (
+            <Muted> · mesuré {q.observations.k}/{q.observations.n}</Muted>
+          )}
           {q.quantiteMin != null ? (
             <Muted> · ×{q.quantiteMin}{q.quantiteMax !== q.quantiteMin ? `–${q.quantiteMax}` : ''}</Muted>
           ) : q.quantite != null && <Muted> · ×{q.quantite}</Muted>}

@@ -209,7 +209,28 @@ Single-process Node app:
   `src/components/quests/items/loot.js`, tested in `test/loot-math.test.js`:
   results with no known price are **excluded** (their share is shown) rather
   than counted as zero, and no exchange rate is ever invented between
-  currencies. Extensible lists live in `server/quests/enums.js` — the two
+  currencies. **A logged observation beats a typed probability**: the game
+  server publishes no drop table, so every `probabilite` is a guess (in
+  practice left at 0 or set to 100) while a journal is a measurement. One pure
+  crossing (`croiserObservations`, key function injectable) drives BOTH random
+  tables — `loot_entries` × `loot_observations`, and probabilistic
+  `quest_rewards` × `quest_reward_observations` (a quest's draw journal: what
+  you actually got, `reward_id` NULL = a result outside the declared list, keyed
+  by normalized label). Consequences: expectation / « sell or open » / potential
+  gains use the measured rate (server-side too — `REWARD_PROBA` in
+  `quests/store.js`); an observed-but-undeclared result **counts** instead of
+  being merely flagged; a declared line never drawn is **0 %**, a measurement
+  and not a gap; « Où l'obtenir » also lists containers the item only ever came
+  *out* of (`declaree: false`), so « no known source » stops naming items you
+  just pulled. An « ✎ Déclaré » toggle compares the two, and `fiabilite()`
+  qualifies the sample. **Logging is open to plain readers** (`can_view_quests`)
+  on all three journals — gating it behind the edit flag would keep those tables
+  guessed, which is the problem. Resetting a journal (`?scope=mine|all`) never
+  touches the declared table.
+  The Items catalogue is **sectioned by a configurable axis** (category,
+  rarity, set, faction/people, source container) — pure logic in
+  `items/grouping.js`, remembered in localStorage; filters remove, sections
+  arrange. Extensible lists live in `server/quests/enums.js` — the two
   `categorie` columns deliberately have **no CHECK** (a SQLite CHECK can't be
   extended without rebuilding the table). See `docs/quetes.md`.
   **Recurring reset is a pure function of `period_key`** (07:00 Europe/Paris,
@@ -241,7 +262,17 @@ Single-process Node app:
   coords via `img_center_x/z`+`img_span`). Points/POIs are
   scoped by `map_id` (NULL resolves to the default/first map). **Groups**
   (`quest_groups`) are a
-  free organizational axis on top of factions/chains — a quest can be in several.
+  free organizational axis on top of factions/chains — a quest can be in several;
+  their contents are replaced in bulk (`PUT /groups/:id/quests`).
+  A group can also be a **rotation** (`rotation` + `rotation_occurrence` /
+  `_pnj` / `_partagee`, draws in `quest_rotation_draws`, logic in
+  `server/quests/releves.js`): the ten merchant deliveries are ten *possible*
+  draws of which the NPC offers **one per period**, so the list must not
+  announce ten things to do. Members log which one came up;
+  `rotation_partagee` changes only the counting (server-wide draw → one period
+  = one observation however many members report it; disagreements are surfaced,
+  never averaged). Surfaced by `Rotations.jsx` (draw of the period, frequency
+  table vs. a uniform draw), a card pill and a « 🎲 Proposées » filter.
   The `/quetes` entry point is a « 📜 Quêtes » link in the Minecraft tab of
   projects (`QuestsLink` in `src/components/project/Minecraft.jsx`) — NOT in
   the public-site footer. See `docs/quetes.md`.

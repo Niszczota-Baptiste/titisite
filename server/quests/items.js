@@ -708,9 +708,16 @@ function linesForQuests(table, questIds) {
 // le fait déjà pour les contenants. Les entrées n'ont pas ces colonnes.
 function questsReferencing(table, ref) {
   const alea = table === 'quest_rewards';
+  // Sur une récompense, le taux MESURÉ accompagne le taux déclaré : c'est lui
+  // qui fait foi à l'écran (même règle que les tables de butin). `obs_k` =
+  // combien de fois cette ligne est sortie, `obs_n` = combien de tirages ont
+  // été relevés sur la quête.
   const colonnes = alea
-    ? 'l.probabilite, l.probabilite_source, l.quantite_min, l.quantite_max'
-    : 'NULL AS probabilite, NULL AS probabilite_source, NULL AS quantite_min, NULL AS quantite_max';
+    ? `l.probabilite, l.probabilite_source, l.quantite_min, l.quantite_max,
+       (SELECT COUNT(*) FROM quest_reward_observations o WHERE o.reward_id = l.id) AS obs_k,
+       (SELECT COUNT(*) FROM quest_reward_observations o WHERE o.quest_id = l.quest_id) AS obs_n`
+    : `NULL AS probabilite, NULL AS probabilite_source, NULL AS quantite_min,
+       NULL AS quantite_max, 0 AS obs_k, 0 AS obs_n`;
   return db.prepare(`
     SELECT q.id, q.titre, q.categorie, q.occurrence_type, q.faction_id,
            f.nom AS faction_nom, f.couleur AS faction_couleur, l.quantite, ${colonnes}
@@ -732,6 +739,10 @@ function questsReferencing(table, ref) {
     probabiliteSource: q.probabilite_source ?? null,
     quantiteMin: q.quantite_min ?? null,
     quantiteMax: q.quantite_max ?? null,
+    // null quand rien n'a été relevé : l'écran retombe alors sur le déclaré.
+    observations: q.obs_n > 0 && q.probabilite != null
+      ? { k: q.obs_k, n: q.obs_n, p: (q.obs_k / q.obs_n) * 100 }
+      : null,
   }));
 }
 

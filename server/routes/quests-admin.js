@@ -43,7 +43,10 @@ import {
   deletePoi,
   deleteQuest,
   getFaction,
+  getGroupOwner,
+  groupQuestIds,
   questExists,
+  setGroupQuests,
   updateChain,
   updateCustomItem,
   updateFaction,
@@ -66,6 +69,8 @@ questsAdminRouter.use(requireAuth, requireQuestEdit);
 
 // ── Validation ─────────────────────────────────────────────────────────────
 const OCCURRENCES = new Set(['simple', 'journaliere', 'hebdomadaire', 'mensuelle']);
+// Cadences d'une rotation : tout sauf `simple` (voir validateGroup).
+const RECURRING_OCCURRENCES = new Set(['journaliere', 'hebdomadaire', 'mensuelle']);
 const PRICE_UNIT_RE = /^(pa|custom:\d+)$/;
 const FACTION_TYPES = new Set(['faction', 'maitrise']);
 const INPUT_KINDS = new Set(['item', 'pa', 'reputation', 'pnj', 'autre']);
@@ -97,6 +102,12 @@ function validateChain(b) {
 
 function validateGroup(b) {
   if (!nonEmpty(b?.nom)) throw new Invalid('group_nom_required');
+  // Une rotation tire un de ses membres par période : la cadence doit être
+  // récurrente, « une quête unique par jour » ne veut rien dire.
+  if (b?.rotation && b.rotationOccurrence && !RECURRING_OCCURRENCES.has(b.rotationOccurrence)) {
+    throw new Invalid('invalid_rotation_occurrence');
+  }
+  if (asStr(b?.rotationPnj).length > 120) throw new Invalid('rotation_pnj_too_long');
 }
 
 function validatePoi(b) {
@@ -350,6 +361,22 @@ questsAdminRouter.delete('/groups/:id', (req, res) => {
   if (!deleteGroup(Number(req.params.id))) return res.status(404).json({ error: 'not_found' });
   res.status(204).end();
 });
+
+// Quêtes d'un groupe PARTAGÉ, en bloc. Le même geste existait déjà pour les
+// groupes privés (`/my-groups/:id/quests`) ; sans lui ici, monter une rotation
+// de dix livraisons demanderait d'ouvrir les dix quêtes une par une.
+questsAdminRouter.get('/groups/:id/quests', handle((req, res) => {
+  const id = Number(req.params.id);
+  if (getGroupOwner(id) === undefined) return res.status(404).json({ error: 'not_found' });
+  res.json({ questIds: groupQuestIds(id) });
+}));
+
+questsAdminRouter.put('/groups/:id/quests', handle((req, res) => {
+  const id = Number(req.params.id);
+  if (getGroupOwner(id) === undefined) return res.status(404).json({ error: 'not_found' });
+  if (!Array.isArray(req.body?.questIds)) return res.status(400).json({ error: 'quest_ids_required' });
+  res.json({ questIds: setGroupQuests(id, req.body.questIds) });
+}));
 
 // ── Map POIs (standalone points of interest) ────────────────────────────────
 questsAdminRouter.post('/pois', handle((req, res) => {

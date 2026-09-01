@@ -4,12 +4,13 @@ import { useConfirm } from '../../ui/ConfirmProvider';
 import { Button, Field, Input, Textarea } from '../admin/ui';
 import { CodexPicker } from '../admin/editors/minecraft/CodexPicker';
 import { CraftEditor, OffersEditor } from './CraftOffers';
+import { QuestPicker } from './GainsView';
 import { SommeBanner } from './items/LootTable';
 import { sommeProbabilites } from './items/loot';
 import { QuestMap } from './QuestMap';
 import {
   ACC, ACC_RGB, CRIMSON, GOLD, INK, MUTED, OCCURRENCE_ORDER, OCCURRENCES,
-  POINT_ROLES, PROBA_SOURCES, QUEST_CATEGORIES, QUEST_CATEGORY_ORDER, panel,
+  POINT_ROLES, PROBA_SOURCES, QUEST_CATEGORIES, QUEST_CATEGORY_ORDER, hexToRgb, panel,
 } from './theme';
 
 const selectStyle = {
@@ -230,9 +231,15 @@ function ChainForm({ chain, factions, onDone, onCancel }) {
 }
 
 // ── Groups ──────────────────────────────────────────────────────────────────
+// Même remarque que dans GainsView : ces closures doivent être stables, sinon
+// l'effet de chargement du picker repart à chaque rendu.
+const CHARGER_GROUPE = (id) => api.quests.groupQuestIds(id);
+const ENREGISTRER_GROUPE = (id, ids) => api.quests.setGroupQuests(id, ids);
+
 function GroupsManager({ groups, onChanged }) {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(null);
+  const [picking, setPicking] = useState(null); // groupe dont on choisit les quêtes
 
   const remove = async (g) => {
     const ok = await confirm({ title: 'Supprimer le groupe', danger: true, confirmLabel: 'Supprimer', message: `« ${g.nom} » sera supprimé. Les quêtes ne sont pas supprimées, elles perdent juste ce groupe.` });
@@ -245,6 +252,9 @@ function GroupsManager({ groups, onChanged }) {
       <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: MUTED, margin: '0 0 12px', lineHeight: 1.5 }}>
         Tes propres groupes pour ranger les quêtes comme tu veux (« Prioritaire », « Event de Noël »…),
         en plus des factions et des chaînes. Une quête peut appartenir à plusieurs groupes.
+        Un groupe peut aussi être une <strong style={{ color: 'rgba(214,206,232,0.9)' }}>rotation</strong> :
+        ses quêtes ne sont pas toutes à faire, le jeu en tire <em>une</em> par période
+        (les dix livraisons d'un même PNJ dont une seule est proposée chaque jour).
       </p>
       <Button onClick={() => setEditing('new')} disabled={editing != null}>+ Nouveau groupe</Button>
       {editing === 'new' && <GroupForm onDone={() => { setEditing(null); onChanged(); }} onCancel={() => setEditing(null)} />}
@@ -256,7 +266,17 @@ function GroupsManager({ groups, onChanged }) {
             <div key={g.id} style={{ ...panel, padding: 12, display: 'flex', alignItems: 'center', gap: 10, borderLeft: `3px solid ${g.couleur}` }}>
               <strong style={{ color: INK, fontFamily: "'Space Grotesk',sans-serif" }}>◈ {g.nom}</strong>
               <span style={{ fontSize: 11, color: MUTED }}>{g.questCount ?? 0} quête(s)</span>
+              {g.rotation && (
+                <span style={{
+                  fontSize: 10.5, fontWeight: 700, color: GOLD, whiteSpace: 'nowrap',
+                  border: `1px solid rgba(${hexToRgb(GOLD)},0.4)`, borderRadius: 999, padding: '1px 8px',
+                }}>
+                  🎲 rotation {(OCCURRENCES[g.rotationOccurrence] || OCCURRENCES.journaliere).label.toLowerCase()}
+                  {g.rotationPnj ? ` · ${g.rotationPnj}` : ''}
+                </span>
+              )}
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                <Button variant="ghost" onClick={() => setPicking(g)}>📋 Quêtes</Button>
                 <Button variant="ghost" onClick={() => setEditing(g)}>Éditer</Button>
                 <Button variant="danger" onClick={() => remove(g)}>Suppr.</Button>
               </div>
@@ -264,6 +284,16 @@ function GroupsManager({ groups, onChanged }) {
           )
         ))}
       </div>
+
+      {picking && (
+        <QuestPicker
+          group={picking}
+          load={CHARGER_GROUPE}
+          save={ENREGISTRER_GROUPE}
+          onClose={() => setPicking(null)}
+          onSaved={() => { setPicking(null); onChanged(); }}
+        />
+      )}
     </div>
   );
 }
@@ -272,13 +302,20 @@ function GroupForm({ group, onDone, onCancel }) {
   const [nom, setNom] = useState(group?.nom || '');
   const [couleur, setCouleur] = useState(group?.couleur || '#c9a8e8');
   const [description, setDescription] = useState(group?.description || '');
+  const [rotation, setRotation] = useState(!!group?.rotation);
+  const [rotationOccurrence, setRotationOccurrence] = useState(group?.rotationOccurrence || 'journaliere');
+  const [rotationPnj, setRotationPnj] = useState(group?.rotationPnj || '');
+  const [rotationPartagee, setRotationPartagee] = useState(group?.rotationPartagee !== false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
 
   const save = async () => {
     setSaving(true); setErr(null);
     try {
-      const body = { nom, couleur, description };
+      const body = {
+        nom, couleur, description,
+        rotation, rotationOccurrence, rotationPnj, rotationPartagee,
+      };
       if (group) await api.quests.updateGroup(group.id, body);
       else await api.quests.createGroup(body);
       onDone();
@@ -296,6 +333,57 @@ function GroupForm({ group, onDone, onCancel }) {
         </Field>
       </div>
       <Field label="Description (optionnel)"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} /></Field>
+
+      {/* Rotation : le groupe cesse d'être une liste de choses à faire pour
+          devenir la liste des tirages POSSIBLES d'un même rendez-vous. */}
+      <label style={{
+        display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+        fontFamily: "'Inter',sans-serif", fontSize: 13, color: INK, margin: '4px 0 8px',
+      }}>
+        <input type="checkbox" checked={rotation} onChange={(e) => setRotation(e.target.checked)} />
+        🎲 Rotation — une seule de ces quêtes est proposée par période
+      </label>
+      {rotation && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10,
+          padding: 11, borderRadius: 9, marginBottom: 10,
+          background: `rgba(${hexToRgb(GOLD)},0.06)`, border: `1px solid rgba(${hexToRgb(GOLD)},0.28)`,
+        }}>
+          <Field label="Cadence du tirage">
+            <select
+              value={rotationOccurrence} onChange={(e) => setRotationOccurrence(e.target.value)}
+              style={{ ...selectStyle, width: '100%' }}
+            >
+              {['journaliere', 'hebdomadaire', 'mensuelle'].map((o) => (
+                <option key={o} value={o}>{OCCURRENCES[o].label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="PNJ / point de rendez-vous">
+            <Input value={rotationPnj} onChange={(e) => setRotationPnj(e.target.value)}
+              placeholder="Fédération des Marchands" />
+          </Field>
+          <Field label="Portée du tirage">
+            <select
+              value={rotationPartagee ? 'partagee' : 'perso'}
+              onChange={(e) => setRotationPartagee(e.target.value === 'partagee')}
+              style={{ ...selectStyle, width: '100%' }}
+            >
+              <option value="partagee">Le serveur tire pour tout le monde</option>
+              <option value="perso">Chaque joueur a son tirage</option>
+            </select>
+          </Field>
+          <p style={{
+            gridColumn: '1 / -1', margin: 0, fontFamily: "'Inter',sans-serif",
+            fontSize: 11.5, color: MUTED, lineHeight: 1.5,
+          }}>
+            La portée ne change pas la saisie, seulement le comptage : en tirage partagé une
+            période ne vaut qu'une observation même si trois membres la relèvent, sinon la
+            journée pèserait trois fois dans les fréquences.
+          </p>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <Button type="button" variant="ghost" onClick={onCancel}>Annuler</Button>
         <Button type="submit" disabled={saving}>{saving ? '…' : 'Enregistrer'}</Button>
@@ -604,6 +692,9 @@ function LineSection({
           Laisse « % chance » vide pour une récompense <strong>garantie</strong>. Renseigne-la pour
           une récompense tirée au sort — avec une fourchette min/max si la quantité varie
           (« rien, ou 1 à 3 géodes »). Ajoute une ligne « Rien » pour compléter le tirage.
+          Le chiffre saisi n'est qu'un <strong>point de départ</strong> : dès qu'un tirage est
+          relevé sur la fiche (« + J'ai eu… »), ce sont les taux mesurés qui font foi, ici comme
+          dans les gains potentiels. Inutile de deviner au dixième — 0 convient très bien.
         </p>
       )}
       {tirage && <div style={{ marginTop: 6 }}><SommeBanner somme={somme} manque={Math.max(0, 100 - somme)} /></div>}

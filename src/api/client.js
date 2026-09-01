@@ -393,6 +393,25 @@ export const api = {
     mine:       () => request('GET', '/quests/me/quests'),
     complete:   (id) => request('POST', `/quests/quests/${id}/complete`),
     uncomplete: (id) => request('POST', `/quests/quests/${id}/uncomplete`),
+    // Journal de TIRAGE des récompenses : ce qu'on a réellement obtenu en
+    // rendant la quête. Ouvert à tout lecteur, comme le journal d'ouvertures
+    // des contenants — c'est lui qui donne les vraies probabilités, les %
+    // saisis dans la fiche n'étant qu'une supposition.
+    draws: {
+      list:   (id) => request('GET', `/quests/quests/${id}/draws`),
+      log:    (id, b) => request('POST', `/quests/quests/${id}/draws`, b),
+      remove: (drawId) => request('DELETE', `/quests/draws/${drawId}`),
+      // 'mine' = ses propres relevés (tout lecteur), 'all' = tous (éditeurs).
+      reset:  (id, scope = 'all') => request('DELETE', `/quests/quests/${id}/draws?scope=${scope}`),
+    },
+    // Rotations : un groupe dont UNE quête est tirée par période (les
+    // livraisons quotidiennes d'un même PNJ). On relève celle du jour.
+    rotations: {
+      list:      () => request('GET', '/quests/rotations'),
+      get:       (id) => request('GET', `/quests/rotations/${id}`),
+      setDraw:   (id, questId) => request('POST', `/quests/rotations/${id}/draw`, { questId }),
+      clearDraw: (id) => request('DELETE', `/quests/rotations/${id}/draw`),
+    },
     // Édition (canEditQuests) — factions, chaînes, quêtes (payload imbriqué).
     createFaction: (b) => request('POST', '/quests/factions', b),
     updateFaction: (id, b) => request('PUT', `/quests/factions/${id}`, b),
@@ -403,6 +422,10 @@ export const api = {
     createGroup:   (b) => request('POST', '/quests/groups', b),
     updateGroup:   (id, b) => request('PUT', `/quests/groups/${id}`, b),
     deleteGroup:   (id) => request('DELETE', `/quests/groups/${id}`),
+    // Contenu d'un groupe partagé en bloc (monter une rotation de dix
+    // livraisons sans ouvrir les dix quêtes).
+    groupQuestIds:    (id) => request('GET', `/quests/groups/${id}/quests`),
+    setGroupQuests:   (id, questIds) => request('PUT', `/quests/groups/${id}/quests`, { questIds }),
     createPoi:     (b) => request('POST', '/quests/pois', b),
     updatePoi:     (id, b) => request('PUT', `/quests/pois/${id}`, b),
     deletePoi:     (id) => request('DELETE', `/quests/pois/${id}`),

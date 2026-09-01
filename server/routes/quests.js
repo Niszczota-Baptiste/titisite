@@ -22,6 +22,19 @@ import {
 } from '../quests/items.js';
 import { LOOT_RESULT_TYPES } from '../quests/enums.js';
 import {
+  addDraw,
+  clearCurrentDraw,
+  clearDraws,
+  deleteDraw,
+  drawSummary,
+  getDraw,
+  getRotationGroup,
+  listDraws,
+  listRotations,
+  rotationView,
+  setDraw,
+} from '../quests/releves.js';
+import {
   completeQuest,
   createGroup,
   customItemNameByRef,
@@ -242,13 +255,13 @@ questsRouter.get('/quests', READ, (req, res) => {
   if (req.query.occurrence) filters.occurrence = String(req.query.occurrence);
   if (req.query.categorie) filters.categorie = String(req.query.categorie);
   const done = memberCurrentDone(req.user.id);
-  const quests = listQuests(filters).map((q) => ({ ...q, done: !!done[q.id] }));
+  const quests = listQuests(filters, req.user.id).map((q) => ({ ...q, done: !!done[q.id] }));
   res.json(quests);
 });
 
 questsRouter.get('/quests/:id', READ, (req, res) => {
   const id = Number(req.params.id);
-  const quest = getQuest(id);
+  const quest = getQuest(id, req.user.id);
   if (!quest) return res.status(404).json({ error: 'not_found' });
   const done = memberCurrentDone(req.user.id);
   // eslint-disable-next-line security/detect-object-injection -- `id` is a Number()-coerced quest id, read-only lookup
@@ -353,6 +366,108 @@ questsRouter.post('/quests/:id/uncomplete', READ, (req, res) => {
   const out = uncompleteQuest(Number(req.params.id), req.user.id);
   if (!out) return res.status(404).json({ error: 'not_found' });
   res.json(out);
+});
+
+// ── Journal de tirage des récompenses ──────────────────────────────────────
+// Même politique que le journal d'ouvertures des contenants : L'ÉCRITURE EST
+// OUVERTE À TOUT LECTEUR (`can_view_quests`). Une table de récompenses s'affine
+// collectivement ; exiger le flag d'édition pour dire « j'ai eu 2 géodes » la
+// condamnerait à rester devinée, ce qui est exactement le problème qu'on règle.
+// Chacun ne supprime que ses propres relevés ; un éditeur peut tout retirer.
+
+const questOr404 = (req, res) => {
+  const id = Number(req.params.id);
+  if (!db.prepare(`SELECT id FROM quests WHERE id = ?`).get(id)) {
+    res.status(404).json({ error: 'not_found' });
+    return null;
+  }
+  return id;
+};
+
+const isQuestEditor = (req) => req.user.role === 'admin' || req.user.can_edit_quests === 1;
+
+questsRouter.get('/quests/:id/draws', READ, (req, res) => {
+  const id = questOr404(req, res);
+  if (id == null) return;
+  res.json({ resume: drawSummary(id), recentes: listDraws(id) });
+});
+
+questsRouter.post('/quests/:id/draws', READ, (req, res) => {
+  const id = questOr404(req, res);
+  if (id == null) return;
+  const qte = Math.trunc(Number(req.body?.quantite ?? 1));
+  if (!Number.isFinite(qte) || qte < 1 || qte > 10_000) {
+    return res.status(400).json({ error: 'invalid_quantite' });
+  }
+  // Un tirage désigne soit une ligne de récompense de CETTE quête, soit un
+  // résultat libre nommé (« Rien », un objet non encore déclaré).
+  const rewardId = req.body?.rewardId;
+  const label = String(req.body?.label || '').trim();
+  if ((rewardId == null || rewardId === '') && !label) {
+    return res.status(400).json({ error: 'draw_result_required' });
+  }
+  addDraw(id, { ...req.body, quantite: qte, label }, req.user.id);
+  res.status(201).json({ resume: drawSummary(id), recentes: listDraws(id) });
+});
+
+questsRouter.delete('/draws/:id', READ, (req, res) => {
+  const draw = getDraw(Number(req.params.id));
+  if (!draw) return res.status(404).json({ error: 'not_found' });
+  if (!isQuestEditor(req) && draw.memberId !== req.user.id) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  deleteDraw(draw.id);
+  res.json({ resume: drawSummary(draw.questId), recentes: listDraws(draw.questId) });
+});
+
+// Repartir de zéro quand le serveur de jeu change les récompenses : moyenner
+// deux versions d'une table ne veut rien dire. Les lignes DÉCLARÉES restent.
+questsRouter.delete('/quests/:id/draws', READ, (req, res) => {
+  const id = questOr404(req, res);
+  if (id == null) return;
+  const scope = String(req.query.scope || 'all');
+  if (scope !== 'all' && scope !== 'mine') return res.status(400).json({ error: 'invalid_scope' });
+  if (scope === 'all' && !isQuestEditor(req)) return res.status(403).json({ error: 'forbidden' });
+  const supprimees = clearDraws(id, scope === 'mine' ? req.user.id : null);
+  res.json({ supprimees, resume: drawSummary(id), recentes: listDraws(id) });
+});
+
+// ── Rotations (« une quête par jour, tirée au sort chez le même PNJ ») ──────
+// Relever le tirage du jour est, là aussi, ouvert à tout lecteur : c'est une
+// observation, pas une modification du référentiel.
+
+questsRouter.get('/rotations', READ, (req, res) => res.json(listRotations(req.user.id)));
+
+const rotationOr404 = (req, res) => {
+  const group = getRotationGroup(Number(req.params.id));
+  if (!group) { res.status(404).json({ error: 'not_found' }); return null; }
+  return group;
+};
+
+questsRouter.get('/rotations/:id', READ, (req, res) => {
+  const group = rotationOr404(req, res);
+  if (!group) return;
+  res.json(rotationView(group, req.user.id));
+});
+
+questsRouter.post('/rotations/:id/draw', READ, (req, res) => {
+  const group = rotationOr404(req, res);
+  if (!group) return;
+  const questId = Number(req.body?.questId);
+  if (!Number.isFinite(questId)) return res.status(400).json({ error: 'quest_id_required' });
+  // La quête doit appartenir à la rotation : relever un tirage impossible
+  // fausserait les fréquences sans qu'on s'en aperçoive.
+  if (!setDraw(group, questId, req.user.id)) {
+    return res.status(400).json({ error: 'quest_not_in_rotation' });
+  }
+  res.json(rotationView(group, req.user.id));
+});
+
+questsRouter.delete('/rotations/:id/draw', READ, (req, res) => {
+  const group = rotationOr404(req, res);
+  if (!group) return;
+  clearCurrentDraw(group, req.user.id);
+  res.json(rotationView(group, req.user.id));
 });
 
 // ── Cockpit pull feed (secret per-member token, no cookie) ─────────────────

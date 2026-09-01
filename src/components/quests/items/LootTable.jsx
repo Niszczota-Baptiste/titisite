@@ -149,7 +149,9 @@ function BaseSwitch({ base, total, fiab, mode, onMode, declarees }) {
   );
 }
 
-export function SommeBanner({ somme, manque, base = 'declaree', total = 0 }) {
+// `mot` : ce qu'on a compté — une « ouverture » pour un contenant, un
+// « tirage » pour une quête. Le même bandeau sert les deux.
+export function SommeBanner({ somme, manque, base = 'declaree', total = 0, mot = 'ouverture' }) {
   const exact = Math.abs(somme - 100) < 0.01;
   const couleur = exact ? '#7be3a8' : (somme > 100 ? CRIMSON : GOLD);
   // En base observée la somme vaut 100 % par construction (c'est une
@@ -164,8 +166,8 @@ export function SommeBanner({ somme, manque, base = 'declaree', total = 0 }) {
       }}>
         <strong style={{ fontFamily: "'JetBrains Mono',monospace" }}>Σ {pct(somme)}</strong>
         <span style={{ color: 'rgba(214,206,232,0.85)' }}>
-          répartition mesurée sur {total} ouverture{total > 1 ? 's' : ''} — elle somme à 100 % par
-          construction, chaque ouverture ayant donné exactement un résultat.
+          répartition mesurée sur {total} {mot}{total > 1 ? 's' : ''} — elle somme à 100 % par
+          construction, chaque {mot} ayant donné exactement un résultat.
         </span>
       </div>
     );

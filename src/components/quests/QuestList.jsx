@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { RotationsPanel } from './Rotations';
 import {
   ACC, ACC_RGB, GOLD, INK, MUTED, OCCURRENCES, OCCURRENCE_ORDER, QUEST_CATEGORIES,
   QUEST_CATEGORY_ORDER, fromNow, hexToRgb, panel,
@@ -9,7 +10,13 @@ const STATUS = [
   { key: 'todo',      label: 'À faire' },
   { key: 'done',      label: 'Faites' },
   { key: 'available', label: 'Dispo (récurrentes)' },
+  { key: 'proposees', label: '🎲 Proposées' },
 ];
+
+// Une quête de rotation n'est réellement proposée que si elle est le tirage de
+// la période. Tant que personne ne l'a relevé (`duJour === null`), on ne sait
+// pas : on la garde plutôt que de la cacher à tort.
+const nonProposee = (q) => (q.rotations || []).some((r) => r.duJour === false);
 
 function Select({ value, onChange, children, ariaLabel }) {
   return (
@@ -26,7 +33,10 @@ function Select({ value, onChange, children, ariaLabel }) {
   );
 }
 
-export function QuestList({ quests, factions, chains, groups = [], filters, setFilters, onOpen }) {
+export function QuestList({
+  quests, factions, chains, groups = [], rotations = [], filters, setFilters,
+  onOpen, onRotationChanged,
+}) {
   const factionList = useMemo(() => [...factions.values()], [factions]);
 
   const shown = useMemo(() => {
@@ -34,6 +44,9 @@ export function QuestList({ quests, factions, chains, groups = [], filters, setF
     if (filters.status === 'todo') out = out.filter((q) => !q.done);
     else if (filters.status === 'done') out = out.filter((q) => q.done);
     else if (filters.status === 'available') out = out.filter((q) => !q.done && q.occurrenceType !== 'simple');
+    // « Proposées » : ce qu'on peut réellement aller faire maintenant — dix
+    // livraisons déclarées mais une seule tirée ne font pas dix quêtes du jour.
+    else if (filters.status === 'proposees') out = out.filter((q) => !q.done && !nonProposee(q));
     return out;
   }, [quests, filters.status]);
 
@@ -50,6 +63,8 @@ export function QuestList({ quests, factions, chains, groups = [], filters, setF
 
   return (
     <div>
+      <RotationsPanel rotations={rotations} onChanged={onRotationChanged} />
+
       {/* facets */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, alignItems: 'center' }}>
         <Select ariaLabel="Filtrer par faction" value={filters.faction || ''} onChange={(v) => setFilters((f) => ({ ...f, faction: v }))}>
@@ -136,6 +151,11 @@ export function QuestList({ quests, factions, chains, groups = [], filters, setF
 function QuestCard({ q, factions, onOpen }) {
   const occ = OCCURRENCES[q.occurrenceType] || OCCURRENCES.simple;
   const faction = q.factionId ? factions.get(q.factionId) : null;
+  // Rotation : la carte dit si c'est le tirage de la période. Une quête écartée
+  // s'estompe au lieu de disparaître — elle reste consultable, elle n'est
+  // simplement pas au menu du jour.
+  const rotation = (q.rotations || [])[0] || null;
+  const ecartee = rotation?.duJour === false;
   return (
     <button
       type="button"
@@ -145,6 +165,7 @@ function QuestCard({ q, factions, onOpen }) {
         borderLeft: `3px solid ${faction ? faction.couleur : occ.color}`,
         display: 'flex', flexDirection: 'column', gap: 8, minHeight: 96,
         transition: 'border-color 0.15s, transform 0.15s',
+        opacity: ecartee ? 0.5 : 1,
       }}
       onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
@@ -154,6 +175,21 @@ function QuestCard({ q, factions, onOpen }) {
           fontSize: 11, fontWeight: 700, color: occ.color, whiteSpace: 'nowrap',
           fontFamily: "'JetBrains Mono',monospace",
         }}>{occ.icon} {occ.short}</span>
+        {rotation && (
+          <span
+            title={rotation.duJour === true ? 'Tirage de la période'
+              : rotation.duJour === false ? "Ce n'est pas le tirage de la période"
+                : 'Tirage de la période pas encore relevé'}
+            style={{
+              fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 8px',
+              fontFamily: "'Inter',sans-serif", whiteSpace: 'nowrap',
+              color: rotation.duJour === true ? '#7be3a8' : rotation.duJour === false ? MUTED : GOLD,
+              border: `1px solid rgba(${hexToRgb(rotation.duJour === true ? '#7be3a8' : rotation.duJour === false ? '#b4aac8' : GOLD)},0.4)`,
+            }}
+          >
+            🎲 {rotation.duJour === true ? 'du jour' : rotation.duJour === false ? 'pas tirée' : 'rotation'}
+          </span>
+        )}
         {q.done && (
           <span style={{
             marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: '#7be3a8',
