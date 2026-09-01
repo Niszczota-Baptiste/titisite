@@ -36,7 +36,7 @@ describe('items uniques — catalogue', () => {
     assert.equal(rarities.status, 200);
     assert.deepEqual(
       rarities.json.map((r) => r.nom),
-      ['Commun', 'Peu commun', 'Rare', 'Très rare', 'Légendaire'],
+      ['Commun', 'Peu commun', 'Inhabituel', 'Rare', 'Très rare', 'Légendaire'],
       'échelle ordonnée',
     );
 
@@ -523,10 +523,22 @@ describe('« Où trouver quoi » — index inversé dérivé', () => {
   it('remonte contenants, usages et rôle de monnaie', async () => {
     const r = await admin.f.get(`/api/quests/unique-items/${ecaille.id}/sources`);
     const { contenants } = r.json.sources;
-    assert.equal(contenants.length, 1);
-    assert.equal(contenants[0].nom, 'Géode très rare');
-    assert.equal(contenants[0].probabilite, 8);
-    assert.equal(contenants[0].probabiliteSource, 'observee');
+    // Deux contenants : celui dont la table le DÉCLARE, et celui d'où on l'a vu
+    // sortir sans que la ligne soit écrite (le journal d'ouvertures de la
+    // petite géode, plus haut). Le second est une source malgré tout — sinon un
+    // objet qu'on vient de tirer s'afficherait « sans source connue ».
+    const declare = contenants.find((c) => c.nom === 'Géode très rare');
+    const observe = contenants.find((c) => c.nom === 'Petite géode');
+    assert.equal(contenants.length, 2);
+    assert.equal(declare.declaree, true);
+    assert.equal(declare.probabilite, 8);
+    assert.equal(declare.probabiliteSource, 'observee');
+    assert.equal(observe.declaree, false, 'jamais déclaré, seulement observé');
+    assert.equal(observe.probabilite, null);
+    assert.equal(observe.observations.k, 2, '2 écailles sur 2 ouvertures relevées');
+    assert.equal(observe.observations.n, 2);
+    // Le tri suit ce qui fait foi : le taux mesuré passe devant le supposé.
+    assert.equal(contenants[0].nom, 'Petite géode');
 
     const { craftsConsommateurs, monnaie } = r.json.usages;
     assert.equal(craftsConsommateurs.length, 1, 'consommée par un craft');

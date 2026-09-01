@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  croiserObservations, esperance, quantiteMoyenne, reliquat, sommeProbabilites,
-  verdictOuvrir, wilson,
+  croiserObservations, esperance, fiabilite, lignesRetenues, probaDe, quantiteMoyenne,
+  reliquat, sommeProbabilites, verdictOuvrir, wilson,
 } from '../src/components/quests/items/loot.js';
 
 // Le « vendre ou ouvrir ? » repose entièrement sur ces fonctions : elles sont
@@ -160,5 +160,90 @@ describe('croisement déclaré ↔ observé', () => {
     assert.equal(total, 0);
     assert.equal(lignes[0].observations, null);
     assert.deepEqual(inattendus, []);
+  });
+});
+
+// ── L'observé fait foi ─────────────────────────────────────────────────────
+// Le serveur ne publie pas ses tables : la colonne « probabilité » est saisie à
+// la main, souvent à 0 ou à 100 %. Dès qu'une ouverture est relevée, c'est la
+// mesure qui pilote le calcul — c'est la règle 3 de loot.js.
+
+describe("la mesure prime sur la probabilité saisie", () => {
+  // Le cas réel qui a motivé la bascule : tout est déclaré à 0 % sauf un
+  // « Rien / commun » à 100 %, alors que 114 ouvertures disent tout autre chose.
+  const loot = [
+    { id: 1, resultatType: 'autre', resultatRef: 'rien', label: 'Rien / commun', probabilite: 100, quantiteMin: 1, quantiteMax: 1 },
+    { id: 2, resultatType: 'unique_item', resultatUniqueId: 7, label: 'Spinelle', probabilite: 0, quantiteMin: 1, quantiteMax: 1, ciblePrix: 1, ciblePrixUnite: 'pa' },
+  ];
+  const resume = {
+    total: 100,
+    parResultat: [
+      { key: 'autre:rien', n: 22, label: 'Rien / commun', quantiteTotale: 22, resultatType: 'autre', resultatRef: 'rien' },
+      { key: 'unique:7', n: 21, label: 'Spinelle', quantiteTotale: 21, resultatType: 'unique_item', resultatUniqueId: 7 },
+      { key: 'unique:9', n: 57, label: 'Alexandrite', quantiteTotale: 114, resultatType: 'unique_item', resultatUniqueId: 9 },
+    ],
+  };
+
+  it('bascule en base observée dès la première ouverture relevée', () => {
+    assert.equal(croiserObservations(loot, resume).base, 'observee');
+    assert.equal(croiserObservations(loot, { total: 0, parResultat: [] }).base, 'declaree');
+    // …et on peut revenir à la table saisie pour comparer.
+    assert.equal(croiserObservations(loot, resume, { mode: 'declare' }).base, 'declaree');
+  });
+
+  it('remplace le % déclaré par le % mesuré, en gardant le déclaré sous la main', () => {
+    const { lignes } = croiserObservations(loot, resume);
+    assert.equal(lignes[0].probabiliteDeclaree, 100);
+    assert.equal(probaDe(lignes[0]), 22, '22 sur 100, pas les 100 % supposés');
+    assert.equal(probaDe(lignes[1]), 21, '0 % déclaré mais 21 tirages : la mesure gagne');
+  });
+
+  it('compte les résultats sortis mais jamais déclarés', () => {
+    const croisement = croiserObservations(loot, resume);
+    const retenues = lignesRetenues(croisement);
+    assert.equal(retenues.length, 3, 'les 2 lignes déclarées + le résultat hors table');
+    // Une répartition mesurée somme à 100 % par construction — c'est justement
+    // ce qu'une table devinée ne fait jamais.
+    assert.equal(Math.round(sommeProbabilites(retenues)), 100);
+    // Faute de fourchette déclarée, sa quantité moyenne est celle relevée.
+    assert.equal(quantiteMoyenne(retenues[2]), 2);
+  });
+
+  it('en mode déclaré, les lignes hors table ne comptent pas', () => {
+    const croisement = croiserObservations(loot, resume, { mode: 'declare' });
+    assert.deepEqual(lignesRetenues(croisement), croisement.lignes);
+    assert.equal(sommeProbabilites(lignesRetenues(croisement)), 100);
+  });
+
+  it("retrouve le prix d'un résultat hors table via le catalogue", () => {
+    const itemsById = new Map([[9, { id: 9, nom: 'Alexandrite', prixVente: 5, prixUnite: 'pa' }]]);
+    const croisement = croiserObservations(loot, resume, { itemsById });
+    const hors = croisement.inattendus[0];
+    assert.equal(hors.ciblePrix, 5);
+    // 57 % × 2 exemplaires × 5 PA = 5,7 ; + 21 % × 1 × 1 PA = 0,21.
+    const calc = esperance({ prixUnite: 'pa' }, lignesRetenues(croisement));
+    assert.ok(Math.abs(calc.valeur - 5.91) < 0.001);
+    // Sans catalogue, il reste compté comme non valorisé plutôt que comme zéro.
+    const sansPrix = esperance({ prixUnite: 'pa' }, lignesRetenues(croiserObservations(loot, resume)));
+    assert.equal(Math.round(sansPrix.nonValorisePct), 79);
+  });
+
+  it('compte 0 % — et non « inconnu » — une ligne déclarée jamais tirée', () => {
+    const resumeSansSpinelle = {
+      total: 40,
+      parResultat: [{ key: 'autre:rien', n: 40, label: 'Rien / commun', quantiteTotale: 40 }],
+    };
+    const { lignes, jamaisVues } = croiserObservations(loot, resumeSansSpinelle);
+    assert.equal(probaDe(lignes[1]), 0, '0 sur 40 est un résultat de mesure, pas une absence');
+    assert.equal(lignes[1].observations, null);
+    assert.equal(jamaisVues, 1);
+  });
+
+  it("qualifie la taille de l'échantillon", () => {
+    assert.equal(fiabilite(0), 'aucune');
+    assert.equal(fiabilite(9), 'faible');
+    assert.equal(fiabilite(10), 'moyenne');
+    assert.equal(fiabilite(29), 'moyenne');
+    assert.equal(fiabilite(30), 'bonne');
   });
 });

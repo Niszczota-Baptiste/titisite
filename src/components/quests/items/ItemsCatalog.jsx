@@ -1,14 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CodexItem } from '../../admin/editors/minecraft/CodexPicker';
 import { Button } from '../../admin/ui';
 import {
   ACC, ACC_RGB, GOLD, INK, ITEM_CATEGORIES, ITEM_CATEGORY_ORDER, MUTED, hexToRgb, panel,
 } from '../theme';
+import { AXES_ORDRE, axeLabel, axeMultiple, grouper } from './grouping';
 import { formatPrix } from './loot';
 
 // Le catalogue : toutes les façons de retrouver un objet quand on ne se
 // souvient que d'un bout — son nom, sa couleur de rareté, sa catégorie, ou le
 // fait qu'on n'a encore documenté aucune source pour lui.
+//
+// Les FILTRES réduisent la liste, les SECTIONS la rangent : ce sont deux
+// gestes différents. « Montre-moi l'équipement » retire tout le reste ;
+// « range par catégorie » garde tout et met chaque chose sous son intertitre.
+// L'axe choisi est mémorisé — c'est une préférence de lecture, pas une
+// recherche, et la retaper à chaque visite serait pénible.
+
+const AXE_MEMOIRE = 'quetes_items_axe';
 
 const normalise = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
@@ -29,6 +38,16 @@ export function ItemsCatalog({
   const [set, setSet] = useState('');
   const [flags, setFlags] = useState([]);
   const [dense, setDense] = useState(false);
+  const [axe, setAxe] = useState(() => {
+    try {
+      const memo = localStorage.getItem(AXE_MEMOIRE);
+      return AXES_ORDRE.includes(memo) ? memo : 'categorie';
+    } catch { return 'categorie'; /* stockage refusé (navigation privée) */ }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(AXE_MEMOIRE, axe); } catch { /* sans mémoire, tant pis */ }
+  }, [axe]);
 
   const toggleFlag = (k) => setFlags((f) => (f.includes(k) ? f.filter((x) => x !== k) : [...f, k]));
 
@@ -59,6 +78,14 @@ export function ItemsCatalog({
     if (ra !== rb) return rb - ra;
     return a.nom.localeCompare(b.nom, 'fr');
   }), [shown]);
+
+  // Les sections se calculent sur la liste DÉJÀ filtrée et triée : à l'intérieur
+  // d'une section, l'ordre du catalogue est conservé.
+  const sections = useMemo(() => grouper(triees, axe, {
+    categories: ITEM_CATEGORIES,
+    categorieOrdre: ITEM_CATEGORY_ORDER,
+    rarities, sets, factions,
+  }), [triees, axe, rarities, sets, factions]);
 
   return (
     <div>
@@ -119,7 +146,14 @@ export function ItemsCatalog({
             >{f.label}</button>
           );
         })}
-        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+          <Select value={axe} onChange={setAxe} ariaLabel="Ranger le catalogue par">
+            {AXES_ORDRE.map((k) => (
+              <option key={k} value={k}>
+                {k === 'aucun' ? 'Sans sections' : `Ranger par ${axeLabel(k).toLowerCase()}`}
+              </option>
+            ))}
+          </Select>
           <Button variant="ghost" onClick={() => setDense((d) => !d)}>
             {dense ? '▦ Grille' : '☰ Liste'}
           </Button>
@@ -133,6 +167,10 @@ export function ItemsCatalog({
         {triees.length} objet{triees.length > 1 ? 's' : ''}
         {triees.length !== items.length && ` sur ${items.length}`}
         {flags.includes('orphelins') && triees.length > 0 && ' — autant de trous à documenter.'}
+        {axeMultiple(axe) && sections?.length > 0 && (
+          <> — rangés par {axeLabel(axe).toLowerCase()} : un objet qui sort de plusieurs
+            contenants apparaît sous chacun.</>
+        )}
       </div>
 
       {sets.length > 0 && (
@@ -145,14 +183,15 @@ export function ItemsCatalog({
             ? `Aucun item unique pour l'instant.${canEdit ? ' Clique « + Item unique » pour créer le premier.' : ''}`
             : 'Aucun objet ne correspond à ces filtres.'}
         </p>
-      ) : dense ? (
-        <DenseList items={triees} byId={byId} onOpen={onOpen} />
+      ) : sections && sections.length > 0 ? (
+        sections.map((sec) => (
+          <div key={sec.key} style={{ marginBottom: 22 }}>
+            <SectionTitle section={sec} />
+            <Liste items={sec.items} dense={dense} byId={byId} onOpen={onOpen} />
+          </div>
+        ))
       ) : (
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12,
-        }}>
-          {triees.map((i) => <ItemCard key={i.id} item={i} byId={byId} onOpen={onOpen} />)}
-        </div>
+        <Liste items={triees} dense={dense} byId={byId} onOpen={onOpen} />
       )}
     </div>
   );
@@ -192,6 +231,37 @@ function SetsStrip({ sets, actif, onPick }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// Intertitre d'une section : même grammaire que les familles de la liste de
+// quêtes (icône, libellé, compte, filet coloré) pour que les deux pages se
+// lisent pareil.
+function SectionTitle({ section }) {
+  const couleur = section.color || ACC;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
+      fontFamily: "'Space Grotesk',sans-serif", fontSize: 13, fontWeight: 700,
+      textTransform: 'uppercase', letterSpacing: '1px', color: couleur,
+    }}>
+      <span>{section.icon} {section.label}</span>
+      <span style={{ color: MUTED, fontWeight: 400, letterSpacing: 0, textTransform: 'none' }}>
+        {section.items.length}
+      </span>
+      <span style={{ flex: 1, height: 1, background: `rgba(${hexToRgb(couleur)},0.25)` }} />
+    </div>
+  );
+}
+
+function Liste({ items, dense, byId, onOpen }) {
+  if (dense) return <DenseList items={items} byId={byId} onOpen={onOpen} />;
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12,
+    }}>
+      {items.map((i) => <ItemCard key={i.id} item={i} byId={byId} onOpen={onOpen} />)}
     </div>
   );
 }

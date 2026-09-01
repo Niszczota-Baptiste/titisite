@@ -10,9 +10,13 @@ import { GEM_SETS, setSlugFromLore } from './quests/item-sets.js';
 // ne poserait jamais les géodes. Rejouer ce seed n'écrase jamais une ligne
 // existante : ce que tu édites en ligne reste tel quel.
 
+// L'ÉCHELLE de référence, dans l'ordre croissant : `ordre` porte le sens
+// (il pilote le tri du catalogue), donc un palier ajouté ici doit s'insérer
+// À SA PLACE et non en bout de liste — voir seedRarities().
 const RARITIES = [
   { nom: 'Commun', couleur: '#9aa4b2' },
   { nom: 'Peu commun', couleur: '#7be3a8' },
+  { nom: 'Inhabituel', couleur: '#7ee0c8' },
   { nom: 'Rare', couleur: '#7bd3e8' },
   { nom: 'Très rare', couleur: '#b79bff' },
   { nom: 'Légendaire', couleur: '#e8c86a' },
@@ -70,18 +74,46 @@ const ITEMS = [
   },
 ];
 
-/** Insère les paliers de rareté manquants (match par nom). */
+/**
+ * Insère les paliers de rareté manquants (match par nom), CHACUN À SA PLACE
+ * dans l'échelle.
+ *
+ * Un palier ajouté après coup (« Inhabituel », entre « Peu commun » et
+ * « Rare ») ne peut pas simplement prendre `ordre = MAX+1` : sur une base déjà
+ * seedée il atterrirait derrière « Légendaire », et l'ordre EST le sens de
+ * l'échelle — c'est lui qui trie le catalogue. On le place donc juste après le
+ * palier de référence qui le précède et on décale ce qui suit d'un cran.
+ *
+ * Ce décalage préserve l'ordre RELATIF de tout le reste, y compris des paliers
+ * créés à la main : le seed ne réordonne jamais une échelle éditée en ligne,
+ * il y insère seulement ce qui manque.
+ */
 export function seedRarities(userId = null) {
-  const found = db.prepare('SELECT nom FROM unique_item_rarities');
-  const existing = new Set(found.all().map((r) => r.nom.toLowerCase()));
+  const byName = new Map(
+    db.prepare('SELECT id, nom, ordre FROM unique_item_rarities').all()
+      .map((r) => [r.nom.toLowerCase(), r]),
+  );
   const ins = db.prepare(`
     INSERT INTO unique_item_rarities (nom, couleur, ordre, created_by, updated_by)
     VALUES (?, ?, ?, ?, ?)
   `);
+  const decale = db.prepare('UPDATE unique_item_rarities SET ordre = ordre + 1 WHERE ordre >= ?');
   let inserted = 0;
   RARITIES.forEach((r, i) => {
-    if (existing.has(r.nom.toLowerCase())) return;
-    ins.run(r.nom, r.couleur, i + 1, userId, userId);
+    if (byName.has(r.nom.toLowerCase())) return;
+    // Place cible : juste après le palier de référence connu qui le précède
+    // (sur une base vierge il n'y en a pas → on suit l'échelle, i + 1).
+    let ordre = i + 1;
+    for (const precedent of RARITIES.slice(0, i).reverse()) {
+      const avant = byName.get(precedent.nom.toLowerCase());
+      if (avant) { ordre = avant.ordre + 1; break; }
+    }
+    decale.run(ordre);
+    // Le décalage vaut aussi pour l'index local, sinon deux insertions
+    // successives viseraient la même place.
+    for (const v of byName.values()) if (v.ordre >= ordre) v.ordre += 1;
+    const info = ins.run(r.nom, r.couleur, ordre, userId, userId);
+    byName.set(r.nom.toLowerCase(), { id: info.lastInsertRowid, nom: r.nom, ordre });
     inserted += 1;
   });
   return inserted;

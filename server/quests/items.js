@@ -199,9 +199,10 @@ const ITEM_SELECT = `
 `;
 
 /**
- * Catalogue complet + compteurs de sources/usages. Les compteurs sont calculés
- * en 6 requêtes agrégées (GROUP BY sur tout le catalogue), jamais une requête
- * par item : la page tient sans effort avec quelques centaines d'items.
+ * Catalogue complet + compteurs de sources/usages + les contenants d'où sort
+ * chaque objet. Tout est calculé en une poignée de requêtes agrégées (GROUP BY
+ * sur tout le catalogue), jamais une requête par item : la page tient sans
+ * effort avec quelques centaines d'items.
  */
 export function listUniqueItems() {
   const items = db.prepare(`${ITEM_SELECT} ORDER BY i.sort_order, i.id`).all().map(mapItem);
@@ -239,6 +240,20 @@ export function listUniqueItems() {
   addById(db.prepare(`
     SELECT unique_item_id AS id, COUNT(*) AS n FROM unique_item_sources GROUP BY unique_item_id
   `).all(), 'sources');
+  // Un contenant d'où l'objet est SORTI sans que la ligne soit déclarée est
+  // une source, sinon le filtre « sans source connue » désignerait des objets
+  // qu'on vient de tirer. Compté une fois par contenant, pas par ouverture.
+  addById(db.prepare(`
+    SELECT o.resultat_unique_id AS id, COUNT(*) AS n FROM (
+      SELECT DISTINCT resultat_unique_id, unique_item_id FROM loot_observations
+      WHERE resultat_unique_id IS NOT NULL
+    ) o
+    WHERE NOT EXISTS (
+      SELECT 1 FROM loot_entries e
+      WHERE e.unique_item_id = o.unique_item_id AND e.resultat_unique_id = o.resultat_unique_id
+    )
+    GROUP BY o.resultat_unique_id
+  `).all(), 'sources');
 
   // Usages : entrée de quête (ingrédients de craft inclus) et monnaie d'échange.
   addByRef(db.prepare(`
@@ -258,8 +273,33 @@ export function listUniqueItems() {
     SELECT unique_item_id AS id, COUNT(*) AS n FROM loot_observations GROUP BY unique_item_id
   `).all(), 'ouvertures');
 
+  // Contenants d'où sort chaque objet — déclarés ou seulement observés. Sert
+  // l'axe « ranger par ouverture » du catalogue : sans ça, le regroupement
+  // exigerait une requête par item.
+  const contenantsParItem = new Map();
+  const nomsParId = new Map(items.map((i) => [i.id, i.nom]));
+  const lignesContenants = db.prepare(`
+    SELECT resultat_unique_id AS id, unique_item_id AS contenant FROM loot_entries
+    WHERE resultat_unique_id IS NOT NULL
+    UNION
+    SELECT resultat_unique_id, unique_item_id FROM loot_observations
+    WHERE resultat_unique_id IS NOT NULL
+  `).all();
+  for (const r of lignesContenants) {
+    if (!nomsParId.has(r.contenant)) continue; // contenant supprimé entre-temps
+    if (!contenantsParItem.has(r.id)) contenantsParItem.set(r.id, []);
+    contenantsParItem.get(r.id).push({ id: r.contenant, nom: nomsParId.get(r.contenant) });
+  }
+  for (const liste of contenantsParItem.values()) {
+    liste.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  }
+
   const zero = { sources: 0, usages: 0, loot: 0, ouvertures: 0 };
-  return items.map((it) => ({ ...it, counts: counts.get(it.id) || zero }));
+  return items.map((it) => ({
+    ...it,
+    counts: counts.get(it.id) || zero,
+    contenants: contenantsParItem.get(it.id) || [],
+  }));
 }
 
 export function getUniqueItemRow(id) {
@@ -739,6 +779,74 @@ function offersReferencing(ref, sens) {
 }
 
 /**
+ * Les contenants d'où sort cet item : ceux dont la table le déclare, PLUS ceux
+ * dont le journal d'ouvertures l'a livré. Chaque ligne porte le taux mesuré
+ * (`observations`) à côté du taux déclaré, et `declaree: false` marque un
+ * contenant qu'on n'a encore vu qu'à l'usage — un trou de documentation, pas
+ * une absence de source.
+ */
+function contenantsProduisant(id) {
+  const declares = db.prepare(`
+    SELECT l.probabilite, l.probabilite_source, l.quantite_min, l.quantite_max,
+           c.id, c.nom, c.slug, ra.couleur AS rarete_couleur, ra.nom AS rarete_nom
+    FROM loot_entries l
+    JOIN quest_custom_items c ON c.id = l.unique_item_id
+    LEFT JOIN unique_item_rarities ra ON ra.id = c.rarete_id
+    WHERE l.resultat_unique_id = ? ORDER BY l.probabilite DESC
+  `).all(id);
+
+  // Une seule passe sur le journal : pour chaque contenant ayant produit cet
+  // item, le nombre de fois (k) et son nombre TOTAL d'ouvertures (n).
+  const mesures = new Map(db.prepare(`
+    SELECT o.unique_item_id AS id,
+           COUNT(*) AS n,
+           SUM(CASE WHEN o.resultat_unique_id = ? THEN 1 ELSE 0 END) AS k,
+           SUM(CASE WHEN o.resultat_unique_id = ? THEN o.quantite ELSE 0 END) AS qte
+    FROM loot_observations o
+    WHERE o.unique_item_id IN (
+      SELECT DISTINCT unique_item_id FROM loot_observations WHERE resultat_unique_id = ?
+      UNION SELECT DISTINCT unique_item_id FROM loot_entries WHERE resultat_unique_id = ?
+    )
+    GROUP BY o.unique_item_id
+  `).all(id, id, id, id).map((r) => [r.id, r]));
+
+  const ligne = (r, declaree) => {
+    const m = mesures.get(r.id);
+    return {
+      uniqueItemId: r.id,
+      nom: r.nom,
+      slug: r.slug,
+      rareteNom: r.rarete_nom,
+      rareteCouleur: r.rarete_couleur,
+      declaree,
+      probabilite: r.probabilite ?? null,
+      probabiliteSource: r.probabilite_source ?? null,
+      quantiteMin: r.quantite_min ?? null,
+      quantiteMax: r.quantite_max ?? null,
+      // `p` est en pourcentage, comme partout ailleurs dans le module.
+      observations: m && m.n > 0 && m.k > 0
+        ? { k: m.k, n: m.n, p: (m.k / m.n) * 100, quantiteTotale: m.qte ?? m.k }
+        : null,
+    };
+  };
+
+  const vus = new Set(declares.map((r) => r.id));
+  const observesSeuls = db.prepare(`
+    SELECT c.id, c.nom, c.slug, ra.couleur AS rarete_couleur, ra.nom AS rarete_nom,
+           NULL AS probabilite, NULL AS probabilite_source,
+           NULL AS quantite_min, NULL AS quantite_max
+    FROM quest_custom_items c
+    LEFT JOIN unique_item_rarities ra ON ra.id = c.rarete_id
+    WHERE c.id IN (SELECT DISTINCT unique_item_id FROM loot_observations WHERE resultat_unique_id = ?)
+  `).all(id).filter((r) => !vus.has(r.id));
+
+  // Tri par ce qui fait foi : le taux mesuré d'abord, le déclaré à défaut.
+  const poids = (l) => (l.observations ? l.observations.p : (l.probabilite ?? 0));
+  return [...declares.map((r) => ligne(r, true)), ...observesSeuls.map((r) => ligne(r, false))]
+    .sort((a, b) => poids(b) - poids(a));
+}
+
+/**
  * Toutes les façons d'obtenir un item (`sources`) et tout ce à quoi il sert
  * (`usages`). 8 requêtes bornées, aucune boucle de requêtes par résultat.
  */
@@ -752,25 +860,13 @@ export function itemSources(id) {
   const recompenses = donneurs.filter((q) => q.categorie !== 'craft');
   const ingredientsParQuete = linesForQuests('quest_inputs', crafts.map((q) => q.questId));
 
-  // 2. Contenants ouvrables qui peuvent le produire.
-  const contenants = db.prepare(`
-    SELECT l.probabilite, l.probabilite_source, l.quantite_min, l.quantite_max,
-           c.id, c.nom, c.slug, ra.couleur AS rarete_couleur, ra.nom AS rarete_nom
-    FROM loot_entries l
-    JOIN quest_custom_items c ON c.id = l.unique_item_id
-    LEFT JOIN unique_item_rarities ra ON ra.id = c.rarete_id
-    WHERE l.resultat_unique_id = ? ORDER BY l.probabilite DESC
-  `).all(id).map((r) => ({
-    uniqueItemId: r.id,
-    nom: r.nom,
-    slug: r.slug,
-    rareteNom: r.rarete_nom,
-    rareteCouleur: r.rarete_couleur,
-    probabilite: r.probabilite,
-    probabiliteSource: r.probabilite_source,
-    quantiteMin: r.quantite_min,
-    quantiteMax: r.quantite_max,
-  }));
+  // 2. Contenants ouvrables qui peuvent le produire — déclarés OU seulement
+  //    observés. Un contenant d'où l'objet est sorti 57 fois est une source,
+  //    même si personne n'a encore écrit la ligne dans sa table : ne lister que
+  //    le déclaré afficherait « aucune source connue » sur un objet qu'on vient
+  //    de tirer. Le taux observé accompagne les deux (c'est lui qui fait foi,
+  //    cf. loot.js) — deux requêtes bornées, jamais une par contenant.
+  const contenants = contenantsProduisant(id);
 
   // 5. Sources manuelles.
   const manuelles = listManualSources(id);

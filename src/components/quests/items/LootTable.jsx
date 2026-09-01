@@ -4,13 +4,19 @@ import {
   ACC, ACC_RGB, CRIMSON, GOLD, INK, MUTED, PROBA_SOURCES, hexToRgb, panel,
 } from '../theme';
 import {
-  croiserObservations, esperance, formatPrix, reliquat, sommeProbabilites,
-  uniteLabel, verdictOuvrir,
+  croiserObservations, esperance, formatPrix, lignesRetenues, probaDe, reliquat,
+  sommeProbabilites, uniteLabel, verdictOuvrir,
 } from './loot';
 
 // Lecture d'une table de butin : lignes triées par probabilité décroissante,
 // barre de proportion, badge de provenance de la probabilité, taux observé —
 // puis le panneau « vendre ou ouvrir ? », qui est le point de la page.
+//
+// Le % qui fait foi est CELUI DES OUVERTURES dès qu'il y en a (voir loot.js) :
+// le serveur ne publie pas ses tables, la colonne saisie à la main n'est qu'une
+// supposition. Elle reste affichée en petit — l'écart entre supposé et mesuré
+// est justement ce qu'on vient vérifier — et la bascule « Déclaré » permet de
+// revenir à la table saisie.
 
 const VERDICTS = {
   ouvrir:     { label: 'Plutôt ouvrir',  icon: '🔓', color: '#7be3a8' },
@@ -18,23 +24,33 @@ const VERDICTS = {
   equivalent: { label: 'Équivalent',     icon: '⚖️', color: ACC },
 };
 
+// Ce que vaut un échantillon d'ouvertures, en une phrase.
+const FIABILITES = {
+  faible:  { color: GOLD, texte: 'échantillon encore mince — les taux bougeront' },
+  moyenne: { color: '#7bd3e8', texte: 'échantillon correct, à confirmer' },
+  bonne:   { color: '#7be3a8', texte: 'échantillon solide' },
+};
+
 const pct = (v) => `${Math.round(v * 10) / 10} %`;
 
 export function LootTable({ item, byId, itemsById, observations, onOpenItem }) {
   const loot = item.loot || [];
-  const { lignes, inattendus, total } = useMemo(
-    () => croiserObservations(loot, observations),
-    [loot, observations],
+  const [mode, setMode] = useState('auto'); // 'auto' (observé si relevés) | 'declare'
+  const croisement = useMemo(
+    () => croiserObservations(loot, observations, { mode, itemsById }),
+    [loot, observations, mode, itemsById],
   );
+  const { inattendus, total, base } = croisement;
+  const retenues = useMemo(() => lignesRetenues(croisement), [croisement]);
   const triees = useMemo(
-    () => [...lignes].sort((a, b) => (b.probabilite || 0) - (a.probabilite || 0)),
-    [lignes],
+    () => [...retenues].sort((a, b) => probaDe(b) - probaDe(a)),
+    [retenues],
   );
-  const somme = sommeProbabilites(loot);
-  const manque = reliquat(loot);
-  const maxP = Math.max(1, ...loot.map((l) => l.probabilite || 0));
+  const somme = sommeProbabilites(retenues);
+  const manque = reliquat(retenues);
+  const maxP = Math.max(1, ...retenues.map(probaDe));
 
-  if (loot.length === 0) {
+  if (loot.length === 0 && total === 0) {
     return (
       <p style={{ margin: 0, fontFamily: "'Inter',sans-serif", fontSize: 13, color: MUTED }}>
         Table de butin vide — ajoute les résultats au fur et à mesure de tes ouvertures.
@@ -44,37 +60,116 @@ export function LootTable({ item, byId, itemsById, observations, onOpenItem }) {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      <BaseSwitch
+        base={base} total={total} fiab={croisement.fiabilite}
+        mode={mode} onMode={setMode} declarees={loot.length}
+      />
+
       <div style={{ display: 'grid', gap: 5 }}>
         {triees.map((l, i) => (
           <LootRow
-            key={l.id ?? i} ligne={l} maxP={maxP} byId={byId} itemsById={itemsById}
-            onOpenItem={onOpenItem}
+            key={l.id ?? l.key ?? i} ligne={l} maxP={maxP} base={base} byId={byId}
+            itemsById={itemsById} onOpenItem={onOpenItem}
           />
         ))}
       </div>
 
       {/* Contrôle de cohérence — signalé, jamais bloquant. */}
-      <SommeBanner somme={somme} manque={manque} />
+      <SommeBanner somme={somme} manque={manque} base={base} total={total} />
 
       {inattendus.length > 0 && (
         <div style={{
           ...panel, padding: '9px 12px', borderColor: 'rgba(232,200,106,0.35)',
           fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: GOLD,
         }}>
-          ⚠️ Obtenu en jeu mais absent de la table :{' '}
-          {inattendus.map((o) => `${o.label} (${o.n}× sur ${total})`).join(', ')} — pense à
-          ajouter {inattendus.length > 1 ? 'ces lignes' : 'cette ligne'}.
+          ⚠️ Obtenu en jeu mais absent de la table déclarée :{' '}
+          {inattendus.map((o) => `${o.label} (${o.n}× sur ${total})`).join(', ')} —{' '}
+          {base === 'observee'
+            ? `${inattendus.length > 1 ? 'ces lignes comptent' : 'cette ligne compte'} déjà dans le calcul ; ajoute-${inattendus.length > 1 ? 'les' : 'la'} à la table pour leur donner un prix.`
+            : `pense à ${inattendus.length > 1 ? 'les' : "l'"}ajouter.`}
         </div>
       )}
 
-      <EsperancePanel item={item} loot={loot} itemsById={itemsById} />
+      <EsperancePanel item={item} loot={retenues} itemsById={itemsById} base={base} total={total} />
     </div>
   );
 }
 
-export function SommeBanner({ somme, manque }) {
+// « D'où vient le % ? » — la question centrale de la page, donc elle est posée
+// en clair au-dessus de la table plutôt que cachée dans un badge par ligne.
+function BaseSwitch({ base, total, fiab, mode, onMode, declarees }) {
+  const observe = base === 'observee';
+  const couleur = observe ? '#7bd3e8' : GOLD;
+  const meta = FIABILITES[fiab];
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      padding: '8px 11px', borderRadius: 9,
+      background: `rgba(${hexToRgb(couleur)},0.08)`,
+      border: `1px solid rgba(${hexToRgb(couleur)},0.32)`,
+      fontFamily: "'Inter',sans-serif", fontSize: 12.5,
+    }}>
+      <span style={{ color: couleur, fontWeight: 700 }}>
+        {observe ? '📊 Taux observés' : '✎ Table déclarée'}
+      </span>
+      <span style={{ color: 'rgba(214,206,232,0.85)', flex: 1, minWidth: 200 }}>
+        {observe ? (
+          <>
+            calculés sur <strong style={{ color: INK }}>{total}</strong> ouverture{total > 1 ? 's' : ''} relevée{total > 1 ? 's' : ''}
+            {meta && <span style={{ color: meta.color }}> — {meta.texte}</span>}
+          </>
+        ) : total > 0 ? (
+          <>les {total} ouverture{total > 1 ? 's' : ''} relevée{total > 1 ? 's' : ''} sont ignorée{total > 1 ? 's' : ''} dans ce mode.</>
+        ) : (
+          <>aucune ouverture relevée : les % affichés sont ceux saisis à la main, donc supposés.</>
+        )}
+      </span>
+      {total > 0 && declarees > 0 && (
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[['auto', '📊 Observé'], ['declare', '✎ Déclaré']].map(([k, label]) => {
+            const on = mode === k;
+            return (
+              <button
+                key={k} type="button" onClick={() => onMode(k)}
+                title={k === 'auto'
+                  ? 'Les taux mesurés au fil des ouvertures font foi'
+                  : 'Revenir aux probabilités saisies dans la fiche'}
+                style={{
+                  padding: '4px 9px', borderRadius: 7, cursor: 'pointer', fontSize: 11.5,
+                  fontFamily: "'Inter',sans-serif", fontWeight: 600,
+                  background: on ? couleur : 'transparent', color: on ? '#08051a' : MUTED,
+                  border: on ? 'none' : '1px solid rgba(80,50,130,0.35)',
+                }}
+              >{label}</button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function SommeBanner({ somme, manque, base = 'declaree', total = 0 }) {
   const exact = Math.abs(somme - 100) < 0.01;
   const couleur = exact ? '#7be3a8' : (somme > 100 ? CRIMSON : GOLD);
+  // En base observée la somme vaut 100 % par construction (c'est une
+  // répartition) : le dire autrement ferait croire à une coïncidence.
+  if (base === 'observee') {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+        padding: '7px 11px', borderRadius: 8,
+        background: 'rgba(123,211,232,0.08)', border: '1px solid rgba(123,211,232,0.32)',
+        fontFamily: "'Inter',sans-serif", fontSize: 12.5, color: '#7bd3e8',
+      }}>
+        <strong style={{ fontFamily: "'JetBrains Mono',monospace" }}>Σ {pct(somme)}</strong>
+        <span style={{ color: 'rgba(214,206,232,0.85)' }}>
+          répartition mesurée sur {total} ouverture{total > 1 ? 's' : ''} — elle somme à 100 % par
+          construction, chaque ouverture ayant donné exactement un résultat.
+        </span>
+      </div>
+    );
+  }
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
@@ -100,13 +195,21 @@ export function SommeBanner({ somme, manque }) {
   );
 }
 
-function LootRow({ ligne, maxP, byId, itemsById, onOpenItem }) {
+function LootRow({ ligne, maxP, base, byId, itemsById, onOpenItem }) {
+  const observe = base === 'observee';
   const src = PROBA_SOURCES[ligne.probabiliteSource] || PROBA_SOURCES.estimee;
   const cible = ligne.resultatUniqueId ? itemsById?.get(ligne.resultatUniqueId) : null;
   const couleur = cible?.rarete?.couleur || ligne.cibleRareteCouleur || ACC;
-  const qMin = ligne.quantiteMin ?? 1;
+  const qMin = ligne.quantiteMin ?? null;
   const qMax = ligne.quantiteMax ?? qMin;
   const obs = ligne.observations;
+  const proba = probaDe(ligne);
+  // La valeur saisie n'est rappelée que si elle contredit la mesure : sinon
+  // c'est du bruit sur chaque ligne.
+  const ecartDeclare = observe && ligne.probabiliteDeclaree != null
+    && Math.abs(ligne.probabiliteDeclaree - proba) > 1;
+  // Une ligne déclarée jamais tirée n'est pas « sans donnée » : c'est 0 sur n.
+  const jamaisVue = observe && !obs;
 
   return (
     <div style={{
@@ -114,10 +217,11 @@ function LootRow({ ligne, maxP, byId, itemsById, onOpenItem }) {
       display: 'flex', alignItems: 'center', gap: 9, padding: '8px 11px',
       background: 'rgba(20,14,38,0.5)', border: '1px solid rgba(80,50,130,0.22)',
       borderRadius: 8, fontFamily: "'Inter',sans-serif", fontSize: 13, color: INK,
+      opacity: jamaisVue ? 0.55 : 1,
     }}>
       {/* barre de proportion, en fond */}
       <div aria-hidden style={{
-        position: 'absolute', inset: 0, width: `${((ligne.probabilite || 0) / maxP) * 100}%`,
+        position: 'absolute', inset: 0, width: `${(proba / maxP) * 100}%`,
         background: `linear-gradient(90deg, rgba(${hexToRgb(couleur)},0.20), rgba(${hexToRgb(couleur)},0.04))`,
         pointerEvents: 'none',
       }} />
@@ -145,11 +249,28 @@ function LootRow({ ligne, maxP, byId, itemsById, onOpenItem }) {
           <span style={{ fontWeight: cible ? 600 : 400, color: cible ? couleur : INK }}>{ligne.label}</span>
         )}
         <span style={{ color: MUTED, fontSize: 11.5, whiteSpace: 'nowrap' }}>
-          ×{qMin}{qMax !== qMin ? `–${qMax}` : ''}
+          {qMin != null
+            ? `×${qMin}${qMax !== qMin ? `–${qMax}` : ''}`
+            : `×${Math.round((ligne.quantiteMoyenneObservee ?? 1) * 100) / 100} moy.`}
         </span>
+        {ligne.probabiliteDeclaree === 0 && ligne.id == null && (
+          <span title="Résultat relevé en jeu mais absent de la table déclarée" style={{
+            fontSize: 10, fontWeight: 700, color: GOLD, whiteSpace: 'nowrap',
+            border: `1px solid rgba(${hexToRgb(GOLD)},0.4)`, borderRadius: 999, padding: '0 6px',
+          }}>hors table</span>
+        )}
       </span>
 
-      {obs && (
+      {ecartDeclare && (
+        <span title="Probabilité saisie à la main — la mesure la contredit"
+          style={{
+            position: 'relative', fontFamily: "'JetBrains Mono',monospace", fontSize: 11,
+            color: MUTED, whiteSpace: 'nowrap', textDecoration: 'line-through',
+          }}
+        >{pct(ligne.probabiliteDeclaree)}</span>
+      )}
+
+      {obs ? (
         <span
           title={`${obs.k} sur ${obs.n} ouvertures — intervalle de confiance 95 % : ${pct(obs.bas)} à ${pct(obs.haut)}`}
           style={{
@@ -157,28 +278,38 @@ function LootRow({ ligne, maxP, byId, itemsById, onOpenItem }) {
             color: '#7bd3e8', whiteSpace: 'nowrap',
           }}
         >
-          obs. {pct(obs.p)} <span style={{ opacity: 0.6 }}>[{Math.round(obs.bas)}–{Math.round(obs.haut)}] n={obs.n}</span>
+          {obs.k}/{obs.n} <span style={{ opacity: 0.6 }}>[{Math.round(obs.bas)}–{Math.round(obs.haut)}]</span>
         </span>
+      ) : jamaisVue && (
+        <span title="Jamais obtenu sur les ouvertures relevées" style={{
+          position: 'relative', fontFamily: "'JetBrains Mono',monospace", fontSize: 11,
+          color: MUTED, whiteSpace: 'nowrap',
+        }}>jamais vue</span>
       )}
 
-      <span title={src.title} style={{
-        position: 'relative', padding: '1px 7px', borderRadius: 999, fontSize: 10,
-        fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px',
-        color: src.color, background: `rgba(${hexToRgb(src.color)},0.12)`,
-        border: `1px solid rgba(${hexToRgb(src.color)},0.4)`, whiteSpace: 'nowrap',
-      }}>{src.short}</span>
+      <span
+        title={observe ? 'Taux mesuré sur les ouvertures relevées' : src.title}
+        style={{
+          position: 'relative', padding: '1px 7px', borderRadius: 999, fontSize: 10,
+          fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px',
+          color: observe ? '#7bd3e8' : src.color,
+          background: `rgba(${hexToRgb(observe ? '#7bd3e8' : src.color)},0.12)`,
+          border: `1px solid rgba(${hexToRgb(observe ? '#7bd3e8' : src.color)},0.4)`,
+          whiteSpace: 'nowrap',
+        }}
+      >{observe ? 'mesuré' : src.short}</span>
 
       <strong style={{
         position: 'relative', fontFamily: "'JetBrains Mono',monospace", fontSize: 13,
         color: couleur, minWidth: 54, textAlign: 'right',
-      }}>{pct(ligne.probabilite || 0)}</strong>
+      }}>{pct(proba)}</strong>
     </div>
   );
 }
 
 // « Vendre ou ouvrir ? » — verdict lisible + détail du calcul dépliable.
 // Exporté pour que l'éditeur affiche le MÊME verdict en direct pendant la saisie.
-export function EsperancePanel({ item, loot, itemsById }) {
+export function EsperancePanel({ item, loot, itemsById, base = 'declaree', total = 0 }) {
   const [ouvert, setOuvert] = useState(false);
   const calc = useMemo(() => esperance(item, loot), [item, loot]);
   const v = verdictOuvrir({ valeur: calc.valeur, prixVente: item.prixVente });
@@ -217,6 +348,11 @@ export function EsperancePanel({ item, loot, itemsById }) {
             {item.prixVente != null && <> · revente immédiate <strong style={{ color: INK }}>{formatPrix(item.prixVente, item.prixUnite, itemsById)}</strong></>}
             {v && <> · écart {v.ecart >= 0 ? '+' : ''}{Math.round(v.ecart * 100)} %</>}
           </div>
+          <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 11.5, color: MUTED }}>
+            {base === 'observee'
+              ? `d'après les ${total} ouverture${total > 1 ? 's' : ''} relevée${total > 1 ? 's' : ''}`
+              : "d'après les probabilités saisies dans la fiche"}
+          </div>
         </div>
         <button type="button" onClick={() => setOuvert((o) => !o)} style={{
           background: 'transparent', border: `1px solid rgba(${ACC_RGB},0.35)`, borderRadius: 8,
@@ -242,7 +378,7 @@ export function EsperancePanel({ item, loot, itemsById }) {
             <thead>
               <tr style={{ color: MUTED, textAlign: 'left' }}>
                 <th style={th}>Résultat</th>
-                <th style={{ ...th, textAlign: 'right' }}>Proba</th>
+                <th style={{ ...th, textAlign: 'right' }}>{base === 'observee' ? 'Proba mesurée' : 'Proba'}</th>
                 <th style={{ ...th, textAlign: 'right' }}>Qté moy.</th>
                 <th style={{ ...th, textAlign: 'right' }}>Prix unit.</th>
                 <th style={{ ...th, textAlign: 'right' }}>Apport</th>

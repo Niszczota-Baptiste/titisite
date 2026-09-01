@@ -8,16 +8,39 @@
 //      exclu et sa part de probabilité est remontée à l'affichage
 //      (`nonValorisePct`), sinon l'espérance paraîtrait basse à tort ;
 //   2. les prix libellés dans une AUTRE monnaie que celle du contenant ne sont
-//      pas convertis (aucun taux inventé) : ils rejoignent les non valorisés.
+//      pas convertis (aucun taux inventé) : ils rejoignent les non valorisés ;
+//   3. dès qu'une ouverture a été relevée, C'EST LE TAUX OBSERVÉ QUI FAIT FOI.
+//      Le serveur ne publie pas ses tables : la probabilité saisie à la main
+//      est une supposition, souvent laissée à 0 ou à 100 %, alors que le
+//      journal d'ouvertures est une mesure. Une répartition observée somme en
+//      plus à 100 % par construction, ce qu'une table devinée ne fait jamais.
 
-/** Somme des probabilités déclarées (peut dépasser 100 : c'est signalé, pas corrigé). */
+/**
+ * Probabilité qui FAIT FOI pour une ligne : le taux observé quand il a été
+ * calculé (`probabiliteEffective`, posé par `croiserObservations`), sinon la
+ * valeur déclarée. Tout le calcul passe par ici — c'est le seul endroit où se
+ * décide « observé ou déclaré ».
+ */
+export const probaDe = (l) => (
+  l?.probabiliteEffective != null
+    ? (Number(l.probabiliteEffective) || 0)
+    : (Number(l?.probabilite) || 0)
+);
+
+/** Somme des probabilités retenues (peut dépasser 100 : c'est signalé, pas corrigé). */
 export function sommeProbabilites(loot) {
-  return (loot || []).reduce((s, l) => s + (Number(l.probabilite) || 0), 0);
+  return (loot || []).reduce((s, l) => s + probaDe(l), 0);
 }
 
-/** Quantité moyenne d'une ligne (bornes incluses). */
+/**
+ * Quantité moyenne d'une ligne (bornes incluses). Une ligne issue du seul
+ * journal d'ouvertures n'a pas de fourchette déclarée : elle porte alors la
+ * moyenne réellement relevée (`quantiteMoyenneObservee`).
+ */
 export const quantiteMoyenne = (l) => (
-  ((Number(l.quantiteMin) || 0) + (Number(l.quantiteMax) || Number(l.quantiteMin) || 0)) / 2
+  l?.quantiteMoyenneObservee != null
+    ? (Number(l.quantiteMoyenneObservee) || 0)
+    : ((Number(l.quantiteMin) || 0) + (Number(l.quantiteMax) || Number(l.quantiteMin) || 0)) / 2
 );
 
 /** Reliquat à déclarer pour atteindre 100 % (0 si la table est pleine ou déborde). */
@@ -49,12 +72,12 @@ export function prixUnitaire(ligne, unite) {
 export function esperance(item, loot) {
   const unite = item?.prixUnite || 'pa';
   const lignes = (loot || []).map((l) => {
-    const p = (Number(l.probabilite) || 0) / 100;
+    const p = probaDe(l) / 100;
     const qte = quantiteMoyenne(l);
     const pu = prixUnitaire(l, unite);
     return {
       ligne: l,
-      probabilite: Number(l.probabilite) || 0,
+      probabilite: probaDe(l),
       quantiteMoyenne: qte,
       prixUnitaire: pu,
       valorisee: pu != null,
@@ -140,27 +163,91 @@ export function resultatKey(l) {
 }
 
 /**
- * Rapproche les lignes déclarées du journal d'ouvertures : pour chacune, le
- * taux observé et son intervalle. Les résultats jamais déclarés mais bel et
- * bien obtenus ressortent dans `inattendus` — ce sont des lignes à ajouter.
+ * Fiabilité d'un échantillon d'ouvertures. Les seuils ne sont pas magiques :
+ * ils disent seulement à partir de combien de tirages un taux cesse d'être une
+ * anecdote. Sous 10 relevés, l'intervalle de Wilson est plus large que l'écart
+ * qu'on cherche à mesurer.
  */
-export function croiserObservations(loot, resume) {
+export const SEUILS_FIABILITE = { faible: 10, moyenne: 30 };
+
+export function fiabilite(n) {
+  const total = Number(n) || 0;
+  if (total <= 0) return 'aucune';
+  if (total < SEUILS_FIABILITE.faible) return 'faible';
+  if (total < SEUILS_FIABILITE.moyenne) return 'moyenne';
+  return 'bonne';
+}
+
+/**
+ * Rapproche les lignes déclarées du journal d'ouvertures et TRANCHE : quelle
+ * probabilité fait foi ?
+ *
+ * `mode` :
+ *   - 'auto' (défaut) → l'observé dès qu'il existe au moins une ouverture,
+ *     sinon le déclaré. C'est la règle 3 de l'en-tête : le déclaré est une
+ *     supposition, l'observé est une mesure.
+ *   - 'declare' → force la table saisie (pour comparer, ou quand on vient de
+ *     relever la table officielle du serveur).
+ *
+ * Les résultats obtenus mais jamais déclarés ressortent dans `inattendus` — en
+ * base observée ils COMPTENT dans le calcul (ils ont bel et bien été tirés), ce
+ * qui est le seul moyen pour qu'une table lue « à l'envers » somme à 100 %.
+ * `itemsById` (optionnel) sert à leur retrouver un prix : sans lui ils sont
+ * comptés comme non valorisés plutôt que comme valant zéro.
+ */
+export function croiserObservations(loot, resume, { mode = 'auto', itemsById = null } = {}) {
   const total = resume?.total || 0;
+  const base = (mode !== 'declare' && total > 0) ? 'observee' : 'declaree';
   const parKey = new Map((resume?.parResultat || []).map((o) => [o.key, o]));
+
   const lignes = (loot || []).map((l) => {
-    const key = resultatKey(l);
-    const obs = parKey.get(key);
+    const obs = parKey.get(resultatKey(l));
+    const observations = obs ? { ...wilson(obs.n, total), k: obs.n } : null;
     return {
       ...l,
-      observations: obs ? { ...wilson(obs.n, total), k: obs.n } : null,
+      observations,
+      probabiliteDeclaree: Number(l.probabilite) || 0,
+      // En base observée, une ligne déclarée jamais tirée vaut 0 % : ce n'est
+      // pas une donnée manquante, c'est le résultat de la mesure (« 0 sur 114 »
+      // — l'intervalle de Wilson dit jusqu'où ça peut monter).
+      probabiliteEffective: base === 'observee' ? (observations?.p ?? 0) : null,
     };
   });
+
   const declarees = new Set(lignes.map(resultatKey));
   // L'intervalle va dans `observations`, jamais à plat : `wilson()` renvoie lui
   // aussi un `n` (la taille d'échantillon), qui écraserait le `n` de
   // l'observation (le nombre d'occurrences) et afficherait « 23× sur 23 ».
   const inattendus = (resume?.parResultat || [])
     .filter((o) => !declarees.has(o.key))
-    .map((o) => ({ ...o, observations: { ...wilson(o.n, total), k: o.n } }));
-  return { lignes, inattendus, total };
+    .map((o) => {
+      const cible = o.resultatUniqueId != null ? itemsById?.get(o.resultatUniqueId) : null;
+      return {
+        ...o,
+        observations: { ...wilson(o.n, total), k: o.n },
+        probabiliteDeclaree: 0,
+        probabiliteEffective: base === 'observee' ? wilson(o.n, total).p : 0,
+        // Pas de fourchette déclarée : la quantité moyenne est celle relevée.
+        quantiteMoyenneObservee: o.n > 0 ? (o.quantiteTotale ?? o.n) / o.n : 1,
+        ciblePrix: cible?.prixVente ?? null,
+        ciblePrixUnite: cible?.prixUnite ?? null,
+        cibleRareteCouleur: cible?.rarete?.couleur ?? null,
+        label: o.label || cible?.nom || '',
+      };
+    });
+
+  // Lignes déclarées jamais vues : en base observée elles tombent à 0 %, et
+  // c'est une information (soit la ligne n'existe pas, soit elle est rarissime).
+  const jamaisVues = base === 'observee' ? lignes.filter((l) => !l.observations).length : 0;
+
+  return { lignes, inattendus, total, base, fiabilite: fiabilite(total), jamaisVues };
+}
+
+/**
+ * Les lignes sur lesquelles calculer : les déclarées PLUS, en base observée,
+ * les résultats sortis sans avoir été déclarés. Les ignorer amputerait
+ * l'espérance de tirages bien réels.
+ */
+export function lignesRetenues({ lignes, inattendus, base }) {
+  return base === 'observee' ? [...(lignes || []), ...(inattendus || [])] : (lignes || []);
 }

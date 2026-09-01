@@ -173,12 +173,7 @@ function Sources({ sources, itemsById, byId, onOpenQuest, onOpenItem }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       {contenants.map((c) => (
-        <Row key={`c${c.uniqueItemId}`} icon="🎁" onClick={() => onOpenItem?.(c.uniqueItemId)}>
-          <strong style={{ color: c.rareteCouleur || ACC }}>{c.probabilite} %</strong>
-          {' '}dans <strong>{c.nom}</strong>
-          <Muted> · ×{c.quantiteMin}{c.quantiteMax !== c.quantiteMin ? `–${c.quantiteMax}` : ''}</Muted>
-          <Muted> · {c.probabiliteSource}</Muted>
-        </Row>
+        <ContenantRow key={`c${c.uniqueItemId}`} c={c} onOpenItem={onOpenItem} />
       ))}
       {crafts.map((q) => (
         <Row key={`k${q.questId}`} icon="⚒️" onClick={() => onOpenQuest?.(q.questId)}>
@@ -226,6 +221,37 @@ function Sources({ sources, itemsById, byId, onOpenQuest, onOpenItem }) {
         );
       })}
     </div>
+  );
+}
+
+// Un contenant d'où sort l'objet. Le % affiché est CELUI DES OUVERTURES quand
+// il y en a (même règle que la table de butin) ; le % saisi n'est rappelé que
+// s'il dit autre chose. Un contenant seulement observé n'a pas de ligne
+// déclarée : il est signalé comme tel plutôt que passé sous silence.
+function ContenantRow({ c, onOpenItem }) {
+  const obs = c.observations;
+  const proba = obs ? obs.p : c.probabilite;
+  const ecart = obs && c.probabilite != null && Math.abs(c.probabilite - obs.p) > 1;
+  const qteObs = obs && obs.n ? (obs.quantiteTotale ?? obs.k) / obs.k : null;
+  return (
+    <Row icon="🎁" onClick={() => onOpenItem?.(c.uniqueItemId)}>
+      <strong style={{ color: c.rareteCouleur || ACC }}>
+        {proba == null ? '?' : `${Math.round(proba * 10) / 10} %`}
+      </strong>
+      {' '}dans <strong>{c.nom}</strong>
+      {c.quantiteMin != null ? (
+        <Muted> · ×{c.quantiteMin}{c.quantiteMax !== c.quantiteMin ? `–${c.quantiteMax}` : ''}</Muted>
+      ) : qteObs != null && <Muted> · ×{Math.round(qteObs * 100) / 100} moy.</Muted>}
+      {obs ? (
+        <span style={{ color: '#7bd3e8' }}> · mesuré {obs.k}/{obs.n}</span>
+      ) : (
+        <Muted> · {c.probabiliteSource}</Muted>
+      )}
+      {ecart && <Muted> · déclaré {Math.round(c.probabilite * 10) / 10} %</Muted>}
+      {!c.declaree && (
+        <span style={{ color: GOLD }}> · ⚠️ absent de sa table déclarée</span>
+      )}
+    </Row>
   );
 }
 
