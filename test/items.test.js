@@ -176,16 +176,27 @@ describe('items — cycle de vie', () => {
 describe('items — CMD et séries', () => {
   it('propose le prochain CMD libre dans la plage de la série', async () => {
     const { f } = await login(ADMIN);
-    const serie = (await f.post('/api/items/series', { body: { code: '7', nom: 'Série test' } })).json;
-    assert.equal(serie.code, '07', 'le code est normalisé sur deux chiffres');
+    // Code libre : le classeur occupe déjà 01–08 et 99.
+    const cree = await f.post('/api/items/series', { body: { code: '7x7', nom: 'Série test' } });
+    assert.equal(cree.status, 201);
+    const serie = cree.json;
+    assert.equal(serie.code, '77', 'le code est normalisé sur deux chiffres');
 
     const vide = await f.get(`/api/items/series/${serie.id}/next-cmd`);
-    assert.equal(vide.json.cmd, 7001, 'première place de la plage');
-    assert.deepEqual(vide.json.plage, [7001, 7999]);
+    assert.equal(vide.json.cmd, 77001, 'première place de la plage');
+    assert.deepEqual(vide.json.plage, [77001, 77999]);
 
-    await f.post('/api/items', { body: { nom: 'CMD 7001', baseItem: 'iron_sword', serieId: serie.id, cmd: 7001 } });
+    await f.post('/api/items', { body: { nom: 'CMD 77001', baseItem: 'iron_sword', serieId: serie.id, cmd: 77001 } });
     const suivant = await f.get(`/api/items/series/${serie.id}/next-cmd`);
-    assert.equal(suivant.json.cmd, 7002, 'reprend après le plus grand CMD de la série');
+    assert.equal(suivant.json.cmd, 77002, 'reprend après le plus grand CMD de la série');
+  });
+
+  it('refuse deux séries sur le même code, en nommant celle qui le détient', async () => {
+    const { f } = await login(ADMIN);
+    const doublon = await f.post('/api/items/series', { body: { code: '01', nom: 'Doublon' } });
+    assert.equal(doublon.status, 409);
+    assert.equal(doublon.json.error, 'code_taken');
+    assert.equal(doublon.json.serie.nom, 'Guilde des explorateurs');
   });
 
   it('404 sur le prochain CMD d\'une série inexistante', async () => {
@@ -233,22 +244,70 @@ describe('items — aperçu de puissance', () => {
   });
 });
 
-describe('items — le seed du document', () => {
+describe('items — le seed du classeur', () => {
   it('a chargé le catalogue des scribes', async () => {
     const { f } = await login(ADMIN);
     const items = (await f.get('/api/items')).json;
-    assert.ok(items.length >= 40, `catalogue trop court : ${items.length}`);
+    assert.ok(items.length >= 50, `catalogue trop court : ${items.length}`);
 
     const trident = items.find((i) => i.nom === 'Trident des fonds marins');
     assert.ok(trident, 'le trident des Ondiens est là');
     assert.equal(trident.tierNom, 'Artefact');
     assert.equal(trident.unbreakable, true);
-    assert.ok(trident.commande.includes('impaling'), 'la commande du document est conservée telle quelle');
+    assert.ok(trident.commande.includes('impaling'), 'la commande du classeur est conservée telle quelle');
+    // Le classeur met ce « 10 » dans la colonne Infinity ; la commande dit
+    // impaling, et c'est elle qui tourne en jeu.
     assert.ok(trident.enchantements.some((e) => e.enchant === 'impaling' && e.niveau === 10));
+    assert.ok(!trident.enchantements.some((e) => e.enchant === 'infinity'));
+    // Les deux vitesses du trident (main principale ET secondaire) ne tiennent
+    // pas dans une cellule : elles viennent de la commande.
+    assert.equal(trident.attributs.filter((a) => a.attribut === 'MOVEMENT_SPEED').length, 2);
 
-    // Les deux échelles de tiers du document coexistent.
+    // Les neuf séries du classeur, y compris celles encore vides : une série
+    // sans item est une plage de CMD réservée.
+    const codes = new Set((await f.get('/api/items/series')).json.map((s) => s.code));
+    for (const c of ['01', '02', '03', '04', '05', '06', '07', '08', '99']) {
+      assert.ok(codes.has(c), `série ${c} manquante`);
+    }
+    const series = (await f.get('/api/items/series')).json;
+    assert.equal(series.find((s) => s.code === '04').nom, 'Tréfonds');
+    assert.equal(series.find((s) => s.code === '06').nom, 'Ondiens');
+
+    // Les deux échelles de tiers du classeur coexistent.
     const echelles = new Set((await f.get('/api/items/tiers')).json.map((t) => t.echelle));
     assert.deepEqual([...echelles].sort(), ['standard', 'trefonds']);
+  });
+
+  it('reprend la couleur de police comme statut', async () => {
+    const { f } = await login(ADMIN);
+    const items = (await f.get('/api/items')).json;
+    // Les pièces de la guilde d'explorateurs sont en rouge dans le classeur
+    // (« pas encore introduits en jeu ») ; le Totem Illager est en noir.
+    assert.equal(items.find((i) => i.nom === 'Zweihander').statut, 'a_tester');
+    assert.equal(items.find((i) => i.nom === 'Totem Illager').statut, 'en_jeu');
+    assert.equal(items.find((i) => i.nom === 'Trident des fonds marins').statut, 'en_jeu');
+  });
+
+  it('distingue un ajout brut d\'un modificateur en pourcentage', async () => {
+    const { f } = await login(ADMIN);
+    const zwei = (await f.get('/api/items')).json.find((i) => i.nom === 'Zweihander');
+    // Le classeur note « 4.0 » sans format et « -0.15 » au format 0 % : deux
+    // opérations vanilla différentes que seul le format de cellule sépare.
+    const deg = zwei.attributs.find((a) => a.attribut === 'ATTACK_DAMAGE');
+    const vit = zwei.attributs.find((a) => a.attribut === 'ATTACK_SPEED');
+    assert.deepEqual([deg.valeur, deg.mode], [4, 'flat']);
+    assert.deepEqual([vit.valeur, vit.mode], [-15, 'pourcent']);
+    assert.ok(zwei.commandeGeneree.includes('Amount:-0.15,Operation:1'));
+  });
+
+  it('garde les deux copies d\'une pièce présente dans deux séries', async () => {
+    const { f } = await login(ADMIN);
+    const zwei = (await f.get('/api/items')).json.filter((i) => i.nom === 'Zweihander');
+    // L'onglet Nostra reprend la panoplie d'explorateur : deux séries, donc
+    // deux plages de CMD, donc deux modèles — pas un doublon à fusionner.
+    assert.equal(zwei.length, 2);
+    assert.deepEqual(zwei.map((i) => i.serieCode).sort(), ['01', '02']);
+    assert.notEqual(zwei[0].slug, zwei[1].slug);
   });
 
   it('filtre par tier, statut et texte libre', async () => {

@@ -146,6 +146,10 @@ function ItemCard({ item, byId, onOpen }) {
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {item.tierNom ? <Pastille couleur={item.tierCouleur}>{item.tierNom}</Pastille> : null}
+        {/* La série n'est pas décorative : l'onglet Nostra du classeur reprend
+            les pièces de la guilde d'explorateurs sous les mêmes noms, et sans
+            elle deux cartes identiques seraient indiscernables. */}
+        {item.serieCode ? <Pastille couleur={MUTED}>Série {item.serieCode}</Pastille> : null}
         {item.panoplieNom ? <Pastille couleur={item.panoplieCouleur}>{item.panoplieNom}</Pastille> : null}
         {item.cmd ? <Pastille couleur={MUTED}>CMD {item.cmd}</Pastille> : null}
       </div>

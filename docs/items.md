@@ -1,12 +1,12 @@
 # Module « Items customs Minefield » (`/items`)
 
 La base de données des objets customs du serveur : l'atelier des scribes et des
-admins Minefield. Reprend le tableur *« BASE DE DONNÉE DES ITEMS CUSTOMS SUR
+admins Minefield. Reprend le classeur *« BASE DE DONNÉE DES ITEMS CUSTOMS SUR
 MINEFIELD »* (v1.0, xadrow) et lui ajoute ce qu'un tableur ne peut pas faire —
 un **calcul de puissance**, un **contrôle d'unicité des CMD** et une vue
 d'équilibrage.
 
-Le document source énonçait trois objectifs ; ce sont les onglets :
+Le classeur source énonçait trois objectifs ; ce sont les onglets :
 
 | Objectif du document | Onglet |
 |---|---|
@@ -103,7 +103,7 @@ Onglet Référentiel → Barème. Les poids sont en base et s'éditent en ligne 
 quand un score sonne faux, on corrige le poids fautif — pas l'item. Le bouton
 « ↺ Barème par défaut » réinsère les valeurs d'amorçage de `defaultWeights()`.
 
-Les budgets d'amorçage sont **étalonnés sur le corpus du document lui-même** :
+Les budgets d'amorçage sont **étalonnés sur le corpus du classeur lui-même** :
 la pièce d'artefact la mieux documentée (Écailles princières des Grands Fonds)
 pèse 224 points, d'où un budget d'artefact à 230 plutôt qu'un chiffre rond.
 
@@ -116,7 +116,7 @@ fiche, et c'est délibéré :
   d'accord avec eux ; le tableur la recopiait à la main et elle dérivait dès
   qu'un attribut bougeait ;
 - **saisie** (`mf_items.commande`) — conservée telle quelle, **jamais
-  interprétée**. Certaines commandes du document font des choses qu'aucun
+  interprétée**. Certaines commandes du classeur font des choses qu'aucun
   formulaire ne modélise (le `LodestonePos` de la boussole piaf, les couleurs de
   nom).
 
@@ -124,40 +124,100 @@ Deux pièges traités : les **UUID** des modificateurs sont déterministes
 (`uuidFor`, dérivé du slug) — tirés au hasard, la commande changerait à chaque
 affichage et un diff ne dirait plus rien ; et l'**apostrophe** est échappée dans
 les littéraux SNBT (`Lore:['[{"text":"sous l'eau"}]']` ferme la chaîne au milieu
-du mot — le document source en contient plusieurs, cassées).
+du mot — le classeur source en contient plusieurs, cassées).
 
 ## CMD
 
 `GET /api/items/series/:id/next-cmd` propose le prochain numéro libre de la
-série. Le document demande de « rester dans l'ordre croissant » pour que le
+série. Le classeur demande de « rester dans l'ordre croissant » pour que le
 resource pack reste réalisable ; un tableur ne peut que le demander, ici le
 serveur le tient. L'onglet CMD affiche aussi les **trous** de numérotation : un
 numéro sauté est un modèle que le pack n'aura jamais.
 
 Un CMD déjà pris répond **409** en nommant l'item qui le détient, plutôt que de
-laisser l'index unique échouer sans message.
+laisser l'index unique échouer sans message. Un **code de série** en doublon
+répond de même (`code_taken`).
 
 ## Seed
 
-`server/seed-items.js` — les données réelles du document (42 items, 10 paliers,
-4 séries, 7 panoplies), pas un jeu de démonstration. **Idempotent ligne par
-ligne** (item par nom, palier par nom+échelle, série par code) plutôt que
-court-circuité au premier enregistrement : une version ultérieure du document
-peut ainsi ajouter des items sans écraser ce que les scribes ont retouché en
-ligne. `SEED_ITEMS=off` pour ne rien insérer.
+`server/seed-items.js` — les données réelles du classeur (51 items, 10 paliers,
+9 séries, 7 panoplies), pas un jeu de démonstration. **Idempotent ligne par
+ligne**, clé **(série, nom)** — et pas le nom seul, parce que l'onglet Nostra
+reprend les neuf pièces de la guilde d'explorateurs sous les mêmes noms. Ce
+choix, plutôt qu'un court-circuit au premier enregistrement, laisse une version
+ultérieure du classeur ajouter ses items sans écraser ce que les scribes ont
+retouché en ligne. `SEED_ITEMS=off` pour ne rien insérer.
 
-Deux limites assumées, notées dans le fichier :
+### Ce que le `.xlsx` porte et que le PDF perdait
 
-- L'export PDF ne transporte pas les **couleurs de cellule**, donc pas la marque
-  « pas encore en jeu ». Repli : un item qui porte une vraie commande `/give`
-  arrive en `en_jeu`, tous les autres en `a_tester`.
-- Les **CMD ne sont renseignés nulle part** dans le document : ils restent vides,
-  et l'onglet CMD propose le prochain numéro libre.
+Le seed est extrait du **classeur**, pas de son export PDF, parce que trois
+informations dont ce module dépend ne survivent pas à l'export texte :
 
-Les items dont le document ne donne ni nom ni stats (pièces des sets Colombe et
-Louve) sont créés avec un nom déduit de la panoplie et de l'item de base, et une
-`note` qui le dit. Le « Set du Faulcon », cité quatre fois sans aucune pièce
-nommée, existe comme panoplie vide — inventer quatre items aurait été pire.
+- **La couleur de police.** « Les items en rouges ne sont pas encore introduits
+  en jeu et doivent être testés/équilibrés » — c'est la seule marque de statut
+  du document. Rouge → `a_tester`, noir → `en_jeu`.
+- **Le format de cellule.** « 0.05 » affiché « 5 % » est un modificateur
+  Operation 1 (multiply_base) ; « 4.0 » sans format est un ajout brut
+  (Operation 0). Le PDF ne montrait que le rendu, jamais la valeur. Cas
+  particulier : une cellule où la valeur a été tapée en toutes lettres
+  (`pls 5% (0.05)`) est lue comme un pourcentage d'après le signe `%` de son
+  texte — sinon « 5 » deviendrait +5 blocs/tick, trente fois la vitesse de
+  marche.
+- **Le nom des onglets**, qui porte le code de série : 01 guilde explo,
+  02 Nostra, 03 St. Philippe, 04 Tréfonds, 05 Rafvenwout, 06 Ondiens, 07 Nous,
+  08 peuple piaf, 99 autres. Les trois séries encore vides sont créées quand
+  même : une série sans item est une plage de CMD réservée.
+
+Deux pièges d'extraction, traités : les entêtes ne sont pas aux mêmes colonnes
+d'un onglet à l'autre (la commande `/give` est en BA sur l'un, en BB sur
+l'autre ; la liste des enchantements se décale d'une colonne dans l'onglet
+Tréfonds), et l'entête du palier y est noyé dans une phrase (« TIER   NB:
+système trefonds: Banal, correct… »). Les colonnes sont donc repérées par le
+**début** de leur libellé, jamais par leur lettre.
+
+### La commande `/give` fait foi
+
+Huit lignes en portent une. Quand elle contredit les colonnes, c'est elle qui
+est reprise — c'est elle qui tourne en jeu — et l'écart est noté sur la fiche :
+
+- la **Jupette des Chants éternels** annonce 20 d'armure en colonne, 8 dans sa
+  commande ;
+- le **Trident des fonds marins** a son « 10 » dans la colonne *Infinity* alors
+  que sa commande dit `impaling`, et ses deux vitesses (main principale +20 %,
+  main secondaire +40 %) ne tiennent pas dans une cellule ;
+- le **Tentacule d'honneur** est `tentacle` en colonne, `minefield:tentacle`
+  dans la commande.
+
+Le lore vient aussi de la commande quand elle existe : la colonne DESCRIPTION
+aplatit sur une ligne ce que `Lore:[…]` découpe en deux.
+
+### Ce qui reste absent, et qu'on n'invente pas
+
+- **Aucun CMD n'est renseigné** dans le classeur : ils restent vides, et
+  l'onglet CMD propose le prochain numéro libre de la série.
+- **Cinq pièces des sets Colombe et Louve n'ont pas de nom** : il est déduit de
+  la panoplie et de l'item de base, avec une `note` qui le dit.
+- Le **« Set du Faulcon »**, cité quatre fois sans aucune pièce nommée, existe
+  comme panoplie vide de taille 4 — inventer quatre items aurait été pire.
+- Les **fautes de frappe du classeur sont conservées** (« Epée batarde »,
+  « Haume du Corbeau », « vilalge piaf ») : ce sont les noms des scribes, à
+  corriger dans l'application, pas au passage d'un import.
+- Le `slot` d'un modificateur est **déduit de l'item de base** (un casque agit
+  sur la tête) : le classeur n'a pas de colonne pour ça, et sans slot un bonus
+  d'armure s'appliquerait dans tous les emplacements à la fois. Les lignes qui
+  portent une commande tiennent leur slot de la commande.
+
+### Resynchronisation
+
+Une première version de ce seed lisait le PDF et se trompait de codes de série
+(Tréfonds en 03, Ondiens en 04), déduisait le statut de la présence d'une
+commande faute de couleurs, et manquait l'onglet Rafvenwout. Une **passe unique**
+(`resyncDepuisClasseur`, flag `mf_items_source_xlsx` dans `site_settings`,
+même patron que `item_sets_backfilled`) supprime les items **encore intacts** —
+`created_by IS NULL AND updated_by IS NULL AND updated_at = created_at`, donc
+insérés par le seed et jamais réenregistrés — et les recrée depuis le classeur.
+Un item créé ou retouché en ligne n'est jamais touché ; c'est ce que vérifie
+`test/items-seed.test.js`.
 
 ## API
 

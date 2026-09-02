@@ -178,7 +178,19 @@ export function listSeries() {
 /** Le code d'une série est le préfixe du CMD : 2 chiffres, « 01 », « 02 »… */
 const serieCode = (v) => String(v ?? '').replace(/\D/g, '').slice(0, 2).padStart(2, '0');
 
+/** Levée si le code est déjà pris — l'index unique le refuserait sans message. */
+function assertCodeLibre(code, excludeId = null) {
+  const row = db.prepare(`SELECT id, nom FROM mf_item_series WHERE code = ? AND id <> ?`)
+    .get(code, excludeId ?? -1);
+  if (row) {
+    const err = new Error('code_taken');
+    err.detail = { code, serie: { id: row.id, nom: row.nom } };
+    throw err;
+  }
+}
+
 export function createSerie(data, userId) {
+  assertCodeLibre(serieCode(data.code));
   const info = db.prepare(`
     INSERT INTO mf_item_series (code, nom, couleur, note, ordre, created_by, updated_by)
     VALUES (?, ?, ?, ?, COALESCE((SELECT MAX(ordre)+1 FROM mf_item_series), 1), ?, ?)
@@ -191,6 +203,7 @@ export function createSerie(data, userId) {
 
 export function updateSerie(id, data, userId) {
   if (!db.prepare(`SELECT id FROM mf_item_series WHERE id = ?`).get(id)) return null;
+  assertCodeLibre(serieCode(data.code), id);
   db.prepare(`
     UPDATE mf_item_series SET code = ?, nom = ?, couleur = ?, note = ?,
       ordre = COALESCE(?, ordre), updated_by = ?, updated_at = strftime('%s','now')

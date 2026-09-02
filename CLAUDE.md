@@ -316,8 +316,17 @@ Single-process Node app:
   échappées dans le SNBT) tandis que `mf_items.commande` garde la saisie
   manuelle **sans jamais l'interpréter**. `POST /api/items/power` sert l'aperçu
   vivant du formulaire — pas de second calcul côté client, sinon il divergerait
-  de celui qui décide du score. Seed `server/seed-items.js` = les vraies données
-  du document des scribes, idempotent **ligne par ligne**, `SEED_ITEMS=off`.
+  de celui qui décide du score. Seed `server/seed-items.js` = les données réelles
+  du **classeur** des scribes (pas de son export PDF : la couleur de police y
+  porte le statut « pas encore en jeu », le format de cellule sépare Operation 0
+  de Operation 1, et le nom des onglets porte le code de série), idempotent
+  ligne par ligne sur la clé **(série, nom)** — l'onglet Nostra reprend les
+  pièces de la guilde d'explorateurs sous les mêmes noms. Quand une commande
+  `/give` contredit les colonnes, **la commande fait foi** et l'écart est noté
+  sur la fiche. Une passe unique `resyncDepuisClasseur` (flag
+  `mf_items_source_xlsx` dans `site_settings`) rattrape une base amorcée par la
+  version PDF, en n'effaçant que les items intacts (`created_by IS NULL AND
+  updated_by IS NULL AND updated_at = created_at`). `SEED_ITEMS=off`.
   Entrée : lien « 🧪 Items customs » de l'onglet Minecraft (rendu seulement si
   `canViewItems`).
 - **Atelier « Salle des coffres »** (`/atelier-coffres`, `docs/salle-des-coffres.md`)

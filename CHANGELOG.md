@@ -45,10 +45,47 @@ faire : un calcul de puissance, l'unicité des CMD, une vue d'équilibrage.
   `users.can_view_items` / `can_edit_items` (admins outre).
 - **Séparé de `quest_custom_items`** (catalogue de butin des joueurs) : pont
   facultatif `mf_items.unique_item_id`, `ON DELETE SET NULL`.
-- Seed `server/seed-items.js` : les 42 items réels du document, idempotent
-  **ligne par ligne** — une version ultérieure du document ajoute ses items sans
-  écraser ce qui a été retouché en ligne. `SEED_ITEMS=off`.
+- Seed `server/seed-items.js` : les 51 items réels du **classeur** (et non de
+  son export PDF), idempotent **ligne par ligne** sur la clé (série, nom) —
+  l'onglet Nostra reprend les pièces de la guilde d'explorateurs sous les mêmes
+  noms, dans une autre série donc une autre plage de CMD. `SEED_ITEMS=off`.
 - Documentation : `docs/items.md`.
+
+### Import : ce que le classeur porte et que le PDF perdait
+- **La couleur de police est le statut.** « Les items en rouges ne sont pas
+  encore introduits en jeu » : seule marque de statut du document, invisible à
+  tout export texte. 32 items arrivent en `a_tester`, 19 en `en_jeu` — au lieu
+  d'une heuristique « a une commande /give donc en jeu ».
+- **Le format de cellule sépare les deux opérations vanilla.** « 0.05 » affiché
+  « 5 % » est un multiply_base (Operation 1) ; « 4.0 » sans format est un ajout
+  brut (Operation 0). Le PDF ne montrait que le rendu. Cas limite traité : une
+  valeur tapée en toutes lettres (`pls 5% (0.05)`) est lue au signe `%` de son
+  texte — sans quoi « 5 » deviendrait +5 blocs/tick, trente fois la vitesse de
+  marche, et un gambison « Banal » pèserait 1558 points.
+- **Le nom des onglets porte le code de série** : les neuf séries réelles
+  remplacent les quatre devinées (Tréfonds était en 03, il est en 04 ; Ondiens
+  en 04, il est en 06), et l'onglet Rafvenwout — les sets Rossignol, Colombe,
+  Louve, Corbeau — rejoint sa série 05 au lieu de la 01.
+- **Colonnes repérées par leur libellé, pas par leur lettre** : la commande
+  `/give` est en BA sur un onglet et en BB sur un autre, la liste des
+  enchantements se décale d'une colonne dans l'onglet Tréfonds, et l'entête du
+  palier y est noyé dans une phrase (« TIER   NB: système trefonds: … »).
+- **La commande `/give` fait foi** sur les colonnes, et l'écart est noté sur la
+  fiche : la Jupette annonce 20 d'armure en colonne et 8 dans sa commande ; le
+  « 10 » du Trident est dans la colonne *Infinity* alors que sa commande dit
+  `impaling`, et ses deux vitesses (main principale et secondaire) ne tenaient
+  pas dans une cellule. Le lore vient aussi de la commande, qui le découpe en
+  deux lignes là où la colonne l'aplatit.
+- **Passe unique de resynchronisation** (`mf_items_source_xlsx` dans
+  `site_settings`, même patron que `item_sets_backfilled`) pour une base déjà
+  amorcée par la version PDF : n'efface que les items intacts (`created_by IS
+  NULL AND updated_by IS NULL AND updated_at = created_at`) avant de les
+  recréer. Un item créé ou retouché en ligne n'est jamais touché —
+  `test/items-seed.test.js` le vérifie.
+- Un **code de série** en doublon répond 409 (`code_taken`) en nommant la série
+  qui le détient, comme un CMD en doublon — au lieu d'une 500 de contrainte.
+- Les fautes de frappe du classeur sont conservées (« Epée batarde », « Haume du
+  Corbeau ») : ce sont les noms des scribes, à corriger dans l'application.
 
 ---
 

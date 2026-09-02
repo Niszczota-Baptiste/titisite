@@ -96,11 +96,24 @@ itemsRouter.delete('/tiers/:id', EDIT, (req, res) => (
 
 // ── Séries de CMD ─────────────────────────────────────────────────────────
 
+// Un code de série déjà pris est un conflit métier, comme un CMD en doublon :
+// la réponse nomme la série qui le détient.
+const onCodeConflict = (err, res) => {
+  if (err?.message === 'code_taken') return res.status(409).json({ error: 'code_taken', ...err.detail });
+  throw err;
+};
+
 itemsRouter.get('/series', READ, (_req, res) => res.json(listSeries()));
-itemsRouter.post('/series', EDIT, (req, res) => res.status(201).json(createSerie(req.body || {}, req.user.id)));
+itemsRouter.post('/series', EDIT, (req, res) => {
+  try {
+    res.status(201).json(createSerie(req.body || {}, req.user.id));
+  } catch (err) { onCodeConflict(err, res); }
+});
 itemsRouter.put('/series/:id', EDIT, (req, res) => {
-  const row = updateSerie(Number(req.params.id), req.body || {}, req.user.id);
-  return row ? res.json(row) : res.status(404).json({ error: 'not_found' });
+  try {
+    const row = updateSerie(Number(req.params.id), req.body || {}, req.user.id);
+    return row ? res.json(row) : res.status(404).json({ error: 'not_found' });
+  } catch (err) { return onCodeConflict(err, res); }
 });
 itemsRouter.delete('/series/:id', EDIT, (req, res) => (
   deleteSerie(Number(req.params.id)) ? res.status(204).end() : res.status(404).json({ error: 'not_found' })
