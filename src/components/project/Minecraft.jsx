@@ -418,6 +418,8 @@ export function MinecraftTab({ mode = 'full' }) {
       {/* Salle d'enquête lore : réservée aux comptes tagués — les autres ne
           voient même pas l'entrée (spec du module). */}
       {user?.canViewLore && <LoreLink slug={workspace.slug} />}
+      {/* Base des items customs : réservée aux comptes tagués, comme le lore. */}
+      {user?.canViewItems && <ItemsLink slug={workspace.slug} />}
     </>
   );
 
@@ -839,6 +841,26 @@ function LoreLink({ slug }) {
       }}
     >
       🔍 Lore
+    </Link>
+  );
+}
+
+// Base des items customs Minefield (module global /items). Rendu UNIQUEMENT si
+// user.canViewItems — c'est l'atelier des scribes, pas une page de joueur.
+// ?projet=<slug> pour le lien de retour.
+function ItemsLink({ slug }) {
+  return (
+    <Link
+      to={`/items?projet=${slug}`}
+      title="Base des items customs Minefield (CMD, attributs, puissance)"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '7px 12px', borderRadius: 8, textDecoration: 'none',
+        background: 'rgba(201,168,232,0.08)', border: '1px solid rgba(201,168,232,0.4)',
+        color: '#c9a8e8', fontFamily: "'Inter',sans-serif", fontSize: 13, whiteSpace: 'nowrap',
+      }}
+    >
+      🧪 Items customs
     </Link>
   );
 }

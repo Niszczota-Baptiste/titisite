@@ -488,6 +488,47 @@ export const api = {
     },
   },
 
+  // Base des items customs Minefield (module global /items).
+  items: {
+    // Tiers, séries, panoplies, barème, listes d'attributs/enchantements et
+    // items uniques du module Quêtes — tout ce dont le formulaire a besoin.
+    ref:      () => request('GET', '/items/ref'),
+    list:     (params) => request('GET', `/items${qs(params)}`),
+    get:      (idOrSlug) => request('GET', `/items/${idOrSlug}`),
+    create:   (b) => request('POST', '/items', b),
+    update:   (id, b) => request('PUT', `/items/${id}`, b),
+    remove:   (id) => request('DELETE', `/items/${id}`),
+    // Puissance d'un brouillon non enregistré — l'aperçu vivant du formulaire.
+    // Le calcul n'existe QUE côté serveur : une seconde implémentation ici
+    // finirait par diverger de celle qui décide du score enregistré.
+    power:    (b) => request('POST', '/items/power', b),
+    weights: {
+      list:   () => request('GET', '/items/weights'),
+      update: (cle, b) => request('PUT', `/items/weights/${encodeURIComponent(cle)}`, b),
+      reset:  () => request('POST', '/items/weights/reset'),
+    },
+    tiers: {
+      list:    () => request('GET', '/items/tiers'),
+      create:  (b) => request('POST', '/items/tiers', b),
+      update:  (id, b) => request('PUT', `/items/tiers/${id}`, b),
+      remove:  (id) => request('DELETE', `/items/tiers/${id}`),
+      reorder: (ids) => request('POST', '/items/tiers/reorder', { ids }),
+    },
+    series: {
+      list:    () => request('GET', '/items/series'),
+      create:  (b) => request('POST', '/items/series', b),
+      update:  (id, b) => request('PUT', `/items/series/${id}`, b),
+      remove:  (id) => request('DELETE', `/items/series/${id}`),
+      nextCmd: (id) => request('GET', `/items/series/${id}/next-cmd`),
+    },
+    panoplies: {
+      list:   () => request('GET', '/items/panoplies'),
+      create: (b) => request('POST', '/items/panoplies', b),
+      update: (id, b) => request('PUT', `/items/panoplies/${id}`, b),
+      remove: (id) => request('DELETE', `/items/panoplies/${id}`),
+    },
+  },
+
   // Lore « Nostra » : enquête collaborative sur le lore de la map Minefield.
   // Module global gated par canViewLore — tout est privé, médias compris
   // (`media[].url` pointe vers /api/lore/media/file/*, servi derrière le gate).

@@ -287,6 +287,39 @@ Single-process Node app:
   The `/quetes` entry point is a « 📜 Quêtes » link in the Minecraft tab of
   projects (`QuestsLink` in `src/components/project/Minecraft.jsx`) — NOT in
   the public-site footer. See `docs/quetes.md`.
+- **Items customs Minefield** (`/items`, `docs/items.md`) est l'atelier de
+  conception des scribes/admins du serveur — **distinct** de `quest_custom_items`
+  (catalogue de butin des joueurs), reliés par le pont facultatif
+  `mf_items.unique_item_id`. Module **global** gaté par deux flags :
+  `users.can_view_items` (consultation) et `can_edit_items` (écriture, implique
+  la lecture), admins outre. Tables `mf_item_tiers` (échelle **ordonnée et
+  éditable** — le serveur en fait coexister deux, `standard` Commun→Artefact et
+  `trefonds` Banal→Légendaire — avec un `budget` en points), `mf_item_series`
+  (les 2 premiers chiffres du CMD, `code` unique), `mf_item_panoplies`,
+  `mf_items` (+ `statut` : le tableur d'origine marquait « pas encore en jeu »
+  par une couleur de cellule, donc invisible à toute requête), et les enfants
+  `mf_item_attributes` (`mode` = `flat`|`pourcent` → Operation 0|1 ; sans lui
+  « +4 » et « +4 % » seraient indiscernables) / `mf_item_enchants` (le drapeau
+  incassable y voyage sous la clé réservée `unbreakable_flag`). `idx_mf_items_cmd`
+  est **unique** — un CMD partagé casse silencieusement le modèle d'un des deux
+  items dans le resource pack ; un doublon répond **409** en nommant l'item qui
+  le détient. **La puissance n'est jamais stockée** : fonction pure
+  (`server/items/power.js`, testée) recalculée à la lecture depuis
+  `mf_power_weights`, un barème éditable en ligne —
+  `poids(matériau) × coef(classe) + Σ attributs + Σ enchantements + forfait
+  incassable`. La **rareté ne multiplie pas** la puissance (ça masquerait un
+  « Commun » aussi fort qu'un artefact) : elle fournit le `budget` du palier, et
+  l'indice puissance/budget est le signal d'équilibrage. Verdict `incomplet` ≠
+  `sous` (fiche à documenter vs. item à rééquilibrer). Un pourcentage est ramené
+  en unité plate via `reference` avant d'être pesé. La commande `/give` est
+  **régénérée** (`server/items/command.js` — UUID déterministes, apostrophes
+  échappées dans le SNBT) tandis que `mf_items.commande` garde la saisie
+  manuelle **sans jamais l'interpréter**. `POST /api/items/power` sert l'aperçu
+  vivant du formulaire — pas de second calcul côté client, sinon il divergerait
+  de celui qui décide du score. Seed `server/seed-items.js` = les vraies données
+  du document des scribes, idempotent **ligne par ligne**, `SEED_ITEMS=off`.
+  Entrée : lien « 🧪 Items customs » de l'onglet Minecraft (rendu seulement si
+  `canViewItems`).
 - **Atelier « Salle des coffres »** (`/atelier-coffres`, `docs/salle-des-coffres.md`)
   is a **design** tool for a Minefield vault room *and its storage layout* — a
   schematic, not a builder and **not an inventory**: no decoration block
@@ -499,6 +532,7 @@ First boot creates the DB at `DB_PATH` (default `./data.sqlite`) and seeds:
 | New per-workspace tab | `src/components/project/ProjectLayout.jsx` (`TABS`) + new file in `project/` + route in `src/pages/Project.jsx` |
 | New scoped API resource | new file in `server/routes/` with `Router({ mergeParams: true })`, then mount under the `scoped` router in `server/index.js` |
 | New public-site collection | append to `PUBLIC_COLLECTIONS` in `server/db.js`, create `src/data/<name>.js`, add seed mapping in `server/seed.js`, write the section + its admin editor |
+| New item field / referential in the items base | the column in `server/db.js#migrate` + its mapper in `server/items/store.js`, the weight in `power.js#defaultWeights` if it scores, then the route in `server/routes/items.js`, the `api.items.*` helper, and the form field in `src/components/items/ItemForm.jsx` — see `docs/items.md` |
 | New public setting | use the existing `site_settings` k/v table — see `server/routes/settings.js` |
 | New writing-space field/resource | add the column/table in `server/db.js#migrate`, the mapper + route in `server/routes/writing.js` (public) / `writing-admin.js` (admin), an `api.*` helper in `src/api/client.js`, then the editor in `src/components/admin/editors/writing/` and reader UI in `src/components/writing/` |
 | New 3D-map biome/building | `src/components/writing/map/presets.js` (+ the mesh in `buildings.jsx` for a building), then the matching allowlist in `server/routes/writing-admin.js` — see `docs/carte-3d.md` |

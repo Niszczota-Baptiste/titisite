@@ -5,6 +5,53 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — items-customs-minefield
+
+### Nouveau module « 🧪 Items customs Minefield » (`/items`)
+Reprise du tableur des scribes (*BASE DE DONNÉE DES ITEMS CUSTOMS SUR
+MINEFIELD*, v1.0, xadrow) en module global — et ce qu'un tableur ne pouvait pas
+faire : un calcul de puissance, l'unicité des CMD, une vue d'équilibrage.
+- **Relationnel plutôt qu'une colonne de texte** : `mf_items` + ses enfants
+  `mf_item_attributes` / `mf_item_enchants`. `mode` (`flat`/`pourcent`) distingue
+  les deux opérations vanilla que le tableur notait « 4 » et « −15 % » — sans
+  quoi « +4 » et « +4 % » seraient indiscernables. `statut` remplace la
+  **couleur de cellule** qui marquait « pas encore en jeu » : une couleur
+  n'était atteignable par aucune requête, une colonne se filtre.
+- **Calcul de puissance** (`server/items/power.js`, pur et testé) :
+  `poids(matériau) × coef(classe) + Σ attributs + Σ enchantements + forfait
+  incassable`. **La rareté ne multiplie pas la puissance** — ça masquerait
+  précisément un « Commun » aussi fort qu'un artefact ; elle fournit le
+  `budget` du palier, et l'indice puissance/budget est le signal d'équilibrage.
+  Jamais stockée : recalculée depuis le barème courant, sinon elle se
+  désynchroniserait au premier poids corrigé.
+- **Barème en base et éditable en ligne** (`mf_power_weights`) : la fiche montre
+  le calcul ligne à ligne (« Vitesse −15 % × 0,1 = −0,015 × 300 = −4,5 »), donc
+  un score contesté se corrige au bon endroit — le poids, pas l'item.
+- **Verdict `incomplet` ≠ `sous`** : un item sans aucune stat a une fiche à
+  documenter, pas un équilibrage à revoir. Deux gestes, deux mots.
+- **CMD** : index **unique** (deux items sur un même CMD cassent silencieusement
+  le modèle de l'un des deux dans le resource pack) → **409** nommant l'item qui
+  le détient, `GET /series/:id/next-cmd` pour le prochain libre, et l'onglet CMD
+  affiche les **trous** de numérotation.
+- **Commande `/give` régénérée** (`server/items/command.js`) à côté de celle
+  saisie à la main, conservée sans être interprétée. UUID déterministes (au
+  hasard, la commande changerait à chaque affichage) et **apostrophes échappées**
+  dans le SNBT — `Lore:['[{"text":"sous l'eau"}]']` ferme la chaîne au milieu du
+  mot, le document source en contient plusieurs, cassées.
+- **Aperçu vivant** du formulaire servi par `POST /api/items/power` : une seule
+  implémentation du calcul, celle qui décide aussi du score enregistré.
+- Quatre onglets — 📦 Catalogue, ⚖️ Équilibrage (population et budget de chaque
+  palier), 🎨 CMD, ⚙️ Référentiel — et deux flags d'accès,
+  `users.can_view_items` / `can_edit_items` (admins outre).
+- **Séparé de `quest_custom_items`** (catalogue de butin des joueurs) : pont
+  facultatif `mf_items.unique_item_id`, `ON DELETE SET NULL`.
+- Seed `server/seed-items.js` : les 42 items réels du document, idempotent
+  **ligne par ligne** — une version ultérieure du document ajoute ses items sans
+  écraser ce qui a été retouché en ligne. `SEED_ITEMS=off`.
+- Documentation : `docs/items.md`.
+
+---
+
 ## [Unreleased] — sets-de-joyaux
 
 ### Quêtes — sets d'items (« les 6 sets de joyaux »)

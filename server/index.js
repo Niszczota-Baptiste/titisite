@@ -33,6 +33,7 @@ import { minecraftRouter } from './routes/minecraft.js';
 import { blueprintsRouter, blueprintsPublicRouter } from './routes/blueprints.js';
 import { worldeditTokenRouter } from './routes/worldedit.js';
 import { minecraftAdminRouter } from './routes/minecraft-admin.js';
+import { itemsRouter } from './routes/items.js';
 import { loreRouter } from './routes/lore.js';
 import { questsRouter } from './routes/quests.js';
 import { questsAdminRouter } from './routes/quests-admin.js';
@@ -321,6 +322,11 @@ app.use('/api/quests', questsAdminRouter);
 // Module global gaté par users.can_view_lore (admins outre) — TOUT est privé,
 // GET et médias compris (servis par ce routeur, jamais en statique).
 app.use('/api/lore', loreRouter);
+
+// Base des items customs Minefield : l'atelier de conception des scribes
+// (CMD, attributs, enchantements, calcul de puissance). Module global gaté par
+// users.can_view_items / can_edit_items, admins outre.
+app.use('/api/items', itemsRouter);
 
 // Atelier « Salle des coffres » : plans de rangement Minefield. Module global
 // comme les quêtes — un plan appartient à un compte et se partage explicitement.

@@ -189,6 +189,8 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
   const [canEditQuests, setCanEditQuests] = useState(user?.can_edit_quests === 1);
   const [canViewVault, setCanViewVault] = useState(user?.can_view_vault === 1);
   const [canViewLore, setCanViewLore] = useState(user?.can_view_lore === 1);
+  const [canViewItems, setCanViewItems] = useState(user?.can_view_items === 1);
+  const [canEditItems, setCanEditItems] = useState(user?.can_edit_items === 1);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -201,12 +203,18 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
     setSaving(true); setErr(null);
     try {
       if (isEdit) {
-        const payload = { name, role, canViewStairs, canViewQuests, canEditQuests, canViewVault, canViewLore };
+        const payload = {
+          name, role, canViewStairs, canViewQuests, canEditQuests, canViewVault, canViewLore,
+          canViewItems, canEditItems,
+        };
         if (password && canResetPassword) payload.password = password;
         await api.updateUser(user.id, payload);
       } else {
         if (!email || !password) { setErr('Email et mot de passe requis'); setSaving(false); return; }
-        await api.createUser({ email, name, role, password, canViewStairs, canViewQuests, canEditQuests, canViewVault, canViewLore });
+        await api.createUser({
+          email, name, role, password, canViewStairs, canViewQuests, canEditQuests,
+          canViewVault, canViewLore, canViewItems, canEditItems,
+        });
       }
       onSaved();
     } catch (ex) {
@@ -357,6 +365,32 @@ function UserForm({ user, currentUser, onSaved, onCancel }) {
             <span>Accès au <strong>🔍 Lore Nostra</strong>
               <span style={{ color: 'rgba(180,170,200,0.55)', fontSize: 11, marginLeft: 6 }}>
                 (enquête collaborative — lecture et écriture)
+              </span>
+            </span>
+          </label>
+          <label style={questToggle}>
+            <input
+              type="checkbox"
+              checked={canViewItems || canEditItems}
+              onChange={(e) => { setCanViewItems(e.target.checked); if (!e.target.checked) setCanEditItems(false); }}
+              style={{ accentColor: ACC, width: 16, height: 16 }}
+            />
+            <span>Consulter les <strong>🧪 Items customs</strong>
+              <span style={{ color: 'rgba(180,170,200,0.55)', fontSize: 11, marginLeft: 6 }}>
+                (base des objets Minefield — CMD, attributs, puissance)
+              </span>
+            </span>
+          </label>
+          <label style={{ ...questToggle, paddingLeft: 26 }}>
+            <input
+              type="checkbox"
+              checked={canEditItems}
+              onChange={(e) => { setCanEditItems(e.target.checked); if (e.target.checked) setCanViewItems(true); }}
+              style={{ accentColor: ACC, width: 16, height: 16 }}
+            />
+            <span>…et les <strong>créer / modifier</strong>
+              <span style={{ color: 'rgba(180,170,200,0.55)', fontSize: 11, marginLeft: 6 }}>
+                (y compris le barème de puissance)
               </span>
             </span>
           </label>

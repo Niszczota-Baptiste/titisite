@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { COLLECTIONS, count, insert, migrate } from './db.js';
 import { ensureSeedUsers } from './users.js';
 import { seedWritingIfEmpty } from './seed-writing.js';
+import { seedItemsIfEmpty } from './seed-items.js';
 import { seedLoreIfEmpty } from './seed-lore.js';
 import { seedQuestsIfEmpty } from './seed-quests.js';
 import { seedUniqueItemsCatalogue } from './seed-unique-items.js';
@@ -59,6 +60,10 @@ export async function seedIfEmpty({ force = false } = {}) {
   // Lore « Nostra » : vraies données d'enquête (bâtiments, poèmes, hypothèses
   // avec leur statut réel) — court-circuité dès la première entrée existante.
   results.lore = seedLoreIfEmpty();
+  // Base des items customs Minefield : les données réelles du document des
+  // scribes. Idempotent ligne par ligne — une version ultérieure du document
+  // ajoute ses items sans écraser ceux déjà retouchés en ligne.
+  results.items = seedItemsIfEmpty();
 
   return results;
 }

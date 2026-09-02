@@ -64,6 +64,12 @@ export function migrate() {
   // Lore « Nostra » — le « tag lore » : ouvre le module d'enquête, en lecture
   // ET en écriture (l'outil est collaboratif, un seul flag). Admins outre.
   ensureColumn('users', 'can_view_lore', 'INTEGER NOT NULL DEFAULT 0');
+  // Base des items customs Minefield (module global /items) — même patron que
+  // les quêtes : un flag ouvre la consultation, l'autre l'édition. Séparés
+  // parce que le public n'est pas le même — un scribe consulte ce qui existe
+  // avant de proposer, un admin d'items retouche le barème de puissance.
+  ensureColumn('users', 'can_view_items', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'can_edit_items', 'INTEGER NOT NULL DEFAULT 0');
   // Secret token for the Minefield cockpit pull feed (no cookie, like ical_token).
   ensureColumn('users', 'cockpit_token', 'TEXT');
   // Per-member opt-in: include quest reminders in that member's cockpit feed.
@@ -2010,6 +2016,176 @@ export function migrate() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_audit_created ON lore_audit(created_at DESC);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_audit_actor ON lore_audit(actor_id, created_at DESC);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_lore_audit_action ON lore_audit(action, target_type);`);
+
+  // ══════════════════════════════════════════════════════════════════════
+  //  Items customs Minefield — la « base de données des items customs »
+  //  des scribes du serveur (module global /items, cf. docs/items.md).
+  //
+  //  Reprend telle quelle la structure du tableur d'origine (une ligne par
+  //  item : TIER, NOM, DESCRIPTION, ITEM DE BASE, PANOPLIE, AQUISITION,
+  //  RESSOURCES/PRIX, CMD, ATTRIBUTS, ENCHANTEMENTS, COMMANDE SUMMON,
+  //  RESPONSABLE) mais en RELATIONNEL : les attributs et les enchantements
+  //  sont des lignes filles, seule forme qui permette d'en tirer un calcul
+  //  de puissance plutôt qu'une colonne de texte à relire à l'œil.
+  //
+  //  Volontairement SÉPARÉ de `quest_custom_items` : celui-là est le
+  //  catalogue de butin des joueurs (géodes, monnaies, prix, journaux
+  //  d'ouverture), celui-ci est l'atelier de conception des admins (CMD,
+  //  commande /give, équilibrage). Un pont facultatif les relie
+  //  (`unique_item_id`) quand un item conçu ici entre en jeu.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // Séries de CMD : les 2 premiers chiffres du Custom Model Data (« 01 guilde
+  // explo », « 02 nostra »…). Le document insiste sur l'ordre croissant à
+  // l'intérieur d'une série — c'est ce qui rend le resource pack tenable —
+  // d'où `GET /api/items/cmd/next` qui s'appuie sur cette table.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mf_item_series (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      code       TEXT NOT NULL,
+      nom        TEXT NOT NULL,
+      couleur    TEXT NOT NULL DEFAULT '#c9a8e8',
+      note       TEXT NOT NULL DEFAULT '',
+      ordre      INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mf_item_series_code ON mf_item_series(code);`);
+
+  // Échelle de tiers, ORDONNÉE et éditable — table et non enum, parce que le
+  // serveur en fait déjà coexister deux (Commun→Artefact d'un côté, l'échelle
+  // « Tréfonds » Banal→Légendaire de l'autre) et que d'autres suivront.
+  //
+  // `budget` est le cœur de l'équilibrage : le nombre de points de puissance
+  // qu'un item de ce tier est censé coûter. On ne multiplie PAS la puissance
+  // par la rareté — ça masquerait exactement ce qu'on cherche (un « Commun »
+  // aussi fort qu'un artefact) ; on la compare au budget du tier.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mf_item_tiers (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      nom        TEXT NOT NULL,
+      couleur    TEXT NOT NULL DEFAULT '#c9a8e8',
+      echelle    TEXT NOT NULL DEFAULT 'standard',
+      budget     REAL NOT NULL DEFAULT 0,
+      note       TEXT NOT NULL DEFAULT '',
+      ordre      INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mf_item_tiers_ordre ON mf_item_tiers(ordre, id);`);
+
+  // Panoplies (« Set du Rossignol », « Set ancestral »…). `taille` joue le même
+  // rôle que sur les sets d'items uniques : ce que la panoplie compte EN JEU,
+  // pour afficher « 3/5 documentées » sans ressaisir la liste.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mf_item_panoplies (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug       TEXT,
+      nom        TEXT NOT NULL,
+      couleur    TEXT NOT NULL DEFAULT '#c9a8e8',
+      taille     INTEGER NOT NULL DEFAULT 0,
+      bonus      TEXT NOT NULL DEFAULT '',
+      note       TEXT NOT NULL DEFAULT '',
+      ordre      INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mf_item_panoplies_slug ON mf_item_panoplies(slug) WHERE slug IS NOT NULL AND slug <> '';`);
+
+  // L'item lui-même. `statut` porte la convention du tableur d'origine (les
+  // lignes en rouge = pas encore en jeu, à tester/équilibrer) : c'était une
+  // couleur de cellule, donc une information invisible à toute requête. Ici
+  // c'est une colonne, donc un filtre.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mf_items (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug           TEXT,
+      nom            TEXT NOT NULL,
+      description    TEXT NOT NULL DEFAULT '',
+      base_item      TEXT NOT NULL DEFAULT '',
+      tier_id        INTEGER REFERENCES mf_item_tiers(id) ON DELETE SET NULL,
+      serie_id       INTEGER REFERENCES mf_item_series(id) ON DELETE SET NULL,
+      panoplie_id    INTEGER REFERENCES mf_item_panoplies(id) ON DELETE SET NULL,
+      cmd            INTEGER,
+      acquisition    TEXT NOT NULL DEFAULT 'craftable',
+      ressources     TEXT NOT NULL DEFAULT '',
+      prix           TEXT NOT NULL DEFAULT '',
+      commande       TEXT NOT NULL DEFAULT '',
+      statut         TEXT NOT NULL DEFAULT 'a_tester'
+                     CHECK (statut IN ('a_tester','en_jeu','abandonne')),
+      responsable    TEXT NOT NULL DEFAULT '',
+      note           TEXT NOT NULL DEFAULT '',
+      unique_item_id INTEGER REFERENCES quest_custom_items(id) ON DELETE SET NULL,
+      created_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mf_items_slug ON mf_items(slug) WHERE slug IS NOT NULL AND slug <> '';`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mf_items_tier ON mf_items(tier_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mf_items_serie ON mf_items(serie_id, cmd);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mf_items_panoplie ON mf_items(panoplie_id);`);
+  // Deux items ne peuvent pas partager un CMD : c'est la clé du resource pack,
+  // un doublon casse silencieusement le modèle de l'un des deux.
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mf_items_cmd ON mf_items(cmd) WHERE cmd IS NOT NULL;`);
+
+  // Modificateurs d'attribut. `mode` distingue les deux opérations vanilla que
+  // le tableur note « 4 » et « -15 % » : add (Operation 0) et multiply_base
+  // (Operation 1). Sans ce champ, « +4 » et « +4 % » seraient indiscernables
+  // et le calcul de puissance n'aurait aucun sens.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mf_item_attributes (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id  INTEGER NOT NULL REFERENCES mf_items(id) ON DELETE CASCADE,
+      attribut TEXT NOT NULL,
+      valeur   REAL NOT NULL DEFAULT 0,
+      mode     TEXT NOT NULL DEFAULT 'flat' CHECK (mode IN ('flat','pourcent')),
+      slot     TEXT NOT NULL DEFAULT 'any',
+      ordre    INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mf_item_attributes_item ON mf_item_attributes(item_id, ordre, id);`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mf_item_enchants (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id  INTEGER NOT NULL REFERENCES mf_items(id) ON DELETE CASCADE,
+      enchant  TEXT NOT NULL,
+      niveau   INTEGER NOT NULL DEFAULT 1,
+      ordre    INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mf_item_enchants_item ON mf_item_enchants(item_id, ordre, id);`);
+
+  // Barème de puissance — les poids du calcul, EN BASE et éditables en ligne.
+  // C'est ce qui rend le score défendable : la fiche d'un item affiche le
+  // détail ligne par ligne, et un admin qui trouve qu'un enchantement est
+  // sous-évalué corrige le poids au lieu d'argumenter contre une constante.
+  // `reference` sert à convertir un pourcentage en valeur plate (MOVEMENT_SPEED
+  // −15 % → −0,015 quand la référence vaut 0,1) : sans lui, un « % » et un
+  // « point » seraient sommés comme s'ils étaient la même unité.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mf_power_weights (
+      cle        TEXT PRIMARY KEY,
+      genre      TEXT NOT NULL CHECK (genre IN ('attribut','enchant','materiau','classe','reglage')),
+      poids      REAL NOT NULL DEFAULT 0,
+      reference  REAL NOT NULL DEFAULT 1,
+      note       TEXT NOT NULL DEFAULT '',
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mf_power_weights_genre ON mf_power_weights(genre, cle);`);
 }
 
 // Rattache à leur item unique les résultats de butin saisis en référence texte
