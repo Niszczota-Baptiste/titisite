@@ -150,10 +150,14 @@ export function BalanceTab({ items, referentiel, onOpen }) {
       </div>
 
       <div style={{ ...panel, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 600 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 720 }}>
           <thead>
             <tr style={{ color: MUTED, textAlign: 'left' }}>
-              <th style={th}>Item</th><th style={th}>Palier</th>
+              <th style={th}>Item</th>
+              {/* Deux séries conçoivent des pièces sous les mêmes noms : sans
+                  cette colonne, deux lignes voisines seraient indiscernables
+                  alors qu'elles décrivent deux objets différents. */}
+              <th style={th}>Série</th><th style={th}>Palier</th>
               <th style={{ ...th, textAlign: 'right' }}>Puissance</th>
               <th style={{ ...th, textAlign: 'right' }}>Budget</th>
               <th style={{ ...th, width: 170 }}>Écart</th>
@@ -163,6 +167,9 @@ export function BalanceTab({ items, referentiel, onOpen }) {
             {liste.map((i) => (
               <tr key={i.id} onClick={() => onOpen(i.id)} style={{ borderTop: `1px solid ${LINE}`, cursor: 'pointer' }}>
                 <td style={{ ...td, color: INK }}>{i.nom}</td>
+                <td style={{ ...td, color: MUTED, whiteSpace: 'nowrap' }}>
+                  {i.serieCode ? `${i.serieCode} — ${i.serieNom}` : '—'}
+                </td>
                 <td style={{ ...td, color: i.tierCouleur || MUTED }}>{i.tierNom || '—'}</td>
                 <td style={{ ...td, textAlign: 'right', color: INK, fontWeight: 600 }}>{pts(i.puissance.total)}</td>
                 <td style={{ ...td, textAlign: 'right', color: MUTED }}>{i.puissance.budget ? pts(i.puissance.budget) : '—'}</td>
