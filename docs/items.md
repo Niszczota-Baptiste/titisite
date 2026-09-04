@@ -239,3 +239,56 @@ plus `can_edit_items`.
 enregistré viennent de **la même implémentation**. Recalculer côté client irait
 plus vite mais ferait exister deux formules, dont celle affichée pendant qu'on
 règle un item.
+
+## Côté écran
+
+`GET /api/items` **accepte** des filtres, mais la page ne s'en sert pas : elle
+charge la population entière une fois et filtre en mémoire. Trois raisons, dans
+cet ordre :
+
+- le **verdict n'existe pas en base** — il se recalcule à chaque lecture depuis
+  le barème courant, donc aucun `WHERE` ne saurait le trier, et c'est le filtre
+  le plus utile de la page ;
+- les moyennes par palier et les trous de numérotation raisonnent sur la
+  population **entière** : les filtrer les ferait mentir ;
+- accessoirement, la recherche ne part plus en requête à chaque touche frappée.
+
+Le corpus est borné par construction (une série plafonne à 999 CMD), donc le
+coût de tout charger est connu d'avance. Les filtres serveur restent en place
+pour les appelants de l'API.
+
+### Ce que les vues partagent
+
+Le **filtre par verdict** est remonté dans `Items.jsx` et partagé
+Catalogue ↔ Équilibrage : cliquer « trop fort » sur le tableau de bord et lire
+le catalogue doivent donner la même population, sinon les deux vues comptent
+la même chose différemment. Les tuiles de l'Équilibrage et la légende du
+Catalogue sont donc **le même filtre**, écrit deux fois à l'écran.
+
+### La jauge
+
+Échelle **0 → 160 % du budget** (`JAUGE_MAX`), repère des 100 % aux deux tiers.
+Une jauge qui saturerait à 100 % afficherait « plein » aussi bien pour un item
+pile dans son budget que pour un item au double — l'anomalie que ce module
+existe pour montrer. La zone tolérée est lue sur `puissance.tolerance`, le
+réglage du barème, **jamais ± 25 % en dur** : sinon resserrer la tolérance
+changerait les verdicts sans déplacer la bande.
+
+L'écart chiffré et le verdict se complètent (« de combien » / « quoi en
+faire ») ; le pourcentage du budget, lui, redit l'écart autrement, donc il
+disparaît partout où l'écart est déjà affiché.
+
+### Pas de bandeau de doublons de CMD
+
+Le prototype de design en prévoyait un ; `idx_mf_items_cmd` étant **unique**,
+un doublon ne peut pas exister en base — la saisie est refusée en 409 en
+nommant l'item qui détient le numéro. Un bandeau qui ne peut jamais s'allumer
+ne serait qu'un doute entretenu.
+
+### Suppression d'une ligne de référentiel
+
+`mf_items.tier_id` / `serie_id` / `panoplie_id` sont en `ON DELETE SET NULL` :
+supprimer un palier encore utilisé ne bloque rien, il **vide silencieusement**
+le palier de ses items, qui perdent leur budget donc leur verdict. Le
+Référentiel désactive donc la corbeille tant que la ligne est référencée, avec
+le décompte en `title`.

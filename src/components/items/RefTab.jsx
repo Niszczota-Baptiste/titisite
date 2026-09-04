@@ -71,6 +71,7 @@ function Tiers({ referentiel, canEdit, agir }) {
               { cle: 'couleur', type: 'color', largeur: 52 },
             ]}
             info={`${t.items}`}
+            empeche={t.items ? `${t.items} item${t.items > 1 ? 's utilisent' : ' utilise'} ce palier : ils perdraient leur budget.` : null}
             onSave={(v) => agir(api.items.tiers.update(t.id, v))}
             onDelete={() => agir(api.items.tiers.remove(t.id))}
           />
@@ -113,6 +114,7 @@ function Series({ referentiel, canEdit, agir }) {
               { cle: 'note', type: 'text' },
             ]}
             info={`${s.items}`}
+            empeche={s.items ? `${s.items} item${s.items > 1 ? 's appartiennent' : ' appartient'} à cette série : ${s.items > 1 ? 'ils perdraient' : 'il perdrait'} sa plage de CMD.` : null}
             onSave={(v) => agir(api.items.series.update(s.id, v))}
             onDelete={() => agir(api.items.series.remove(s.id))}
           />
@@ -151,6 +153,7 @@ function Panoplies({ referentiel, canEdit, agir }) {
             ]}
             info={p.taille ? `${p.membres}/${p.taille}` : `${p.membres}`}
             infoAlerte={p.taille > 0 && p.membres < p.taille}
+            empeche={p.membres ? `${p.membres} pièce${p.membres > 1 ? 's sont rattachées' : ' est rattachée'} à cette panoplie.` : null}
             onSave={(v) => agir(api.items.panoplies.update(p.id, v))}
             onDelete={() => agir(api.items.panoplies.remove(p.id))}
           />
@@ -271,7 +274,7 @@ function LignePoids({ poids, libelle, canEdit, avecReference, onSave }) {
 
 // ── Briques communes ──────────────────────────────────────────────────────
 
-function LigneEditable({ valeurs, champs, canEdit, info, infoAlerte, onSave, onDelete }) {
+function LigneEditable({ valeurs, champs, canEdit, info, infoAlerte, empeche, onSave, onDelete }) {
   const [v, setV] = useState(valeurs);
   const [confirmer, setConfirmer] = useState(false);
   const modifie = champs.some((c) => String(v[c.cle] ?? '') !== String(valeurs[c.cle] ?? ''));
@@ -293,7 +296,15 @@ function LigneEditable({ valeurs, champs, canEdit, info, infoAlerte, onSave, onD
         {canEdit && modifie ? (
           <button type="button" onClick={() => onSave(v)} style={{ ...btn(true), padding: '4px 9px', fontSize: 11.5 }}>Appliquer</button>
         ) : null}
-        {canEdit && !modifie ? (
+        {/* La colonne référencée est en ON DELETE SET NULL : supprimer un palier
+            encore utilisé ne bloquerait rien, il viderait silencieusement le
+            palier de ses items — qui perdraient leur budget, donc leur verdict.
+            On désactive plutôt, en disant pourquoi. */}
+        {canEdit && !modifie && empeche ? (
+          <button type="button" disabled title={empeche}
+            style={{ ...btn(), padding: '4px 9px', fontSize: 11.5, color: MUTED, cursor: 'not-allowed', opacity: 0.45 }}>🗑</button>
+        ) : null}
+        {canEdit && !modifie && !empeche ? (
           confirmer ? (
             <>
               <button type="button" onClick={() => { setConfirmer(false); onDelete(); }}

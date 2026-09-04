@@ -1,4 +1,6 @@
-import { INK, LINE, MUTED, VERDICTS, panel, pts } from './theme';
+import {
+  INK, JAUGE_MAX, LINE, MUTED, VERDICTS, ecartAuBudget, panel, pts, surJauge,
+} from './theme';
 
 // Le détail du calcul de puissance, ligne à ligne. C'est la pièce qui rend le
 // score défendable : un admin qui trouve un item mal noté voit EXACTEMENT d'où
@@ -12,38 +14,77 @@ const GENRES = {
   reglage:  { label: 'Réglage', icon: '⚙️' },
 };
 
-/** Jauge puissance / budget. Au-delà de 100 %, le dépassement reste visible. */
-export function PowerGauge({ puissance, compact = false }) {
+/**
+ * Jauge puissance / budget. L'échelle monte à 160 % du budget : le repère des
+ * 100 % tombe donc aux deux tiers, et un item au double de son budget reste
+ * visiblement au-delà au lieu de saturer comme un item pile dedans.
+ *
+ * La zone tolérée n'est pas dessinée à ± 25 % en dur : elle est lue sur
+ * `puissance.tolerance`, le réglage du barème. Sinon un admin qui resserre la
+ * tolérance verrait le verdict changer sans que la bande bouge.
+ */
+export function PowerGauge({ puissance, compact = false, libelle = 'pourcent' }) {
   const v = VERDICTS[puissance?.verdict] || VERDICTS.inconnu;
-  const ratio = puissance?.indice ?? 0;
-  // La barre sature à 150 % pour rester lisible ; le chiffre, lui, ne ment pas.
-  const largeur = Math.max(0, Math.min(150, ratio * 100));
+  const indice = puissance?.indice;
+  const budget = puissance?.budget;
+  const tol = puissance?.tolerance ?? 0.25;
+  // Une fiche vide n'a rien à équilibrer : sa jauge s'efface plutôt que
+  // d'annoncer un déficit qui n'existe pas.
+  const eteinte = puissance?.verdict === 'incomplet' || indice == null;
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
       <div style={{
         flex: 1, minWidth: compact ? 48 : 90, height: compact ? 5 : 7,
-        borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden', position: 'relative',
+        borderRadius: 4, background: 'rgba(255,255,255,0.06)', overflow: 'hidden',
+        position: 'relative', opacity: eteinte ? 0.45 : 1,
       }}>
+        {budget ? (
+          <div style={{
+            position: 'absolute', top: 0, bottom: 0,
+            left: surJauge(1 - tol), width: `${(2 * tol / JAUGE_MAX) * 100}%`,
+            background: `${VERDICTS.ok.color}22`,
+          }} />
+        ) : null}
         <div style={{
-          width: `${(largeur / 150) * 100}%`, height: '100%',
-          background: v.color, opacity: 0.85, borderRadius: 4,
+          position: 'absolute', left: 0, top: 0, bottom: 0,
+          width: surJauge(indice ?? 0), borderRadius: 4,
+          background: `linear-gradient(90deg, ${v.color}88, ${v.color})`,
         }} />
         {/* Repère des 100 % — sans lui, « plein » et « pile dans le budget »
             seraient indiscernables. */}
-        {puissance?.budget ? (
+        {budget ? (
           <div style={{
-            position: 'absolute', left: `${(100 / 150) * 100}%`, top: 0, bottom: 0,
-            width: 1, background: 'rgba(255,255,255,0.35)',
+            position: 'absolute', left: surJauge(1), top: 0, bottom: 0,
+            width: 2, marginLeft: -1, background: 'rgba(255,255,255,0.55)',
           }} />
         ) : null}
       </div>
-      <span style={{ color: v.color, fontSize: compact ? 11 : 12, whiteSpace: 'nowrap' }}>
-        {/* Un pourcentage n'a pas de sens sur une fiche sans aucune stat : il
-            se lirait comme un déséquilibre alors qu'il n'y a rien à équilibrer. */}
-        {v.icon} {puissance?.indice != null && puissance.verdict !== 'incomplet'
-          ? `${Math.round(puissance.indice * 100)} %` : v.court}
-      </span>
+      {libelle === 'aucun' ? null : (
+        <span style={{ color: v.color, fontSize: compact ? 11 : 12, whiteSpace: 'nowrap' }}>
+          {/* Un pourcentage n'a pas de sens sur une fiche sans aucune stat : il
+              se lirait comme un déséquilibre alors qu'il n'y a rien à équilibrer. */}
+          {v.icon} {indice != null && puissance.verdict !== 'incomplet'
+            ? `${Math.round(indice * 100)} %` : v.court}
+        </span>
+      )}
     </div>
+  );
+}
+
+/**
+ * L'écart au budget, chiffré et signé. La jauge dit « à peu près où », ce
+ * nombre dit « de combien » — c'est lui qu'on cite pour discuter un item.
+ */
+export function Ecart({ puissance, size = 11 }) {
+  const e = ecartAuBudget(puissance);
+  if (e == null || puissance?.verdict === 'incomplet') return null;
+  const v = VERDICTS[puissance.verdict] || VERDICTS.inconnu;
+  return (
+    <span title={`${pts(puissance.total)} pts pour un budget de ${pts(puissance.budget)}`}
+      style={{ color: v.color, fontSize: size, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+      {e > 0 ? '+' : ''}{e} %
+    </span>
   );
 }
 
@@ -60,6 +101,7 @@ export function PowerBreakdown({ puissance, tiers = [], onSuggest = null }) {
           {pts(puissance.total)}
         </span>
         <span style={{ color: MUTED, fontSize: 12 }}>points de puissance</span>
+        <Ecart puissance={puissance} size={12} />
         <span style={{ flex: 1 }} />
         <span style={{ color: v.color, fontSize: 12 }}>{v.icon} {v.label}</span>
       </div>

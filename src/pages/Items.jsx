@@ -12,7 +12,9 @@ import { ItemForm } from '../components/items/ItemForm';
 import { ItemSheet } from '../components/items/ItemSheet';
 import { ItemsCatalog } from '../components/items/ItemsCatalog';
 import { RefTab } from '../components/items/RefTab';
-import { ACC, ACC_RGB, CRIMSON, GOLD, INK, MUTED, btn } from '../components/items/theme';
+import {
+  ACC, ACC_RGB, CRIMSON, GOLD, INK, LINE, MUTED, btn,
+} from '../components/items/theme';
 
 // Base des items customs Minefield — module global, même patron de page que
 // /quetes et /lore : gate d'accès, bandeau, onglets, tout le reste en dessous.
@@ -45,11 +47,13 @@ export default function Items() {
   return <ItemsApp user={user} />;
 }
 
+// Chaque onglet répond à une des questions du classeur d'origine ; le
+// sous-titre l'énonce, pour qu'on sache où aller sans avoir à ouvrir les quatre.
 const TABS = [
-  ['catalogue', '📦 Catalogue'],
-  ['equilibrage', '⚖️ Équilibrage'],
-  ['cmd', '🎨 CMD'],
-  ['referentiel', '⚙️ Référentiel'],
+  ['catalogue', '📦', 'Catalogue', "Ce qui existe, pièce par pièce"],
+  ['equilibrage', '⚖️', 'Équilibrage', 'Ce qui sort de son palier'],
+  ['cmd', '🎨', 'CMD', 'Les identifiants du resource pack'],
+  ['referentiel', '⚙️', 'Référentiel', 'Les règles qui produisent tout le reste'],
 ];
 
 function ItemsApp({ user }) {
@@ -61,6 +65,10 @@ function ItemsApp({ user }) {
   const [referentiel, setReferentiel] = useState(null);
   const [items, setItems] = useState([]);
   const [filtres, setFiltres] = useState({});
+  // Le filtre par verdict est partagé Catalogue ↔ Équilibrage : cliquer
+  // « trop fort » sur le tableau de bord doit ramener les mêmes items que le
+  // catalogue, sinon les deux vues comptent la même population différemment.
+  const [verdictF, setVerdictF] = useState('');
   const [detailId, setDetailId] = useState(null);
   const [edition, setEdition] = useState(null); // { item: null | item }
   const [err, setErr] = useState(null);
@@ -79,18 +87,29 @@ function ItemsApp({ user }) {
     () => api.items.ref().then(setReferentiel).catch((e) => setErr(e.message)),
     [],
   );
-  // Les onglets Équilibrage et CMD raisonnent sur TOUT le catalogue : leur
-  // appliquer les filtres du catalogue ferait mentir les moyennes par palier
-  // et les trous de numérotation. Seul l'onglet Catalogue filtre.
+  // TOUT le catalogue est chargé d'un coup, et c'est le catalogue qui filtre
+  // en mémoire. Deux raisons : les moyennes par palier et les trous de
+  // numérotation raisonnent sur la population entière (les filtrer les ferait
+  // mentir), et le verdict n'existe pas en base — il se calcule à la lecture,
+  // donc aucun `WHERE` ne pourrait le trier. Bénéfice de bord : la recherche
+  // ne part plus en requête à chaque touche frappée.
   const chargerItems = useCallback(
-    () => api.items.list(tab === 'catalogue' ? filtres : {}).then(setItems).catch((e) => setErr(e.message)),
-    [filtres, tab],
+    () => api.items.list().then(setItems).catch((e) => setErr(e.message)),
+    [],
   );
 
   useEffect(() => { chargerRef(); }, [chargerRef]);
   useEffect(() => { chargerItems(); }, [chargerItems]);
 
   const detail = useMemo(() => items.find((i) => i.id === detailId) || null, [items, detailId]);
+
+  // Le classeur d'origine marquait « pas encore documenté » par une couleur de
+  // cellule ; ici c'est un nombre sur l'onglet, donc une dette qu'on voit sans
+  // avoir à ouvrir la vue.
+  const aCompleter = useMemo(
+    () => items.filter((i) => i.puissance.verdict === 'incomplet').length,
+    [items],
+  );
 
   const rafraichir = useCallback(async () => {
     await Promise.all([chargerRef(), chargerItems()]);
@@ -138,10 +157,38 @@ function ItemsApp({ user }) {
           il lui donne un budget à respecter.
         </p>
 
-        <nav style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '16px 0 14px' }}>
-          {TABS.map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setTab(k)} style={btn(tab === k)}>{l}</button>
-          ))}
+        <nav style={{
+          display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center',
+          margin: '16px 0 14px', borderBottom: `1px solid ${LINE}`,
+        }}>
+          {TABS.map(([k, emoji, libelle, sous]) => {
+            const actif = tab === k;
+            return (
+              <button
+                key={k} type="button" onClick={() => setTab(k)} title={sous}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7, marginBottom: -1,
+                  padding: '9px 15px', borderRadius: '9px 9px 0 0', cursor: 'pointer',
+                  fontFamily: "'Inter',sans-serif", fontSize: 13,
+                  fontWeight: actif ? 700 : 500,
+                  color: actif ? ACC : MUTED,
+                  background: actif ? `rgba(${ACC_RGB},0.14)` : 'transparent',
+                  border: `1px solid ${actif ? `rgba(${ACC_RGB},0.42)` : 'transparent'}`,
+                }}
+              >
+                <span aria-hidden="true">{emoji}</span>{libelle}
+                {k === 'catalogue' && aCompleter > 0 ? (
+                  <span title={`${aCompleter} fiches à compléter`} style={{
+                    padding: '0 6px', borderRadius: 10, fontSize: 10, fontWeight: 700,
+                    border: `1px solid ${LINE}`, background: 'rgba(255,255,255,0.05)', color: MUTED,
+                  }}>{aCompleter}</span>
+                ) : null}
+              </button>
+            );
+          })}
+          <span style={{ marginLeft: 'auto', paddingBottom: 8, color: MUTED, fontSize: 11.5 }}>
+            {TABS.find(([k]) => k === tab)?.[3]}
+          </span>
         </nav>
 
         {err ? (
@@ -160,11 +207,16 @@ function ItemsApp({ user }) {
           <ItemsCatalog
             items={items} referentiel={referentiel} byId={byId}
             filtres={filtres} setFiltres={setFiltres}
+            verdictF={verdictF} setVerdictF={setVerdictF}
             onOpen={setDetailId} onCreate={() => setEdition({ item: null })} canEdit={canEdit}
           />
         ) : null}
         {tab === 'equilibrage' ? (
-          <BalanceTab items={items} referentiel={referentiel} onOpen={setDetailId} />
+          <BalanceTab
+            items={items} referentiel={referentiel} onOpen={setDetailId}
+            verdictF={verdictF} setVerdictF={setVerdictF}
+            onVoirCatalogue={() => setTab('catalogue')}
+          />
         ) : null}
         {tab === 'cmd' ? (
           <CmdTab items={items} referentiel={referentiel} byId={byId} onOpen={setDetailId} />

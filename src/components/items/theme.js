@@ -91,3 +91,27 @@ export const label = {
   color: MUTED,
   marginBottom: 5,
 };
+
+/**
+ * Ordre d'affichage des verdicts. « inconnu » ferme la marche : c'est l'absence
+ * de jugement (pas de tier, pas de budget), pas un quatrième diagnostic.
+ */
+export const VERDICT_ORDRE = ['ok', 'sur', 'sous', 'incomplet', 'inconnu'];
+
+/**
+ * Haut de l'échelle des jauges, en fraction du budget. Une jauge qui saturerait
+ * à 100 % afficherait « plein » aussi bien pour un item pile dans son budget que
+ * pour un item au double — or c'est exactement ce que ce module cherche à voir.
+ */
+export const JAUGE_MAX = 1.6;
+
+/** Position d'un indice sur la jauge, en % de largeur (borné à l'échelle). */
+export const surJauge = (indice) => `${Math.max(0, Math.min(1, indice / JAUGE_MAX)) * 100}%`;
+
+/**
+ * Écart au budget en points de pourcentage, signé. `null` quand il n'y a pas de
+ * budget : un item sans palier n'a pas d'écart de 0, il n'en a pas du tout.
+ */
+export const ecartAuBudget = (puissance) => (
+  puissance?.indice == null ? null : Math.round((puissance.indice - 1) * 100)
+);
