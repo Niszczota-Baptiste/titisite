@@ -17,10 +17,10 @@ test('production boots without music configuration and keeps the site available'
   t.after(() => server.stop());
   const client = fetcher(server.base);
   assert.equal((await client.get('/api/health')).status, 200);
-  assert.equal((await client.get('/api/playlist/status')).status, 503);
+  assert.equal((await client.get('/api/playlist/status')).status, 401);
   const login = await client.post('/api/auth/login', { body: { email: 'admin@test.local', password: 'adminpw1-strong' } });
   assert.equal(login.status, 200);
-  assert.equal(login.json.user.canViewPlaylist, false);
+  assert.equal(login.json.user.canViewPlaylist, true);
   if (fs.existsSync(new URL('../dist/index.html', import.meta.url))) {
     const page = await client.get('/playlist');
     assert.equal(page.status, 200);

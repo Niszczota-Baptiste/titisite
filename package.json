@@ -33,14 +33,14 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "leaflet": "^1.9.4",
-    "multer": "^2.1.1",
-    "nodemailer": "^9.0.1",
+    "multer": "^2.4.0",
+    "nodemailer": "^9.1.1",
     "opentype.js": "^2.0.0",
     "prismarine-nbt": "^2.8.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.17.0",
-    "sharp": "^0.35.1",
+    "sharp": "^0.35.4",
     "three": "^0.170.0"
   },
   "devDependencies": {

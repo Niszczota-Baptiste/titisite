@@ -218,7 +218,9 @@ test('router excludes other site members, restricts connection ownership, reject
   t.after(async () => { await feature.stop(); await new Promise(r => server.close(r)); db.close(); });
   const base = `http://127.0.0.1:${server.address().port}/api/playlist`;
   assert.equal((await fetch(`${base}/status`)).status,401);
-  assert.equal((await fetch(`${base}/status`,{headers:{'test-user':'3'}})).status,403);
+  const visitorStatus = await fetch(`${base}/status`,{headers:{'test-user':'3'}});
+  assert.equal(visitorStatus.status,200);
+  assert.equal((await visitorStatus.json()).onboarding, true);
   assert.equal((await fetch(`${base}/sync`,{method:'POST',headers:{'test-user':'1'}})).status,403);
   const headers = {'test-user':'1',origin:config.origin,'X-Playlist-Request':'1','Content-Type':'application/json'};
   assert.equal((await fetch(`${base}/spotify/connect`,{method:'POST',headers,body:'{}'})).status,403);
@@ -231,4 +233,32 @@ test('router excludes other site members, restricts connection ownership, reject
   assert.equal(returned.headers.get('location'),'/playlist?connection=spotify');
   assert.ok(requests[0].options.body.includes('code_verifier='));
   const replay = await fetch(callback,{headers:{cookie},redirect:'manual'}); assert.equal(replay.headers.get('location'),'/playlist?connection=error');
+});
+
+test('members activate, invite and configure only their own provider', async t => {
+  const db = database();
+  db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'member'; UPDATE users SET role='admin' WHERE id=1;");
+  const config = { enabled: false, key, appleEmail: '', spotifyEmail: '', interval: 45000, origin: 'http://127.0.0.1:5173', storefront: 'fr' };
+  const auth = (req, res, next) => {
+    req.user = db.prepare('SELECT * FROM users WHERE id=?').get(Number(req.get('test-user') || 0));
+    if (!req.user) return res.status(401).end();
+    req.token = { jti: 'session', exp: Math.floor(Date.now() / 1000) + 3600 }; next();
+  };
+  const feature = createPlaylistFeature(db, auth, config, async () => Response.json({ data: [] }));
+  const app = express(); app.use(express.json(), cookieParser()); app.use('/api/playlist', feature.router);
+  const server = app.listen(0, '127.0.0.1'); await new Promise(r => server.once('listening', r));
+  t.after(async () => { await feature.stop(); await new Promise(r => server.close(r)); db.close(); });
+  const base = `http://127.0.0.1:${server.address().port}/api/playlist`;
+  const headers = user => ({ 'test-user': String(user), origin: config.origin, 'X-Playlist-Request': '1', 'Content-Type': 'application/json' });
+  const onboarding = await fetch(`${base}/status`, { headers: { 'test-user': '1' } });
+  assert.equal((await onboarding.json()).setup.canInitialize, true);
+  assert.equal((await fetch(`${base}/setup`, { method: 'POST', headers: headers(1), body: JSON.stringify({ provider: 'apple' }) })).status, 200);
+  const invitation = await fetch(`${base}/invite`, { method: 'POST', headers: headers(1), body: '{}' });
+  const code = (await invitation.json()).code;
+  assert.match(code, /^[a-f\d]{48}$/);
+  assert.equal((await fetch(`${base}/join`, { method: 'POST', headers: headers(2), body: JSON.stringify({ code }) })).status, 200);
+  const memberStatus = await fetch(`${base}/status`, { headers: { 'test-user': '2' } });
+  assert.equal((await memberStatus.json()).setup.mine, 'spotify');
+  assert.equal((await fetch(`${base}/spotify/settings`, { method: 'PUT', headers: headers(2), body: JSON.stringify({ clientId: 'a'.repeat(32) }) })).status, 200);
+  assert.equal((await fetch(`${base}/apple/settings`, { method: 'PUT', headers: headers(2), body: JSON.stringify({ teamId: 'A'.repeat(10), keyId: 'B'.repeat(10), privateKey: 'bad' }) })).status, 403);
 });

@@ -175,7 +175,7 @@ export function createProviders(store, config, fetcher = fetch) {
     async validate(id) { const p = (await apple(`/v1/me/library/playlists/${encodeURIComponent(id)}`)).data?.[0]; if (!p?.attributes?.canEdit) throw new Error('Playlist Apple Music non modifiable.'); },
     async create() { return (await apple('/v1/me/library/playlists', 'POST', { attributes: { name: 'Playlist Commune', description: 'Notre playlist Apple Music + Spotify' } }))?.data?.[0]?.id; },
   };
-  return { spotify: sp, apple: ap, developerToken,
+  return { spotify: sp, apple: ap, developerToken, invalidateDeveloperToken() { developerCache = null; },
     beginOAuth() {
       if (!config.clientId) throw new ProviderError('spotify', 503, 'configuration_missing');
       const state = crypto.randomBytes(32).toString('base64url'), verifier = crypto.randomBytes(48).toString('base64url');
@@ -185,7 +185,9 @@ export function createProviders(store, config, fetcher = fetch) {
       const token = await exchange({ grant_type: 'authorization_code', code, redirect_uri: callback, code_verifier: verifier });
       const me = await http('spotify', 'https://api.spotify.com/v1/me', { headers: { Authorization: `Bearer ${token.access_token}` } });
       const old = store.token('spotify');
-      if (old && (old.accountId || old.spotifyId) !== (me.account_id || me.id)) throw new Error('Reconnecte le même compte Spotify.');
+      const identity = old ? old.accountId || old.spotifyId : store.state('spotify:identity');
+      if (identity && identity !== (me.account_id || me.id)) throw new Error('Reconnecte le même compte Spotify.');
+      store.set('spotify:identity', me.account_id || me.id);
       store.saveToken('spotify', userId, { ...token, accountId: me.account_id, spotifyId: me.id, expiresAt: Date.now() + token.expires_in * 1000 });
     },
     async connectApple(musicUserToken, userId) {

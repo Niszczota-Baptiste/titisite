@@ -7,8 +7,10 @@ Lire aussi `CLAUDE.md` pour les conventions générales du site et
 
 - Fonction intégrée à **titisite**, route React `/playlist`, API `/api/playlist`.
   Aucun exécutable, second projet, service ou paquet supplémentaire.
-- Sessions et utilisateurs existants réutilisés. Deux emails autorisés dans `.env` :
-  `PLAYLIST_APPLE_EMAIL` et `PLAYLIST_SPOTIFY_EMAIL`. Pas de contournement administrateur.
+- Sessions et utilisateurs existants réutilisés. Le premier administrateur active la
+  playlist depuis `/playlist`, choisit son service et génère une invitation privée.
+  Le second compte existant la rejoint avec ce code. Les membres sont stockés dans
+  `playlist_members` ; chacun configure ses propres clés depuis sa session.
 - Interface française responsive : Playlist, Ajouter, Réglages. Palette du site
   (fond `#050511`, texte `#ede8f8`, accent `ACC` violet), composants `Button`/`Input`,
   `useConfirm`, `usePageMeta`, API centralisée sous `api.playlist`.
@@ -19,7 +21,8 @@ Lire aussi `CLAUDE.md` pour les conventions générales du site et
   `/me/playlists`, recherche limitée à 10, identité stable `account_id`.
 - Apple : JWT ES256 signé serveur, MusicKit JS `authorize()` navigateur,
   Music User Token chiffré côté serveur, catalogue français et relation `catalog`.
-- Secrets AES-256-GCM avec clé dédiée ; la clé `.p8` est exclue de Git.
+- Secrets AES-256-GCM avec clé dédiée générée automatiquement à côté de SQLite
+  (`data.sqlite.playlist.key`) ; la clé `.p8` Apple est chiffrée en base puis exclue de Git.
 - Synchro serveur 45 s configurable ; interface rafraîchie toutes les 5 s quand
   visible. File unique pour les écritures, lectures paginées et snapshot Spotify.
 - Matching ISRC puis titre/artiste/durée ±3 s ; candidats manuels si incertitude.
@@ -54,18 +57,22 @@ Le script existant tire `main`, exécute `npm ci`, build Vite, prune les dépend
 développement, reload PM2 et contrôle `/api/health`. Les nouvelles tables sont créées
 au démarrage. Le backup SQLite inclut la playlist et les tokens chiffrés. `.env` et
 la clé de chiffrement doivent être conservés séparément pour pouvoir les restaurer.
-Le module reste fermé si les deux emails ne sont pas configurés ; le site fonctionne
-sans identifiants musicaux. Les connexions réelles nécessitent les clés Spotify/Apple.
+Le module fonctionne sans réglage VPS musical : le premier membre le démarre dans
+l'interface, le second rejoint avec une invitation. Les connexions réelles nécessitent
+les clés Spotify/Apple saisies par leurs propriétaires respectifs.
 Le fichier Nginx du dépôt exclut les codes OAuth des logs ; voir le guide pour
 reporter cette règle sur une installation dont la configuration a déjà été copiée.
 
 ## Vérifications et limites
 
-`node --test test/playlist.test.js test/playlist-deployment.test.js` (23 tests),
+`node --test test/playlist.test.js test/playlist-deployment.test.js` (24 tests, dont
+l'activation, l'invitation et la séparation des réglages),
 `npm run build`, lint de sécurité et contrôle
 de l'interface à 390 px. La suite du site a quatre échecs locaux reproduits sur la
 base `3db5a9b` sous Windows (codex Minecraft/catégories + droits sur symlinks).
-Le lockfile n'a pas changé ; ses vulnérabilités existantes sont documentées dans le guide.
+Le lockfile est mis à jour avec `multer` 2.4.0, `nodemailer` 9.1.1, `sharp` 0.35.4
+et `fflate` 0.6.11 ; les alertes hautes runtime correspondantes sont corrigées.
+Les alertes restantes doivent être relues après `npm ci` sur le VPS.
 Le test de déploiement démarre le vrai serveur en mode production, contrôle la session
 existante et la route SPA construite, la migration idempotente et une sauvegarde SQLite.
 Ne pas affirmer que les vrais comptes musicaux ou le VPS ont été testés sans y avoir

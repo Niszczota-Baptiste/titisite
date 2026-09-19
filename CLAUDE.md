@@ -14,7 +14,9 @@ Single-process Node app:
 ## Conventions
 
 - **Playlist Commune** : module privé `/playlist`, intégré au même Express/SQLite,
-  réservé à deux comptes existants configurés dans `.env`. État et invariants dans
+  réservé à deux comptes existants. Le premier administrateur active le module dans
+  l'interface puis invite le second avec un code ; chacun configure son service musical
+  depuis sa propre session, sans clés musicales dans `.env`. État et invariants dans
   [`AGENTS.md`](AGENTS.md), mise en service dans [`docs/playlist-commune.md`](docs/playlist-commune.md).
   Front : `src/pages/Playlist.jsx`, primitives du site et `api.playlist.*`.
   Back : `server/playlist/*`, migration appelée par `db.js#migrate` puis démarrage du

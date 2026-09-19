@@ -1,6 +1,11 @@
 import crypto from 'node:crypto';
 
-export function canViewPlaylist(user, env = process.env) {
+export function canViewPlaylist(user, env = process.env, db) {
+  if (db) {
+    if (db.prepare('SELECT 1 FROM playlist_members WHERE user_id=?').get(user?.id ?? -1)) return true;
+    if (!db.prepare('SELECT 1 FROM playlist_members LIMIT 1').get() && user?.role === 'admin') return true;
+    return false;
+  }
   const apple = (env.PLAYLIST_APPLE_EMAIL || '').trim().toLowerCase();
   const spotify = (env.PLAYLIST_SPOTIFY_EMAIL || '').trim().toLowerCase();
   return Boolean(apple && spotify && apple !== spotify && [apple, spotify].includes(user?.email?.toLowerCase()));
@@ -39,6 +44,10 @@ export function migratePlaylist(db) {
       ciphertext TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS playlist_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS playlist_members (
+      provider TEXT PRIMARY KEY CHECK(provider IN ('spotify','apple')),
+      user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE SET NULL
+    );
     CREATE TABLE IF NOT EXISTS playlist_deliveries (
       track_id INTEGER NOT NULL REFERENCES shared_tracks(id), provider TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending', candidates TEXT NOT NULL DEFAULT '[]',

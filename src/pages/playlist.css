@@ -300,6 +300,50 @@
 .pc-service small{
   display:block;
   margin:10px 0}
+.pc-onboarding{
+  max-width:680px;
+  margin:32px auto}
+.pc-onboarding p,.pc-invitation p,.pc-credentials p,.pc-credentials li{
+  color:var(--pc-muted);
+  font-size:13px}
+.pc-onboarding select,.pc-credentials input,.pc-credentials select{
+  display:block;
+  margin:8px 0 16px}
+.pc-invitation{
+  margin:24px 0;
+  padding:20px}
+.pc-invitation label,.pc-credentials label,.pc-onboarding label{
+  display:block;
+  margin-top:14px;
+  color:var(--pc-muted);
+  font-size:12px}
+.pc-credentials{
+  margin:20px 0;
+  padding-top:18px;
+  border-top:1px solid var(--pc-line)}
+.pc-credentials summary{
+  cursor:pointer;
+  color:var(--pc-accent);
+  font-size:13px}
+.pc-credentials ol{
+  padding-left:20px}
+.pc-credentials a{
+  color:var(--pc-accent)}
+.pc-callback{
+  display:block;
+  overflow-wrap:anywhere;
+  margin:10px 0 16px;
+  padding:10px;
+  border:1px solid var(--pc-line);
+  background:rgba(0,0,0,.2);
+  color:var(--pc-text);
+  font-size:11px}
+.pc-credentials-form{
+  display:grid;
+  gap:10px;
+  margin-top:18px}
+.pc-credentials-form small{
+  color:var(--pc-muted)}
 .pc-bind{
   display:flex;
   flex-direction:column;

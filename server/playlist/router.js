@@ -1,15 +1,16 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { createStore, playlistConfig } from './store.js';
+import { createStore } from './store.js';
+import { runtimeConfig, createSettings } from './settings.js';
 import { createProviders } from './providers.js';
 import { createEngine } from './engine.js';
 
-export function createPlaylistFeature(db, requireAuth, config = playlistConfig(), fetcher) {
-  const store = createStore(db, config.key), api = createProviders(store, config, fetcher);
+export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db), fetcher) {
+  const store = createStore(db, config.key), settings = createSettings(store, config);
+  const api = createProviders(store, config, fetcher);
   const engine = createEngine(store, api, config), router = Router();
   const wrap = fn => (req, res, next) => Promise.resolve().then(() => fn(req, res)).catch(next);
-  const ownerEmail = p => p === 'spotify' ? config.spotifyEmail : config.appleEmail;
   const provider = req => {
     if (!['spotify', 'apple'].includes(req.params.provider)) throw new Error('Service inconnu.');
     return req.params.provider;
@@ -18,7 +19,6 @@ export function createPlaylistFeature(db, requireAuth, config = playlistConfig()
   const validId = value => typeof value === 'string' && /^[a-zA-Z0-9.:-]{1,128}$/.test(value);
   const cookie = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/api/playlist/spotify/callback' };
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); res.set('Referrer-Policy', 'no-referrer'); next(); });
-  router.use((_req, res, next) => config.enabled ? next() : res.status(503).json({ error: 'Playlist non activée : renseigner les deux comptes et la clé de chiffrement sur le serveur.' }));
   // The site session is SameSite=Strict and is absent on this cross-site redirect.
   // Bind the one-use OAuth state to a short-lived, HttpOnly Lax cookie instead.
   router.get('/spotify/callback', wrap(async (req, res) => {
@@ -29,22 +29,13 @@ export function createPlaylistFeature(db, requireAuth, config = playlistConfig()
     store.db.prepare('DELETE FROM playlist_tokens WHERE provider=?').run(`oauth:${state}`);
     const user = flow && db.prepare('SELECT * FROM users WHERE id=?').get(flow.userId);
     const revoked = flow?.jti && db.prepare('SELECT 1 FROM revoked_tokens WHERE jti=?').get(flow.jti);
-    if (!flow || flow.expires < Date.now() || !user || user.email.toLowerCase() !== config.spotifyEmail || user.token_version !== flow.tv || revoked || typeof req.query.code !== 'string') return res.redirect('/playlist?connection=error');
+    if (!flow || flow.expires < Date.now() || !user || settings.owner('spotify') !== user.id || user.token_version !== flow.tv || revoked || typeof req.query.code !== 'string') return res.redirect('/playlist?connection=error');
     try {
       await engine.exclusive(() => api.finishOAuth(req.query.code, flow.verifier, user.id));
       res.redirect('/playlist?connection=spotify');
     } catch { res.redirect('/playlist?connection=error'); }
   }));
   router.use(requireAuth);
-  router.use((req, res, next) => [config.appleEmail, config.spotifyEmail].includes(req.user.email.toLowerCase()) ? next() : res.status(403).json({ error: 'Cette playlist est réservée aux deux comptes autorisés.' }));
-  router.use((_req, res, next) => {
-    for (const p of ['spotify', 'apple']) {
-      const token = store.token(p);
-      const user = token && db.prepare('SELECT email FROM users WHERE id=?').get(token.userId);
-      if (token && user?.email.toLowerCase() !== ownerEmail(p)) return res.status(409).json({ error: 'Les propriétaires configurés ont changé. Migrer les connexions avant de reprendre la synchronisation.' });
-    }
-    next();
-  });
   router.use((req, res, next) => {
     if (['GET','HEAD'].includes(req.method)) return next();
     const origins = [config.origin, ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [])];
@@ -53,17 +44,51 @@ export function createPlaylistFeature(db, requireAuth, config = playlistConfig()
   });
   router.use(rateLimit({ windowMs: 60_000, max: 90, standardHeaders: true, legacyHeaders: false, message: { error: 'Trop de requêtes. Réessaie dans une minute.' } }));
   function requireOwner(req, res, p) {
-    if (req.user.email.toLowerCase() === ownerEmail(p)) return true;
+    if (req.user.id === settings.owner(p)) return true;
     res.status(403).json({ error: 'Seul le propriétaire de ce service peut modifier sa connexion.' });
     return false;
   }
   router.get('/status', (req, res) => {
+    if (!settings.member(req.user.id)) return res.json({ onboarding: true, setup: settings.summary(req.user) });
     const status = p => ({ connected: Boolean(store.token(p)), playlistId: store.state(`${p}:playlist`),
       lastRead: store.state(`${p}:lastRead`), error: store.state(`${p}:error`), backoff: store.state(`${p}:backoff`),
-      canConfigure: req.user.email.toLowerCase() === ownerEmail(p),
+      canConfigure: req.user.id === settings.owner(p),
+      settingsRevision: store.state(`${p}:settingsRevision`, 0),
       configured: p === 'spotify' ? Boolean(config.clientId) : Boolean(config.privateKey && config.keyId && config.teamId) });
-    res.json({ tracks: store.list(), spotify: status('spotify'), apple: status('apple'), interval: config.interval, lastCycle: store.state('lastCycle') });
+    res.json({ setup: settings.summary(req.user), tracks: store.list(), spotify: status('spotify'), apple: status('apple'), interval: config.interval, lastCycle: store.state('lastCycle') });
   });
+  router.post('/setup', wrap(async (req, res) => {
+    await engine.exclusive(() => settings.initialize(req.user, req.body?.provider));
+    res.json({ ok: true });
+  }));
+  const joinLimit = rateLimit({ windowMs: 900_000, max: 10, standardHeaders: true, legacyHeaders: false,
+    message: { error: 'Trop de tentatives. Réessaie dans 15 minutes.' } });
+  router.post('/join', joinLimit, wrap(async (req, res) => {
+    await engine.exclusive(() => settings.join(req.user, req.body?.code));
+    res.json({ ok: true });
+  }));
+  router.use((req, res, next) => settings.member(req.user.id) ? next() : res.status(403).json({ error: 'Cette playlist est réservée aux deux membres invités.' }));
+  router.post('/invite', wrap(async (req, res) => {
+    res.json(await engine.exclusive(() => settings.invite(req.user)));
+  }));
+  router.put('/:provider/settings', wrap(async (req, res) => {
+    const p = provider(req); if (!requireOwner(req, res, p)) return;
+    await engine.exclusive(() => { settings.save(req.user, p, req.body || {}); api.invalidateDeveloperToken(); });
+    res.json({ ok: true });
+  }));
+  router.post('/:provider/disconnect', wrap(async (req, res) => {
+    const p = provider(req); if (!requireOwner(req, res, p)) return;
+    await engine.exclusive(() => {
+      if (p === 'spotify') {
+        const saved = store.token(p);
+        if (saved) store.set('spotify:identity', saved.accountId || saved.spotifyId);
+        db.prepare("DELETE FROM playlist_tokens WHERE provider LIKE 'oauth:%'").run();
+      }
+      db.prepare('DELETE FROM playlist_tokens WHERE provider=?').run(p);
+      store.set(`${p}:error`, null);
+    });
+    res.json({ ok: true });
+  }));
   // Light polling revalidates the existing session on every request (including logout/revocation).
   router.post('/sync', (_req, res) => { void engine.sync().catch(() => {}); res.status(202).json({ ok: true }); });
   router.post('/spotify/connect', wrap(async (req, res) => {

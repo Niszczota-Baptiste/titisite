@@ -6,7 +6,7 @@ export function createEngine(store, adapters, config) {
   let queue = Promise.resolve(), running = null, timer, stopped = false;
   const exclusive = fn => { const work = queue.then(fn); queue = work.catch(() => {}); return work; };
   const adapter = p => p === 'spotify' ? adapters.spotify : adapters.apple;
-  const owner = p => store.db.prepare('SELECT id FROM users WHERE lower(email)=?').get(p === 'spotify' ? config.spotifyEmail : config.appleEmail)?.id;
+  const owner = p => config.ownerId ? config.ownerId(p) : store.db.prepare('SELECT id FROM users WHERE lower(email)=?').get(p === 'spotify' ? config.spotifyEmail : config.appleEmail)?.id;
   const errorState = (p, e) => store.set(`${p}:error`, e.reason || 'sync_failed');
   function remove(id) {
     const track = store.get(id);

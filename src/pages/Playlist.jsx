@@ -7,6 +7,7 @@ import { ACC, ACC_RGB, Button, Input } from '../components/admin/ui';
 import { useConfirm } from '../ui/ConfirmProvider';
 import { usePageMeta } from '../hooks/usePageMeta';
 import './playlist.css';
+import { PlaylistOnboarding, PlaylistInvitation, ServiceCredentials } from './PlaylistSetup';
 
 const names = { spotify: 'Spotify', apple: 'Apple Music' };
 const labels = { confirmed: 'Présent', pending: 'En attente', sending: 'Envoi…', sent: 'Envoyé · confirmation attendue',
@@ -67,14 +68,15 @@ function PlaylistContent() {
     return () => { disposed = true; active.current = false; clearTimeout(timer); };
   }, [refresh]);
   useEffect(() => {
-    if (tab !== 'settings' || !data?.apple.canConfigure || !data.apple.configured || music) return;
+    setMusic(null); setMusicError('');
+    if (tab !== 'settings' || !data?.apple?.canConfigure || !data.apple.configured) return;
     let cancelled = false;
     Promise.all([loadMusicKit(), api.playlist.developerToken()]).then(async ([kit, { token }]) => {
       await kit.configure({ developerToken: token, app: { name: 'Playlist Commune', build: '1.0.0' } });
       if (!cancelled) { setMusic(kit.getInstance()); setMusicError(''); }
     }).catch(e => { if (!cancelled) setMusicError(e.message); });
     return () => { cancelled = true; };
-  }, [tab, data?.apple.canConfigure, data?.apple.configured, music]);
+  }, [tab, data?.apple?.canConfigure, data?.apple?.configured, data?.apple?.settingsRevision]);
   async function act(fn, message) {
     if (actionLock.current) return;
     actionLock.current = true; setBusy(true); setError(''); setNotice('');
@@ -88,7 +90,13 @@ function PlaylistContent() {
   }
   const all = data?.tracks || [], tracks = all.filter(t => !t.deleted_at), retired = all.filter(t => t.deleted_at && (t.platforms.apple.status !== 'removed' || t.platforms.spotify.status !== 'removed'));
   const needs = tracks.filter(t => t.sync_status !== 'synced').length;
-  const connected = data?.spotify.playlistId && data?.apple.playlistId;
+  const connected = data?.spotify?.playlistId && data?.apple?.playlistId;
+  if (data?.onboarding) return <main className="pc" style={{ '--pc-accent': ACC, '--pc-accent-rgb': ACC_RGB }}>
+    <header className="pc-top"><Link to="/project">← Mon espace</Link><span>{user.name || user.email}</span><Button variant="ghost" onClick={logout}>Déconnexion</Button></header>
+    <section className="pc-hero"><h1>Playlist <em>Commune.</em></h1></section>
+    {error && <div className="pc-alert" role="alert">{error}</div>}
+    <PlaylistOnboarding setup={data.setup} busy={busy} act={act} />
+  </main>;
   return <main className="pc" style={{ '--pc-accent': ACC, '--pc-accent-rgb': ACC_RGB }}>
     <header className="pc-top"><Link to="/project">← Mon espace</Link><span>{user.name || user.email}</span><Button variant="ghost" onClick={logout}>Déconnexion</Button></header>
     <section className="pc-hero"><div className="pc-disc" aria-hidden="true"><span>PC</span></div><div><p className="pc-eyebrow">DEUX PERSONNES · UNE PLAYLIST</p><h1>Playlist<br /><em>Commune.</em></h1><p>Toi sur Apple Music, lui sur Spotify.<br />Vos découvertes au même endroit.</p></div></section>
@@ -113,14 +121,15 @@ function PlaylistContent() {
         {results?.length === 0 && <p>Aucun morceau trouvé. Essaie un titre ou un artiste différent.</p>}
         <div className="pc-tracklist">{results?.map(t => <article key={`${t.provider}:${t.remote_id}`} className="pc-track pc-result"><TrackInfo track={t} /><span className="pc-muted">{names[t.provider]}</span><Button variant="ghost" disabled={busy} className="pc-primary" onClick={() => act(() => api.playlist.add(t.provider, t.remote_id), 'Morceau enregistré. Synchronisation en cours.')}>+ Ajouter</Button></article>)}</div>
       </section>}
-      {tab === 'settings' && <section><h2>Chacun son compte. La même musique.</h2><div className="pc-settings">{['spotify','apple'].map(p => <article className="pc-service" key={p}><span className={`pc-dot ${p}`} /><h3>{names[p]}</h3><p>{data[p].connected ? 'Compte connecté' : 'Compte à connecter'} · {data[p].playlistId ? 'Playlist liée' : 'Playlist à choisir'}</p>
-        {!data[p].configured && <p className="pc-alert">Les clés {names[p]} doivent être renseignées sur le serveur.</p>}
+      {tab === 'settings' && <section><h2>Chacun son compte. La même musique.</h2><p>Tu règles uniquement ton service. Ton ami gère le sien depuis sa propre session.</p>{data.setup?.canInvite && <PlaylistInvitation busy={busy} act={act} />}<div className="pc-settings">{['spotify','apple'].map(p => <article className="pc-service" key={p}><span className={`pc-dot ${p}`} /><h3>{names[p]}</h3><p>{data[p].connected ? 'Compte connecté' : 'Compte à connecter'} · {data[p].playlistId ? 'Playlist liée' : 'Playlist à choisir'}</p>
         {data[p].canConfigure ? <>
+          <ServiceCredentials key={`${p}:${data[p].settingsRevision}`} provider={p} configured={data[p].configured} connected={data[p].connected} callback={data.setup?.callback} busy={busy} act={act} />
           <Button variant="ghost" disabled={busy || !data[p].configured || (p === 'apple' && !music)} onClick={() => act(async () => {
             if (p === 'spotify') { const r = await api.playlist.connectSpotify(); window.location.assign(r.url); }
             else { const musicUserToken = await music.authorize(); await api.playlist.connectApple(musicUserToken); }
           }, p === 'apple' ? 'Apple Music connecté.' : undefined)}>{data[p].connected ? 'Reconnecter' : 'Connecter'} {names[p]}</Button>
           {p === 'apple' && musicError && <p role="alert">{musicError}</p>}
+          {data[p].connected && <Button variant="ghost" disabled={busy} onClick={async () => { if (await confirm('Déconnecter ton compte musical ? La synchronisation de ce service sera suspendue, les morceaux conservés.')) void act(() => api.playlist.disconnect(p), 'Ton service est déconnecté.'); }}>Déconnecter mon compte</Button>}
           {p === 'apple' && !music && !musicError && data[p].configured && <small>Préparation de MusicKit…</small>}
           {data[p].connected && !data[p].playlistId && <div className="pc-bind"><Button variant="ghost" disabled={busy} onClick={() => act(async () => { const l = await api.playlist.playlists(p); setLists(old => ({ ...old, [p]: l })); })}>Charger mes playlists</Button>
             {lists[p] && <><label htmlFor={`pc-${p}`}>Playlist existante</label><select id={`pc-${p}`} value={selection[p] || ''} onChange={e => setSelection(old => ({ ...old, [p]: e.target.value }))}><option value="">Choisir…</option>{lists[p].map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select><Button variant="ghost" disabled={busy || !selection[p]} onClick={() => act(() => api.playlist.bind(p, { id: selection[p] }), 'Playlist liée. Ses morceaux seront importés.')}>Lier cette playlist</Button></>}

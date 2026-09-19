@@ -2,8 +2,9 @@
 
 Page `/playlist`, API `/api/playlist`, même Express, même SQLite, même processus PM2,
 mêmes comptes que le site. Aucun service supplémentaire et aucune inscription publique.
-Le dépôt MusicGroup n'est pas requis. Le module est fermé tant que les deux emails
-ne sont pas configurés ; les comptes du site doivent déjà exister.
+Le dépôt MusicGroup n'est pas requis. Les deux personnes utilisent leurs comptes du
+site existants : le premier administrateur active la playlist, puis le second la rejoint
+avec un code privé. Chacun configure exclusivement son propre compte musical.
 
 ## Activer sur le VPS
 
@@ -29,18 +30,19 @@ git commit -m "Ajouter Playlist Commune pour Apple Music et Spotify"
 git push -u origin feat/playlist-commune
 ```
 
-Le patch part du commit `3db5a9b`. Si `git apply --check` signale un conflit,
+Le patch part du commit `c57232d`. Si `git apply --check` signale un conflit,
 réconcilier les changements avec les nouvelles modifications du site avant de
 continuer. Après revue et fusion dans `main`, reprendre les étapes ci-dessous.
 L'archive fournit aussi tous les fichiers pour consulter ou reprendre le travail.
 
 ### Configuration de production
 
-1. Dans l'administration existante, créer le compte de ton ami s'il n'existe pas.
-   Choisir exactement deux emails : le tien pour Apple Music, le sien pour Spotify.
-   Aucun autre membre, même administrateur, n'a accès à la playlist.
-2. Sauvegarder SQLite et `.env`. Conserver séparément la clé de chiffrement : sans elle,
-   les tokens sauvegardés deviennent illisibles. Ne jamais committer `.env` ou la clé `.p8`.
+1. Vérifier que vos deux comptes du site existent déjà. Aucun compte musical ni email
+   ne doit être ajouté dans `.env` pour une nouvelle installation.
+2. Sauvegarder SQLite et `.env`. La clé AES est créée automatiquement à côté de SQLite
+   (`data.sqlite.playlist.key`) au premier démarrage. La sauvegarde habituelle la copie
+   dans `/var/backups/titisite`; sans cette clé, les tokens deviennent illisibles.
+   Ne jamais committer `.env`, cette clé ou la clé `.p8`.
 3. Installer le changement avec les commandes habituelles, après publication sur `main` :
 
    ```sh
@@ -50,41 +52,32 @@ L'archive fournit aussi tous les fichiers pour consulter ou reprendre le travail
 
    Les migrations additives s'exécutent dans `server/db.js#migrate` au démarrage.
    La sauvegarde habituelle inclut donc les morceaux et les tokens chiffrés.
-4. Éditer `/var/www/titisite/.env` directement sur le VPS, avec les variables suivantes.
-   Les valeurs ci-dessous sont des exemples à remplacer, pas des identifiants fonctionnels.
+4. `CANONICAL_ORIGIN` et `PLAYLIST_POLL_SECONDS` restent les seuls réglages utiles au
+   déploiement. Les identifiants Spotify/Apple sont saisis dans `/playlist` par leurs
+   propriétaires et chiffrés côté serveur.
 
 ```dotenv
-PLAYLIST_APPLE_EMAIL=ton-compte-du-site@example.com
-PLAYLIST_SPOTIFY_EMAIL=compte-du-site-de-ton-ami@example.com
-PLAYLIST_ENCRYPTION_KEY=remplacer_par_64_caracteres_hexadecimaux
 PLAYLIST_POLL_SECONDS=45
-SPOTIFY_CLIENT_ID=identifiant_application_spotify
-APPLE_TEAM_ID=identifiant_equipe_apple
-APPLE_KEY_ID=identifiant_cle_musickit
-APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\ncontenu_de_la_cle_p8\n-----END PRIVATE KEY-----"
 CANONICAL_ORIGIN=https://baptiste-niszczota.com
 ```
 
-Générer la clé de chiffrement une fois :
-
-```sh
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-sudo chmod 600 /var/www/titisite/.env
-sudo -u titisite env PM2_HOME=/home/titisite/.pm2 pm2 reload titisite --update-env
-```
+La clé locale est générée par le serveur avec les permissions `0600`. Ne la crée pas
+à la main et ne la change jamais après que des tokens ont été enregistrés.
 
 5. Reporter le changement du bloc Nginx `location` dans la configuration active :
    `/api/playlist/spotify/callback` doit être exclu des journaux d'accès et d'erreur
    (le code OAuth transite dans l'URL). Le fichier `deploy/nginx.conf` contient le bloc.
    Vérifier avec `sudo nginx -t`, puis `sudo systemctl reload nginx`.
    Aucun port supplémentaire, sous-domaine ou proxy supplémentaire n'est nécessaire.
-6. Ouvrir `/playlist`. Le lien apparaît aussi dans l'en-tête de l'espace projet pour
-   les deux comptes autorisés après rafraîchissement de leur session.
+6. Ouvrir `/playlist` avec ton compte administrateur, choisir Apple Music ou Spotify,
+   puis activer la playlist. Dans Réglages, créer le code privé et l'envoyer à ton ami.
+   Il ouvre `/playlist` avec son compte du site et saisit le code. Le choix du service
+   attribué est automatique : la seconde personne reçoit l'autre plateforme.
 
 Le déploiement existant ne copie pas automatiquement `deploy/nginx.conf` : l'étape 5
 est donc à faire une fois. Conserver un seul processus PM2 (configuration actuelle).
-Changer les deux propriétaires après utilisation exige une migration des données et
-connexions ; ne pas réaffecter simplement les emails à d'autres personnes.
+Changer les deux membres après utilisation exige une migration explicite des données et
+connexions ; le code d'invitation ne permet pas de remplacer un membre.
 
 ## Spotify : ton ami
 
@@ -93,7 +86,8 @@ connexions ; ne pas réaffecter simplement les emails à d'autres personnes.
   de l'application en mode développement si nécessaire.
 - Enregistrer exactement cette Redirect URI HTTPS :
   `https://baptiste-niszczota.com/api/playlist/spotify/callback`.
-- Renseigner son Client ID dans `.env`. Le flux Authorization Code + PKCE S256
+- Ton ami ouvre Réglages avec son compte, déplie « Configurer mon service », suit le
+  lien Spotify et colle son Client ID dans le formulaire. Le flux Authorization Code + PKCE S256
   ne nécessite pas de Client Secret. Le refresh token reste exclusivement côté serveur.
 - Ton ami se connecte au site, ouvre Réglages, connecte Spotify puis crée « Playlist
   Commune » ou sélectionne une playlist dont il est propriétaire. Une playlist liée
@@ -106,7 +100,9 @@ connexions ; ne pas réaffecter simplement les emails à d'autres personnes.
 - Un abonnement Apple Music actif, la synchronisation de bibliothèque et une clé
   MusicKit liée à un identifiant Media Services sont nécessaires. La création de
   cette clé nécessite l'accès au programme Apple Developer.
-- Renseigner Team ID, Key ID et le PEM `.p8` dans `.env`. Ne jamais les envoyer au front.
+- Dans Réglages, ouvrir « Configurer mon service », suivre le lien Apple, puis renseigner
+  le Team ID, le Key ID et sélectionner le fichier `.p8`. Ne jamais envoyer ces clés à
+  l'autre membre : le fichier est transmis en HTTPS puis chiffré côté serveur.
 - Connecté avec ton compte du site, ouvrir Réglages → Connecter Apple Music. MusicKit JS
   charge avant le clic, pour que `authorize()` reste associé au geste utilisateur sur iPhone.
 - Le Music User Token obtenu est transmis par HTTPS puis chiffré en SQLite. Le JWT
@@ -208,10 +204,11 @@ Les domaines de MusicKit et des pochettes sont autorisés par Helmet ; aucune po
 
 ### Résultats de la validation locale
 
-- 23 tests réussis : `node --test test/playlist.test.js test/playlist-deployment.test.js`.
+- 24 tests réussis : `node --test test/playlist.test.js test/playlist-deployment.test.js`.
   Le serveur réel démarre en production avec et sans configuration musicale ; la
-  session existante, la route SPA, la migration répétée et la sauvegarde SQLite sont
-  contrôlées. Build Vite réussi ; lint de sécurité sans erreur.
+  session existante, la route SPA, la migration répétée, la sauvegarde SQLite,
+  l'invitation et la séparation des réglages sont contrôlées. Build Vite réussi ;
+  lint de sécurité sans erreur.
 - Vérification navigateur : session existante, onglets, filtre, candidats et largeur
   de 390 px sans débordement horizontal, avec données de démonstration locales.
 - Suite complète avant l'ajout des deux tests de déploiement : 540/544 tests réussis
@@ -220,7 +217,8 @@ Les domaines de MusicKit et des pochettes sont autorisés par Helmet ; aucune po
   d'un lien symbolique interdite sous Windows. Ils sont reproduits sur le commit
   d'origine `3db5a9b`, sans Playlist Commune, avec seulement le harnais adapté aux
   chemins Windows. Aucun échec supplémentaire observé.
-- `npm audit` signale 11 vulnérabilités des dépendances existantes (7 hautes,
-  4 modérées). Aucun paquet ni lockfile n'a été modifié ici. Le script `audit:gate`
-  existant ne s'exécute pas sous Windows (`spawnSync npm ENOENT`) ; l'audit direct
-  a été utilisé. La CI Linux doit rester contrôlée avant fusion.
+- Les correctifs de `multer` 2.4.0, `nodemailer` 9.1.1, `sharp` 0.35.4 et `fflate`
+  0.6.11 sont inclus dans le lockfile. Ils suppriment les alertes hautes runtime
+  observées sur le VPS. Relancer `npm audit` après `npm ci` puis `npm prune --omit=dev`;
+  les éventuelles alertes transitives de l'outillage ne doivent pas conduire à un
+  `npm audit fix` aveugle qui changerait le framework ou le lockfile sans revue.

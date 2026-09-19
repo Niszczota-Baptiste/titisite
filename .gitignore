@@ -42,3 +42,4 @@ yarn-error.log*
 pnpm-debug.log*
 # MusicKit signing keys must never be committed.
 *.p8
+*.playlist.key

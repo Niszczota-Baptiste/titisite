@@ -39,6 +39,15 @@ else
   echo "[backup] ⚠️  DB introuvable : $DB_PATH" >&2
 fi
 
+# La clé AES générée pour Playlist Commune est séparée de SQLite, mais doit être
+# restaurée avec la base pour rendre les tokens récupérables. Elle reste privée.
+PLAYLIST_KEY_FILE="${DB_PATH}.playlist.key"
+if [ -f "$PLAYLIST_KEY_FILE" ]; then
+  cp --preserve=mode "$PLAYLIST_KEY_FILE" "$BACKUP_DIR/playlist-key-$STAMP.key"
+  chmod 600 "$BACKUP_DIR/playlist-key-$STAMP.key"
+  echo "[backup] clé Playlist Commune → $BACKUP_DIR/playlist-key-$STAMP.key"
+fi
+
 # ── Uploads (audio, images, documents, builds) ───────────────────────────
 if [ -d "$UPLOADS_DIR" ]; then
   tar -czf "$BACKUP_DIR/uploads-$STAMP.tar.gz" -C "$(dirname "$UPLOADS_DIR")" "$(basename "$UPLOADS_DIR")"
@@ -49,7 +58,7 @@ fi
 
 # ── Rétention : supprime les archives de plus de RETENTION_DAYS jours ────
 find "$BACKUP_DIR" -maxdepth 1 -type f \
-  \( -name 'data-*.sqlite.gz' -o -name 'uploads-*.tar.gz' \) \
+  \( -name 'data-*.sqlite.gz' -o -name 'uploads-*.tar.gz' -o -name 'playlist-key-*.key' \) \
   -mtime +"$RETENTION_DAYS" -delete
 
 echo "[backup] ✅ Terminé ($(date))."
