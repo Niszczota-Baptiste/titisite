@@ -1,0 +1,407 @@
+.pc{
+  --pc-bg:#050511;
+  --pc-panel:rgba(14,9,28,0.72);
+  --pc-line:rgba(80,50,130,0.24);
+  --pc-text:#ede8f8;
+  --pc-muted:rgba(180,170,200,0.75);
+  --pc-accent:#c9a8e8;
+  min-height:100vh;
+  background:var(--pc-bg);
+  color:var(--pc-text);
+  font-family:Inter,system-ui,sans-serif;
+  padding:24px max(24px,calc((100vw - 1080px)/2)) 100px;
+  color-scheme:dark;
+  line-height:1.5}
+
+.pc *{
+  box-sizing:border-box}
+.pc a{
+  color:inherit}
+.pc p{
+  margin:8px 0 16px}
+.pc h1,.pc h2,.pc h3{
+  margin:0}
+.pc button,.pc input,.pc select{
+  font:inherit}
+.pc button{
+  min-height:44px;
+  padding:10px 16px;
+  border:1px solid var(--pc-line);
+  border-radius:9px;
+  background:transparent;
+  color:var(--pc-text);
+  cursor:pointer;
+  transition:background .15s}
+.pc button:hover{
+  background:rgba(201,168,232,0.10)}
+.pc button:disabled{
+  opacity:.45;
+  cursor:wait}
+.pc button:focus-visible,.pc a:focus-visible,.pc input:focus-visible,.pc select:focus-visible,.pc summary:focus-visible{
+  outline:2px solid var(--pc-accent);
+  outline-offset:4px}
+.pc input,.pc select{
+  min-height:48px;
+  background:var(--pc-panel);
+  border:1px solid var(--pc-line);
+  border-radius:9px;
+  color:var(--pc-text);
+  padding:12px 16px;
+  min-width:0;
+  width:100%}
+.pc-top{
+  display:flex;
+  align-items:center;
+  gap:20px;
+  color:var(--pc-muted);
+  font-size:13px}
+.pc-top>a{
+  margin-right:auto;
+  text-decoration:none}
+.pc-top button{
+  font-size:12px}
+.pc-hero{
+  display:flex;
+  align-items:center;
+  gap:48px;
+  padding:64px 0 42px}
+.pc-disc{
+  width:220px;
+  height:220px;
+  flex-shrink:0;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:repeating-radial-gradient(circle,#28203a 0px,#0e091c 2px,#28203a 3px,#0e091c 5px);
+  box-shadow:0 15px 65px #0008;
+  transform:rotate(-15deg)}
+.pc-disc span{
+  display:grid;
+  place-items:center;
+  width:84px;
+  height:84px;
+  border-radius:50%;
+  background:var(--pc-accent);
+  color:#08051a;
+  font-weight:800;
+  font-size:26px;
+  border:7px solid #a487bf}
+.pc-eyebrow{
+  letter-spacing:2.5px;
+  font-size:10px;
+  color:var(--pc-accent)}
+.pc h1,.pc h2,.pc h3{
+  font-family:"Space Grotesk",sans-serif}
+.pc h1{
+  font-size:clamp(42px,6vw,72px);
+  line-height:1.05;
+  letter-spacing:-3px;
+  font-weight:600}
+.pc h1 em{
+  font-family:"Space Grotesk",sans-serif;
+  font-style:normal;
+  font-weight:600;
+  color:var(--pc-accent)}
+.pc-hero p:last-child{
+  color:var(--pc-muted);
+  margin-top:20px;
+  font-size:14px}
+.pc-summary{
+  display:flex;
+  gap:24px;
+  align-items:center;
+  padding:20px 0;
+  border-top:1px solid var(--pc-line);
+  color:var(--pc-muted);
+  font-size:12px}
+.pc-summary strong{
+  color:var(--pc-text);
+  font-size:18px;
+  margin-right:5px}
+.pc-refresh{
+  margin-left:auto;
+  text-align:right}
+.pc-tabs{
+  display:flex;
+  border-bottom:1px solid var(--pc-line);
+  gap:24px;
+  margin-bottom:28px}
+.pc-tabs button{
+  border:0;
+  border-radius:0;
+  padding:15px 8px;
+  color:var(--pc-muted)}
+.pc-tabs button[aria-current]{
+  color:var(--pc-accent);
+  border-bottom:2px solid var(--pc-accent)}
+.pc h2{
+  font-size:22px;
+  letter-spacing:-.5px}
+.pc h3{
+  font-size:16px}
+.pc-muted{
+  color:var(--pc-muted);
+  font-size:13px}
+.pc-alert,.pc-notice{
+  padding:16px;
+  border-radius:10px;
+  margin-bottom:20px;
+  font-size:14px;
+  overflow-wrap:anywhere}
+.pc-alert{
+  background:rgba(255,100,120,0.08);
+  color:#ff8a9b;
+  border:1px solid rgba(255,100,120,0.3)}
+.pc-notice{
+  background:rgba(201,168,232,0.08);
+  color:#ede8f8;
+  border:1px solid rgba(201,168,232,0.24)}
+.pc-toolbar{
+  display:flex;
+  gap:16px;
+  align-items:center;
+  margin-bottom:20px}
+.pc-toolbar label{
+  flex:1;
+  max-width:430px}
+.pc-toolbar>button{
+  margin-left:auto}
+.pc-track{
+  display:grid;
+  grid-template-columns:minmax(250px,1fr) minmax(200px,1fr) auto;
+  gap:16px;
+  align-items:center;
+  padding:20px 0;
+  border-bottom:1px solid var(--pc-line)}
+.pc-trackinfo{
+  display:flex;
+  gap:14px;
+  align-items:center;
+  min-width:0}
+.pc-trackinfo img,.pc-cover{
+  width:56px;
+  height:56px;
+  flex-shrink:0;
+  border-radius:6px;
+  object-fit:cover}
+.pc-cover{
+  display:grid;
+  place-items:center;
+  background:#21172e;
+  color:var(--pc-accent);
+  font-size:24px}
+.pc-trackinfo h3{
+  font-size:14px;
+  overflow-wrap:anywhere}
+.pc-trackinfo p{
+  font-size:12px;
+  color:var(--pc-muted);
+  margin:4px 0}
+.pc-trackmeta small{
+  font-size:10px;
+  color:var(--pc-muted)}
+.pc-badges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  margin-top:8px}
+.pc-badge{
+  font-size:9px;
+  border:1px solid rgba(201,168,232,0.30);
+  padding:3px 7px;
+  border-radius:5px;
+  color:#e7dba8}
+.pc-badge.spotify{
+  color:#a4e9b8;
+  background:#1b3225;
+  border-color:#2d563b}
+.pc-badge.apple{
+  color:#f2afb5;
+  background:#342125;
+  border-color:#57373e}
+.pc .pc-remove{
+  font-size:11px;
+  color:rgba(180,170,200,0.75)}
+.pc-resolution{
+  grid-column:1/-1;
+  display:flex;
+  align-items:flex-start;
+  gap:16px;
+  font-size:12px}
+.pc-resolution:empty{
+  display:none}
+.pc-resolution details{
+  flex:1}
+.pc-resolution summary{
+  cursor:pointer;
+  padding:10px 0;
+  color:var(--pc-accent)}
+.pc-resolution button{
+  font-size:11px}
+.pc-candidate{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:8px;
+  background:var(--pc-panel);
+  margin-bottom:4px}
+.pc-primary{
+  background:var(--pc-accent)!important;
+  color:#08051a!important;
+  border:0!important;
+  font-weight:600!important}
+.pc-search{
+  display:flex;
+  gap:12px;
+  margin:28px 0}
+.pc-search input{
+  flex:1}
+.pc-empty{
+  text-align:center;
+  padding:60px 16px;
+  background:linear-gradient(rgba(14,9,28,0.4),transparent);
+  border:1px dashed var(--pc-line);
+  border-radius:12px}
+.pc-empty>span{
+  font-size:40px;
+  color:var(--pc-accent)}
+.pc-empty h2{
+  margin-top:12px}
+.pc-empty p{
+  color:var(--pc-muted);
+  font-size:14px}
+.pc-settings{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:20px;
+  margin-top:28px}
+.pc-service{
+  border:1px solid var(--pc-line);
+  background:var(--pc-panel);
+  border-radius:14px;
+  padding:28px}
+.pc-dot{
+  display:inline-block;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  margin-bottom:18px}
+.pc-dot.spotify{
+  background:#75db91}
+.pc-dot.apple{
+  background:#ef7d90}
+.pc-service h3{
+  font-size:24px}
+.pc-service>p{
+  font-size:13px;
+  color:var(--pc-muted);
+  margin:10px 0 24px}
+.pc-service small{
+  display:block;
+  margin:10px 0}
+.pc-bind{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  margin-top:24px;
+  padding-top:24px;
+  border-top:1px solid var(--pc-line);
+  font-size:13px}
+.pc-footnote,.pc-retired{
+  margin-top:32px;
+  padding:24px;
+  border:1px solid var(--pc-line);
+  border-radius:10px;
+  font-size:13px;
+  color:var(--pc-muted)}
+.pc-retired>div{
+  padding:15px 0;
+  border-top:1px solid var(--pc-line)}
+.pc-retired strong{
+  color:var(--pc-text)}
+.pc-sr{
+  position:absolute;
+  width:1px;
+  height:1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap}
+
+@media(max-width:720px){
+  .pc{
+  padding:18px 18px 70px}
+.pc-top{
+  gap:10px}
+.pc-top span{
+  display:none}
+.pc-hero{
+  gap:22px;
+  padding:40px 0 26px}
+.pc-disc{
+  width:100px;
+  height:100px}
+.pc-disc span{
+  width:44px;
+  height:44px;
+  font-size:13px;
+  border-width:4px}
+.pc h1{
+  font-size:44px;
+  letter-spacing:-2px}
+.pc-eyebrow{
+  font-size:8px;
+  letter-spacing:1px}
+.pc-hero p:last-child{
+  font-size:12px}
+.pc-summary{
+  flex-wrap:wrap;
+  gap:12px 22px}
+.pc-refresh{
+  margin:0;
+  width:100%;
+  text-align:left;
+  font-size:10px}
+.pc-tabs{
+  justify-content:space-between;
+  gap:12px}
+.pc-track{
+  grid-template-columns:1fr auto;
+  gap:10px}
+.pc-trackmeta{
+  grid-row:2;
+  grid-column:1/-1;
+  padding-left:70px}
+.pc-trackinfo h3{
+  font-size:13px}
+.pc-result .pc-muted{
+  grid-row:2;
+  padding-left:70px}
+.pc-result>button{
+  grid-column:2;
+  grid-row:1}
+.pc-track .pc-remove{
+  font-size:10px;
+  padding:8px}
+.pc-toolbar{
+  gap:8px}
+.pc-toolbar button{
+  font-size:11px;
+  padding:10px}
+.pc-search{
+  gap:8px}
+.pc-search button{
+  font-size:12px;
+  padding:10px}
+.pc-settings{
+  grid-template-columns:1fr}
+.pc-resolution{
+  flex-direction:column;
+  gap:5px}
+.pc-resolution details{
+  width:100%}
+.pc-empty{
+  padding:40px 12px}
+.pc-empty h2{
+  font-size:20px}
+}

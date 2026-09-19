@@ -13,7 +13,7 @@ export function usePageTracking() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    if (pathname.startsWith('/admin') || pathname.startsWith('/project')) {
+    if (pathname.startsWith('/admin') || pathname.startsWith('/project') || pathname.startsWith('/playlist')) {
       return undefined;
     }
 

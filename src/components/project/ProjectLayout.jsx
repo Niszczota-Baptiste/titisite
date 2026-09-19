@@ -237,6 +237,7 @@ function Shell({ user, logout, isAdmin, breadcrumb, children }) {
   const headerLinks = (
     <>
       <Link to="/project/discussion" style={navLinkStyle} onClick={() => setMenuOpen(false)}>💬 Discussion</Link>
+      {user?.canViewPlaylist && <Link to="/playlist" style={navLinkStyle} onClick={() => setMenuOpen(false)}>♫ Playlist Commune</Link>}
       {user?.canViewStairs && (
         <Link to="/stairs" style={navLinkStyle} onClick={() => setMenuOpen(false)}>🪜 Escaliers</Link>
       )}

@@ -13,6 +13,15 @@ Single-process Node app:
 
 ## Conventions
 
+- **Playlist Commune** : module privé `/playlist`, intégré au même Express/SQLite,
+  réservé à deux comptes existants configurés dans `.env`. État et invariants dans
+  [`AGENTS.md`](AGENTS.md), mise en service dans [`docs/playlist-commune.md`](docs/playlist-commune.md).
+  Front : `src/pages/Playlist.jsx`, primitives du site et `api.playlist.*`.
+  Back : `server/playlist/*`, migration appelée par `db.js#migrate` puis démarrage du
+  scheduler après le seed. Spotify `/items` (API 2026), Apple MusicKit, tokens chiffrés,
+  matching ISRC, tombstones pour les suppressions et traitement explicite des envois
+  incertains. Même processus PM2 et commandes habituelles `backup.sh` / `deploy.sh`.
+
 - Public-site collections (`projects`, `tracks`, `education`, `experience`,
   `currently`) use a **JSON-blob table per name** (`server/db.js#listAll/insert/update/remove/reorder`).
   CRUD UI uses `ItemList` (`src/components/admin/ItemList.jsx`) — pass

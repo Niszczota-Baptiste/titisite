@@ -71,6 +71,7 @@ function qs(params) {
 
 async function request(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
+  if (path.startsWith('/playlist/')) headers['X-Playlist-Request'] = '1';
   const res = await fetch(`/api${path}`, {
     method,
     headers,
@@ -160,6 +161,20 @@ export async function triggerDownload(url, suggestedName) {
 }
 
 export const api = {
+  playlist: {
+    status: () => request('GET', '/playlist/status'),
+    sync: () => request('POST', '/playlist/sync', {}),
+    search: (query) => request('GET', `/playlist/search${qs({ q: query })}`),
+    connectSpotify: () => request('POST', '/playlist/spotify/connect', {}),
+    developerToken: () => request('GET', '/playlist/apple/developer-token'),
+    connectApple: (musicUserToken) => request('POST', '/playlist/apple/connect', { musicUserToken }),
+    playlists: (provider) => request('GET', `/playlist/${encodeURIComponent(provider)}/playlists`),
+    bind: (provider, options) => request('POST', `/playlist/${encodeURIComponent(provider)}/playlist`, options),
+    add: (provider, id) => request('POST', '/playlist/tracks', { provider, id }),
+    remove: (id) => request('DELETE', `/playlist/tracks/${encodeURIComponent(id)}`),
+    match: (id, provider, candidate) => request('POST', `/playlist/tracks/${encodeURIComponent(id)}/${encodeURIComponent(provider)}/match`, { id: candidate }),
+    retry: (id, provider, confirmAbsent) => request('POST', `/playlist/tracks/${encodeURIComponent(id)}/${encodeURIComponent(provider)}/retry`, { confirmAbsent }),
+  },
   get:  (path) => request('GET', path),
   post: (path, body) => request('POST', path, body),
   put:  (path, body) => request('PUT', path, body),

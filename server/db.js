@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { migratePlaylist } from './playlist/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Exporté : la page « Serveur » du dashboard mesure la taille du fichier (et
@@ -2186,6 +2187,8 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mf_power_weights_genre ON mf_power_weights(genre, cle);`);
+  // Additive migration, same database and backup/rollback path as the rest of the site.
+  migratePlaylist(db);
 }
 
 // Rattache à leur item unique les résultats de butin saisis en référence texte

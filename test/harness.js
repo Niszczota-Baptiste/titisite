@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Spawns a real server in a temp workdir and returns helpers to talk to it.
 // One server per test file: cheap (~200 ms boot) and gives us full isolation
@@ -33,7 +34,7 @@ export async function bootServer({ port, env: extraEnv } = {}) {
 
   const child = spawn(process.execPath, ['server/index.js'], {
     env,
-    cwd: path.resolve(new URL('..', import.meta.url).pathname),
+    cwd: fileURLToPath(new URL('..', import.meta.url)),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -45,7 +46,7 @@ export async function bootServer({ port, env: extraEnv } = {}) {
       reject(new Error(
         `server boot timeout. stderr:\n${Buffer.concat(stderrChunks).toString()}`,
       ));
-    }, 5000);
+    }, 15000); // Cold starts + catalogue seeding can exceed 5s on Windows.
     child.stdout.on('data', (chunk) => {
       if (chunk.toString().includes('listening')) {
         clearTimeout(timer);

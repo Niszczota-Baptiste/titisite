@@ -117,7 +117,7 @@ function sanitizePath(raw) {
 // Should this path be excluded from analytics entirely? Back-office routes
 // (admin/project workspaces) are private and not interesting for public stats.
 function isBackOfficePath(p) {
-  return p.startsWith('/admin') || p.startsWith('/project');
+  return p.startsWith('/admin') || p.startsWith('/project') || p.startsWith('/playlist');
 }
 
 // Interaction events we accept from the public site. Anything else is dropped

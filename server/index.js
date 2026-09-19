@@ -51,6 +51,7 @@ import { ecritureRouter } from './routes/writing.js';
 import { writingAdminRouter } from './routes/writing-admin.js';
 import { workspacesRouter } from './routes/workspaces.js';
 import { seedIfEmpty } from './seed.js';
+import { createPlaylistFeature } from './playlist/router.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -78,14 +79,15 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", 'https://js-cdn.music.apple.com'],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
       // OSM raster tiles are served from {a,b,c}.tile.openstreetmap.org for the
       // /stairs map. Loaded as <img> by Leaflet, so they need imgSrc not connectSrc.
-      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org', 'https://tile.openstreetmap.org'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org', 'https://tile.openstreetmap.org', 'https://i.scdn.co', 'https://*.mzstatic.com'],
       mediaSrc: ["'self'"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", 'https://*.music.apple.com', 'https://*.itunes.apple.com', 'https://appleid.apple.com'],
+      frameSrc: ['https://authorize.music.apple.com', 'https://appleid.apple.com'],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
       baseUri: ["'self'"],
@@ -94,6 +96,7 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   // Deny all framing. Matches the CSP `frameAncestors: 'none'` above so the
   // legacy header and the modern directive express the same intent (modern
   // browsers follow the CSP; the header covers older ones).
@@ -267,6 +270,8 @@ app.use('/api/analytics', analyticsLimiter, analyticsRouter);
 // so we skip the generic collection router for it below)
 app.use('/api/auth/login', loginLimiter, loginAccountLimiter);
 app.use('/api/auth',   authRouter);
+let playlistFeature;
+app.use('/api/playlist', (req, res, next) => playlistFeature.router(req, res, next));
 app.use('/api/images', imagesRouter);
 app.use('/api/users',  usersRouter);
 app.use('/api/tracks', tracksRouter);
@@ -398,6 +403,8 @@ app.use((err, _req, res, _next) => {
 });
 
 const boot = await seedIfEmpty();
+// Migrations complete before the store prepares statements or starts recovery.
+playlistFeature = createPlaylistFeature(db, requireAuth);
 if (boot.users?.length) {
   console.log('[seed] created users:', boot.users.map((u) => `${u.email} (${u.role})`).join(', '));
 }
@@ -415,6 +422,7 @@ const server = app.listen(PORT, () => {
 
 // Email digest scheduler — no-op if SMTP is not configured.
 startDigestScheduler();
+playlistFeature.start();
 
 // Slowloris cap on header reads. 30 s is far more than any legitimate client
 // needs and tight enough to drop pathological connections.
@@ -432,6 +440,7 @@ let shuttingDown = false;
 function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
+  void playlistFeature.stop();
   console.log(`[server] ${signal} received — closing (max 30 s)…`);
   const force = setTimeout(() => {
     console.warn('[server] forced exit after 30 s.');

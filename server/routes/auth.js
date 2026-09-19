@@ -7,6 +7,7 @@ import {
   setSessionCookie,
 } from '../auth.js';
 import { findByEmail } from '../users.js';
+import { canViewPlaylist } from '../playlist/store.js';
 
 // Dummy hash used when the email doesn't exist, so the bcrypt work factor is
 // always paid regardless of whether the account exists. This prevents
@@ -38,6 +39,7 @@ authRouter.post('/login', async (req, res) => {
       email: user.email,
       name: user.name,
       role: user.role,
+      canViewPlaylist: canViewPlaylist(user),
       canViewStairs: isAdmin || user.can_view_stairs === 1,
       canViewQuests: isAdmin || user.can_view_quests === 1 || user.can_edit_quests === 1,
       canEditQuests: isAdmin || user.can_edit_quests === 1,
@@ -66,6 +68,7 @@ authRouter.get('/me', requireAuth, (req, res) => {
     email,
     name,
     role,
+    canViewPlaylist: canViewPlaylist(req.user),
     canViewStairs: isAdmin || req.user.can_view_stairs === 1,
     canViewQuests: isAdmin || req.user.can_view_quests === 1 || req.user.can_edit_quests === 1,
     canEditQuests: isAdmin || req.user.can_edit_quests === 1,

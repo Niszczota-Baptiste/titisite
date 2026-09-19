@@ -17,6 +17,7 @@ const Lore = lazy(() => import('./pages/Lore'));
 const Atelier = lazy(() => import('./pages/Atelier'));
 const BuildShare = lazy(() => import('./pages/BuildShare'));
 const WorldEditShare = lazy(() => import('./pages/WorldEditShare'));
+const Playlist = lazy(() => import('./pages/Playlist'));
 
 function Loading() {
   return <div style={{ minHeight: '100vh', background: '#050511' }} />;
@@ -35,6 +36,7 @@ export default function App() {
       <Suspense fallback={<Loading />}>
         <RouteTracker />
         <Routes>
+          <Route path="/playlist"       element={<Playlist />} />
           <Route path="/admin/*"        element={<Admin />} />
           <Route path="/project/*"      element={<Project />} />
           <Route path="/projects/:id"   element={<ProjectDetailPage />} />
