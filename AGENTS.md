@@ -101,3 +101,28 @@ sans rapport. Aucun secret ou fichier de démonstration local ne doit être comm
 - 34 tests ciblés + 24 tests sécurité ; audit npm complet zéro vulnérabilité après
   override qs 6.16.0 et mises à jour transitives fast-uri/js-yaml/nanoid. Conserver
   le lockfile et revalider à chaque mise à jour. Voir le guide pour la recette réelle.
+
+## Diagnostic de connexion Apple
+
+- `POST /api/playlist/apple/diagnostic` teste une vraie recherche catalogue avec
+  le developer token, sans Music User Token. Réservé au propriétaire Apple avec
+  session et contrôle CSRF ; respecte le backoff. Aucun secret dans la réponse.
+- `appleDiagnostic.js` renvoie uniquement des messages contrôlés et les étapes
+  `apple_configuration`, `apple_catalog`, `apple_account`. Un 401 Apple devient
+  un 400 applicatif, pour ne pas confondre avec une session du site expirée.
+- `appleConnection.js` garde `authorize()` dans le geste utilisateur, limite
+  l'attente à deux minutes, empêche la sauvegarde d'une réponse tardive et demande
+  un rechargement après timeout. Le compte n'est annoncé connecté qu'après la
+  validation serveur. La réception de la file utilise le même parcours.
+- Le bouton « Tester la configuration Apple » reste disponible si MusicKit échoue.
+  Un catalogue accessible ne prouve pas que l'autorisation du compte fonctionne.
+  Le 403 de `webPlayerLogout` observé ne suffit pas à identifier la cause initiale.
+  Aucun assouplissement des protections navigateur ni nouveau secret requis.
+- Tests supplémentaires : `test/apple-connection.test.js` et test d'intégration
+  des refus d'accès/CSRF, 401/403, conservation du token précédent et backoff dans
+  `test/playlist.test.js`. Aucun vrai compte Apple ni VPS testé localement.
+
+Validation du diagnostic : 40 tests ciblés (dont déploiement production), 24 tests
+de sécurité, build Vite et recherche de secrets sur les fichiers modifiés réussis.
+Lint sécurité : 0 erreur, 189 avertissements existants. Pas de migration ni de
+dépendance supplémentaire pour ce diagnostic.

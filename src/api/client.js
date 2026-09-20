@@ -176,6 +176,7 @@ export const api = {
     search: (query) => request('GET', `/playlist/search${qs({ q: query })}`),
     connectSpotify: () => request('POST', '/playlist/spotify/connect', {}),
     developerToken: () => request('GET', '/playlist/apple/developer-token'),
+    appleDiagnostic: () => request('POST', '/playlist/apple/diagnostic', {}),
     connectApple: (musicUserToken) => request('POST', '/playlist/apple/connect', { musicUserToken }),
     playlists: (provider) => request('GET', `/playlist/${encodeURIComponent(provider)}/playlists`),
     bind: (provider, options) => request('POST', `/playlist/${encodeURIComponent(provider)}/playlist`, options),

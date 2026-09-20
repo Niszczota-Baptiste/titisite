@@ -290,3 +290,30 @@ Les commandes VPS habituelles restent inchangées.
 Conserver la clé AES existante en cas de migration depuis `.env`. Les anciennes clés
 musicales ne doivent être retirées de `.env` qu’après avoir été enregistrées dans les
 réglages web. La migration des membres ne copie pas ces clés automatiquement.
+## Diagnostiquer une connexion Apple qui reste bloquée
+
+Dans **Réglages → Apple Music**, clique sur **Tester la configuration Apple**.
+Le test vérifie l'accès réel au catalogue avec la clé enregistrée. Il ne lance
+aucune musique et ne crée aucune playlist.
+
+- **Catalogue accessible** : Apple accepte la clé pour le catalogue à l'heure du
+  test. Clique ensuite sur **Connecter Apple Music**. L'autorisation du compte
+  reste une étape séparée ; un test réussi ne garantit pas son succès.
+- **Clé refusée (401)** : vérifie que le Team ID, le Key ID et le fichier `.p8`
+  correspondent à la même clé valide. Ne partage pas le contenu du fichier.
+- **Accès refusé (403)** : vérifie l'association de la clé Media Services au
+  Media ID et l'activation de MusicKit dans Apple Developer.
+- **Limite de requêtes** : attends avant de réessayer ; le serveur respecte le
+  délai imposé par Apple.
+
+Pendant la connexion, le site distingue l'attente de validation dans la fenêtre
+Apple et la vérification finale du compte sur le serveur. Après deux minutes
+sans réponse de l'autorisation, ferme la fenêtre Apple et recharge la page.
+Une réponse tardive ne sera pas enregistrée par cette tentative.
+
+Si le catalogue fonctionne mais que MusicKit refuse l'autorisation, vérifie que
+le même compte peut lire un titre sur [Apple Music](https://music.apple.com/).
+Le seul message `webPlayerLogout 403` ne donne pas la cause du refus initial.
+Les réglages supplémentaires ne doivent pas être déduits de ce seul message.
+Apple décrit aussi ce cas sur son [forum développeur](https://developer.apple.com/forums/thread/837028).
+Transmets le message lisible du diagnostic ; aucun export de tokens n'est nécessaire.

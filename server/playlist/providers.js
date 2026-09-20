@@ -191,6 +191,12 @@ export function createProviders(store, config, fetcher = fetch) {
     async create() { return (await apple('/v1/me/library/playlists', 'POST', { attributes: { name: 'Playlist Commune', description: 'Notre playlist Apple Music + Spotify' } }))?.data?.[0]?.id; },
   };
   return { spotify: sp, apple: ap, developerToken, invalidateDeveloperToken() { developerCache = null; },
+    async checkAppleCatalog() {
+      // A real catalogue request checks the signed key without any user's token.
+      const result = await apple(`${catalog}/search?${new URLSearchParams({ term: 'Daft Punk', types: 'songs', limit: '1' })}`);
+      if (!Array.isArray(result?.results?.songs?.data)) throw new ProviderError('apple', 502, 'invalid_response');
+      return { catalog: true, checkedAt: Date.now(), storefront: config.storefront };
+    },
     beginOAuth() {
       if (!config.clientId) throw new ProviderError('spotify', 503, 'configuration_missing');
       const state = crypto.randomBytes(32).toString('base64url'), verifier = crypto.randomBytes(48).toString('base64url');

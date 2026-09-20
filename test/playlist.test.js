@@ -251,6 +251,57 @@ test('router excludes other site members, restricts connection ownership, reject
   const replay = await fetch(callback,{headers:{cookie},redirect:'manual'}); assert.equal(replay.headers.get('location'),'/playlist?connection=error');
 });
 
+test('Apple diagnostic isolates catalog, account and local auth failures without exposing secrets', async t => {
+  const db = database();
+  const { privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  let remoteStatus = 200, requests = [];
+  const auth = (req, res, next) => {
+    req.user = db.prepare('SELECT * FROM users WHERE id=?').get(Number(req.get('test-user') || 0));
+    if (!req.user) return res.status(401).json({ error: 'auth' });
+    next();
+  };
+  const feature = createPlaylistFeature(db, auth, { ...config, privateKey, keyId: 'TESTKEY123', teamId: 'TESTTEAM12' }, async (url, options) => {
+    requests.push({ url, options });
+    return Response.json(remoteStatus === 200 ? { results: { songs: { data: [] } } } : { secret: 'must-not-be-returned' },
+      { status: remoteStatus, headers: remoteStatus === 429 ? { 'retry-after': '60' } : {} });
+  });
+  const app = express(); app.use(express.json()); app.use('/api/playlist', feature.router);
+  const server = app.listen(0, '127.0.0.1'); await new Promise(r => server.once('listening', r));
+  t.after(async () => { await feature.stop(); await new Promise(r => server.close(r)); db.close(); });
+  const base = `http://127.0.0.1:${server.address().port}/api/playlist/apple`;
+  const headers = { 'test-user': '1', origin: config.origin, 'X-Playlist-Request': '1', 'Content-Type': 'application/json' };
+  const diagnostic = h => fetch(`${base}/diagnostic`, { method: 'POST', headers: h, body: '{}' });
+  assert.equal((await diagnostic({})).status, 401);
+  assert.equal((await diagnostic({ 'test-user': '1' })).status, 403);
+  assert.equal((await diagnostic({ ...headers, 'test-user': '2' })).status, 403);
+  assert.equal((await diagnostic({ ...headers, 'test-user': '3' })).status, 403);
+  assert.equal(requests.length, 0);
+  const result = await diagnostic(headers);
+  assert.equal(result.status, 200); assert.match(result.headers.get('cache-control'), /no-store/);
+  const body = await result.json(); assert.equal(body.catalog, true); assert.equal(body.storefront, 'fr');
+  assert.deepEqual(Object.keys(body).sort(), ['catalog', 'checkedAt', 'storefront']);
+  assert.match(requests[0].url, /\/v1\/catalog\/fr\/search\?/);
+  assert.equal(requests[0].options.headers['Music-User-Token'], undefined);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM playlist_tokens WHERE provider='apple'").get().n, 0);
+  for (remoteStatus of [401, 403, 500]) {
+    const failed = await diagnostic(headers); const error = await failed.json();
+    assert.equal(failed.status, 400); // Apple 401 must not log the user out of the site.
+    assert.equal(error.stage, 'apple_catalog'); assert.equal(error.serviceStatus, remoteStatus);
+    assert.ok(!JSON.stringify(error).includes('must-not-be-returned'));
+  }
+  const store = createStore(db, key);
+  store.saveToken('apple', 1, { musicUserToken: 'original-user-token-for-test' });
+  remoteStatus = 401;
+  const failedAccount = await fetch(`${base}/connect`, { method: 'POST', headers, body: JSON.stringify({ musicUserToken: 'replacement-user-token-for-test' }) });
+  assert.equal((await failedAccount.json()).stage, 'apple_account');
+  assert.equal(store.token('apple').musicUserToken, 'original-user-token-for-test');
+  remoteStatus = 429;
+  assert.equal((await diagnostic(headers)).status, 429);
+  const count = requests.length;
+  assert.equal((await diagnostic(headers)).status, 429);
+  assert.equal(requests.length, count); // Retry respects the persistent Apple backoff.
+});
+
 test('members activate, invite and configure only their own provider', async t => {
   const db = database();
   db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'member'; UPDATE users SET role='admin' WHERE id=1;");

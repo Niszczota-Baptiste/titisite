@@ -1,4 +1,5 @@
 import { createPlaybackQueue } from './queue.js';
+import { appleDiagnosticError } from './appleDiagnostic.js';
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -158,13 +159,19 @@ export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db
   }));
   router.get('/apple/developer-token', (req, res, next) => {
     if (!requireOwner(req, res, 'apple')) return;
-    try { res.json({ token: api.developerToken() }); } catch (e) { next(e); }
+    try { res.json({ token: api.developerToken() }); } catch (e) { e.appleStage = 'apple_configuration'; next(e); }
   });
+  router.post('/apple/diagnostic', wrap(async (req, res) => {
+    if (!requireOwner(req, res, 'apple')) return;
+    try { res.json(await engine.exclusive(() => api.checkAppleCatalog())); }
+    catch (e) { e.appleStage = 'apple_catalog'; throw e; }
+  }));
   router.post('/apple/connect', wrap(async (req, res) => {
     if (!requireOwner(req, res, 'apple')) return;
     const token = req.body?.musicUserToken;
     if (typeof token !== 'string' || token.length < 20 || token.length > 12000) return res.status(400).json({ error: 'Music User Token invalide.' });
-    await engine.exclusive(() => api.connectApple(token, req.user.id));
+    try { await engine.exclusive(() => api.connectApple(token, req.user.id)); }
+    catch (e) { e.appleStage = 'apple_account'; throw e; }
     res.json({ ok: true });
   }));
   router.get('/:provider/playlists', wrap(async (req, res) => {
@@ -226,6 +233,7 @@ export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db
     void engine.sync().catch(() => {}); res.json({ ok: true });
   }));
   router.use((err, _req, res, _next) => {
+    if (err.appleStage) return res.status(err.status === 429 ? 429 : 400).json(appleDiagnosticError(err, err.appleStage));
     const error = err.reason ? ({ not_connected: 'Connecte ce service dans Réglages.', configuration_missing: 'Clés du service absentes du serveur.', QUOTA_EXCEEDED: 'Quota Spotify dépassé. Synchronisation différée.', rate_limited: 'Limite du service atteinte. Réessaie plus tard.', reconnect_or_permissions: 'Reconnecte le service et vérifie ses autorisations.', no_active_device: 'Aucun appareil Spotify actif. Ouvre Spotify sur l’appareil où tu veux écouter, puis réessaie.', premium_required: 'La lecture distante Spotify nécessite Spotify Premium.', playlist_missing: 'Choisis une playlist dans Réglages.', track_unavailable: 'Ce morceau n’est pas encore disponible sur ce service.', network_error: 'Service injoignable. Vérifie le résultat avant de réessayer.' }[err.reason] || 'Le service musical est indisponible.') : (err.code?.startsWith('SQLITE') ? 'Cette correspondance existe déjà dans la playlist.' : err.message);
     res.status(err.status === 429 ? 429 : 400).json({ error });
   });

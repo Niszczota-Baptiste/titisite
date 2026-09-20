@@ -1,5 +1,6 @@
 import { PlaybackQueue } from './PlaybackQueue';
 import { receiveApple } from './playlistReceiver';
+import { authorizeApple, withDeadline } from './appleConnection';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -22,8 +23,8 @@ function loadMusicKit() {
   if (window.MusicKit) return Promise.resolve(window.MusicKit);
   if (!musicKitPromise) musicKitPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    const timeout = setTimeout(() => { script.remove(); musicKitPromise = null; reject(new Error('Chargement de MusicKit trop long. Réessaie.')); }, 20000);
-    const ready = () => { clearTimeout(timeout); resolve(window.MusicKit); };
+    const timeout = setTimeout(() => { document.removeEventListener('musickitloaded', ready); script.remove(); musicKitPromise = null; reject(new Error('Chargement de MusicKit trop long. Recharge la page pour réessayer.')); }, 20000);
+    const ready = () => { clearTimeout(timeout); document.removeEventListener('musickitloaded', ready); resolve(window.MusicKit); };
     document.addEventListener('musickitloaded', ready, { once: true });
     script.src = 'https://js-cdn.music.apple.com/musickit/v3/musickit.js';
     script.async = true;
@@ -52,6 +53,8 @@ function PlaylistContent() {
   const [query, setQuery] = useState(''), [results, setResults] = useState(null), [filter, setFilter] = useState('');
   const [lists, setLists] = useState({}), [selection, setSelection] = useState({});
   const [music, setMusic] = useState(null), [musicError, setMusicError] = useState('');
+  const [appleProgress, setAppleProgress] = useState(''), [appleDiagnostic, setAppleDiagnostic] = useState('');
+  const [appleNeedsReload, setAppleNeedsReload] = useState(false);
   const active = useRef(true), actionLock = useRef(false);
   const [receiving, setReceiving] = useState(false);
   const receivingLock = useRef(false), receiverId = useRef(crypto.randomUUID());
@@ -72,11 +75,15 @@ function PlaylistContent() {
     return () => { disposed = true; active.current = false; clearTimeout(timer); };
   }, [refresh]);
   useEffect(() => {
-    setMusic(null); setMusicError('');
+    setMusic(null); setMusicError(''); setAppleDiagnostic(''); setAppleProgress('');
     if (!data?.apple?.canConfigure || !data.apple.configured) return;
     let cancelled = false;
     Promise.all([loadMusicKit(), api.playlist.developerToken()]).then(async ([kit, { token }]) => {
-      await kit.configure({ developerToken: token, app: { name: 'Playlist Commune', build: '1.0.0' } });
+      if (cancelled) return;
+      try {
+        await withDeadline(kit.configure({ developerToken: token, app: { name: 'Playlist Commune', build: '1.0.0' } }), 20000,
+          'MusicKit ne termine pas sa préparation. Teste la configuration Apple ci-dessous, puis recharge cette page.');
+      } catch { throw new Error('MusicKit n’a pas pu se préparer. Teste la configuration Apple ci-dessous, puis recharge cette page.'); }
       if (!cancelled) { setMusic(kit.getInstance()); setMusicError(''); }
     }).catch(e => { if (!cancelled) setMusicError(e.message); });
     return () => { cancelled = true; };
@@ -113,6 +120,12 @@ function PlaylistContent() {
     e.preventDefault();
     await act(async () => { const r = await api.playlist.search(query.trim()); setResults(r.tracks); if (r.errors.length) setError(r.errors.join(' · ')); });
   }
+  async function connectMyApple() {
+    if (appleNeedsReload) throw new Error('Recharge la page avant de reconnecter Apple Music.');
+    try { await authorizeApple({ music, save: api.playlist.connectApple, isActive: () => active.current,
+      progress: message => { if (active.current) setAppleProgress(message); } }); }
+    catch (e) { if (active.current) { setAppleProgress(''); if (e.needsReload) setAppleNeedsReload(true); } throw e; }
+  }
   function openTrack(track, p) {
     const url = p === 'spotify' && track.spotify_uri
       ? `https://open.spotify.com/track/${encodeURIComponent(track.spotify_uri.split(':').pop())}`
@@ -147,7 +160,7 @@ function PlaylistContent() {
     {data && <>
       {!connected && tab === 'playlist' && <div className="pc-notice">La playlist attend ses deux connexions. <Button variant="ghost" onClick={() => setTab('settings')}>Ouvrir les réglages →</Button></div>}
       {['spotify','apple'].map(p => data[p].error && <div className="pc-alert" key={p}>{names[p]} : {data[p].error === 'QUOTA_EXCEEDED' ? 'quota dépassé' : data[p].error === 'reconnect_or_permissions' ? 'connexion ou permissions à renouveler' : 'synchronisation en attente'}.{data[p].backoff?.until > Date.now() && ` Reprise au plus tôt à ${date(data[p].backoff.until)}.`} <Button variant="ghost" onClick={() => setTab('settings')}>Réglages</Button></div>)}
-      {tab === 'queue' && <PlaybackQueue data={data} busy={busy} act={act} music={music} musicError={musicError} receiving={receiving} setReceiving={setReceiving} openTrack={openTrack} onAdd={() => setTab('add')} onSettings={() => setTab('settings')} />}
+      {tab === 'queue' && <PlaybackQueue data={data} busy={busy} act={act} music={music} musicError={musicError} connectApple={connectMyApple} appleProgress={appleProgress} appleNeedsReload={appleNeedsReload} receiving={receiving} setReceiving={setReceiving} openTrack={openTrack} onAdd={() => setTab('add')} onSettings={() => setTab('settings')} />}
       {tab === 'playlist' && <section aria-label="Morceaux partagés"><div className="pc-toolbar"><label><span className="pc-sr">Filtrer la playlist</span><Input type="search" placeholder="Filtrer vos morceaux…" value={filter} onChange={e => setFilter(e.target.value)} /></label><Button variant="ghost" disabled={busy} onClick={() => act(() => api.playlist.sync(), 'Synchronisation demandée.')}>Actualiser ↻</Button></div>
         {!tracks.length && <div className="pc-empty"><span aria-hidden="true">♫</span><h2>Le premier morceau, c’est vous.</h2><p>Ajoute une découverte ou liez vos playlists dans les réglages.</p><Button variant="ghost" className="pc-primary" onClick={() => setTab('add')}>Ajouter un morceau</Button></div>}
         <div className="pc-tracklist">{tracks.filter(t => `${t.title} ${t.artist}`.toLocaleLowerCase('fr').includes(filter.toLocaleLowerCase('fr'))).map(t => <article className="pc-track" key={t.id}>
@@ -164,10 +177,21 @@ function PlaylistContent() {
       {tab === 'settings' && <section><h2>Chacun son compte. La même musique.</h2><p>Tu règles uniquement ton service. Ton ami gère le sien depuis sa propre session.</p>{data.setup?.canInvite && <PlaylistInvitation busy={busy} act={act} />}<div className="pc-settings">{['spotify','apple'].map(p => <article className="pc-service" key={p}><span className={`pc-dot ${p}`} /><h3>{names[p]}</h3><p>{data[p].connected ? 'Compte connecté' : 'Compte à connecter'} · {data[p].playlistId ? 'Playlist liée' : 'Playlist facultative'}</p>
         {data[p].canConfigure ? <>
           <ServiceCredentials key={`${p}:${data[p].settingsRevision}`} provider={p} configured={data[p].configured} connected={data[p].connected} callback={data.setup?.callback} busy={busy} act={act} />
-          <Button variant="ghost" disabled={busy || !data[p].configured || (p === 'apple' && !music)} onClick={() => act(async () => {
+          <Button variant="ghost" disabled={busy || !data[p].configured || (p === 'apple' && (!music || appleNeedsReload))} onClick={() => act(async () => {
             if (p === 'spotify') { const r = await api.playlist.connectSpotify(); window.location.assign(r.url); }
-            else { const musicUserToken = await music.authorize(); await api.playlist.connectApple(musicUserToken); }
+            else await connectMyApple();
           }, p === 'apple' ? 'Apple Music connecté.' : undefined)}>{data[p].connected ? 'Reconnecter' : 'Connecter'} {names[p]}</Button>
+          {p === 'apple' && data[p].configured && <>
+            <Button variant="ghost" disabled={busy} onClick={() => act(async () => {
+              setAppleDiagnostic('Vérification de la clé auprès du catalogue Apple…');
+              try { const result = await api.playlist.appleDiagnostic(); setAppleDiagnostic(`Catalogue Apple accessible (${result.storefront}) · test à ${date(result.checkedAt)}. La clé est acceptée pour le catalogue. La connexion de ton compte reste une étape séparée.`); }
+              catch (e) { setAppleDiagnostic(e.message); throw e; }
+            })}>Tester la configuration Apple</Button>
+            {appleDiagnostic && <p role="status">{appleDiagnostic}</p>}
+            {appleProgress && <p role="status">{appleProgress}</p>}
+            {(appleNeedsReload || musicError) && <Button variant="ghost" disabled={busy} onClick={() => window.location.reload()}>Recharger la page</Button>}
+            <p className="pc-muted">Tu peux vérifier ton abonnement en lançant un titre sur <a href="https://music.apple.com/" target="_blank" rel="noreferrer">Apple Music</a> avec le même compte.</p>
+          </>}
           {p === 'apple' && musicError && <p role="alert">{musicError}</p>}
           {data[p].connected && <Button variant="ghost" disabled={busy} onClick={async () => { if (await confirm('Déconnecter ton compte musical ? La synchronisation de ce service sera suspendue, les morceaux conservés.')) void act(() => api.playlist.disconnect(p), 'Ton service est déconnecté.'); }}>Déconnecter mon compte</Button>}
           {p === 'apple' && !music && !musicError && data[p].configured && <small>Préparation de MusicKit…</small>}
