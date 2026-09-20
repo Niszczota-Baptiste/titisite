@@ -47,7 +47,14 @@ export function createProviders(store, config, fetcher = fetch) {
       store.set(`${provider}:backoff`, { until, failures, reason });
       throw new ProviderError(provider, 429, reason);
     }
-    if (!response.ok) throw new ProviderError(provider, response.status, response.status === 401 || response.status === 403 || body?.error === 'invalid_grant' ? 'reconnect_or_permissions' : 'api_error', response.status >= 500 && options.method === 'POST');
+    if (!response.ok) {
+      const message = String(body?.error?.message || '').toLowerCase();
+      const reason = body?.error === 'invalid_grant' ? 'reconnect_or_permissions'
+        : provider === 'spotify' && /no active device|active device/.test(message) ? 'no_active_device'
+          : provider === 'spotify' && /premium/.test(message) ? 'premium_required'
+            : response.status === 401 || response.status === 403 ? 'reconnect_or_permissions' : 'api_error';
+      throw new ProviderError(provider, response.status, reason, response.status >= 500 && options.method === 'POST');
+    }
     if (invalidBody) throw new ProviderError(provider, 502, 'invalid_response', options.method === 'POST');
     store.set(`${provider}:backoff`, { until: 0, failures: 0 });
     return body;
@@ -132,6 +139,14 @@ export function createProviders(store, config, fetcher = fetch) {
     },
     add(t) { return spotify(`/v1/playlists/${encodeURIComponent(store.state('spotify:playlist'))}/items`, 'POST', { uris: [t.spotify_uri] }); },
     remove(t) { return spotify(`/v1/playlists/${encodeURIComponent(store.state('spotify:playlist'))}/items`, 'DELETE', { items: [{ uri: t.spotify_uri }] }); },
+    play(t) {
+      if (!t?.spotify_uri) throw new ProviderError('spotify', 409, 'track_unavailable');
+      return spotify('/v1/me/player/play', 'PUT', { uris: [t.spotify_uri], position_ms: 0 });
+    },
+    queue(t) {
+      if (!t?.spotify_uri) throw new ProviderError('spotify', 409, 'track_unavailable');
+      return spotify(`/v1/me/player/queue?${new URLSearchParams({ uri: t.spotify_uri })}`, 'POST');
+    },
     async playlists() {
       const me = await spotify('/v1/me');
       return (await pages(spotify, '/v1/me/playlists?limit=50', 'items')).filter(p => p.owner?.id === me.id).map(p => ({ id: p.id, name: p.name }));
@@ -179,7 +194,7 @@ export function createProviders(store, config, fetcher = fetch) {
     beginOAuth() {
       if (!config.clientId) throw new ProviderError('spotify', 503, 'configuration_missing');
       const state = crypto.randomBytes(32).toString('base64url'), verifier = crypto.randomBytes(48).toString('base64url');
-      return { state, verifier, url: `https://accounts.spotify.com/authorize?${new URLSearchParams({ client_id: config.clientId, response_type: 'code', redirect_uri: callback, state, code_challenge_method: 'S256', code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'), scope: 'playlist-read-private playlist-modify-private playlist-modify-public' })}` };
+      return { state, verifier, url: `https://accounts.spotify.com/authorize?${new URLSearchParams({ client_id: config.clientId, response_type: 'code', redirect_uri: callback, state, code_challenge_method: 'S256', code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'), scope: 'playlist-read-private playlist-modify-private playlist-modify-public user-modify-playback-state' })}` };
     },
     async finishOAuth(code, verifier, userId) {
       const token = await exchange({ grant_type: 'authorization_code', code, redirect_uri: callback, code_verifier: verifier });

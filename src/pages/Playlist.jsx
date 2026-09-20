@@ -1,3 +1,5 @@
+import { PlaybackQueue } from './PlaybackQueue';
+import { receiveApple } from './playlistReceiver';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -45,12 +47,14 @@ export default function Playlist() {
 function PlaylistContent() {
   const { user, logout } = useAuth();
   const confirm = useConfirm();
-  const [data, setData] = useState(null), [tab, setTab] = useState('playlist');
+  const [data, setData] = useState(null), [tab, setTab] = useState('queue');
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [query, setQuery] = useState(''), [results, setResults] = useState(null), [filter, setFilter] = useState('');
   const [lists, setLists] = useState({}), [selection, setSelection] = useState({});
   const [music, setMusic] = useState(null), [musicError, setMusicError] = useState('');
   const active = useRef(true), actionLock = useRef(false);
+  const [receiving, setReceiving] = useState(false);
+  const receivingLock = useRef(false), receiverId = useRef(crypto.randomUUID());
   const refresh = useCallback(async () => {
     const next = await api.playlist.status(); if (active.current) setData(next);
   }, []);
@@ -64,19 +68,40 @@ function PlaylistContent() {
     };
     void tick();
     const connection = new URLSearchParams(location.search).get('connection');
-    if (connection) { setTab('settings'); setNotice(connection === 'spotify' ? 'Spotify connecté. Choisis maintenant la playlist à synchroniser.' : 'Connexion non terminée. Réessaie depuis Réglages.'); history.replaceState(null, '', '/playlist'); }
+    if (connection) { setTab('settings'); setNotice(connection === 'spotify' ? 'Spotify connecté. La file d’attente est disponible ; lier une playlist reste facultatif.' : 'Connexion non terminée. Réessaie depuis Réglages.'); history.replaceState(null, '', '/playlist'); }
     return () => { disposed = true; active.current = false; clearTimeout(timer); };
   }, [refresh]);
   useEffect(() => {
     setMusic(null); setMusicError('');
-    if (tab !== 'settings' || !data?.apple?.canConfigure || !data.apple.configured) return;
+    if (!data?.apple?.canConfigure || !data.apple.configured) return;
     let cancelled = false;
     Promise.all([loadMusicKit(), api.playlist.developerToken()]).then(async ([kit, { token }]) => {
       await kit.configure({ developerToken: token, app: { name: 'Playlist Commune', build: '1.0.0' } });
       if (!cancelled) { setMusic(kit.getInstance()); setMusicError(''); }
     }).catch(e => { if (!cancelled) setMusicError(e.message); });
     return () => { cancelled = true; };
-  }, [tab, data?.apple?.canConfigure, data?.apple?.configured, data?.apple?.settingsRevision]);
+  }, [data?.apple?.canConfigure, data?.apple?.configured, data?.apple?.settingsRevision]);
+  useEffect(() => {
+    if (!music) return;
+    return () => { Promise.resolve(music.pause()).catch(() => {}); };
+  }, [music]);
+  useEffect(() => {
+    if (!receiving || !music || !data?.apple?.connected || !data.apple.canConfigure) return;
+    let stopped = false, timer;
+    const tick = async () => {
+      if (!receivingLock.current) {
+        receivingLock.current = true;
+        try {
+          await receiveApple({ ...api.playlist, queueClaimApple: () => api.playlist.queueClaimApple(receiverId.current) }, music, () => !stopped);
+          if (!stopped) await refresh();
+        } catch (e) { if (!stopped) { setError(e.message); setReceiving(false); } }
+        finally { receivingLock.current = false; }
+      }
+      if (!stopped) timer = setTimeout(tick, 4000);
+    };
+    void tick();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [receiving, music, data?.apple?.connected, data?.apple?.canConfigure, refresh]);
   async function act(fn, message) {
     if (actionLock.current) return;
     actionLock.current = true; setBusy(true); setError(''); setNotice('');
@@ -87,6 +112,20 @@ function PlaylistContent() {
   async function search(e) {
     e.preventDefault();
     await act(async () => { const r = await api.playlist.search(query.trim()); setResults(r.tracks); if (r.errors.length) setError(r.errors.join(' · ')); });
+  }
+  function openTrack(track, p) {
+    const url = p === 'spotify' && track.spotify_uri
+      ? `https://open.spotify.com/track/${encodeURIComponent(track.spotify_uri.split(':').pop())}`
+      : p === 'apple' && track.apple_catalog_id
+        ? `https://music.apple.com/fr/song/${encodeURIComponent(track.apple_catalog_id)}` : '';
+    if (!url) return;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+  async function queueTrack(track, fromSearch = false) {
+    await act(async () => {
+      await api.playlist.queueAdd(fromSearch ? { provider: track.provider, id: track.remote_id } : { id: track.id });
+      setTab('queue');
+    }, 'Morceau enregistré dans la file commune. Aucun ajout à une playlist.');
   }
   const all = data?.tracks || [], tracks = all.filter(t => !t.deleted_at), retired = all.filter(t => t.deleted_at && (t.platforms.apple.status !== 'removed' || t.platforms.spotify.status !== 'removed'));
   const needs = tracks.filter(t => t.sync_status !== 'synced').length;
@@ -99,29 +138,30 @@ function PlaylistContent() {
   </main>;
   return <main className="pc" style={{ '--pc-accent': ACC, '--pc-accent-rgb': ACC_RGB }}>
     <header className="pc-top"><Link to="/project">← Mon espace</Link><span>{user.name || user.email}</span><Button variant="ghost" onClick={logout}>Déconnexion</Button></header>
-    <section className="pc-hero"><div className="pc-disc" aria-hidden="true"><span>PC</span></div><div><p className="pc-eyebrow">DEUX PERSONNES · UNE PLAYLIST</p><h1>Playlist<br /><em>Commune.</em></h1><p>Toi sur Apple Music, lui sur Spotify.<br />Vos découvertes au même endroit.</p></div></section>
-    <div className="pc-summary"><span><strong>{tracks.length}</strong> morceaux</span><span><strong>{needs}</strong> en attente</span><span className="pc-refresh">Synchro native toutes les {Math.round((data?.interval || 45000) / 1000)} s · dernier passage {date(data?.lastCycle)}</span></div>
-    <nav className="pc-tabs" aria-label="Playlist Commune">{[['playlist','Playlist'],['add','Ajouter'],['settings','Réglages']].map(([id, text]) => <Button variant={tab === id ? 'primary' : 'ghost'} key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>{text}</Button>)}</nav>
+    <section className="pc-hero"><div className="pc-disc" aria-hidden="true"><span>PC</span></div><div><p className="pc-eyebrow">DEUX PERSONNES · LA MÊME MUSIQUE</p><h1>Playlist<br /><em>Commune.</em></h1><p>Toi sur Apple Music, lui sur Spotify.<br />Vos découvertes au même endroit.</p></div></section>
+    <div className="pc-summary"><span><strong>{tab === 'queue' ? (data?.queue?.length || 0) : tracks.length}</strong> {tab === 'queue' ? 'titres dans la file' : 'morceaux'}</span><span><strong>{tab === 'queue' ? (data?.queue || []).filter(q => q.spotify_status !== 'sent' || q.apple_status !== 'sent').length : needs}</strong> en attente</span><span className="pc-refresh">Synchro native toutes les {Math.round((data?.interval || 45000) / 1000)} s · dernier passage {date(data?.lastCycle)}</span></div>
+    <nav className="pc-tabs" aria-label="Playlist Commune">{[['queue','File d’attente'],['add','Ajouter'],['playlist','Playlists'],['settings','Réglages']].map(([id, text]) => <Button variant={tab === id ? 'primary' : 'ghost'} key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>{text}</Button>)}</nav>
     {error && <div className="pc-alert" role="alert">{error}</div>}
     {notice && <div className="pc-notice" role="status">{notice}</div>}
     {!data && !error && <p>Chargement de la playlist…</p>}
     {data && <>
-      {!connected && <div className="pc-notice">La playlist attend ses deux connexions. <Button variant="ghost" onClick={() => setTab('settings')}>Ouvrir les réglages →</Button></div>}
+      {!connected && tab === 'playlist' && <div className="pc-notice">La playlist attend ses deux connexions. <Button variant="ghost" onClick={() => setTab('settings')}>Ouvrir les réglages →</Button></div>}
       {['spotify','apple'].map(p => data[p].error && <div className="pc-alert" key={p}>{names[p]} : {data[p].error === 'QUOTA_EXCEEDED' ? 'quota dépassé' : data[p].error === 'reconnect_or_permissions' ? 'connexion ou permissions à renouveler' : 'synchronisation en attente'}.{data[p].backoff?.until > Date.now() && ` Reprise au plus tôt à ${date(data[p].backoff.until)}.`} <Button variant="ghost" onClick={() => setTab('settings')}>Réglages</Button></div>)}
+      {tab === 'queue' && <PlaybackQueue data={data} busy={busy} act={act} music={music} musicError={musicError} receiving={receiving} setReceiving={setReceiving} openTrack={openTrack} onAdd={() => setTab('add')} onSettings={() => setTab('settings')} />}
       {tab === 'playlist' && <section aria-label="Morceaux partagés"><div className="pc-toolbar"><label><span className="pc-sr">Filtrer la playlist</span><Input type="search" placeholder="Filtrer vos morceaux…" value={filter} onChange={e => setFilter(e.target.value)} /></label><Button variant="ghost" disabled={busy} onClick={() => act(() => api.playlist.sync(), 'Synchronisation demandée.')}>Actualiser ↻</Button></div>
         {!tracks.length && <div className="pc-empty"><span aria-hidden="true">♫</span><h2>Le premier morceau, c’est vous.</h2><p>Ajoute une découverte ou liez vos playlists dans les réglages.</p><Button variant="ghost" className="pc-primary" onClick={() => setTab('add')}>Ajouter un morceau</Button></div>}
         <div className="pc-tracklist">{tracks.filter(t => `${t.title} ${t.artist}`.toLocaleLowerCase('fr').includes(filter.toLocaleLowerCase('fr'))).map(t => <article className="pc-track" key={t.id}>
-          <TrackInfo track={t} /><div className="pc-trackmeta"><small>Ajouté par {t.added_by_name || 'un membre'} · {new Date(t.added_at).toLocaleDateString('fr-FR')}</small><div className="pc-badges">{['spotify','apple'].map(p => <span key={p} className={`pc-badge ${t.platforms[p].status === 'confirmed' ? p : ''}`}>{names[p]} · {labels[t.platforms[p].status]}</span>)}</div></div>
+          <TrackInfo track={t} /><div className="pc-trackmeta"><small>Ajouté par {t.added_by_name || 'un membre'} · {new Date(t.added_at).toLocaleDateString('fr-FR')}</small><div className="pc-badges">{['spotify','apple'].map(p => <span key={p} className={`pc-badge ${t.platforms[p].status === 'confirmed' ? p : ''}`}>{names[p]} · {labels[t.platforms[p].status]}</span>)}</div><div className="pc-play-actions"><Button variant="ghost" disabled={busy} onClick={() => void queueTrack(t)}>＋ File d’attente</Button>{['spotify','apple'].map(p => <Button key={p} variant="ghost" disabled={p === 'spotify' ? !t.spotify_uri : !t.apple_catalog_id} onClick={() => openTrack(t, p)}>▶ Ouvrir {names[p]}</Button>)}</div></div>
           <Button variant="ghost" className="pc-remove" disabled={busy} onClick={async () => { if (await confirm(`Retirer « ${t.title} » de la playlist commune et de Spotify ? Le retrait dans Apple Music sera manuel.`)) void act(() => api.playlist.remove(t.id), 'Retrait enregistré. Apple Music doit être mis à jour manuellement.'); }}>Retirer</Button>
           {['spotify','apple'].map(p => <TrackResolution key={p} track={t} provider={p} busy={busy} act={act} />)}
-        </article>)}</div>
+      </article>)}</div>
         {retired.length > 0 && <aside className="pc-retired"><h2>Retraits à terminer</h2><p>La suppression reste mémorisée : ces morceaux ne seront pas réimportés depuis Apple Music.</p>{retired.map(t => <div key={t.id}><strong>{t.title}</strong> · {t.artist}<p>{labels[t.platforms.apple.status]} · Spotify : {labels[t.platforms.spotify.status]}</p></div>)}</aside>}
       </section>}
-      {tab === 'add' && <section><h2>Votre prochaine découverte</h2><p className="pc-muted">Recherche dans les deux catalogues. La correspondance et l’envoi démarrent dès l’ajout.</p><form className="pc-search" onSubmit={search}><label className="pc-sr" htmlFor="pc-query">Titre ou artiste</label><Input id="pc-query" type="search" placeholder="Un titre, un artiste…" minLength={2} maxLength={150} value={query} onChange={e => setQuery(e.target.value)} required /><Button variant="ghost" type="submit" className="pc-primary" disabled={busy}>{busy ? 'Recherche…' : 'Rechercher'}</Button></form>
+      {tab === 'add' && <section><h2>Votre prochaine découverte</h2><p className="pc-muted">Recherche dans les deux catalogues. Choisis la file des lecteurs ou la playlist à conserver.</p><form className="pc-search" onSubmit={search}><label className="pc-sr" htmlFor="pc-query">Titre ou artiste</label><Input id="pc-query" type="search" placeholder="Un titre, un artiste…" minLength={2} maxLength={150} value={query} onChange={e => setQuery(e.target.value)} required /><Button variant="ghost" type="submit" className="pc-primary" disabled={busy}>{busy ? 'Recherche…' : 'Rechercher'}</Button></form>
         {results?.length === 0 && <p>Aucun morceau trouvé. Essaie un titre ou un artiste différent.</p>}
-        <div className="pc-tracklist">{results?.map(t => <article key={`${t.provider}:${t.remote_id}`} className="pc-track pc-result"><TrackInfo track={t} /><span className="pc-muted">{names[t.provider]}</span><Button variant="ghost" disabled={busy} className="pc-primary" onClick={() => act(() => api.playlist.add(t.provider, t.remote_id), 'Morceau enregistré. Synchronisation en cours.')}>+ Ajouter</Button></article>)}</div>
+        <div className="pc-tracklist">{results?.map(t => <article key={`${t.provider}:${t.remote_id}`} className="pc-track pc-result"><TrackInfo track={t} /><span className="pc-muted">{names[t.provider]}</span><div className="pc-play-actions"><Button variant="primary" disabled={busy} onClick={() => void queueTrack(t, true)}>＋ File d’attente</Button><Button variant="ghost" disabled={busy} onClick={() => act(() => api.playlist.add(t.provider, t.remote_id), 'Morceau enregistré. Synchronisation en cours.')}>＋ Playlist</Button></div></article>)}</div>
       </section>}
-      {tab === 'settings' && <section><h2>Chacun son compte. La même musique.</h2><p>Tu règles uniquement ton service. Ton ami gère le sien depuis sa propre session.</p>{data.setup?.canInvite && <PlaylistInvitation busy={busy} act={act} />}<div className="pc-settings">{['spotify','apple'].map(p => <article className="pc-service" key={p}><span className={`pc-dot ${p}`} /><h3>{names[p]}</h3><p>{data[p].connected ? 'Compte connecté' : 'Compte à connecter'} · {data[p].playlistId ? 'Playlist liée' : 'Playlist à choisir'}</p>
+      {tab === 'settings' && <section><h2>Chacun son compte. La même musique.</h2><p>Tu règles uniquement ton service. Ton ami gère le sien depuis sa propre session.</p>{data.setup?.canInvite && <PlaylistInvitation busy={busy} act={act} />}<div className="pc-settings">{['spotify','apple'].map(p => <article className="pc-service" key={p}><span className={`pc-dot ${p}`} /><h3>{names[p]}</h3><p>{data[p].connected ? 'Compte connecté' : 'Compte à connecter'} · {data[p].playlistId ? 'Playlist liée' : 'Playlist facultative'}</p>
         {data[p].canConfigure ? <>
           <ServiceCredentials key={`${p}:${data[p].settingsRevision}`} provider={p} configured={data[p].configured} connected={data[p].connected} callback={data.setup?.callback} busy={busy} act={act} />
           <Button variant="ghost" disabled={busy || !data[p].configured || (p === 'apple' && !music)} onClick={() => act(async () => {
@@ -136,7 +176,7 @@ function PlaylistContent() {
             <Button variant="ghost" className="pc-primary" disabled={busy} onClick={() => act(() => api.playlist.bind(p, { create: true }), 'Playlist Commune créée et liée.')}>Créer « Playlist Commune »</Button></div>}
         </> : <p className="pc-muted">L’autre membre gère cette connexion depuis son compte du site.</p>}
         {data[p].playlistId && <p className="pc-muted">Dernière lecture : {date(data[p].lastRead)}</p>}
-      </article>)}</div><div className="pc-footnote"><h3>À savoir</h3><p>Les ajouts se synchronisent dans les deux sens. Les retraits depuis ce site ou Spotify restent à effectuer manuellement dans Apple Music. Un retrait fait uniquement dans Apple Music est signalé, sans supprimer le morceau commun.</p><p>Le délai inclut le passage du serveur et la propagation propre à chaque service. L’ordre des morceaux n’est pas synchronisé.</p></div></section>}
+      </article>)}</div><div className="pc-footnote"><h3>À savoir</h3><p>Les ajouts se synchronisent dans les deux sens. Les retraits depuis ce site ou Spotify restent à effectuer manuellement dans Apple Music. Un retrait fait uniquement dans Apple Music est signalé, sans supprimer le morceau commun.</p><p>La file commune fonctionne sans playlist liée. Spotify reçoit sur son appareil actif (Premium et autorisation de lecture nécessaires). Apple Music reçoit dans cette page après activation. L’application Apple Music PC ne peut pas être pilotée à distance.</p><p>Le délai inclut le passage du serveur et la propagation propre à chaque service. L’ordre des morceaux n’est pas synchronisé.</p></div></section>}
     </>}
   </main>;
 }

@@ -24,13 +24,13 @@ git apply --check /chemin/vers/playlist-commune.patch
 git apply /chemin/vers/playlist-commune.patch
 npm ci
 npm run build
-node --test test/playlist.test.js test/playlist-deployment.test.js
+node --test --test-concurrency=1 test/playlist.test.js test/playlist-queue.test.js test/playlist-deployment.test.js
 git add .
 git commit -m "Ajouter Playlist Commune pour Apple Music et Spotify"
 git push -u origin feat/playlist-commune
 ```
 
-Le patch part du commit `c57232d`. Si `git apply --check` signale un conflit,
+Le patch part du commit `627759e`. Si `git apply --check` signale un conflit,
 réconcilier les changements avec les nouvelles modifications du site avant de
 continuer. Après revue et fusion dans `main`, reprendre les étapes ci-dessous.
 L'archive fournit aussi tous les fichiers pour consulter ou reprendre le travail.
@@ -93,7 +93,9 @@ connexions ; le code d'invitation ne permet pas de remplacer un membre.
   Commune » ou sélectionne une playlist dont il est propriétaire. Une playlist liée
   ne peut pas être remplacée accidentellement depuis l'interface.
 - Scopes demandés : `playlist-read-private`, `playlist-modify-private`,
-  `playlist-modify-public`. Aucun accès au lecteur n'est nécessaire.
+  `playlist-modify-public`, `user-modify-playback-state`. Le bouton « Lire sur
+  Spotify » démarre le morceau sur l'appareil Spotify actif du compte Premium ;
+  si aucun appareil n'est actif, Spotify refuse la commande et l'interface l'explique.
 
 ## Apple Music : toi
 
@@ -122,6 +124,11 @@ réutilisent `users`. Aucun mot de passe supplémentaire.
 
 - Ajout web : enregistrement puis lancement immédiat d'un cycle serveur. L'interface
   relit l'état toutes les 5 secondes lorsqu'elle est visible et revalide la session.
+- Lecture directe : Spotify reçoit une commande de lecture sur son appareil actif.
+  Apple Music est lu dans MusicKit JS après le clic de l'utilisateur, avec son compte
+  Apple connecté ; un site web ne peut pas démarrer silencieusement l'application
+  Apple Music sur un autre appareil. Les deux boutons sont indépendants et leur
+  démarrage simultané n'est pas garanti.
 - Ajout natif : lecture toutes les 45 secondes par défaut (minimum 30 configurable),
   plus le délai de propagation des services et celui d'éventuels quotas.
 - Spotify : lecture des items uniquement si `snapshot_id` change. Pagination complète
@@ -181,6 +188,9 @@ les statuts API ni dans les logs du module.
 - [Suppression Spotify](https://developer.spotify.com/documentation/web-api/reference/remove-items-playlist) :
   corps `{ "items": [{ "uri": "spotify:track:…" }] }`.
 - [PKCE Spotify](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow).
+- [Lecture Spotify](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback)
+  et [file de lecture](https://developer.spotify.com/documentation/web-api/reference/add-to-queue).
+- [Contrôles MusicKit JS](https://developer.apple.com/musickit/web/).
 - [JWT développeur Apple](https://developer.apple.com/documentation/applemusicapi/generating-developer-tokens).
 - [ISRC Apple](https://developer.apple.com/documentation/applemusicapi/get-multiple-catalog-songs-by-isrc).
 - [Relation d'une playlist Apple](https://developer.apple.com/documentation/applemusicapi/fetch-a-relationship-on-this-resource-by-name-5l22w).
@@ -204,7 +214,7 @@ Les domaines de MusicKit et des pochettes sont autorisés par Helmet ; aucune po
 
 ### Résultats de la validation locale
 
-- 24 tests réussis : `node --test test/playlist.test.js test/playlist-deployment.test.js`.
+- 34 tests réussis : `node --test --test-concurrency=1 test/playlist.test.js test/playlist-queue.test.js test/playlist-deployment.test.js`.
   Le serveur réel démarre en production avec et sans configuration musicale ; la
   session existante, la route SPA, la migration répétée, la sauvegarde SQLite,
   l'invitation et la séparation des réglages sont contrôlées. Build Vite réussi ;
@@ -222,3 +232,61 @@ Les domaines de MusicKit et des pochettes sont autorisés par Helmet ; aucune po
   observées sur le VPS. Relancer `npm audit` après `npm ci` puis `npm prune --omit=dev`;
   les éventuelles alertes transitives de l'outillage ne doivent pas conduire à un
   `npm audit fix` aveugle qui changerait le framework ou le lockfile sans revue.
+
+
+## File commune de lecture (20 septembre 2026)
+
+L’onglet **File d’attente** s’ouvre par défaut. Dans **Ajouter**, « File d’attente »
+enregistre le titre uniquement dans `playback_queue` ; « Playlist » conserve
+l’ancien fonctionnement de synchronisation des bibliothèques. Aucun choix ou création
+de playlist n’est nécessaire pour la file. Vos comptes et clés restent individuels.
+
+1. Chacun connecte son service depuis ses réglages. Le membre Spotify doit **reconnecter
+   Spotify une fois** pour accepter `user-modify-playback-state` ajouté à l’autorisation.
+2. Spotify Premium : ouvrir l’application et lancer un titre pour activer le PC.
+   Les ajouts arrivent dans la file de l’appareil actif. « Lire sur mon Spotify »
+   demande immédiatement ce titre ; cette commande interrompt la lecture actuelle.
+3. Apple Music : ouvrir cette page, « Activer la réception ici », puis « Lire ma file ».
+   MusicKit joue dans le navigateur. L’application Apple Music native Windows n’offre
+   pas cette commande distante. Les boutons Ouvrir donnent accès au titre, sans
+   garantie de démarrage automatique ni d’ajout à la file native.
+4. Chaque ajout est envoyé dans l’ordre ; une erreur bloque les suivants sur le service
+   concerné. L’autre service peut continuer. Choisir une version si le matching est
+   incertain, ou corriger la connexion puis réessayer.
+5. La liste suit les envois, pas les fins de lecture. Masquer un titre annule uniquement
+   ses envois encore en attente : ceux déjà reçus restent dans les lecteurs. Pour
+   écouter à nouveau un titre terminé, le masquer puis l’ajouter à nouveau explicitement.
+
+SQLite conserve la file après redémarrage. Aucun ajout acquitté n’est automatiquement
+renvoyé après rechargement du navigateur. Les titres Apple déjà reçus peuvent donc
+avoir disparu du lecteur après fermeture : les rajouter explicitement si nécessaire.
+Un titre lancé directement sur Spotify peut rester aussi dans sa file préexistante.
+La synchronisation à la seconde près, les suppressions distantes de la file et le
+réordonnancement distant ne sont pas implémentés.
+
+Côté serveur, les écritures Spotify partagent le verrou du moteur. Un `sending`
+interrompu devient `uncertain`. Une réception Apple obtient une réservation à usage
+unique de 60 secondes, puis confirme le résultat ; une confirmation perdue ne provoque
+pas de second ajout. Un seul navigateur peut recevoir à la fois (bail de 90 secondes).
+Après suspension ou fermeture d’un onglet, attendre 90 secondes avant de recevoir sur
+un autre. Les requêtes du navigateur revalident la session et les droits du propriétaire.
+Les échecs réseau ambigus nécessitent une vérification humaine avant relance.
+
+La réception Apple vérifie les nouveautés toutes les 4 secondes tant que la page reste
+ouverte ; le navigateur peut ralentir un onglet masqué ou un iPhone verrouillé. Spotify
+reçoit immédiatement les ajouts web, puis les quotas sont retentés au rythme du moteur.
+La table est créée par la migration additive existante et incluse dans le backup SQLite.
+Les commandes VPS habituelles restent inchangées.
+
+### Validation de cette mise à jour
+
+- 34 tests playlist/file/déploiement et 24 tests de sécurité passent.
+- Build Vite réussi ; lint sans erreur (avertissements du dépôt toujours présents).
+- Correction `qs` 6.16.0 via override, car Express épingle encore la version précédente.
+  `fast-uri`, `js-yaml` et `nanoid` mis à jour dans le lockfile pour l’outillage.
+  Audit npm complet : **0 vulnérabilité** au 20 septembre 2026.
+- Comptes musicaux réels et VPS non testés. Les tests des API musicales sont simulés.
+
+Conserver la clé AES existante en cas de migration depuis `.env`. Les anciennes clés
+musicales ne doivent être retirées de `.env` qu’après avoir été enregistrées dans les
+réglages web. La migration des membres ne copie pas ces clés automatiquement.

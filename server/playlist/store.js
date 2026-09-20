@@ -1,3 +1,4 @@
+import { migratePlaybackQueue } from './queue.js';
 import crypto from 'node:crypto';
 
 export function canViewPlaylist(user, env = process.env, db) {
@@ -54,6 +55,7 @@ export function migratePlaylist(db) {
       PRIMARY KEY(track_id, provider)
     );
   `);
+  migratePlaybackQueue(db);
 }
 
 export function createStore(db, keyHex) {

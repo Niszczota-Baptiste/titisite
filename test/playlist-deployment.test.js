@@ -54,6 +54,7 @@ test('production uses existing sessions, migrates and backs up the shared databa
   const db = new Database(path.join(server.workdir, 'data.sqlite'));
   try {
     db.prepare("INSERT INTO shared_tracks(title,artist,added_at) VALUES ('Migration test','Fixture',1)").run();
+    db.prepare('INSERT INTO playback_queue(track,added_at) VALUES (?,1)').run(JSON.stringify({title:'Queue test',apple_catalog_id:'123'}));
     migratePlaylist(db);
     migratePlaylist(db);
     assert.equal(db.prepare('SELECT count(*) AS n FROM shared_tracks').get().n, 1);
@@ -62,6 +63,7 @@ test('production uses existing sessions, migrates and backs up the shared databa
     const backup = new Database(backupPath, { readonly: true });
     try {
       assert.equal(backup.prepare('SELECT title FROM shared_tracks').get().title, 'Migration test');
+      assert.equal(JSON.parse(backup.prepare('SELECT track FROM playback_queue').get().track).title, 'Queue test');
       assert.ok(backup.prepare('SELECT count(*) AS n FROM users').get().n >= 2);
     } finally { backup.close(); }
   } finally { db.close(); }

@@ -85,8 +85,8 @@ app.use(helmet({
       // OSM raster tiles are served from {a,b,c}.tile.openstreetmap.org for the
       // /stairs map. Loaded as <img> by Leaflet, so they need imgSrc not connectSrc.
       imgSrc: ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org', 'https://tile.openstreetmap.org', 'https://i.scdn.co', 'https://*.mzstatic.com'],
-      mediaSrc: ["'self'"],
-      connectSrc: ["'self'", 'https://*.music.apple.com', 'https://*.itunes.apple.com', 'https://appleid.apple.com'],
+      mediaSrc: ["'self'", "blob:", "https://*.itunes.apple.com", "https://*.music.apple.com", "https://*.mzstatic.com"],
+      connectSrc: ["'self'", 'https://*.mzstatic.com', 'https://*.music.apple.com', 'https://*.itunes.apple.com', 'https://appleid.apple.com'],
       frameSrc: ['https://authorize.music.apple.com', 'https://appleid.apple.com'],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],

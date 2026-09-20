@@ -166,6 +166,22 @@
   max-width:430px}
 .pc-toolbar>button{
   margin-left:auto}
+.pc-queue{
+  display:flex;
+  gap:18px;
+  align-items:flex-start;
+  justify-content:space-between;
+  padding:16px;
+  margin-bottom:20px;
+  border:1px solid rgba(201,168,232,0.24);
+  border-radius:10px;
+  background:rgba(201,168,232,0.06)}
+.pc-queue h2{font-size:17px}
+.pc-queue p{font-size:12px;color:var(--pc-muted);margin:4px 0 0}
+.pc-queue-list{display:grid;gap:8px;min-width:min(100%,420px)}
+.pc-queue-item{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--pc-line);font-size:12px}
+.pc-queue-item:last-child{border-bottom:0}
+.pc-queue-item small{display:block;color:var(--pc-muted);font-size:10px;margin-top:2px}
 .pc-track{
   display:grid;
   grid-template-columns:minmax(250px,1fr) minmax(200px,1fr) auto;
@@ -205,6 +221,15 @@
   flex-wrap:wrap;
   gap:5px;
   margin-top:8px}
+.pc-play-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:10px}
+.pc-play-actions button{
+  min-height:34px;
+  padding:7px 10px;
+  font-size:11px}
 .pc-badge{
   font-size:9px;
   border:1px solid rgba(201,168,232,0.30);
@@ -412,6 +437,8 @@
 .pc-track{
   grid-template-columns:1fr auto;
   gap:10px}
+.pc-queue{display:block}
+.pc-queue-list{min-width:0;margin-top:12px}
 .pc-trackmeta{
   grid-row:2;
   grid-column:1/-1;
@@ -449,3 +476,15 @@
 .pc-empty h2{
   font-size:20px}
 }
+
+/* Shared playback uses the same colors and controls as the site. */
+.pc-playback-list{list-style:none;padding:0;margin:24px 0;display:grid;gap:18px}
+.pc-playback-item,.pc-player{border:1px solid var(--pc-line);border-radius:12px;padding:20px;min-width:0}
+.pc-playback-item .pc-play-actions{margin:16px 0}
+.pc-playback-item .pc-trackinfo{min-width:0}
+.pc-playback-item h3,.pc-queue-status{overflow-wrap:anywhere}
+.pc-queue-status{padding:10px 0;font-size:13px}
+.pc-queue-status p,.pc-player p{color:var(--pc-muted);line-height:1.6}
+.pc-play-actions button{min-height:44px}
+.pc-tabs{flex-wrap:wrap}
+@media(max-width:720px){.pc-tabs{gap:6px;justify-content:flex-start}.pc-tabs button{padding:10px;font-size:12px}.pc-result .pc-play-actions{grid-column:1/-1}.pc-playback-item,.pc-player{padding:14px}.pc-playback-item .pc-play-actions{display:grid;grid-template-columns:1fr}}

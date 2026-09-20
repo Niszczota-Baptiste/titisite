@@ -2,7 +2,7 @@ import { choose, rank } from './matching.js';
 
 const providers = ['spotify', 'apple'];
 const remoteId = (t, p) => p === 'spotify' ? t.spotify_uri : t.apple_catalog_id || t.library_id;
-export function createEngine(store, adapters, config) {
+export function createEngine(store, adapters, config, afterCycle = async () => {}) {
   let queue = Promise.resolve(), running = null, timer, stopped = false;
   const exclusive = fn => { const work = queue.then(fn); queue = work.catch(() => {}); return work; };
   const adapter = p => p === 'spotify' ? adapters.spotify : adapters.apple;
@@ -87,6 +87,7 @@ export function createEngine(store, adapters, config) {
         } catch (e) { errorState(p, e); }
       }
     }
+    await afterCycle();
     store.set('lastCycle', Date.now());
   }
   const sync = () => {

@@ -152,6 +152,15 @@ test('new 2026 Spotify endpoints, nested item, snapshot optimization and paginat
   await api.spotify.add(spotifySong); await api.spotify.remove(spotifySong);
   assert.ok(calls[1].url.endsWith('/items')); assert.deepEqual(JSON.parse(calls[2].options.body),{items:[{uri:spotifySong.spotify_uri}]});
 });
+test('Spotify direct playback targets the active Premium device', async t => {
+  const { store } = fixture(t); const calls = [];
+  const api = createProviders(store, config, async (url, options) => {
+    calls.push({ url, options }); return new Response(null, { status: 204 });
+  });
+  await api.spotify.play(spotifySong);
+  assert.equal(calls[0].url, 'https://api.spotify.com/v1/me/player/play');
+  assert.deepEqual(JSON.parse(calls[0].options.body), { uris: [spotifySong.spotify_uri], position_ms: 0 });
+});
 test('incomplete or changing Spotify snapshots are rejected', async t => {
   const { store } = fixture(t); let n = 0;
   const api = createProviders(store,config, async url => Response.json(url.includes('/items') ? {items:[],next:null} : {snapshot_id:String(n++)}));
@@ -223,6 +232,13 @@ test('router excludes other site members, restricts connection ownership, reject
   assert.equal((await visitorStatus.json()).onboarding, true);
   assert.equal((await fetch(`${base}/sync`,{method:'POST',headers:{'test-user':'1'}})).status,403);
   const headers = {'test-user':'1',origin:config.origin,'X-Playlist-Request':'1','Content-Type':'application/json'};
+  // Queue mutations reuse the site's session, membership, CSRF and service ownership.
+  assert.equal((await fetch(`${base}/queue`,{headers:{'test-user':'3'}})).status,403);
+  assert.equal((await fetch(`${base}/queue`,{method:'POST',headers:{'test-user':'1'},body:'{}'})).status,403);
+  assert.equal((await fetch(`${base}/queue/apple/claim`,{method:'POST',headers:{...headers,'test-user':'2'},body:JSON.stringify({receiver:crypto.randomUUID()})})).status,403);
+  assert.equal((await fetch(`${base}/queue/1/play`,{method:'POST',headers,body:'{}'})).status,403);
+  assert.equal((await fetch(`${base}/queue/1/retry`,{method:'POST',headers,body:JSON.stringify({provider:'spotify',confirmAbsent:true})})).status,403);
+  assert.equal((await fetch(`${base}/queue`,{method:'POST',headers,body:JSON.stringify({provider:'constructor',id:'x'})})).status,400);
   assert.equal((await fetch(`${base}/spotify/connect`,{method:'POST',headers,body:'{}'})).status,403);
   const response = await fetch(`${base}/spotify/connect`,{method:'POST',headers:{...headers,'test-user':'2'},body:'{}'});
   const cookie = response.headers.get('set-cookie').split(';')[0]; assert.match(response.headers.get('set-cookie'),/SameSite=Lax/i);

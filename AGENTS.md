@@ -11,16 +11,19 @@ Lire aussi `CLAUDE.md` pour les conventions générales du site et
   playlist depuis `/playlist`, choisit son service et génère une invitation privée.
   Le second compte existant la rejoint avec ce code. Les membres sont stockés dans
   `playlist_members` ; chacun configure ses propres clés depuis sa session.
-- Interface française responsive : Playlist, Ajouter, Réglages. Palette du site
+- Interface française responsive : File d’attente, Ajouter, Playlists, Réglages. Palette du site
   (fond `#050511`, texte `#ede8f8`, accent `ACC` violet), composants `Button`/`Input`,
   `useConfirm`, `usePageMeta`, API centralisée sous `api.playlist`.
 - Migration additive appelée par `server/db.js#migrate` : `shared_tracks`,
-  `playlist_aliases`, `playlist_deliveries`, `playlist_tokens`, `playlist_state`.
+  `playlist_aliases`, `playlist_deliveries`, `playlist_tokens`, `playlist_state`,
+  `playlist_members`, `playback_queue`.
   Le store est initialisé après les migrations, avant l'écoute HTTP.
 - Spotify : Authorization Code + PKCE, refresh serveur, endpoints 2026 `/items`,
-  `/me/playlists`, recherche limitée à 10, identité stable `account_id`.
+  `/me/playlists`, recherche limitée à 10, identité stable `account_id`, lecture
+  directe `/me/player/play` avec `user-modify-playback-state`.
 - Apple : JWT ES256 signé serveur, MusicKit JS `authorize()` navigateur,
-  Music User Token chiffré côté serveur, catalogue français et relation `catalog`.
+  Music User Token chiffré côté serveur, catalogue français, relation `catalog` et
+  lecture directe dans le navigateur après clic utilisateur.
 - Secrets AES-256-GCM avec clé dédiée générée automatiquement à côté de SQLite
   (`data.sqlite.playlist.key`) ; la clé `.p8` Apple est chiffrée en base puis exclue de Git.
 - Synchro serveur 45 s configurable ; interface rafraîchie toutes les 5 s quand
@@ -65,7 +68,7 @@ reporter cette règle sur une installation dont la configuration a déjà été 
 
 ## Vérifications et limites
 
-`node --test test/playlist.test.js test/playlist-deployment.test.js` (24 tests, dont
+`node --test --test-concurrency=1 test/playlist.test.js test/playlist-queue.test.js test/playlist-deployment.test.js` (34 tests, dont
 l'activation, l'invitation et la séparation des réglages),
 `npm run build`, lint de sécurité et contrôle
 de l'interface à 390 px. La suite du site a quatre échecs locaux reproduits sur la
@@ -81,3 +84,20 @@ accès : la validation disponible utilise une base locale et des API simulées.
 Avant toute publication, vérifier le HEAD distant et préserver les commits récents.
 Ne pas modifier le contenu CV/portfolio de `src/data` ni fusionner les changements
 sans rapport. Aucun secret ou fichier de démonstration local ne doit être committé.
+
+## File de lecture — suite du travail
+
+- `server/playlist/queue.js` stocke des titres autonomes ; ne jamais les ingérer dans
+  `shared_tracks` sauf clic explicite sur Playlist. Déduplication des lignes actives.
+- Spotify POST `/me/player/queue`, PUT `/me/player/play`, scope de lecture à renouveler.
+  Sérialisation, FIFO, backoff et aucun renvoi automatique d’un résultat incertain.
+- Apple : réception volontaire dans `PlaybackQueue.jsx` / `playlistReceiver.js`,
+  MusicKit setQueue puis playLater, commandes explicites Lire/Pause. Pas de contrôle
+  distant de l’application native Windows. Les lecteurs ne sont pas synchronisés.
+- Réservations Apple 60 s, bail navigateur 90 s ; ne jamais publier les jetons de
+  réservation dans /status. Autorisation réservée au propriétaire, contrôle CSRF.
+- Masquer annule les envois restants, sans effacer des files distantes. Les statuts
+  sent ne prouvent pas que le titre a été écouté. Aucune suppression à la fin automatique.
+- 34 tests ciblés + 24 tests sécurité ; audit npm complet zéro vulnérabilité après
+  override qs 6.16.0 et mises à jour transitives fast-uri/js-yaml/nanoid. Conserver
+  le lockfile et revalider à chaque mise à jour. Voir le guide pour la recette réelle.

@@ -59,5 +59,8 @@
   "lint-staged": {
     "*.{js,jsx}": "eslint",
     "*.{js,jsx,json,yml,yaml,toml}": "secretlint --maskSecrets"
+  },
+  "overrides": {
+    "qs": "6.16.0"
   }
 }

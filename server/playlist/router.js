@@ -1,3 +1,4 @@
+import { createPlaybackQueue } from './queue.js';
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -9,7 +10,8 @@ import { createEngine } from './engine.js';
 export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db), fetcher) {
   const store = createStore(db, config.key), settings = createSettings(store, config);
   const api = createProviders(store, config, fetcher);
-  const engine = createEngine(store, api, config), router = Router();
+  const engine = createEngine(store, api, config, () => playback.flushInside()), router = Router();
+  const playback = createPlaybackQueue(store, api, p => settings.owner(p), engine.exclusive);
   const wrap = fn => (req, res, next) => Promise.resolve().then(() => fn(req, res)).catch(next);
   const provider = req => {
     if (!['spotify', 'apple'].includes(req.params.provider)) throw new Error('Service inconnu.');
@@ -55,7 +57,7 @@ export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db
       canConfigure: req.user.id === settings.owner(p),
       settingsRevision: store.state(`${p}:settingsRevision`, 0),
       configured: p === 'spotify' ? Boolean(config.clientId) : Boolean(config.privateKey && config.keyId && config.teamId) });
-    res.json({ setup: settings.summary(req.user), tracks: store.list(), spotify: status('spotify'), apple: status('apple'), interval: config.interval, lastCycle: store.state('lastCycle') });
+    res.json({ setup: settings.summary(req.user), tracks: store.list(), queue: playback.list(), spotify: status('spotify'), apple: status('apple'), interval: config.interval, lastCycle: store.state('lastCycle') });
   });
   router.post('/setup', wrap(async (req, res) => {
     await engine.exclusive(() => settings.initialize(req.user, req.body?.provider));
@@ -70,6 +72,49 @@ export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db
   router.use((req, res, next) => settings.member(req.user.id) ? next() : res.status(403).json({ error: 'Cette playlist est réservée aux deux membres invités.' }));
   router.post('/invite', wrap(async (req, res) => {
     res.json(await engine.exclusive(() => settings.invite(req.user)));
+  }));
+  router.get('/queue', (req, res) => res.json({ queue: playback.list() }));
+  router.post('/queue', wrap(async (req, res) => {
+    const { provider: p, id } = req.body || {};
+    if (p ? !['spotify','apple'].includes(p) || !validId(id) : !Number.isSafeInteger(id)) return res.status(400).json({ error: 'Morceau invalide.' });
+    res.status(202).json({ item: await playback.add({ provider: p, id }, req.user.id) });
+  }));
+  router.post('/queue/apple/claim', wrap(async (req, res) => {
+    if (!requireOwner(req, res, 'apple')) return;
+    if (typeof req.body?.receiver !== 'string' || !/^[a-f0-9-]{36}$/.test(req.body.receiver)) return res.status(400).json({ error: 'Lecteur invalide.' });
+    res.json({ delivery: await playback.claimApple(req.body.receiver) });
+  }));
+  router.post('/queue/:id/apple', wrap(async (req, res) => {
+    if (!requireOwner(req, res, 'apple')) return;
+    if (typeof req.body?.claim !== 'string' || !/^[a-f0-9]{48}$/.test(req.body.claim) || typeof req.body?.delivered !== 'boolean') return res.status(400).json({ error: 'Confirmation invalide.' });
+    await playback.acknowledgeApple(Number(req.params.id), req.body.claim, req.body.delivered);
+    res.json({ ok: true });
+  }));
+  router.post('/queue/:id/retry', wrap(async (req, res) => {
+    const p = req.body?.provider;
+    if (!['spotify','apple'].includes(p)) return res.status(400).json({ error: 'Service inconnu.' });
+    if (!requireOwner(req, res, p)) return;
+    await playback.retry(Number(req.params.id), p, req.body?.confirmAbsent);
+    void playback.flush().catch(() => {});
+    res.json({ ok: true });
+  }));
+  router.post('/queue/:id/:provider/match', wrap(async (req, res) => {
+    const p = provider(req);
+    if (!requireOwner(req, res, p)) return;
+    if (!validId(req.body?.id)) return res.status(400).json({ error: 'Candidat invalide.' });
+    await playback.match(Number(req.params.id), p, req.body.id);
+    void playback.flush().catch(() => {});
+    res.json({ ok: true });
+  }));
+  router.post('/queue/:id/play', wrap(async (req, res) => {
+    if (!requireOwner(req, res, 'spotify')) return;
+    await playback.playSpotify(Number(req.params.id));
+    res.json({ ok: true });
+  }));
+  router.delete('/queue/:id', wrap(async (req, res) => {
+    await playback.archive(Number(req.params.id));
+    void playback.flush().catch(() => {});
+    res.json({ ok: true });
   }));
   router.put('/:provider/settings', wrap(async (req, res) => {
     const p = provider(req); if (!requireOwner(req, res, p)) return;
@@ -91,6 +136,18 @@ export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db
   }));
   // Light polling revalidates the existing session on every request (including logout/revocation).
   router.post('/sync', (_req, res) => { void engine.sync().catch(() => {}); res.status(202).json({ ok: true }); });
+  router.post('/play/:provider/:id', wrap(async (req, res) => {
+    const p = provider(req);
+    if (!requireOwner(req, res, p)) return;
+    const id = Number(req.params.id), track = Number.isSafeInteger(id) ? store.get(id) : null;
+    if (!track || track.deleted_at) return res.status(404).json({ error: 'Morceau introuvable.' });
+    if (p === 'spotify') {
+      await engine.exclusive(() => api.spotify.play(track));
+      return res.status(202).json({ ok: true, provider: p });
+    }
+    if (!track.apple_catalog_id) return res.status(409).json({ error: 'Ce morceau n’a pas encore de correspondance Apple Music.' });
+    res.json({ ok: true, provider: p, catalogId: track.apple_catalog_id });
+  }));
   router.post('/spotify/connect', wrap(async (req, res) => {
     if (!requireOwner(req, res, 'spotify')) return;
     const flow = api.beginOAuth();
@@ -169,7 +226,7 @@ export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db
     void engine.sync().catch(() => {}); res.json({ ok: true });
   }));
   router.use((err, _req, res, _next) => {
-    const error = err.reason ? ({ not_connected: 'Connecte ce service dans Réglages.', configuration_missing: 'Clés du service absentes du serveur.', QUOTA_EXCEEDED: 'Quota Spotify dépassé. Synchronisation différée.', rate_limited: 'Limite du service atteinte. Réessaie plus tard.', reconnect_or_permissions: 'Reconnecte le service et vérifie ses autorisations.', playlist_missing: 'Choisis une playlist dans Réglages.', network_error: 'Service injoignable. Vérifie le résultat avant de réessayer.' }[err.reason] || 'Le service musical est indisponible.') : (err.code?.startsWith('SQLITE') ? 'Cette correspondance existe déjà dans la playlist.' : err.message);
+    const error = err.reason ? ({ not_connected: 'Connecte ce service dans Réglages.', configuration_missing: 'Clés du service absentes du serveur.', QUOTA_EXCEEDED: 'Quota Spotify dépassé. Synchronisation différée.', rate_limited: 'Limite du service atteinte. Réessaie plus tard.', reconnect_or_permissions: 'Reconnecte le service et vérifie ses autorisations.', no_active_device: 'Aucun appareil Spotify actif. Ouvre Spotify sur l’appareil où tu veux écouter, puis réessaie.', premium_required: 'La lecture distante Spotify nécessite Spotify Premium.', playlist_missing: 'Choisis une playlist dans Réglages.', track_unavailable: 'Ce morceau n’est pas encore disponible sur ce service.', network_error: 'Service injoignable. Vérifie le résultat avant de réessayer.' }[err.reason] || 'Le service musical est indisponible.') : (err.code?.startsWith('SQLITE') ? 'Cette correspondance existe déjà dans la playlist.' : err.message);
     res.status(err.status === 429 ? 429 : 400).json({ error });
   });
   return { router, start: engine.start, stop: engine.stop };
