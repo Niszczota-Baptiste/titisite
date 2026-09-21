@@ -19,7 +19,20 @@ export function PlaybackQueue({ data, busy, act, music, receiving, setReceiving,
     <h2>À écouter ensemble</h2>
     <p>Ajoutez des titres à vos lecteurs, sans créer de playlist. Chacun garde ses commandes de lecture.</p>
     {!(appleMine ? data.apple.connected : data.spotify.connected) && <div className="pc-notice">Connecte ton service pour recevoir les titres. Les clés et leurs instructions sont dans Réglages. <Button variant="ghost" onClick={onSettings}>Connecter mon service</Button></div>}
-    <div className="pc-notice"><p>Spotify : ouvre l’application sur ton PC et lance un premier titre pour activer l’appareil. Apple Music : garde cette page ouverte et active la réception ci-dessous. Les deux lecteurs avancent indépendamment.</p></div>
+    <aside className="pc-notice" aria-labelledby="pc-spotify-help"><h3 id="pc-spotify-help">Comment écouter sur Spotify ?</h3>
+      <ol>
+        <li>Le membre Spotify connecte son compte Premium dans Réglages, depuis sa propre session sur le site.</li>
+        <li>Il ouvre Spotify sur le PC ou le téléphone où il veut écouter et lance un premier morceau pour rendre cet appareil actif.</li>
+        <li>Vous ajoutez des titres avec « ＋ File d’attente ». Une fois envoyés, ils rejoignent la file Spotify et se jouent à leur tour tant que la lecture continue.</li>
+      </ol>
+      <p>Ajouter un titre ne démarre pas une lecture en pause. Pour écouter immédiatement un morceau précis, le membre Spotify clique sur « Lire sur mon Spotify » depuis sa session : cela remplace le morceau en cours. « Ouvrir Spotify » ouvre seulement le lien du titre ; cela ne confirme pas son ajout à la file.</p>
+      <details><summary>Un titre reste « Envoi à vérifier » ou « En attente » ?</summary>
+        <p>« Envoi à vérifier » signifie que le site ne sait pas si Spotify a reçu le titre. Les titres suivants attendent pour conserver l’ordre et éviter un double envoi.</p>
+        <p>Le membre Spotify vérifie le morceau en cours et la file dans son application. Si le titre est absent et n’a pas déjà été joué, il peut cliquer sur « Vérifier puis réessayer » depuis sa session sur le site.</p>
+        <p>Si le titre est déjà présent ou a déjà été joué, ne le renvoyez pas. « Masquer de la file commune » permet de débloquer la suite : cela conserve le titre dans Spotify, mais annule aussi ses envois encore en attente vers Apple Music.</p>
+      </details>
+      <p>Apple Music : garde cette page ouverte et active la réception ci-dessous. Les deux lecteurs avancent indépendamment.</p>
+    </aside>
     {appleMine && <div className="pc-player"><h3>Ton lecteur Apple Music</h3>
       <p>La musique joue dans cette page. La file de l’application Apple Music sur PC n’est pas pilotable depuis le site.</p>
       <div className="pc-play-actions"><Button variant="primary" disabled={busy || !music || !data.apple.connected || appleNeedsReload} onClick={() => void act(async () => {
@@ -42,7 +55,7 @@ export function PlaybackQueue({ data, busy, act, music, receiving, setReceiving,
         {['spotify','apple'].map(p => <Button key={p} variant="ghost" disabled={!q[p === 'spotify' ? 'spotify_uri' : 'apple_catalog_id']} onClick={() => openTrack(q, p)}>Ouvrir {names[p]}</Button>)}
       </div>
       {['spotify','apple'].map(p => <div key={p} className="pc-queue-status"><strong>{names[p]} · {states[q[`${p}_status`]]}</strong>
-        {q[`${p}_error`] && <p>{errors[q[`${p}_error`]] || 'Le service n’a pas accepté l’envoi. Vérifie ton compte puis réessaie.'}</p>}
+        {q[`${p}_error`] && <p>{q[`${p}_status`] === 'uncertain' ? 'La confirmation de l’envoi est indisponible.' : errors[q[`${p}_error`]] || 'Le service n’a pas accepté l’envoi. Vérifie ton compte puis réessaie.'}</p>}
         {q[`${p}_status`] === 'uncertain' && <p>Le titre a peut-être été ajouté. Vérifie sa présence dans le lecteur.</p>}
         {data[p].canConfigure && q[`${p}_status`] === 'unmatched' && <div><p>Choisis la bonne version :</p>{q[`${p}_candidates`].map(c => <Button variant="ghost" key={c.remote_id} disabled={busy} onClick={() => void act(() => api.playlist.queueMatch(q.id, p, c.remote_id))}>{c.title} — {c.artist}</Button>)}</div>}
         {data[p].canConfigure && ['error','uncertain','unmatched'].includes(q[`${p}_status`]) && <Button variant="ghost" disabled={busy} onClick={async () => {

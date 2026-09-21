@@ -126,3 +126,12 @@ Validation du diagnostic : 40 tests ciblés (dont déploiement production), 24 t
 de sécurité, build Vite et recherche de secrets sur les fichiers modifiés réussis.
 Lint sécurité : 0 erreur, 189 avertissements existants. Pas de migration ni de
 dépendance supplémentaire pour ce diagnostic.
+
+## Aide Spotify dans la file
+
+`PlaybackQueue.jsx` explique la connexion Premium depuis la session du membre,
+l'appareil actif, la différence entre ajout à la file, lecture immédiate et lien
+« Ouvrir ». L'aide dépliable détaille les envois incertains et le blocage FIFO,
+la vérification avant relance et les effets de Masquer, y compris l'annulation
+d'un envoi Apple en attente. Un envoi incertain n'est plus décrit comme un refus
+certain. Changement de texte uniquement, aucune lecture automatique ajoutée.
