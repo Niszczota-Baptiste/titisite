@@ -135,3 +135,33 @@ l'appareil actif, la différence entre ajout à la file, lecture immédiate et l
 la vérification avant relance et les effets de Masquer, y compris l'annulation
 d'un envoi Apple en attente. Un envoi incertain n'est plus décrit comme un refus
 certain. Changement de texte uniquement, aucune lecture automatique ajoutée.
+
+## Progression et sortie de la liste d’attente
+
+- Migration additive/idempotente : `spotify_started_at` et `apple_started_at` dans
+  `playback_queue`. La lecture détectée retire le titre de la vue d'attente du
+  propriétaire, jamais de l'autre service. Historique dépliable ; pas de suppression
+  distante ni d'archivage global automatique. Lancé ne veut pas dire terminé.
+- Spotify : `GET /me/player`, scope additionnel `user-read-playback-state` (les
+  comptes déjà connectés doivent se reconnecter). Route réservée au propriétaire
+  `GET /api/playlist/playback/spotify`, cache serveur 5 s partagé entre onglets,
+  erreurs mises en cache 15 s et backoff 429 existant. Seuls les titres de la file
+  commune sont retournés, jamais les écoutes privées ou des contenus sans lien.
+- La lecture Spotify réellement observée peut confirmer un envoi incertain et
+  libérer la suite sans renvoyer le morceau. Pauses, 204, erreurs et succès d'un
+  simple appel play n'effacent aucune entrée. Le démarrage n'est pas déduit d'un
+  chronomètre ni de l'arrivée en fin de barre.
+- Apple : `isPlaying`, `nowPlayingItem`, `currentPlaybackTime` et
+  `currentPlaybackDuration` de MusicKit v3 (secondes), lecture locale chaque seconde.
+  `POST /queue/:id/apple/started` exige le propriétaire, CSRF et un titre déjà reçu.
+  Le blocage d'autorisation Apple préalable n'est pas résolu par ce changement.
+- `usePlaybackProgress`, `NowPlaying` et `playbackProgress` : temps et barre de
+  progression, pauses, borne de 15 s sans nouvel état, file filtrée par service et
+  compteurs cohérents. Aucune nouvelle dépendance ; mêmes commandes VPS.
+- Tests : progression, pause, seek, bornes, cache multi-onglet et invalidation,
+  permissions, 204, migration, persistance et indépendance des deux envois.
+
+Validation progression : 49 tests ciblés et 24 tests sécurité réussis, build Vite,
+lint ciblé (0 erreur) et recherche de secrets réussis. Vérification navigateur avec
+lecteur simulé : compteur, pause, passage au titre suivant, sortie de file et vue
+390 px. Aucun compte musical réel ni VPS piloté pendant cette validation.

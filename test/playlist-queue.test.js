@@ -27,6 +27,44 @@ function fixture(t) {
   return { db, store, queue, engine, adapters, sends, create, advance: ms => { time += ms; } };
 }
 
+test('actual playback hides only its service, persists after restart and never cancels the other delivery', async t => {
+  const { queue, create, db } = fixture(t);
+  const item = await queue.add({ provider: 'spotify', id: '1' }, 2); await queue.flush();
+  const state = { uri: 'spotify:track:1', playing: false, durationMs: 200000, positionMs: 0 };
+  await queue.observeSpotify(state); assert.equal(queue.list()[0].spotify_started_at, null);
+  assert.equal(await queue.observeSpotify({ ...state, uri: 'spotify:track:other', playing: true }), null);
+  await queue.observeSpotify({ ...state, playing: true });
+  assert.equal(queue.list()[0].spotify_started_at, 1000);
+  assert.equal(queue.list()[0].apple_status, 'pending');
+  assert.equal(db.prepare('SELECT archived FROM playback_queue WHERE id=?').get(item.id).archived, 0);
+  assert.equal(create().list()[0].spotify_started_at, 1000);
+  await assert.rejects(queue.startedApple(item.id), /reçu/);
+  const delivery = await queue.claimApple('browser');
+  await queue.acknowledgeApple(item.id, delivery.claim, true);
+  await queue.startedApple(item.id); await queue.startedApple(item.id);
+  assert.equal(queue.list()[0].apple_started_at, 1000);
+});
+
+test('observed playback resolves a lost Spotify acknowledgement and releases following items without replay', async t => {
+  const { queue, adapters, sends } = fixture(t);
+  adapters.spotify.queue = async () => { throw new ProviderError('spotify', 502, 'network_error', true); };
+  const first = await queue.add({ provider: 'spotify', id: '1' }, 2); await queue.flush();
+  await queue.add({ provider: 'spotify', id: '2' }, 2); await queue.flush();
+  assert.equal(queue.list()[0].spotify_status, 'uncertain');
+  await queue.observeSpotify({ uri: 'spotify:track:replacement', originalUri: 'spotify:track:1', playing: true, positionMs: 0, durationMs: 200000 });
+  assert.equal(queue.list()[0].id, first.id); assert.equal(queue.list()[0].spotify_status, 'sent');
+  adapters.spotify.queue = async track => sends.push(track.spotify_uri);
+  await queue.flush(); assert.deepEqual(sends, ['spotify:track:2']);
+});
+
+test('Apple-only unmatched row cannot match an unrelated Spotify snapshot with no relinking id', async t => {
+  const { queue, adapters } = fixture(t);
+  adapters.spotify.isrc = async () => [];
+  await queue.add({ provider: 'apple', id: '1' }, 1); await queue.flush();
+  assert.equal(await queue.observeSpotify({ uri: 'spotify:track:other', playing: true }), null);
+  assert.equal(queue.list()[0].spotify_started_at, null);
+});
+
 test('queue deduplicates simultaneous cross-catalog additions without any playlist', async t => {
   const { queue, sends, store } = fixture(t);
   const rows = await Promise.all([queue.add({ provider:'spotify',id:'1' },2), queue.add({provider:'apple',id:'1'},1)]);

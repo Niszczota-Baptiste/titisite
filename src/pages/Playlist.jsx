@@ -1,6 +1,8 @@
 import { PlaybackQueue } from './PlaybackQueue';
 import { receiveApple } from './playlistReceiver';
 import { authorizeApple, withDeadline } from './appleConnection';
+import { usePlaybackProgress } from './usePlaybackProgress';
+import { waitingTracks } from './playbackProgress';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -53,6 +55,8 @@ function PlaylistContent() {
   const [query, setQuery] = useState(''), [results, setResults] = useState(null), [filter, setFilter] = useState('');
   const [lists, setLists] = useState({}), [selection, setSelection] = useState({});
   const [music, setMusic] = useState(null), [musicError, setMusicError] = useState('');
+  const live = usePlaybackProgress(data, music);
+  const waiting = waitingTracks(data?.queue || [], live.mine, live.started);
   const [appleProgress, setAppleProgress] = useState(''), [appleDiagnostic, setAppleDiagnostic] = useState('');
   const [appleNeedsReload, setAppleNeedsReload] = useState(false);
   const active = useRef(true), actionLock = useRef(false);
@@ -152,7 +156,7 @@ function PlaylistContent() {
   return <main className="pc" style={{ '--pc-accent': ACC, '--pc-accent-rgb': ACC_RGB }}>
     <header className="pc-top"><Link to="/project">← Mon espace</Link><span>{user.name || user.email}</span><Button variant="ghost" onClick={logout}>Déconnexion</Button></header>
     <section className="pc-hero"><div className="pc-disc" aria-hidden="true"><span>PC</span></div><div><p className="pc-eyebrow">DEUX PERSONNES · LA MÊME MUSIQUE</p><h1>Playlist<br /><em>Commune.</em></h1><p>Toi sur Apple Music, lui sur Spotify.<br />Vos découvertes au même endroit.</p></div></section>
-    <div className="pc-summary"><span><strong>{tab === 'queue' ? (data?.queue?.length || 0) : tracks.length}</strong> {tab === 'queue' ? 'titres dans la file' : 'morceaux'}</span><span><strong>{tab === 'queue' ? (data?.queue || []).filter(q => q.spotify_status !== 'sent' || q.apple_status !== 'sent').length : needs}</strong> en attente</span><span className="pc-refresh">Synchro native toutes les {Math.round((data?.interval || 45000) / 1000)} s · dernier passage {date(data?.lastCycle)}</span></div>
+    <div className="pc-summary"><span><strong>{tab === 'queue' ? waiting.length : tracks.length}</strong> {tab === 'queue' ? 'titres à venir pour toi' : 'morceaux'}</span><span><strong>{tab === 'queue' ? waiting.filter(q => q[live.mine === 'apple' ? 'apple_status' : 'spotify_status'] !== 'sent').length : needs}</strong> en attente</span><span className="pc-refresh">Synchro native toutes les {Math.round((data?.interval || 45000) / 1000)} s · dernier passage {date(data?.lastCycle)}</span></div>
     <nav className="pc-tabs" aria-label="Playlist Commune">{[['queue','File d’attente'],['add','Ajouter'],['playlist','Playlists'],['settings','Réglages']].map(([id, text]) => <Button variant={tab === id ? 'primary' : 'ghost'} key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>{text}</Button>)}</nav>
     {error && <div className="pc-alert" role="alert">{error}</div>}
     {notice && <div className="pc-notice" role="status">{notice}</div>}
@@ -160,7 +164,7 @@ function PlaylistContent() {
     {data && <>
       {!connected && tab === 'playlist' && <div className="pc-notice">La playlist attend ses deux connexions. <Button variant="ghost" onClick={() => setTab('settings')}>Ouvrir les réglages →</Button></div>}
       {['spotify','apple'].map(p => data[p].error && <div className="pc-alert" key={p}>{names[p]} : {data[p].error === 'QUOTA_EXCEEDED' ? 'quota dépassé' : data[p].error === 'reconnect_or_permissions' ? 'connexion ou permissions à renouveler' : 'synchronisation en attente'}.{data[p].backoff?.until > Date.now() && ` Reprise au plus tôt à ${date(data[p].backoff.until)}.`} <Button variant="ghost" onClick={() => setTab('settings')}>Réglages</Button></div>)}
-      {tab === 'queue' && <PlaybackQueue data={data} busy={busy} act={act} music={music} musicError={musicError} connectApple={connectMyApple} appleProgress={appleProgress} appleNeedsReload={appleNeedsReload} receiving={receiving} setReceiving={setReceiving} openTrack={openTrack} onAdd={() => setTab('add')} onSettings={() => setTab('settings')} />}
+      {tab === 'queue' && <PlaybackQueue live={live} data={data} busy={busy} act={act} music={music} musicError={musicError} connectApple={connectMyApple} appleProgress={appleProgress} appleNeedsReload={appleNeedsReload} receiving={receiving} setReceiving={setReceiving} openTrack={openTrack} onAdd={() => setTab('add')} onSettings={() => setTab('settings')} />}
       {tab === 'playlist' && <section aria-label="Morceaux partagés"><div className="pc-toolbar"><label><span className="pc-sr">Filtrer la playlist</span><Input type="search" placeholder="Filtrer vos morceaux…" value={filter} onChange={e => setFilter(e.target.value)} /></label><Button variant="ghost" disabled={busy} onClick={() => act(() => api.playlist.sync(), 'Synchronisation demandée.')}>Actualiser ↻</Button></div>
         {!tracks.length && <div className="pc-empty"><span aria-hidden="true">♫</span><h2>Le premier morceau, c’est vous.</h2><p>Ajoute une découverte ou liez vos playlists dans les réglages.</p><Button variant="ghost" className="pc-primary" onClick={() => setTab('add')}>Ajouter un morceau</Button></div>}
         <div className="pc-tracklist">{tracks.filter(t => `${t.title} ${t.artist}`.toLocaleLowerCase('fr').includes(filter.toLocaleLowerCase('fr'))).map(t => <article className="pc-track" key={t.id}>

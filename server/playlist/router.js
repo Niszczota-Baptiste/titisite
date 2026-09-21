@@ -1,5 +1,6 @@
 import { createPlaybackQueue } from './queue.js';
 import { appleDiagnosticError } from './appleDiagnostic.js';
+import { createPlaybackStatus } from './playbackStatus.js';
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -13,6 +14,7 @@ export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db
   const api = createProviders(store, config, fetcher);
   const engine = createEngine(store, api, config, () => playback.flushInside()), router = Router();
   const playback = createPlaybackQueue(store, api, p => settings.owner(p), engine.exclusive);
+  const liveSpotify = createPlaybackStatus(() => engine.exclusive(() => api.spotify.playback()));
   const wrap = fn => (req, res, next) => Promise.resolve().then(() => fn(req, res)).catch(next);
   const provider = req => {
     if (!['spotify', 'apple'].includes(req.params.provider)) throw new Error('Service inconnu.');
@@ -35,6 +37,7 @@ export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db
     if (!flow || flow.expires < Date.now() || !user || settings.owner('spotify') !== user.id || user.token_version !== flow.tv || revoked || typeof req.query.code !== 'string') return res.redirect('/playlist?connection=error');
     try {
       await engine.exclusive(() => api.finishOAuth(req.query.code, flow.verifier, user.id));
+      liveSpotify.invalidate();
       res.redirect('/playlist?connection=spotify');
     } catch { res.redirect('/playlist?connection=error'); }
   }));
@@ -75,6 +78,18 @@ export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db
     res.json(await engine.exclusive(() => settings.invite(req.user)));
   }));
   router.get('/queue', (req, res) => res.json({ queue: playback.list() }));
+  router.get('/playback/spotify', wrap(async (req, res) => {
+    if (!requireOwner(req, res, 'spotify')) return;
+    const state = await liveSpotify.get();
+    const current = await playback.observeSpotify(state.snapshot);
+    res.json({ current, ageMs: state.ageMs, error: state.error || null });
+    if (current?.playing) void playback.flush().catch(() => {});
+  }));
+  router.post('/queue/:id/apple/started', wrap(async (req, res) => {
+    if (!requireOwner(req, res, 'apple')) return;
+    await playback.startedApple(Number(req.params.id));
+    res.json({ ok: true });
+  }));
   router.post('/queue', wrap(async (req, res) => {
     const { provider: p, id } = req.body || {};
     if (p ? !['spotify','apple'].includes(p) || !validId(id) : !Number.isSafeInteger(id)) return res.status(400).json({ error: 'Morceau invalide.' });
@@ -131,6 +146,7 @@ export function createPlaylistFeature(db, requireAuth, config = runtimeConfig(db
         db.prepare("DELETE FROM playlist_tokens WHERE provider LIKE 'oauth:%'").run();
       }
       db.prepare('DELETE FROM playlist_tokens WHERE provider=?').run(p);
+      if (p === 'spotify') liveSpotify.invalidate();
       store.set(`${p}:error`, null);
     });
     res.json({ ok: true });

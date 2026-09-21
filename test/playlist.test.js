@@ -234,6 +234,10 @@ test('router excludes other site members, restricts connection ownership, reject
   const headers = {'test-user':'1',origin:config.origin,'X-Playlist-Request':'1','Content-Type':'application/json'};
   // Queue mutations reuse the site's session, membership, CSRF and service ownership.
   assert.equal((await fetch(`${base}/queue`,{headers:{'test-user':'3'}})).status,403);
+  assert.equal((await fetch(`${base}/playback/spotify`,{headers:{'test-user':'1'}})).status,403);
+  assert.equal((await fetch(`${base}/playback/spotify`,{headers:{'test-user':'3'}})).status,403);
+  assert.equal((await fetch(`${base}/queue/1/apple/started`,{method:'POST',headers:{...headers,'test-user':'2'},body:'{}'})).status,403);
+  assert.equal((await fetch(`${base}/queue/1/apple/started`,{method:'POST',headers:{'test-user':'1'},body:'{}'})).status,403);
   assert.equal((await fetch(`${base}/queue`,{method:'POST',headers:{'test-user':'1'},body:'{}'})).status,403);
   assert.equal((await fetch(`${base}/queue/apple/claim`,{method:'POST',headers:{...headers,'test-user':'2'},body:JSON.stringify({receiver:crypto.randomUUID()})})).status,403);
   assert.equal((await fetch(`${base}/queue/1/play`,{method:'POST',headers,body:'{}'})).status,403);
@@ -249,6 +253,22 @@ test('router excludes other site members, restricts connection ownership, reject
   assert.equal(returned.headers.get('location'),'/playlist?connection=spotify');
   assert.ok(requests[0].options.body.includes('code_verifier='));
   const replay = await fetch(callback,{headers:{cookie},redirect:'manual'}); assert.equal(replay.headers.get('location'),'/playlist?connection=error');
+});
+
+test('Spotify playback requests the read scope and handles pause, 204, private sessions and bad data', async t => {
+  const { store } = fixture(t);
+  let response = { currently_playing_type: 'track', is_playing: true, progress_ms: 1234,
+    item: { type: 'track', uri: 'spotify:track:test', duration_ms: 200000 } }, calls = 0;
+  const api = createProviders(store, config, async url => { calls++; assert.equal(new URL(url).pathname, '/v1/me/player'); return response === null ? new Response(null, { status: 204 }) : Response.json(response); });
+  assert.ok(new URL(api.beginOAuth().url).searchParams.get('scope').split(' ').includes('user-read-playback-state'));
+  await assert.rejects(api.spotify.playback(), e => e.reason === 'playback_permission_required'); assert.equal(calls, 0);
+  store.saveToken('spotify', 2, { ...store.token('spotify'), scope: 'user-read-playback-state' });
+  assert.equal((await api.spotify.playback()).positionMs, 1234);
+  response.is_playing = false; assert.equal((await api.spotify.playback()).playing, false);
+  response.device = { is_private_session: true }; assert.equal(await api.spotify.playback(), null);
+  response.device = {}; response.progress_ms = null;
+  await assert.rejects(api.spotify.playback(), e => e.reason === 'invalid_response');
+  response = null; assert.equal(await api.spotify.playback(), null);
 });
 
 test('Apple diagnostic isolates catalog, account and local auth failures without exposing secrets', async t => {

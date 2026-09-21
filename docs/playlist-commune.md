@@ -290,6 +290,36 @@ Les commandes VPS habituelles restent inchangées.
 Conserver la clé AES existante en cas de migration depuis `.env`. Les anciennes clés
 musicales ne doivent être retirées de `.env` qu’après avoir été enregistrées dans les
 réglages web. La migration des membres ne copie pas ces clés automatiquement.
+## Temps de lecture et file d’attente
+
+Le bloc **En cours de lecture** affiche le titre de la file reconnu sur ton service,
+son temps écoulé et sa durée. Spotify est interrogé environ toutes les 5 secondes
+lorsque la page est visible, avec un compteur intermédiaire mis à jour chaque seconde.
+Apple suit le lecteur MusicKit de cette page. Une pause ou un changement de position
+est repris à la prochaine observation ; le compteur cesse d'avancer si le suivi
+ne reçoit plus d'état récent. Ce n'est pas une synchronisation des deux lecteurs.
+
+**Le membre Spotify doit se reconnecter une fois dans Réglages** pour autoriser
+la lecture de l'état de son lecteur (`user-read-playback-state`).
+La connexion Apple doit fonctionner avant de pouvoir suivre sa lecture.
+
+Dès que la lecture est détectée, le titre quitte **ta** liste d'attente et reste
+dans **Déjà lancés sur ton service**. L'autre personne le garde en attente jusqu'à
+sa propre lecture. Le démarrage reste mémorisé après rechargement. Aucun morceau
+n'est supprimé de Spotify ou d'Apple Music et aucun envoi à l'autre membre n'est
+annulé par cette transition. Pour rejouer un titre déjà lancé, retire son ancienne
+entrée de l'historique avant de l'ajouter de nouveau ; vérifie d'abord les envois
+encore en attente chez l'autre membre.
+
+La progression des titres écoutés hors de la file commune et des sessions privées
+Spotify n'est pas affichée. Les titres lancés pendant que le suivi est fermé peuvent
+rester dans la liste : le site ne déduit pas une lecture qu'il n'a pas observée.
+Les migrations des deux marqueurs de démarrage sont additives ; utilise les commandes
+habituelles `backup.sh` puis `deploy.sh`.
+
+Références : [état de lecture Spotify](https://developer.spotify.com/documentation/web-api/reference/get-information-about-the-users-current-playback)
+et [instance MusicKit v3](https://js-cdn.music.apple.com/musickit/v3/docs/?path=/story/reference-javascript-musickit-instance--page).
+
 ## Diagnostiquer une connexion Apple qui reste bloquée
 
 Dans **Réglages → Apple Music**, clique sur **Tester la configuration Apple**.

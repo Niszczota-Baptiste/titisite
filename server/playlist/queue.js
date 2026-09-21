@@ -10,6 +10,9 @@ export function migratePlaybackQueue(db) {
     spotify_error TEXT, apple_error TEXT, spotify_candidates TEXT NOT NULL DEFAULT '[]',
     apple_candidates TEXT NOT NULL DEFAULT '[]', apple_claim TEXT, apple_deadline INTEGER
   );`);
+  const columns = db.prepare('PRAGMA table_info(playback_queue)').all().map(c => c.name);
+  if (!columns.includes('spotify_started_at')) db.exec('ALTER TABLE playback_queue ADD COLUMN spotify_started_at INTEGER');
+  if (!columns.includes('apple_started_at')) db.exec('ALTER TABLE playback_queue ADD COLUMN apple_started_at INTEGER');
 }
 
 export function createPlaybackQueue(store, adapters, owner, exclusive, now = Date.now) {
@@ -20,9 +23,14 @@ export function createPlaybackQueue(store, adapters, owner, exclusive, now = Dat
   const unpack = row => row && { ...JSON.parse(row.track), id: row.id, added_by: row.added_by, added_at: row.added_at,
     added_by_name: row.added_by_name, spotify_status: row.spotify_status, apple_status: row.apple_status,
     spotify_error: row.spotify_error, apple_error: row.apple_error,
+    spotify_started_at: row.spotify_started_at, apple_started_at: row.apple_started_at,
     spotify_candidates: JSON.parse(row.spotify_candidates), apple_candidates: JSON.parse(row.apple_candidates) };
   const list = () => { expire(); return db.prepare('SELECT q.*,u.name AS added_by_name FROM playback_queue q LEFT JOIN users u ON u.id=q.added_by WHERE archived=0 ORDER BY q.id').all().map(unpack); };
   const get = id => list().find(q => q.id === id);
+  function started(id, p) {
+    field(p);
+    db.prepare(`UPDATE playback_queue SET ${p}_started_at=COALESCE(${p}_started_at,?) WHERE id=? AND archived=0`).run(now(), id);
+  }
   const field = p => {
     if (!['spotify','apple'].includes(p)) throw new Error('Service inconnu.');
     return p === 'spotify' ? 'spotify_uri' : 'apple_catalog_id';
@@ -70,6 +78,23 @@ export function createPlaybackQueue(store, adapters, owner, exclusive, now = Dat
   let flushing;
   const flush = () => flushing || (flushing = exclusive(flushInside).finally(() => { flushing = null; }));
   return { list, flushInside, flush,
+    observeSpotify: snapshot => exclusive(() => {
+      if (!snapshot) return null;
+      const item = list().find(q => q.spotify_uri && (q.spotify_uri === snapshot.uri || (snapshot.originalUri && q.spotify_uri === snapshot.originalUri)));
+      if (!item) return null; // Only expose common tracks, not unrelated listening history.
+      if (snapshot.playing && !item.spotify_started_at) {
+        started(item.id, 'spotify');
+        // Real playback confirms this title reached Spotify, even after a lost response.
+        mark(item.id, 'spotify', 'sent');
+      }
+      return { id: item.id, title: item.title, artist: item.artist, artwork: item.artwork,
+        durationMs: snapshot.durationMs, positionMs: snapshot.positionMs, playing: snapshot.playing };
+    }),
+    startedApple: id => exclusive(() => {
+      const item = get(id);
+      if (!item || item.apple_status !== 'sent') throw new Error('Ce titre n’a pas encore été reçu par le lecteur Apple.');
+      started(id, 'apple');
+    }),
     async add(input, userId) {
       const item = await exclusive(async () => {
         const track = input.provider ? await adapters[input.provider].get(input.id) : store.get(input.id);
@@ -77,7 +102,7 @@ export function createPlaybackQueue(store, adapters, owner, exclusive, now = Dat
         const duplicate = list().find(q => (q.isrc && track.isrc && q.isrc.toUpperCase() === track.isrc.toUpperCase()) ||
           (q.spotify_uri && q.spotify_uri === track.spotify_uri) || (q.apple_catalog_id && q.apple_catalog_id === track.apple_catalog_id));
         if (duplicate) return duplicate;
-        if (list().length >= 100) throw new Error('File pleine (100 titres). Masque les morceaux déjà écoutés.');
+        if (list().filter(q => !q.spotify_started_at || !q.apple_started_at).length >= 100) throw new Error('File pleine : 100 titres attendent encore une lecture sur au moins un service. Consulte l’historique et retire les titres devenus inutiles.');
         const result = db.prepare('INSERT INTO playback_queue(track,added_by,added_at) VALUES(?,?,?)').run(JSON.stringify(track), userId, now());
         return get(Number(result.lastInsertRowid));
       });

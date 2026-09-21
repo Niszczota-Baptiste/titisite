@@ -147,6 +147,16 @@ export function createProviders(store, config, fetcher = fetch) {
       if (!t?.spotify_uri) throw new ProviderError('spotify', 409, 'track_unavailable');
       return spotify(`/v1/me/player/queue?${new URLSearchParams({ uri: t.spotify_uri })}`, 'POST');
     },
+    async playback() {
+      const saved = store.token('spotify');
+      if (!saved) throw new ProviderError('spotify', 401, 'not_connected');
+      if (!String(saved.scope || '').split(' ').includes('user-read-playback-state')) throw new ProviderError('spotify', 403, 'playback_permission_required');
+      const state = await spotify('/v1/me/player');
+      if (!state || state.currently_playing_type !== 'track' || state.item?.type !== 'track' || state.is_private_session || state.device?.is_private_session) return null;
+      if (typeof state.item.uri !== 'string' || typeof state.is_playing !== 'boolean' || !Number.isFinite(state.progress_ms) || !Number.isFinite(state.item.duration_ms) || state.item.duration_ms <= 0) throw new ProviderError('spotify', 502, 'invalid_response');
+      return { uri: state.item.uri, originalUri: state.item.linked_from?.uri, playing: state.is_playing,
+        positionMs: Math.max(0, Math.min(state.progress_ms, state.item.duration_ms)), durationMs: state.item.duration_ms };
+    },
     async playlists() {
       const me = await spotify('/v1/me');
       return (await pages(spotify, '/v1/me/playlists?limit=50', 'items')).filter(p => p.owner?.id === me.id).map(p => ({ id: p.id, name: p.name }));
@@ -200,7 +210,7 @@ export function createProviders(store, config, fetcher = fetch) {
     beginOAuth() {
       if (!config.clientId) throw new ProviderError('spotify', 503, 'configuration_missing');
       const state = crypto.randomBytes(32).toString('base64url'), verifier = crypto.randomBytes(48).toString('base64url');
-      return { state, verifier, url: `https://accounts.spotify.com/authorize?${new URLSearchParams({ client_id: config.clientId, response_type: 'code', redirect_uri: callback, state, code_challenge_method: 'S256', code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'), scope: 'playlist-read-private playlist-modify-private playlist-modify-public user-modify-playback-state' })}` };
+      return { state, verifier, url: `https://accounts.spotify.com/authorize?${new URLSearchParams({ client_id: config.clientId, response_type: 'code', redirect_uri: callback, state, code_challenge_method: 'S256', code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'), scope: 'playlist-read-private playlist-modify-private playlist-modify-public user-modify-playback-state user-read-playback-state' })}` };
     },
     async finishOAuth(code, verifier, userId) {
       const token = await exchange({ grant_type: 'authorization_code', code, redirect_uri: callback, code_verifier: verifier });

@@ -1,13 +1,17 @@
 import { Button } from '../components/admin/ui';
 import { api } from '../api/client';
 import { useConfirm } from '../ui/ConfirmProvider';
+import { NowPlaying } from './NowPlaying';
+import { waitingTracks } from './playbackProgress';
 
 const names = { spotify: 'Spotify', apple: 'Apple Music' };
 const states = { pending: 'En attente', sending: 'Envoi en cours', sent: 'Ajouté au lecteur', error: 'Action requise', uncertain: 'Envoi à vérifier', unmatched: 'Version à choisir' };
 const errors = { no_active_device: 'Ouvre Spotify et lance un premier titre sur ton PC, puis réessaie.', premium_required: 'Spotify Premium est nécessaire.', reconnect_or_permissions: 'Reconnecte ton compte dans Réglages pour autoriser la lecture.', not_connected: 'Connecte ton compte dans Réglages.', configuration_missing: 'Renseigne tes clés dans Réglages.', QUOTA_EXCEEDED: 'Quota dépassé. Reprise après le délai imposé par Spotify.', rate_limited: 'Le service demande de patienter avant le prochain envoi.', network_error: 'La connexion a été interrompue. Vérifie le lecteur avant une nouvelle tentative.' };
 
-export function PlaybackQueue({ data, busy, act, music, receiving, setReceiving, musicError, connectApple, appleProgress, appleNeedsReload, openTrack, onAdd, onSettings }) {
-  const confirm = useConfirm(), items = data.queue || [];
+export function PlaybackQueue({ data, busy, act, music, live, receiving, setReceiving, musicError, connectApple, appleProgress, appleNeedsReload, openTrack, onAdd, onSettings }) {
+  const confirm = useConfirm(), all = data.queue || [];
+  const items = waitingTracks(all, live.mine, live.started);
+  const history = all.filter(q => !items.some(item => item.id === q.id));
   const appleMine = data.apple.canConfigure, spotifyMine = data.spotify.canConfigure;
   async function playApple(item) {
     const index = music.queue?.items?.findIndex(t => String(t.id) === item.apple_catalog_id || String(t.attributes?.playParams?.id) === item.apple_catalog_id) ?? -1;
@@ -18,6 +22,7 @@ export function PlaybackQueue({ data, busy, act, music, receiving, setReceiving,
   return <section aria-label="File d’attente commune">
     <h2>À écouter ensemble</h2>
     <p>Ajoutez des titres à vos lecteurs, sans créer de playlist. Chacun garde ses commandes de lecture.</p>
+    <NowPlaying live={live} onSettings={onSettings} />
     {!(appleMine ? data.apple.connected : data.spotify.connected) && <div className="pc-notice">Connecte ton service pour recevoir les titres. Les clés et leurs instructions sont dans Réglages. <Button variant="ghost" onClick={onSettings}>Connecter mon service</Button></div>}
     <aside className="pc-notice" aria-labelledby="pc-spotify-help"><h3 id="pc-spotify-help">Comment écouter sur Spotify ?</h3>
       <ol>
@@ -47,7 +52,7 @@ export function PlaybackQueue({ data, busy, act, music, receiving, setReceiving,
       {appleNeedsReload && <p role="alert">L’autorisation Apple a expiré. Recharge cette page pour réessayer.</p>}
       <small>Après un rechargement, les titres déjà envoyés ne sont pas renvoyés automatiquement. Un seul onglet doit recevoir la musique.</small>
     </div>}
-    {!items.length ? <div className="pc-empty"><h3>Votre file est vide</h3><Button variant="primary" onClick={onAdd}>Chercher un morceau</Button></div> : <ol className="pc-playback-list">{items.map(q => <li key={q.id} className="pc-playback-item">
+    {!items.length ? <div className="pc-empty"><h3>Aucun titre en attente pour toi</h3><Button variant="primary" onClick={onAdd}>Chercher un morceau</Button></div> : <ol className="pc-playback-list">{items.map(q => <li key={q.id} className="pc-playback-item">
       <div className="pc-trackinfo">{q.artwork && <img src={q.artwork} width="56" height="56" alt="" loading="lazy" />}<div><h3>{q.title}</h3><p>{q.artist}</p><small>Proposé par {q.added_by_name || 'un membre'}</small></div></div>
       <div className="pc-play-actions">
         {spotifyMine && <Button variant="primary" disabled={busy || !q.spotify_uri || !data.spotify.connected} onClick={() => void act(() => api.playlist.queuePlay(q.id), 'Lecture demandée sur ton appareil Spotify actif.')}>▶ Lire sur mon Spotify</Button>}
@@ -67,6 +72,13 @@ export function PlaybackQueue({ data, busy, act, music, receiving, setReceiving,
         if (await confirm('Masquer ce titre de la file commune ? Les envois en attente seront annulés. Un titre déjà envoyé reste dans le lecteur et doit y être retiré manuellement.')) void act(() => api.playlist.queueRemove(q.id));
       }}>Masquer de la file commune</Button>
     </li>)}</ol>}
-    <p className="pc-muted">Cette liste suit les envois, pas la fin des morceaux. Masque les titres terminés. « Ouvrir » affiche le titre dans le service ; le lancement automatique dépend de ton navigateur. « Lire » interrompt le morceau actuel et un titre déjà en file peut y rester une seconde fois.</p>
+    {history.length > 0 && <details className="pc-history"><summary>Déjà lancés sur ton service ({history.length})</summary>
+      <p>Ces titres ont quitté ta liste d’attente. Leur envoi à l’autre personne est conservé. Un titre lancé n’est pas forcément écouté jusqu’au bout.</p>
+      {history.map(q => <div key={q.id}><strong>{q.title}</strong> · {q.artist}<p>Spotify : {q.spotify_started_at ? 'Lecture détectée' : states[q.spotify_status]} · Apple Music : {q.apple_started_at ? 'Lecture détectée' : states[q.apple_status]}</p>
+        <Button variant="ghost" disabled={busy || [q.apple_status, q.spotify_status].includes('sending')} onClick={async () => {
+          if (await confirm('Retirer ce titre de l’historique commun ? Cela annule aussi ses envois encore en attente chez l’autre personne.')) void act(() => api.playlist.queueRemove(q.id));
+        }}>Retirer de l’historique commun</Button></div>)}
+    </details>}
+    <p className="pc-muted">Chaque titre quitte ta liste d’attente dès que sa lecture est détectée sur ton service. La lecture chez l’autre personne reste indépendante. « Lire » interrompt le morceau actuel et un titre déjà en file peut y rester une seconde fois.</p>
   </section>;
 }
