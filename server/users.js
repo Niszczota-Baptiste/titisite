@@ -81,7 +81,7 @@ export function findByEmail(email) {
 }
 
 export function findById(id) {
-  return db.prepare(`SELECT id, email, name, role, token_version, can_view_stairs, can_view_quests, can_edit_quests, can_view_vault, can_view_lore, can_view_items, can_edit_items, wants_quest_reminders, created_at FROM users WHERE id = ?`).get(id);
+  return db.prepare(`SELECT id, email, name, role, token_version, can_view_stairs, can_view_quests, can_edit_quests, can_view_vault, can_view_lore, can_view_items, can_edit_items, can_author, wants_quest_reminders, created_at FROM users WHERE id = ?`).get(id);
 }
 
 function newCockpitToken() {

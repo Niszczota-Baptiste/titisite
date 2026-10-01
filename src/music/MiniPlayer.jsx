@@ -21,7 +21,7 @@ export function MiniPlayer() {
   const t = (i18n[lang] || i18n.fr).player;
 
   const reader = isReaderPath(pathname);
-  const hidden = reader || pathname.startsWith('/admin');
+  const hidden = reader || pathname.startsWith('/admin') || pathname.startsWith('/auteur');
 
   const { current, pause } = player;
   // Entering the reader pauses the clip — ReaderAudio (full track) takes over.

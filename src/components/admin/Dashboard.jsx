@@ -56,6 +56,15 @@ export function Dashboard() {
     <>
       {/* Accès direct à la carte de la salle d'enquête — le module vit hors
           du dashboard, ce raccourci évite de passer par un projet. */}
+      {/* Atelier d'auteur : espace d'écriture privé, réservé au compte
+          propriétaire (le serveur refuse tout autre compte, admin compris). */}
+      {user?.canAuthor && (
+        <Link
+          to="/auteur"
+          style={{ ...navLinkStyle, color: ACC, border: `1px solid rgba(${ACC_RGB},0.45)`, borderRadius: 8, padding: '6px 11px' }}
+          onClick={() => setMenuOpen(false)}
+        >✒️ Atelier d&apos;auteur</Link>
+      )}
       {user?.canViewLore && (
         <Link
           to="/lore?tab=carte"

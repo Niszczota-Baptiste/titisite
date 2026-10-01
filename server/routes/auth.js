@@ -48,6 +48,8 @@ authRouter.post('/login', async (req, res) => {
       canViewLore: isAdmin || user.can_view_lore === 1,
       canViewItems: isAdmin || user.can_view_items === 1 || user.can_edit_items === 1,
       canEditItems: isAdmin || user.can_edit_items === 1,
+      // Atelier d'auteur : PAS d'outrepassement admin — rôle admin ET drapeau.
+      canAuthor: isAdmin && user.can_author === 1,
     },
     expiresIn: '7d',
   });
@@ -77,5 +79,6 @@ authRouter.get('/me', requireAuth, (req, res) => {
     canViewLore: isAdmin || req.user.can_view_lore === 1,
     canViewItems: isAdmin || req.user.can_view_items === 1 || req.user.can_edit_items === 1,
     canEditItems: isAdmin || req.user.can_edit_items === 1,
+    canAuthor: isAdmin && req.user.can_author === 1,
   });
 });

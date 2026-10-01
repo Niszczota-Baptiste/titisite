@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { migrateAuthor } from './author/schema.js';
 import { migratePlaylist } from './playlist/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -2187,6 +2188,8 @@ export function migrate() {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mf_power_weights_genre ON mf_power_weights(genre, cle);`);
+  // Atelier d'auteur (/auteur) : tables author_*, cf. server/author/schema.js.
+  migrateAuthor(db, ensureColumn);
   // Additive migration, same database and backup/rollback path as the rest of the site.
   migratePlaylist(db);
 }

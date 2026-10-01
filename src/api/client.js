@@ -72,6 +72,8 @@ function qs(params) {
 async function request(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
   if (path.startsWith('/playlist/')) headers['X-Playlist-Request'] = '1';
+  // Atelier d'auteur : en-tête anti-CSRF exigé par le serveur sur les écritures.
+  if (path.startsWith('/author/')) headers['X-Author-Request'] = '1';
   const res = await fetch(`/api${path}`, {
     method,
     headers,
@@ -94,6 +96,7 @@ export function uploadFile(path, formData, { onProgress } = {}) {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `/api${path}`);
     xhr.withCredentials = true;
+    if (path.startsWith('/author/')) xhr.setRequestHeader('X-Author-Request', '1');
     if (onProgress && xhr.upload) {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) onProgress(e.loaded / e.total);
@@ -975,6 +978,122 @@ export const api = {
       remove:  (id) => request('DELETE', `/writing/glossary/${id}`),
       reorder: (order) => request('POST', `/writing/projects/${projectId}/glossary/reorder`, { order }),
     }),
+  },
+
+  // Atelier d'auteur (/auteur) — espace d'écriture privé du compte propriétaire.
+  // Tout passe par un projet : api.author.p(pid).entities.list(…). Les médias
+  // (`url`, `thumbUrl`) pointent vers /api/author/media/*, servi derrière la garde.
+  author: {
+    projects: {
+      list:   () => request('GET', '/author/projects'),
+      create: (b) => request('POST', '/author/projects', b),
+    },
+    p: (pid) => {
+      const b = `/author/projects/${pid}`;
+      return {
+        get:      () => request('GET', b),
+        update:   (body) => request('PUT', b, body),
+        remove:   (confirmTitle) => request('DELETE', b, { confirmTitle }),
+        overview: () => request('GET', `${b}/overview`),
+        index:    () => request('GET', `${b}/index`),
+        entities: {
+          list:     (params) => request('GET', `${b}/entities${qs(params)}`),
+          get:      (id, params) => request('GET', `${b}/entities/${id}${qs(params)}`),
+          create:   (body) => request('POST', `${b}/entities`, body),
+          update:   (id, body) => request('PUT', `${b}/entities/${id}`, body),
+          remove:   (id) => request('DELETE', `${b}/entities/${id}`),
+          restore:  (id) => request('POST', `${b}/entities/${id}/restore`),
+          purge:    (id) => request('DELETE', `${b}/entities/${id}/purge`),
+          visit:    (id) => request('POST', `${b}/entities/${id}/visit`),
+          favorite: (id, value) => request('PUT', `${b}/entities/${id}/favorite`, { value }),
+        },
+        revisions: {
+          list:    (id, field) => request('GET', `${b}/entities/${id}/revisions${qs({ field })}`),
+          get:     (id, rid) => request('GET', `${b}/entities/${id}/revisions/${rid}`),
+          create:  (id, body) => request('POST', `${b}/entities/${id}/revisions`, body),
+          restore: (id, rid) => request('POST', `${b}/entities/${id}/revisions/${rid}/restore`),
+        },
+        notes: {
+          quick: (text, tags) => request('POST', `${b}/notes/quick`, { text, tags }),
+          order: (status, ids, inbox = false) => request('PUT', `${b}/notes/order`, { status, ids, inbox }),
+        },
+        moveEvent: (id, body) => request('PUT', `${b}/events/${id}/move`, body),
+        search:    (q, params) => request('GET', `${b}/search${qs({ q, ...params })}`),
+        graph:     (params) => request('GET', `${b}/graph${qs(params)}`),
+        links: {
+          create: (body) => request('POST', `${b}/links`, body),
+          update: (id, body) => request('PUT', `${b}/links/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/links/${id}`),
+        },
+        tags: {
+          list:   () => request('GET', `${b}/tags`),
+          create: (body) => request('POST', `${b}/tags`, body),
+          update: (id, body) => request('PUT', `${b}/tags/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/tags/${id}`),
+        },
+        categories: {
+          list:   () => request('GET', `${b}/categories`),
+          create: (body) => request('POST', `${b}/categories`, body),
+          update: (id, body) => request('PUT', `${b}/categories/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/categories/${id}`),
+        },
+        timelines: {
+          list:   () => request('GET', `${b}/timelines`),
+          create: (body) => request('POST', `${b}/timelines`, body),
+          update: (id, body) => request('PUT', `${b}/timelines/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/timelines/${id}`),
+        },
+        plan: {
+          get:  () => request('GET', `${b}/plan`),
+          save: (body) => request('PUT', `${b}/plan`, body),
+        },
+        acts: {
+          create: (body) => request('POST', `${b}/acts`, body),
+          update: (id, body) => request('PUT', `${b}/acts/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/acts/${id}`),
+        },
+        beats: {
+          create: (body) => request('POST', `${b}/beats`, body),
+          update: (id, body) => request('PUT', `${b}/beats/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/beats/${id}`),
+        },
+        tasks: {
+          list:   (params) => request('GET', `${b}/tasks${qs(params)}`),
+          create: (body) => request('POST', `${b}/tasks`, body),
+          update: (id, body) => request('PUT', `${b}/tasks/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/tasks/${id}`),
+          order:  (ids) => request('PUT', `${b}/tasks/order`, { ids }),
+        },
+        boards: {
+          list:   () => request('GET', `${b}/boards`),
+          create: (body) => request('POST', `${b}/boards`, body),
+          get:    (id) => request('GET', `${b}/boards/${id}`),
+          update: (id, body) => request('PUT', `${b}/boards/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/boards/${id}`),
+          ops:    (id, baseRevision, ops) => request('POST', `${b}/boards/${id}/ops`, { baseRevision, ops }),
+          view:   (id, view) => request('PUT', `${b}/boards/${id}/view`, view),
+        },
+        media: {
+          list:   () => request('GET', `${b}/media`),
+          upload: (formData, opts) => uploadFile(`${b}/media`, formData, opts),
+          update: (id, body) => request('PUT', `${b}/media/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/media/${id}`),
+        },
+        pins: {
+          list:   (placeId) => request('GET', `${b}/places/${placeId}/pins`),
+          create: (placeId, body) => request('POST', `${b}/places/${placeId}/pins`, body),
+          update: (id, body) => request('PUT', `${b}/pins/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/pins/${id}`),
+        },
+        consistency: {
+          get:     () => request('GET', `${b}/consistency`),
+          dismiss: (key, value = true) => request('POST', `${b}/consistency/dismiss`, { key, value }),
+        },
+        trash: () => request('GET', `${b}/trash`),
+        exportUrl: `/api${b}/export`,
+        manuscriptUrl: `/api${b}/export/manuscript`,
+      };
+    },
   },
 
   // Global

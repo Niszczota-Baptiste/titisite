@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { COLLECTIONS, count, insert, migrate } from './db.js';
 import { ensureSeedUsers } from './users.js';
+import { syncAuthorOwner } from './author/access.js';
 import { seedWritingIfEmpty } from './seed-writing.js';
 import { seedItemsIfEmpty } from './seed-items.js';
 import { seedLoreIfEmpty } from './seed-lore.js';
@@ -32,6 +33,10 @@ async function loadSource(file, key) {
 export async function seedIfEmpty({ force = false } = {}) {
   migrate();
   const results = { users: ensureSeedUsers() };
+  // Atelier d'auteur : le drapeau can_author suit la configuration à chaque
+  // boot (AUTHOR_OWNER_EMAIL, défaut ADMIN_EMAIL) — après la création des
+  // comptes, pour que le premier démarrage l'attribue aussi.
+  results.author = syncAuthorOwner();
 
   for (const name of COLLECTIONS) {
     const existing = count(name);

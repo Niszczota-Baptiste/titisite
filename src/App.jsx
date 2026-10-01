@@ -18,6 +18,7 @@ const Atelier = lazy(() => import('./pages/Atelier'));
 const BuildShare = lazy(() => import('./pages/BuildShare'));
 const WorldEditShare = lazy(() => import('./pages/WorldEditShare'));
 const Playlist = lazy(() => import('./pages/Playlist'));
+const Auteur = lazy(() => import('./pages/Auteur'));
 
 function Loading() {
   return <div style={{ minHeight: '100vh', background: '#050511' }} />;
@@ -38,6 +39,7 @@ export default function App() {
         <Routes>
           <Route path="/playlist"       element={<Playlist />} />
           <Route path="/admin/*"        element={<Admin />} />
+          <Route path="/auteur/*"       element={<Auteur />} />
           <Route path="/project/*"      element={<Project />} />
           <Route path="/projects/:id"   element={<ProjectDetailPage />} />
           <Route path="/projets/ecriture/*" element={<Ecriture />} />

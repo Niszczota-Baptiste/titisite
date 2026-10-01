@@ -27,6 +27,24 @@ Single-process Node app:
   incertains. La file ne crée pas de playlist. Même processus PM2 et commandes habituelles
   `backup.sh` / `deploy.sh`.
 
+- **Atelier d'auteur** (`/auteur`, `docs/atelier-auteur.md`) : espace d'écriture
+  PRIVÉ du compte propriétaire. Accès = rôle `admin` + `users.can_author`, sans
+  outrepassement admin ; le drapeau n'est accepté par aucune route d'édition
+  des comptes et est recalculé à chaque boot depuis `AUTHOR_OWNER_EMAIL`
+  (défaut `ADMIN_EMAIL`) ; chaque projet n'est servi qu'à son `owner_id` (404
+  sinon) ; en-tête `X-Author-Request: 1` exigé sur les écritures. Modèle
+  relationnel « class table inheritance » : `author_entities` + une table par
+  type (personnages, lieux, lore, événements, chapitres, idées), relations
+  typées `author_links` (vraies FK), tags, alias/anciens noms, révisions,
+  tableaux blancs (nœuds/flèches en lignes), tâches, médias WebP servis
+  derrière la garde (`/api/author/media/:f`, jamais `/api/images`), FTS5
+  `author_fts`. Sauvegarde : brouillon localStorage à chaque frappe, PUT
+  partiel sous révision avec fusion champ par champ côté client
+  (`useEntityDoc`), snapshots auto/manuels, corbeille. Cohérence : règles
+  pures dans `server/author/consistency.js`. Back `server/routes/author.js` +
+  `server/author/*` ; front `src/components/author/*` (CSS `au-`, thème
+  clair/sombre), `api.author.p(pid).*`. Les tables `writing_*` (espace public)
+  ne sont PAS réutilisées : `/api/ecriture` est public.
 - Public-site collections (`projects`, `tracks`, `education`, `experience`,
   `currently`) use a **JSON-blob table per name** (`server/db.js#listAll/insert/update/remove/reorder`).
   CRUD UI uses `ItemList` (`src/components/admin/ItemList.jsx`) — pass
@@ -560,4 +578,5 @@ First boot creates the DB at `DB_PATH` (default `./data.sqlite`) and seeds:
 | New writing-space field/resource | add the column/table in `server/db.js#migrate`, the mapper + route in `server/routes/writing.js` (public) / `writing-admin.js` (admin), an `api.*` helper in `src/api/client.js`, then the editor in `src/components/admin/editors/writing/` and reader UI in `src/components/writing/` |
 | New 3D-map biome/building | `src/components/writing/map/presets.js` (+ the mesh in `buildings.jsx` for a building), then the matching allowlist in `server/routes/writing-admin.js` — see `docs/carte-3d.md` |
 | New tool/field in the vault workshop | the field in `server/vault/validate.js#normalizeDoc` (it strips anything it doesn't know), then the tool in `src/components/vault/Toolbar.jsx` + its gesture in `PlanCanvas.jsx` + its fiche in `Inspector.jsx` — see `docs/salle-des-coffres.md` |
+| New element kind / relation / consistency rule in the author space | `server/author/enums.js` (+ `schema.js`, `consistency.js#RULES`) and the display mirror `src/components/author/kinds.js` — see `docs/atelier-auteur.md` |
 | New lore entry type / status / tab | `server/lore/enums.js` + visual meta in `src/components/lore/theme.js`; tabs via `TABS` in `src/pages/Lore.jsx` — see `docs/lore.md` |

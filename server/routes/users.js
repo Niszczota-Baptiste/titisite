@@ -133,6 +133,12 @@ usersRouter.delete('/:id', requireAuth, ADMIN, (req, res) => {
 
   const row = db.prepare(`SELECT role FROM users WHERE id = ?`).get(id);
   if (!row) return res.status(404).json({ error: 'not_found' });
+  // Un compte propriétaire d'un livre de l'atelier d'auteur ne se supprime
+  // pas : la FK est en RESTRICT pour que le manuscrit ne parte jamais en
+  // cascade avec le compte ; on répond proprement au lieu d'une erreur SQL.
+  if (db.prepare(`SELECT 1 FROM author_projects WHERE owner_id = ? LIMIT 1`).get(id)) {
+    return res.status(409).json({ error: 'owns_author_projects' });
+  }
   if (row.role === 'admin') {
     const adminCount = db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'admin'`).get().n;
     if (adminCount <= 1) return res.status(400).json({ error: 'last_admin' });

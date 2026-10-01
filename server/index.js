@@ -17,6 +17,7 @@ import { resolveWorkspace } from './middleware/scope.js';
 import { activityRouter } from './routes/activity.js';
 import { analyticsRouter, purgeOldAnalytics } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
+import { authorRouter } from './routes/author.js';
 import { imagesRouter } from './routes/images.js';
 import { tracksRouter } from './routes/tracks.js';
 import { buildsRouter } from './routes/builds.js';
@@ -338,6 +339,12 @@ app.use('/api/items', itemsRouter);
 // Lecture gated par users.can_view_vault (admins outre).
 app.use('/api/vault-plans', vaultRouter);
 app.use('/api/vault-categories', vaultCategoriesRouter);
+
+// Atelier d'auteur (« cerveau d'auteur ») : espace d'écriture PRIVÉ du compte
+// propriétaire — rôle admin + users.can_author (fixé par la config serveur,
+// sans outrepassement admin), chaque projet borné à son owner_id, médias servis
+// derrière la même garde. Cf. server/author/access.js et docs/atelier-auteur.md.
+app.use('/api/author', authorRouter);
 
 // Cross-project Minecraft admin (all workspaces' chests/resources) + shops.
 app.use('/api/minecraft-admin', minecraftAdminRouter);

@@ -167,6 +167,12 @@ export const ALLOWED_LORE_IMAGE = {
 export const LORE_IMAGE_MAX_BYTES = Number(process.env.LORE_IMAGE_MAX_BYTES || 10 * 1024 * 1024); // 10 MB
 export const uploadLoreImage = makeUploader(ALLOWED_LORE_IMAGE, LORE_IMAGE_MAX_BYTES);
 
+// Images de l'atelier d'auteur (références visuelles, cartes, tableau blanc) :
+// même allowlist que le Lore et même réencodage WebP systématique côté route ;
+// fichiers servis uniquement par /api/author/media/:f, derrière la garde.
+export const AUTHOR_IMAGE_MAX_BYTES = Number(process.env.AUTHOR_IMAGE_MAX_BYTES || 15 * 1024 * 1024); // 15 MB
+export const uploadAuthorImage = makeUploader(ALLOWED_LORE_IMAGE, AUTHOR_IMAGE_MAX_BYTES);
+
 // Schematics WorldEdit à importer (.schem Sponge / .litematic Litematica) :
 // NBT gzip sans MIME dédié → octet-stream toléré, l'extension fait foi. Lu en
 // mémoire, parsé vers le presse-papier, jamais persisté tel quel.
