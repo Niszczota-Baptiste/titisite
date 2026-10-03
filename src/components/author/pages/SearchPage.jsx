@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuthor } from '../context';
-import { KINDS, KIND_ORDER, kindMeta } from '../kinds';
+import { KINDS, kindMeta } from '../kinds';
 import { useShellPage } from '../Shell';
 import { Empty, ErrorLine, Highlight, KindAvatar, TagChip, cx, entityPath } from '../ui';
 
@@ -10,7 +10,7 @@ import { Empty, ErrorLine, Highlight, KindAvatar, TagChip, cx, entityPath } from
 // express.
 
 export function SearchPage() {
-  const { pid, P, tags } = useAuthor();
+  const { pid, P, tags, guest, kindOrder } = useAuthor();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState(params.get('q') || '');
   const [results, setResults] = useState(null);
@@ -49,11 +49,11 @@ export function SearchPage() {
 
   return (
     <div className="au-page is-narrow">
-      <div className="au-page-head"><div><h1>🔎 Recherche</h1><div className="au-sub">Dans tout l&apos;univers : fiches, idées, textes des chapitres.</div></div></div>
+      <div className="au-page-head"><div><h1>🔎 Recherche</h1><div className="au-sub">{guest ? 'Dans tout le livre : fiches et textes des chapitres.' : 'Dans tout l\'univers : fiches, idées, textes des chapitres.'}</div></div></div>
       <input className="au-input" type="search" autoFocus value={q} onChange={(e) => setQ(e.target.value)}
         placeholder="Un nom, un mot, une phrase…" style={{ fontSize: 17, minHeight: 48, marginBottom: 12 }} aria-label="Rechercher" />
       <div className="au-chips-row">
-        {KIND_ORDER.map((k) => (
+        {kindOrder.map((k) => (
           <button key={k} type="button" className={cx('au-chip', kinds.includes(k) && 'is-sel')} onClick={() => toggleKind(k)}>{KINDS[k].icon} {KINDS[k].plural}</button>
         ))}
       </div>
@@ -69,7 +69,7 @@ export function SearchPage() {
         <div className="au-list">
           <div className="au-faint" style={{ fontSize: 12, margin: '4px 0 8px' }}>{results.length} résultat{results.length > 1 ? 's' : ''}</div>
           {results.map((r) => (
-            <Link key={r.id} to={r.kind === 'chapter' && query ? `/auteur/${pid}/ecrire/${r.id}` : entityPath(pid, r)} className="au-row" style={{ alignItems: 'flex-start' }}>
+            <Link key={r.id} to={r.kind === 'chapter' && query && !guest ? `/auteur/${pid}/ecrire/${r.id}` : entityPath(pid, r)} className="au-row" style={{ alignItems: 'flex-start' }}>
               <KindAvatar entity={r} />
               <span className="au-row-main">
                 <span className="au-row-title" style={{ display: 'block' }}>{r.number ? `${r.number}. ` : ''}{r.title}</span>

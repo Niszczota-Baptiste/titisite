@@ -74,3 +74,65 @@ export function ftsQuery(q) {
   if (terms.length === 0) return null;
   return terms.map((t) => `"${t.replace(/"/g, '""')}"*`).join(' ');
 }
+
+// Extrait de recherche (snippet FTS, quelques dizaines de mots) → texte
+// lisible : un lien [[cible|texte]] devient son texte affiché, et un lien
+// coupé par le découpage de l'extrait perd ses crochets. `dropCutTarget`
+// (lecture invitée) retire en plus une cible coupée en fin d'extrait — elle
+// pourrait être le titre d'une idée privée. Entrée bornée : un extrait n'a
+// jamais cette taille, et les motifs ancrés restent ainsi bon marché.
+export function cleanSnippet(text, { dropCutTarget = false } = {}) {
+  if (typeof text !== 'string' || (!text.includes('[[') && !text.includes(']]'))) return text;
+  return mapWikiLinks(text.slice(0, 2000), (target, label) => label || target)
+    .replace(/^[^[\]|]*\|([^[\]]*)\]\]/, '$1') //   « …cible|texte]] » en tête
+    .replace(/^([^[\]]*)\]\]/, '$1') //             « …texte]] » en tête
+    .replace(/\[\[[^\]|]*\|([^\]]*)$/, '$1') //     « [[cible|texte… » en fin
+    .replace(/\[\[([^\]]*)$/, dropCutTarget ? '' : '$1'); // « [[cible… » en fin
+}
+
+// ── Liens [[Nom]] et lecture invitée ────────────────────────────────────────
+
+// Clé de comparaison d'un nom (marqueurs de surlignage \u0002 \u0003 ignorés).
+export function nameKey(s) {
+  return normalize(String(s).replace(/[\u0002\u0003]/g, '')).trim();
+}
+
+// Parcourt les liens [[cible]] / [[cible|texte]] (mêmes règles que le rendu
+// client : contenu non vide, sans « ] ») et remplace chacun par fn(cible,
+// texte). Balayage à la main plutôt qu'une expression régulière : une
+// expression non ancrée revient en arrière à chaque « [[ » sans fermeture et
+// devient quadratique sur un long chapitre ; ici chaque caractère est lu une
+// fois.
+export function mapWikiLinks(text, fn) {
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const open = text.indexOf('[[', i);
+    if (open < 0) break;
+    const rb = text.indexOf(']', open + 2);
+    if (rb < 0) break; // plus aucun « ] » : plus aucun lien possible
+    if (rb === open + 2 || text[rb + 1] !== ']') {
+      // Pas de lien qui commence avant rb : on reprend juste après.
+      out += text.slice(i, rb + 1);
+      i = rb + 1;
+      continue;
+    }
+    const inner = text.slice(open + 2, rb);
+    const bar = inner.indexOf('|');
+    const target = bar < 0 ? inner : inner.slice(0, bar);
+    const label = bar < 0 ? '' : inner.slice(bar + 1);
+    const rep = fn(target, label, text.slice(open, rb + 2));
+    out += text.slice(i, open) + rep;
+    i = rb + 2;
+  }
+  return out + text.slice(i);
+}
+
+// Remplace un lien [[cible|texte]] par son texte affiché quand la cible est
+// dans `hidden` (Set de nameKey), ou TOUS les liens si `hidden` est null (la
+// liseuse : aucune fiche à ouvrir). Sans libellé, le nom écrit reste : il est
+// déjà dans la prose.
+export function scrubWikiLinks(text, hidden) {
+  if (typeof text !== 'string' || !text.includes('[[')) return text;
+  return mapWikiLinks(text, (target, label, raw) => (hidden && !hidden.has(nameKey(target)) ? raw : (label || target).trim()));
+}

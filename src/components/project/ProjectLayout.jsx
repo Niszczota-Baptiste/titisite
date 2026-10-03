@@ -241,6 +241,9 @@ function Shell({ user, logout, isAdmin, breadcrumb, children }) {
       {user?.canViewStairs && (
         <Link to="/stairs" style={navLinkStyle} onClick={() => setMenuOpen(false)}>🪜 Escaliers</Link>
       )}
+      {user?.authorShared && (
+        <Link to="/auteur" style={navLinkStyle} onClick={() => setMenuOpen(false)}>📖 Livres partagés</Link>
+      )}
       <NotificationsButton compact style={{ flexShrink: 0 }} />
       {isAdmin && <Link to="/admin" style={navLinkStyle} onClick={() => setMenuOpen(false)}>Admin</Link>}
       <Link to="/" style={navLinkStyle} onClick={() => setMenuOpen(false)}>↗ Site</Link>

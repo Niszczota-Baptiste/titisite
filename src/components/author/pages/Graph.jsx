@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuthor } from '../context';
-import { CHARACTER_RELATIONS, KINDS, KIND_ORDER, RELATIONS, kindMeta } from '../kinds';
+import { CHARACTER_RELATIONS, KINDS, RELATIONS, kindMeta } from '../kinds';
 import { useShellPage } from '../Shell';
 import { Btn, ErrorLine, KindAvatar, cx, entityPath, normalizeQuery } from '../ui';
 
@@ -14,7 +14,7 @@ import { Btn, ErrorLine, KindAvatar, cx, entityPath, normalizeQuery } from '../u
 const DEFAULT_KINDS = ['character', 'place', 'lore', 'event', 'chapter'];
 
 export function Graph() {
-  const { pid, P, version } = useAuthor();
+  const { pid, P, version, kindOrder } = useAuthor();
   const [params, setParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -27,8 +27,8 @@ export function Graph() {
   useShellPage({ crumbs: [{ label: 'Graphe des relations' }], title: 'Graphe', full: true });
 
   useEffect(() => {
-    P.graph({ kinds: KIND_ORDER.join(',') }).then(setData).catch(setError);
-  }, [P, version]);
+    P.graph({ kinds: kindOrder.join(',') }).then(setData).catch(setError);
+  }, [P, version, kindOrder]);
 
   const view = useMemo(() => {
     if (!data) return null;
@@ -72,7 +72,7 @@ export function Graph() {
       <div className="au-graph-bar">
         <div className="au-chips-row" style={{ margin: 0 }}>
           <button type="button" className={cx('au-chip', relFilter === 'characters' && 'is-sel')} onClick={() => setRelFilter((r) => (r === 'characters' ? 'all' : 'characters'))}>👥 Réseau des personnages</button>
-          {relFilter === 'all' && KIND_ORDER.map((k) => (
+          {relFilter === 'all' && kindOrder.map((k) => (
             <button key={k} type="button" className={cx('au-chip', kinds.includes(k) && 'is-sel')} style={{ '--chip': KINDS[k].color }} onClick={() => toggleKind(k)}>
               <span className="au-dot" style={{ '--dot': KINDS[k].color }} /> {KINDS[k].plural}
             </button>
@@ -101,6 +101,7 @@ export function Graph() {
 }
 
 function ForceGraph({ pid, nodes, edges, query, focusId, onFocus }) {
+  const { kindOrder } = useAuthor();
   const svgRef = useRef(null);
   const sim = useRef(null);
   const [, setTick] = useState(0);
@@ -362,7 +363,7 @@ function ForceGraph({ pid, nodes, edges, query, focusId, onFocus }) {
         <Btn size="small" icon title="Relancer la disposition" aria-label="Relancer la disposition" onClick={() => { sim.current.alpha = 0.8; run(); }}>↻</Btn>
       </div>
       <div className="au-graph-legend au-desktop-only">
-        {KIND_ORDER.filter((k) => nodes.some((n) => n.kind === k)).map((k) => <span key={k}><span className="au-dot" style={{ '--dot': KINDS[k].color }} /> {KINDS[k].plural}</span>)}
+        {kindOrder.filter((k) => nodes.some((n) => n.kind === k)).map((k) => <span key={k}><span className="au-dot" style={{ '--dot': KINDS[k].color }} /> {KINDS[k].plural}</span>)}
         <span className="au-faint">{nodes.length} nœuds · {edges.length} liens · double-clic = isoler</span>
       </div>
       {sel && (

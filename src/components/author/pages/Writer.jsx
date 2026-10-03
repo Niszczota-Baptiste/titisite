@@ -9,7 +9,9 @@ import { FieldInput } from '../fields';
 import { CHAPTER_STATUSES, chapterStatus, kindMeta } from '../kinds';
 import { Markdown, normTitle } from '../markdown';
 import { RelationsPanel } from '../RelationsPanel';
+import { CommentsThread } from '../comments/CommentsThread';
 import { BackupBanner, ConflictDialog, RevisionsDialog } from '../saving';
+import { ChapterPublish } from '../sharing';
 import { useFocusMode, useShellPage } from '../Shell';
 import { formatCount, readingMinutes, textStats } from '../text';
 import { Btn, Dialog, Empty, Field, Kbd, MOD, ProgressBar, PromptDialog, cx, humanError } from '../ui';
@@ -365,6 +367,7 @@ function ChapterSide({ ch, doc }) {
           {CHAPTER_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
       </Field>
+      <ChapterPublish ch={ch} beforeAction={doc.save} onChange={() => doc.refresh()} />
       <Field label="Objectif de mots">
         <FieldInput def={{ key: 'targetWords', label: 'Objectif', type: 'number' }} doc={ch} setField={doc.setField} />
       </Field>
@@ -375,6 +378,7 @@ function ChapterSide({ ch, doc }) {
       <Field label="Notes de chapitre" className="au-writer-notes">
         <FieldInput def={{ key: 'body', label: 'Notes', type: 'area', rows: 4 }} doc={ch} setField={doc.setField} />
       </Field>
+      <CommentsThread entityId={ch.id} />
       <Link to={`/auteur/${pid}/e/${ch.id}`} className="au-btn is-ghost is-small">Fiche complète du chapitre →</Link>
     </div>
   );

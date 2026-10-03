@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthor } from './context';
-import { NAV } from './nav';
+import { GUEST_NAV, NAV } from './nav';
 import { Palette } from './Palette';
 import { QuickCapture } from './QuickCapture';
 import { Btn, Dialog, Kbd, MOD, cx, relativeTime, useHotkey } from './ui';
@@ -61,6 +61,14 @@ const SHORTCUTS = [
   ['?', 'Cette aide'],
 ];
 
+const GUEST_SHORTCUTS = [
+  [`${MOD} K`, 'Palette / recherche'],
+  ['/', 'Rechercher'],
+  ['G puis D · C · P · L · U · B · H · R', 'Aller à : vue d\'ensemble, chapitres, personnages, lieux, univers, tableaux, chronologie, graphe'],
+  ['[', 'Replier la barre latérale'],
+  ['?', 'Cette aide'],
+];
+
 const GOTO = { d: '', c: 'chapitres', p: 'personnages', l: 'lieux', u: 'univers', t: 'taches', i: 'idees', b: 'tableaux', h: 'chronologie', r: 'graphe', s: 'recherche', o: 'coherence' };
 
 const isPalette = (e) => (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k';
@@ -71,7 +79,8 @@ const isBracket = (e) => e.key === '[' && !e.ctrlKey && !e.metaKey;
 const isG = (e) => !e.ctrlKey && !e.metaKey && !e.altKey && /^[a-z]$/i.test(e.key);
 
 export function Shell({ theme, setTheme, children }) {
-  const { pid, project, counts, paletteOpen, setPaletteOpen, captureOpen, setCaptureOpen } = useAuthor();
+  const { pid, project, counts, guest, paletteOpen, setPaletteOpen, captureOpen, setCaptureOpen } = useAuthor();
+  const nav = guest ? GUEST_NAV : NAV;
   const [page, setPage] = useState({ crumbs: [], full: false });
   const focusState = useState(false);
   const [focus] = focusState;
@@ -101,7 +110,7 @@ export function Shell({ theme, setTheme, children }) {
       return;
     }
     if (k === 'g') { gPending.current = Date.now(); return; }
-    if (isIdea(e)) { e.preventDefault(); setCaptureOpen(true); }
+    if (isIdea(e) && !guest) { e.preventDefault(); setCaptureOpen(true); }
   });
 
   const shell = useMemo(() => ({ setPage, focusState }), [focusState]);
@@ -124,27 +133,32 @@ export function Shell({ theme, setTheme, children }) {
       <div className={cx('au-app', collapsed && 'is-collapsed', focus && 'is-focus')}>
         <aside className="au-sidebar" aria-label="Navigation de l'atelier">
           <Link to={base} className="au-brand">
-            <span className="au-brand-mark" aria-hidden>✒️</span>
-            <span className="au-brand-text">Atelier d&apos;auteur<small>{project?.title}</small></span>
+            <span className="au-brand-mark" aria-hidden>{guest ? '👁️' : '✒️'}</span>
+            <span className="au-brand-text">
+              {guest ? 'Lecture partagée' : 'Atelier d\'auteur'}
+              <small>{project?.title}{guest && project?.ownerName ? ` · ${project.ownerName}` : ''}</small>
+            </span>
           </Link>
           <button type="button" className="au-nav-item" onClick={() => setPaletteOpen(true)} title={`Rechercher (${MOD} K)`}>
             <span className="au-nav-ico" aria-hidden>⌕</span>
             <span className="au-nav-text">Rechercher…</span>
             <span className="au-count"><Kbd>{MOD} K</Kbd></span>
           </button>
-          <button type="button" className="au-nav-item" onClick={() => setCaptureOpen(true)} title="Capturer une idée (I)">
-            <span className="au-nav-ico" aria-hidden>＋</span>
-            <span className="au-nav-text">Capturer une idée</span>
-            <span className="au-count"><Kbd>I</Kbd></span>
-          </button>
-          {NAV.map((g, i) => (
+          {!guest && (
+            <button type="button" className="au-nav-item" onClick={() => setCaptureOpen(true)} title="Capturer une idée (I)">
+              <span className="au-nav-ico" aria-hidden>＋</span>
+              <span className="au-nav-text">Capturer une idée</span>
+              <span className="au-count"><Kbd>I</Kbd></span>
+            </button>
+          )}
+          {nav.map((g, i) => (
             <div key={i}>
               {g.label && <div className="au-nav-label">{g.label}</div>}
               {g.items.map(navItem)}
             </div>
           ))}
           <div className="au-sidebar-foot">
-            {navItem({ to: 'reglages', label: 'Réglages & export', icon: '⚙️', count: 'trash', countHint: 'à la corbeille' })}
+            {!guest && navItem({ to: 'reglages', label: 'Réglages & export', icon: '⚙️', count: 'trash', countHint: 'à la corbeille' })}
             <button type="button" className="au-nav-item" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title="Thème clair / sombre">
               <span className="au-nav-ico" aria-hidden>{theme === 'light' ? '🌙' : '☀️'}</span>
               <span className="au-nav-text">{theme === 'light' ? 'Thème sombre' : 'Thème clair'}</span>
@@ -153,10 +167,17 @@ export function Shell({ theme, setTheme, children }) {
               <span className="au-nav-ico" aria-hidden>{collapsed ? '»' : '«'}</span>
               <span className="au-nav-text">Replier</span>
             </button>
-            <Link to="/admin" className="au-nav-item" title="Retour au tableau de bord admin">
-              <span className="au-nav-ico" aria-hidden>↩</span>
-              <span className="au-nav-text">Administration</span>
-            </Link>
+            {guest ? (
+              <Link to="/auteur?choisir" className="au-nav-item" title="Livres partagés avec toi">
+                <span className="au-nav-ico" aria-hidden>↩</span>
+                <span className="au-nav-text">Mes livres partagés</span>
+              </Link>
+            ) : (
+              <Link to="/admin" className="au-nav-item" title="Retour au tableau de bord admin">
+                <span className="au-nav-ico" aria-hidden>↩</span>
+                <span className="au-nav-text">Administration</span>
+              </Link>
+            )}
           </div>
         </aside>
 
@@ -177,8 +198,8 @@ export function Shell({ theme, setTheme, children }) {
                 );
               })}
             </nav>
-            <SaveIndicator />
-            <Btn variant="ghost" size="small" className="au-desktop-only" onClick={() => setCaptureOpen(true)} title="Capturer une idée (I)">＋ Idée</Btn>
+            {guest ? <span className="au-pill au-readonly-pill" title="Tu lis ce livre : tu peux commenter, pas modifier.">👁️ Lecture seule</span> : <SaveIndicator />}
+            {!guest && <Btn variant="ghost" size="small" className="au-desktop-only" onClick={() => setCaptureOpen(true)} title="Capturer une idée (I)">＋ Idée</Btn>}
             <Btn variant="ghost" size="small" onClick={() => setPaletteOpen(true)} title={`Rechercher (${MOD} K)`} aria-label="Rechercher">
               <span aria-hidden>⌕</span><span className="au-desktop-only">Rechercher</span><span className="au-desktop-only"><Kbd>{MOD} K</Kbd></span>
             </Btn>
@@ -191,19 +212,21 @@ export function Shell({ theme, setTheme, children }) {
 
         <nav className="au-tabbar" aria-label="Navigation principale">
           <NavLink to={base} end className={({ isActive }) => cx(isActive && 'is-active')}><span className="au-tab-ico" aria-hidden>🏠</span>Accueil</NavLink>
-          <NavLink to={`${base}/idees`} className={({ isActive }) => cx(isActive && 'is-active')}><span className="au-tab-ico" aria-hidden>💡</span>Idées</NavLink>
+          {guest
+            ? <NavLink to={`${base}/commentaires`} className={({ isActive }) => cx(isActive && 'is-active')}><span className="au-tab-ico" aria-hidden>💬</span>Avis</NavLink>
+            : <NavLink to={`${base}/idees`} className={({ isActive }) => cx(isActive && 'is-active')}><span className="au-tab-ico" aria-hidden>💡</span>Idées</NavLink>}
           <NavLink to={`${base}/chapitres`} className={({ isActive }) => cx(isActive && 'is-active')}><span className="au-tab-ico" aria-hidden>📖</span>Livre</NavLink>
           <button type="button" onClick={() => setPaletteOpen(true)}><span className="au-tab-ico" aria-hidden>⌕</span>Chercher</button>
           <button type="button" onClick={() => setMore(true)} className={more ? 'is-active' : undefined}><span className="au-tab-ico" aria-hidden>☰</span>Plus</button>
         </nav>
-        {!page.full && (
+        {!page.full && !guest && (
           <button type="button" className="au-fab" onClick={() => setCaptureOpen(true)} aria-label="Capturer une idée">＋</button>
         )}
       </div>
 
       <Dialog open={more} onClose={() => setMore(false)} title="Atelier d'auteur">
         <div className="au-sheet-grid">
-          {NAV.flatMap((g) => g.items).concat([{ to: 'reglages', label: 'Réglages', icon: '⚙️' }]).map((it) => (
+          {nav.flatMap((g) => g.items).concat(guest ? [] : [{ to: 'reglages', label: 'Réglages', icon: '⚙️' }]).map((it) => (
             <Link key={it.to} to={it.to ? `${base}/${it.to}` : base}>
               <span className="au-tab-ico" aria-hidden>{it.icon}</span>{it.label}
               {it.count && counts?.[it.count] ? <span className="au-faint" style={{ fontSize: 11 }}>{counts[it.count]}</span> : null}
@@ -212,14 +235,16 @@ export function Shell({ theme, setTheme, children }) {
           <button type="button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
             <span className="au-tab-ico" aria-hidden>{theme === 'light' ? '🌙' : '☀️'}</span>Thème
           </button>
-          <Link to="/admin"><span className="au-tab-ico" aria-hidden>↩</span>Administration</Link>
+          {guest
+            ? <Link to="/auteur?choisir"><span className="au-tab-ico" aria-hidden>↩</span>Mes livres</Link>
+            : <Link to="/admin"><span className="au-tab-ico" aria-hidden>↩</span>Administration</Link>}
         </div>
       </Dialog>
 
       <Dialog open={help} onClose={() => setHelp(false)} title="Raccourcis clavier" width={520}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <tbody>
-            {SHORTCUTS.map(([k, d]) => (
+            {(guest ? GUEST_SHORTCUTS : SHORTCUTS).map(([k, d]) => (
               <tr key={k} style={{ borderBottom: '1px solid var(--au-border)' }}>
                 <td style={{ padding: '7px 8px 7px 0', whiteSpace: 'nowrap' }}><Kbd>{k}</Kbd></td>
                 <td style={{ padding: '7px 0', color: 'var(--au-muted)' }}>{d}</td>
@@ -231,7 +256,7 @@ export function Shell({ theme, setTheme, children }) {
       </Dialog>
 
       <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} theme={theme} setTheme={setTheme} />
-      <QuickCapture open={captureOpen} onClose={() => setCaptureOpen(false)} />
+      {!guest && <QuickCapture open={captureOpen} onClose={() => setCaptureOpen(false)} />}
     </ShellCtx.Provider>
   );
 }

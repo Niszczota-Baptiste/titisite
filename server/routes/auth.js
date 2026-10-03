@@ -9,6 +9,7 @@ import {
 import { findByEmail } from '../users.js';
 import { canViewPlaylist } from '../playlist/store.js';
 import { db } from '../db.js';
+import { authorFlags } from '../author/access.js';
 
 // Dummy hash used when the email doesn't exist, so the bcrypt work factor is
 // always paid regardless of whether the account exists. This prevents
@@ -48,8 +49,9 @@ authRouter.post('/login', async (req, res) => {
       canViewLore: isAdmin || user.can_view_lore === 1,
       canViewItems: isAdmin || user.can_view_items === 1 || user.can_edit_items === 1,
       canEditItems: isAdmin || user.can_edit_items === 1,
-      // Atelier d'auteur : PAS d'outrepassement admin — rôle admin ET drapeau.
-      canAuthor: isAdmin && user.can_author === 1,
+      // Atelier d'auteur : PAS d'outrepassement admin — rôle admin ET drapeau
+      // (canAuthor), ou un partage actif en lecture (authorShared).
+      ...authorFlags(user),
     },
     expiresIn: '7d',
   });
@@ -79,6 +81,6 @@ authRouter.get('/me', requireAuth, (req, res) => {
     canViewLore: isAdmin || req.user.can_view_lore === 1,
     canViewItems: isAdmin || req.user.can_view_items === 1 || req.user.can_edit_items === 1,
     canEditItems: isAdmin || req.user.can_edit_items === 1,
-    canAuthor: isAdmin && req.user.can_author === 1,
+    ...authorFlags(req.user),
   });
 });

@@ -10,6 +10,16 @@
 // clés étrangères, quel que soit leur type.
 export const KINDS = ['character', 'place', 'lore', 'event', 'chapter', 'note'];
 
+// ── Partage ─────────────────────────────────────────────────────────────────
+// Types jamais servis à un invité, quel que soit son rôle : la boîte à idées
+// reste l'espace personnel du propriétaire. Toute lecture invitée filtre sur
+// GUEST_KINDS (liste blanche) plutôt que d'exclure PRIVATE_KINDS : un futur
+// type est privé tant qu'on ne l'a pas explicitement ouvert.
+export const PRIVATE_KINDS = ['note'];
+export const GUEST_KINDS = ['character', 'place', 'lore', 'event', 'chapter'];
+export const SHARE_ROLES = ['omniscient', 'lecteur'];
+export const VALIDATED_STATUS = 'termine';
+
 export const KIND_TABLE = {
   character: 'author_characters',
   place: 'author_places',

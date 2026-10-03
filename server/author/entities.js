@@ -1,7 +1,7 @@
 import { db } from '../db.js';
 import { KIND_FIELDS, KIND_TABLE, KINDS, own, relationMeta } from './enums.js';
 import { insertRevision, lastSnapshotAt, shouldSnapshot } from './revisions.js';
-import { countChars, countWords, ftsQuery, normalize } from './text.js';
+import { cleanSnippet, countChars, countWords, ftsQuery, normalize } from './text.js';
 import { AuthorValidationError, asId, cleanTagNames, cleanText, validateFields } from './validate.js';
 
 // Couche d'accès DB des éléments de l'atelier d'auteur. Toutes les fonctions
@@ -24,13 +24,13 @@ const LIST_COLS = {
   place: ['category_id'],
   lore: ['category_id'],
   event: ['timeline_id', 'sort_key', 'end_sort_key', 'date_label', 'importance'],
-  chapter: ['act_id', 'position', 'status', 'word_count', 'char_count', 'target_words', 'content_updated_at'],
+  chapter: ['act_id', 'position', 'status', 'word_count', 'char_count', 'target_words', 'content_updated_at', 'validated_at'],
   note: ['status', 'priority', 'category', 'note_date', 'inbox', 'position'],
 };
 
 // Colonnes calculées/de rangement exposées en plus des champs éditables.
 const EXTRA_COLS = {
-  chapter: ['act_id', 'position', 'word_count', 'char_count', 'content_updated_at'],
+  chapter: ['act_id', 'position', 'word_count', 'char_count', 'content_updated_at', 'validated_at'],
   place: ['map_media_id'],
 };
 
@@ -227,10 +227,24 @@ const SORTS = {
   opened: 'e.last_opened_at DESC, e.id DESC',
 };
 
+// Liste blanche de types → littéraux SQL. Les valeurs viennent de enums.js
+// (identifiants fixes), revérifiées ici : rien d'utilisateur n'est interpolé.
+function kindListSql(kinds) {
+  return kinds.filter((k) => KINDS.includes(k) && /^[a-z_]+$/.test(k)).map((k) => `'${k}'`).join(',') || "''";
+}
+
+// `allowKinds` (lecture invitée) : seuls ces types existent — listes,
+// compteurs de relations et filtres compris. Un type demandé hors liste
+// renvoie une liste vide, pas une erreur qui confirmerait son existence.
 export function listEntities(projectId, opts = {}) {
   const kind = opts.kind && KINDS.includes(opts.kind) ? opts.kind : null;
+  const allow = Array.isArray(opts.allowKinds) ? opts.allowKinds : null;
+  const limitN = Math.min(Math.max(Number(opts.limit) || 200, 1), 1000);
+  const offsetN = Math.max(Number(opts.offset) || 0, 0);
+  if (allow && kind && !allow.includes(kind)) return { items: [], total: 0, limit: limitN, offset: offsetN };
   const where = ['e.project_id = ?'];
   const params = [projectId];
+  if (allow) where.push(`e.kind IN (${kindListSql(allow)})`);
   where.push(opts.trashed ? 'e.deleted_at IS NOT NULL' : 'e.deleted_at IS NULL');
   let join = '';
   let cols = '';
@@ -280,17 +294,26 @@ export function listEntities(projectId, opts = {}) {
   if (opts.sort === 'date' && kind === 'event') order = '(k.sort_key IS NULL), k.sort_key, e.id';
   if (opts.sort === 'opened') where.push('e.last_opened_at IS NOT NULL');
 
-  const limit = Math.min(Math.max(Number(opts.limit) || 200, 1), 1000);
-  const offset = Math.max(Number(opts.offset) || 0, 0);
+  const limit = limitN;
+  const offset = offsetN;
   const whereSql = where.join(' AND ');
+  // Compteur de relations : en lecture invitée, seules comptent celles dont
+  // l'autre bout est visible (sinon « 5 relations » pour 4 affichées trahit
+  // l'existence d'une idée reliée).
+  const linkCount = allow
+    ? `(SELECT COUNT(*) FROM author_links l JOIN author_entities o ON o.id = l.to_id
+         WHERE l.from_id = e.id AND o.deleted_at IS NULL AND o.kind IN (${kindListSql(allow)}))
+       + (SELECT COUNT(*) FROM author_links l JOIN author_entities o ON o.id = l.from_id
+         WHERE l.to_id = e.id AND o.deleted_at IS NULL AND o.kind IN (${kindListSql(allow)}))`
+    : `(SELECT COUNT(*) FROM author_links l WHERE l.from_id = e.id)
+             + (SELECT COUNT(*) FROM author_links l WHERE l.to_id = e.id)`;
 
   const total = db.prepare(`SELECT COUNT(*) AS n FROM author_entities e ${join} WHERE ${whereSql}`).get(...params).n;
   const rows = db.prepare(`
     SELECT e.id, e.kind, e.title, e.summary, substr(e.body, 1, 240) AS body_head, e.icon, e.color, e.is_favorite, e.revision,
            e.created_at, e.updated_at, e.last_opened_at, e.deleted_at,
            m.filename AS cover_file, m.thumb_filename AS cover_thumb,
-           (SELECT COUNT(*) FROM author_links l WHERE l.from_id = e.id)
-             + (SELECT COUNT(*) FROM author_links l WHERE l.to_id = e.id) AS link_count
+           ${linkCount} AS link_count
            ${cols}
     FROM author_entities e
     LEFT JOIN author_media m ON m.id = e.cover_media_id
@@ -360,11 +383,15 @@ export function ftsSync(id) {
 export const MARK_OPEN = '\u0002';
 export const MARK_CLOSE = '\u0003';
 
-export function searchEntities(projectId, q, { kinds = [], tagId = null, limit = 30 } = {}) {
+export function searchEntities(projectId, q, { kinds = [], tagId = null, limit = 30, allowKinds = null } = {}) {
   const query = String(q || '').trim();
   if (!query) return [];
   const lim = Math.min(Math.max(Number(limit) || 30, 1), 100);
-  const kindList = kinds.filter((k) => KINDS.includes(k));
+  let kindList = kinds.filter((k) => KINDS.includes(k));
+  if (allowKinds) {
+    kindList = (kindList.length ? kindList : allowKinds).filter((k) => allowKinds.includes(k));
+    if (kindList.length === 0) return [];
+  }
   const kindSql = kindList.length ? `AND e.kind IN (${kindList.map(() => '?').join(',')})` : '';
   const tagSql = tagId ? 'AND EXISTS (SELECT 1 FROM author_entity_tags et WHERE et.entity_id = e.id AND et.tag_id = ?)' : '';
   const extra = [...kindList, ...(tagId ? [tagId] : [])];
@@ -403,7 +430,7 @@ export function searchEntities(projectId, q, { kinds = [], tagId = null, limit =
     title: r.title,
     icon: r.icon,
     color: r.color,
-    snippet: r.snip || (r.summary || '').slice(0, 160),
+    snippet: cleanSnippet(r.snip || (r.summary || '').slice(0, 160)),
     number: r.kind === 'chapter' ? numbers.get(r.id) ?? null : undefined,
     tags: tags.get(r.id) || [],
   }));
@@ -650,11 +677,12 @@ export function purgeEntity(projectId, id) {
 // Index léger de tout le projet (titres + alias) : résolution des liens
 // [[Nom]] dans les textes et autocomplétion de l'éditeur, sans charger les
 // fiches. Les anciens noms résolvent aussi (vers l'élément renommé).
-export function entityIndex(projectId) {
+export function entityIndex(projectId, { allowKinds = null } = {}) {
   const numbers = chapterNumbers(projectId);
   const rows = db.prepare(`
     SELECT id, kind, title, icon, color FROM author_entities
-    WHERE project_id = ? AND deleted_at IS NULL ORDER BY title COLLATE NOCASE
+    WHERE project_id = ? AND deleted_at IS NULL ${allowKinds ? `AND kind IN (${kindListSql(allowKinds)})` : ''}
+    ORDER BY title COLLATE NOCASE
   `).all(projectId);
   const byId = new Map(rows.map((r) => [r.id, {
     id: r.id, kind: r.kind, title: r.title, icon: r.icon, color: r.color, aliases: [],

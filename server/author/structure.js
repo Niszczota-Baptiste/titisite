@@ -293,14 +293,14 @@ export function getPlan(projectId) {
   const numbers = chapterNumbers(projectId);
   const chapters = db.prepare(`
     SELECT e.id, e.title, e.summary, e.color, e.icon, e.revision, e.updated_at, c.act_id, c.position, c.status,
-           c.word_count, c.target_words, c.content_updated_at
+           c.word_count, c.target_words, c.content_updated_at, c.validated_at
     FROM author_entities e JOIN author_chapters c ON c.entity_id = e.id
     WHERE e.project_id = ? AND e.deleted_at IS NULL
   `).all(projectId).map((r) => ({
     type: 'chapter', id: r.id, title: r.title, summary: r.summary, color: r.color, icon: r.icon,
     actId: r.act_id, position: r.position, status: r.status, wordCount: r.word_count,
     targetWords: r.target_words, number: numbers.get(r.id) ?? null, revision: r.revision,
-    updatedAt: r.updated_at, contentUpdatedAt: r.content_updated_at,
+    updatedAt: r.updated_at, contentUpdatedAt: r.content_updated_at, validatedAt: r.validated_at,
   }));
   const beats = db.prepare(`${BEAT_SELECT} WHERE b.project_id = ?`).all(projectId).map(beatFromRow);
   const sortItems = (a, b) => a.position - b.position || (a.type === b.type ? a.id - b.id : (a.type === 'chapter' ? -1 : 1));

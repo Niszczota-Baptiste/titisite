@@ -8,8 +8,9 @@ import { usePageMeta } from '../hooks/usePageMeta';
 //
 // Ce garde-fou n'est qu'un CONFORT d'affichage : la sécurité est côté serveur
 // (rôle admin + users.can_author + propriété du projet sur chaque route
-// /api/author/*). Un compte sans le droit ne télécharge même pas le code de
-// l'atelier (chunk paresseux chargé seulement après la vérification).
+// /api/author/*, ou partage en lecture pour un invité). Un compte sans le droit
+// ne télécharge même pas le code de l'atelier (chunk paresseux chargé
+// seulement après la vérification).
 
 const AuthorApp = lazy(() => import('../components/author/AuthorApp'));
 
@@ -39,7 +40,7 @@ export default function Auteur() {
 
   if (loading) return <Splash><span style={{ color: 'rgba(180,170,200,0.6)', fontSize: 13 }}>Chargement…</span></Splash>;
   if (!user) return <Login title="Atelier d'auteur" subtitle="Espace privé. Connecte-toi pour continuer." />;
-  if (!user.canAuthor) {
+  if (!user.canAuthor && !user.authorShared) {
     return (
       <Splash>
         <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 22, fontWeight: 700 }}>Accès refusé</h1>

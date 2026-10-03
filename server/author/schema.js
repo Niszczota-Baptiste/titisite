@@ -184,6 +184,20 @@ export function migrateAuthor(db, ensureColumn) {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_author_chapters_order ON author_chapters(act_id, position);`);
+  // Validation « lecteurs » : un chapitre n'est servi au rôle lecteur que s'il
+  // est « terminé » ET validé. Quitter « terminé » (réécriture…) retire la
+  // validation quel que soit le chemin d'écriture (fiche, éditeur, kanban) :
+  // c'est la base qui l'assure, pas chaque route — un brouillon ne repart
+  // jamais chez les lecteurs par un simple aller-retour de statut.
+  ensureColumn('author_chapters', 'validated_at', 'INTEGER');
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_author_chapters_unvalidate
+    AFTER UPDATE OF status ON author_chapters
+    WHEN NEW.status <> 'termine' AND NEW.validated_at IS NOT NULL
+    BEGIN
+      UPDATE author_chapters SET validated_at = NULL WHERE entity_id = NEW.entity_id;
+    END;
+  `);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS author_notes (
@@ -412,6 +426,50 @@ export function migrateAuthor(db, ensureColumn) {
       PRIMARY KEY (project_id, issue_key)
     );
   `);
+
+  // Un tableau blanc est un outil de brainstorming : il reste privé tant que
+  // le propriétaire ne l'ouvre pas explicitement au rôle omniscient.
+  ensureColumn('author_boards', 'shared', 'INTEGER NOT NULL DEFAULT 0');
+
+  // ── Partage ───────────────────────────────────────────────────────────────
+  // Le propriétaire ouvre un livre à d'autres comptes existants, en LECTURE :
+  //   - 'omniscient' : tout le livre sauf la boîte à idées (kind 'note'), et
+  //     peut commenter ;
+  //   - 'lecteur'    : seulement les chapitres terminés ET validés.
+  // Aucune écriture du contenu n'est jamais ouverte. Révoquer = supprimer la
+  // ligne ; supprimer le compte invité emporte ses partages.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS author_project_shares (
+      project_id INTEGER NOT NULL REFERENCES author_projects(id) ON DELETE CASCADE,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role       TEXT NOT NULL,
+      created_at ${TS},
+      updated_at ${TS},
+      PRIMARY KEY (project_id, user_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_author_shares_user ON author_project_shares(user_id);`);
+
+  // Commentaires : sur un élément (fiche, chapitre…) ou, entity_id NULL, sur
+  // le livre entier (« fil général »). Table propre plutôt que la table
+  // `comments` globale : celle-ci laisse passer tout admin, or l'atelier n'a
+  // aucun outrepassement. `quote` = passage cité (sélection dans un chapitre).
+  // Compte supprimé → l'auteur passe à NULL, la remarque reste.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS author_comments (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id  INTEGER NOT NULL REFERENCES author_projects(id) ON DELETE CASCADE,
+      entity_id   INTEGER REFERENCES author_entities(id) ON DELETE CASCADE,
+      author_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      body        TEXT NOT NULL,
+      quote       TEXT NOT NULL DEFAULT '',
+      resolved_at INTEGER,
+      resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  ${TS},
+      updated_at  ${TS}
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_author_comments_target ON author_comments(project_id, entity_id, created_at);`);
 
   // Recherche plein-texte. Table FTS ordinaire synchronisée EXPLICITEMENT par
   // server/author/entities.js (pas de triggers, même choix que lore_fts) ;

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { countChars, countOccurrences, countWords, ftsQuery, normalize, plainText } from '../server/author/text.js';
+import {
+  cleanSnippet, countChars, countOccurrences, countWords, ftsQuery, nameKey, normalize, plainText, scrubWikiLinks,
+} from '../server/author/text.js';
 import { AUTO_INTERVAL_S, shouldSnapshot } from '../server/author/revisions.js';
 import { countWords as countWordsClient, textStats as textStatsClient } from '../src/components/author/text.js';
 import { indexText, mentions, namesOf, runRules } from '../server/author/consistency.js';
@@ -134,5 +136,37 @@ describe('author/consistency — règles pures', () => {
     const issues = runRules(world);
     assert.deepEqual(issues.map((i) => i.rule), ['chronologie', 'chronologie', 'chapitre_vide']);
     assert.equal(issues[0].severity, 'error');
+  });
+});
+
+describe('author/text — lecture invitée', () => {
+  it('neutralise les liens vers un nom caché, garde les autres', () => {
+    const hidden = new Set([nameKey('Le Pacte Secret')]);
+    assert.equal(
+      scrubWikiLinks('Elle a signé [[Le pacte secret|un pacte]] à [[Valcendre]].', hidden),
+      'Elle a signé un pacte à [[Valcendre]].',
+    );
+    assert.equal(scrubWikiLinks('Voir [[Le Pacte Secret]].', hidden), 'Voir Le Pacte Secret.');
+    // hidden = null (liseuse) : tous les liens deviennent du texte.
+    assert.equal(scrubWikiLinks('[[Élise Varnier|Élise]] et [[Marek]]', null), 'Élise et Marek');
+    assert.equal(scrubWikiLinks('rien [à] voir', hidden), 'rien [à] voir');
+  });
+
+  it('rend un extrait de recherche lisible, liens coupés compris', () => {
+    assert.equal(cleanSnippet('…pensa à [[Mira Varnier|Mira]], à [[Marek Dorn]], au'), '…pensa à Mira, à Marek Dorn, au');
+    assert.equal(cleanSnippet('Varnier|Mira]], à [[Marek'), 'Mira, à Marek');
+    assert.equal(cleanSnippet('Mira]], à'), 'Mira, à');
+    assert.equal(cleanSnippet('signé [[Le Pacte Secret|un pa'), 'signé un pa');
+    // En lecture invitée, une cible coupée en fin d'extrait disparaît.
+    assert.equal(cleanSnippet('au [[Le Pacte Se', { dropCutTarget: true }), 'au ');
+    assert.equal(cleanSnippet('relit [[Le \u0002Pacte\u0003|le \u0002pacte\u0003]].'), 'relit le \u0002pacte\u0003.');
+  });
+
+  it('reste linéaire sur une entrée hostile', () => {
+    const evil = `${'[['.repeat(20000)}${'a|'.repeat(20000)}`;
+    const t0 = Date.now();
+    scrubWikiLinks(evil, null);
+    cleanSnippet(evil, { dropCutTarget: true });
+    assert.ok(Date.now() - t0 < 1500);
   });
 });

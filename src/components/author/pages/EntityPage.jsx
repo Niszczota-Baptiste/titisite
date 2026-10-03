@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useConfirm } from '../../../ui/ConfirmProvider';
+import { CommentsThread } from '../comments/CommentsThread';
 import { useToast } from '../../../ui/ToastProvider';
 import { useAuthor } from '../context';
 import { FieldInput } from '../fields';
@@ -8,6 +9,7 @@ import { KINDS, KIND_ORDER, chapterStatus, kindMeta } from '../kinds';
 import { MediaPanel } from '../MediaPanel';
 import { PlaceMap } from '../PlaceMap';
 import { RelationsPanel } from '../RelationsPanel';
+import { ChapterPublish } from '../sharing';
 import { BackupBanner, ConflictDialog, RevisionsDialog } from '../saving';
 import { useShellPage } from '../Shell';
 import { formatCount } from '../text';
@@ -113,6 +115,11 @@ export function EntityPage() {
       </header>
 
       {e.kind === 'chapter' && <ChapterStrip e={e} />}
+      {e.kind === 'chapter' && (
+        <div className="au-card" style={{ marginBottom: 18 }}>
+          <ChapterPublish ch={e} beforeAction={doc.save} onChange={() => doc.refresh()} />
+        </div>
+      )}
 
       <div className="au-entity-grid">
         <div className="au-entity-main">
@@ -152,6 +159,8 @@ export function EntityPage() {
           <div className="au-card"><MediaPanel entity={e} onChanged={reloadEntity} /></div>
 
           <TasksCard entity={e} onChanged={reloadEntity} />
+
+          {e.kind !== 'note' && <div className="au-card"><CommentsThread entityId={e.id} /></div>}
 
           {e.boards.length > 0 && (
             <div className="au-card">

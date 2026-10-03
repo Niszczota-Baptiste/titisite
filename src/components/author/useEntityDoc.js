@@ -20,7 +20,7 @@ const RETRY_MS = 5000;
 
 // Parties d'une fiche qui ne sont PAS des champs de formulaire (relations,
 // médias, tâches…) : on peut les rafraîchir sans toucher au brouillon.
-const EXTRA_KEYS = ['links', 'media', 'cover', 'tasks', 'boards', 'map', 'mapMediaId', 'isFavorite', 'number', 'actId', 'actTitle', 'wordCount', 'charCount', 'contentUpdatedAt'];
+const EXTRA_KEYS = ['links', 'media', 'cover', 'tasks', 'boards', 'map', 'mapMediaId', 'isFavorite', 'number', 'actId', 'actTitle', 'wordCount', 'charCount', 'contentUpdatedAt', 'validatedAt'];
 
 function norm(key, v) {
   if (key === 'tags') return JSON.stringify((v || []).map((t) => (typeof t === 'string' ? t : t.name).toLowerCase()).sort());

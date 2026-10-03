@@ -17,6 +17,7 @@ function boardFromRow(r) {
   return {
     id: r.id, title: r.title, description: r.description, revision: r.revision,
     view: { x: r.view_x, y: r.view_y, zoom: r.view_zoom },
+    shared: r.shared === 1,
     nodeCount: r.node_count ?? undefined,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
@@ -43,9 +44,11 @@ export function createBoard(projectId, input = {}) {
 export function updateBoardMeta(projectId, id, input = {}) {
   const row = boardRow(projectId, id);
   if (!row) return null;
-  db.prepare(`UPDATE author_boards SET title = ?, description = ?, updated_at = ? WHERE id = ?`).run(
+  if (input.shared !== undefined && typeof input.shared !== 'boolean') throw new AuthorValidationError('invalid_type', 'shared');
+  db.prepare(`UPDATE author_boards SET title = ?, description = ?, shared = ?, updated_at = ? WHERE id = ?`).run(
     input.title !== undefined ? cleanText(input.title, 200, 'title', { trim: true, required: true }) : row.title,
     input.description !== undefined ? cleanText(input.description, 2000, 'description') : row.description,
+    input.shared !== undefined ? (input.shared ? 1 : 0) : row.shared,
     nowS(), id,
   );
   return boardFromRow(boardRow(projectId, id));

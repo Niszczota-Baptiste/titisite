@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../ui/ToastProvider';
 import { useAuthor } from './context';
 import { KINDS, KIND_ORDER, kindMeta } from './kinds';
-import { NAV } from './nav';
+import { GUEST_NAV, NAV } from './nav';
 import { Highlight, KindAvatar, Kbd, PortalContext, cx, entityPath, normalizeQuery } from './ui';
 
 // Palette de commandes (Ctrl/⌘ K) : recherche plein-texte dans tout l'univers,
@@ -17,7 +17,7 @@ export function Palette({ open, onClose, theme, setTheme }) {
 }
 
 function PaletteInner({ onClose, theme, setTheme }) {
-  const { pid, P, search, createEntity, setCaptureOpen } = useAuthor();
+  const { pid, P, guest, kindOrder, search, createEntity, setCaptureOpen } = useAuthor();
   const navigate = useNavigate();
   const toast = useToast();
   const [q, setQ] = useState('');
@@ -41,7 +41,7 @@ function PaletteInner({ onClose, theme, setTheme }) {
     const nq = normalizeQuery(q);
     const list = [];
     const text = q.trim();
-    if (text) {
+    if (text && !guest) {
       list.push({ id: 'capture', icon: '💡', label: `Capturer l'idée « ${text} »`, run: async () => {
         await P.notes.quick(text);
         toast.success('Idée capturée dans l\'inbox');
@@ -54,15 +54,15 @@ function PaletteInner({ onClose, theme, setTheme }) {
         } });
       }
     }
-    const nav = NAV.flatMap((g) => g.items).concat([{ to: 'reglages', label: 'Réglages & export', icon: '⚙️' }])
+    const nav = (guest ? GUEST_NAV : NAV).flatMap((g) => g.items).concat(guest ? [] : [{ to: 'reglages', label: 'Réglages & export', icon: '⚙️' }])
       .map((it) => ({ id: `go-${it.to}`, icon: it.icon, label: `Aller à : ${it.label}`, run: () => go(it.to ? `${base}/${it.to}` : base) }));
     const misc = [
-      { id: 'capture-open', icon: '＋', label: 'Capturer une idée…', run: () => { onClose(); setCaptureOpen(true); } },
+      !guest && { id: 'capture-open', icon: '＋', label: 'Capturer une idée…', run: () => { onClose(); setCaptureOpen(true); } },
       { id: 'theme', icon: theme === 'light' ? '🌙' : '☀️', label: theme === 'light' ? 'Passer en thème sombre' : 'Passer en thème clair', run: () => { setTheme(theme === 'light' ? 'dark' : 'light'); onClose(); } },
     ];
-    const filtered = [...misc, ...nav].filter((c) => !nq || normalizeQuery(c.label).includes(nq));
+    const filtered = [...misc.filter(Boolean), ...nav].filter((c) => !nq || normalizeQuery(c.label).includes(nq));
     return [...list.slice(0, text ? 1 : 0), ...filtered, ...list.slice(1)];
-  }, [q, P, toast, onClose, createEntity, go, base, pid, theme, setTheme, setCaptureOpen]);
+  }, [q, P, guest, toast, onClose, createEntity, go, base, pid, theme, setTheme, setCaptureOpen]);
 
   const rows = useMemo(() => [
     ...results.map((r) => ({ type: 'entity', key: `e${r.id}`, entity: r })),
@@ -73,11 +73,11 @@ function PaletteInner({ onClose, theme, setTheme }) {
     if (!row) return;
     if (row.type === 'entity') {
       const e = row.entity;
-      go(alt && e.kind === 'chapter' ? `${base}/ecrire/${e.id}` : entityPath(pid, e));
+      go(alt && e.kind === 'chapter' && !guest ? `${base}/ecrire/${e.id}` : entityPath(pid, e));
     } else {
       Promise.resolve(row.cmd.run()).catch((err) => toast.error(err.message));
     }
-  }, [go, base, pid, toast]);
+  }, [go, base, pid, guest, toast]);
 
   useEffect(() => {
     listRef.current?.querySelector(`[data-row="${active}"]`)?.scrollIntoView({ block: 'nearest' });
@@ -90,7 +90,7 @@ function PaletteInner({ onClose, theme, setTheme }) {
     else if (e.key === 'Enter') { e.preventDefault(); run(rows[active], { alt: e.ctrlKey || e.metaKey }); }
     else if (e.key === 'Tab') {
       e.preventDefault();
-      const order = [null, ...KIND_ORDER];
+      const order = [null, ...kindOrder];
       setKind((k) => order[(order.indexOf(k) + (e.shiftKey ? order.length - 1 : 1)) % order.length]);
     }
   };
@@ -115,7 +115,7 @@ function PaletteInner({ onClose, theme, setTheme }) {
                 {row.entity.snippet ? <> — <Highlight text={row.entity.snippet} /></> : null}
               </div>
             </div>
-            {row.entity.kind === 'chapter' && i === active && <span className="au-faint au-desktop-only" style={{ fontSize: 11 }}><Kbd>{navigator.platform?.includes('Mac') ? '⌘' : 'Ctrl'} ↵</Kbd> écrire</span>}
+            {row.entity.kind === 'chapter' && i === active && !guest && <span className="au-faint au-desktop-only" style={{ fontSize: 11 }}><Kbd>{navigator.platform?.includes('Mac') ? '⌘' : 'Ctrl'} ↵</Kbd> écrire</span>}
           </>
         ) : (
           <>
@@ -133,7 +133,7 @@ function PaletteInner({ onClose, theme, setTheme }) {
         <div className="au-palette-input">
           <span aria-hidden style={{ fontSize: 18, color: 'var(--au-muted)' }}>⌕</span>
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey}
-            placeholder={kind ? `Chercher dans : ${KINDS[kind].plural}…` : 'Chercher un personnage, un lieu, un chapitre, une idée… ou une commande'}
+            placeholder={kind ? `Chercher dans : ${KINDS[kind].plural}…` : guest ? 'Chercher un personnage, un lieu, un chapitre…' : 'Chercher un personnage, un lieu, un chapitre, une idée… ou une commande'}
             aria-label="Recherche" role="combobox" aria-expanded="true" />
           {kind && <button type="button" className="au-chip" onClick={() => setKind(null)}>{KINDS[kind].icon} {KINDS[kind].plural} ×</button>}
           <button type="button" className="au-btn is-ghost is-small au-mobile-only" onClick={onClose}>Fermer</button>

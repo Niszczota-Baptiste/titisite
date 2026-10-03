@@ -1006,6 +1006,7 @@ export const api = {
           purge:    (id) => request('DELETE', `${b}/entities/${id}/purge`),
           visit:    (id) => request('POST', `${b}/entities/${id}/visit`),
           favorite: (id, value) => request('PUT', `${b}/entities/${id}/favorite`, { value }),
+          validate: (id, value) => request('PUT', `${b}/entities/${id}/validation`, { value }),
         },
         revisions: {
           list:    (id, field) => request('GET', `${b}/entities/${id}/revisions${qs({ field })}`),
@@ -1090,6 +1091,25 @@ export const api = {
           dismiss: (key, value = true) => request('POST', `${b}/consistency/dismiss`, { key, value }),
         },
         trash: () => request('GET', `${b}/trash`),
+        // Partage : le propriétaire gère les invités ; les invités (omniscient)
+        // et lui se parlent par les commentaires ; la liseuse sert les
+        // chapitres terminés et validés (rôle lecteur, aperçu propriétaire).
+        shares: {
+          list:   () => request('GET', `${b}/shares`),
+          add:    (email, role) => request('POST', `${b}/shares`, { email, role }),
+          update: (userId, role) => request('PUT', `${b}/shares/${userId}`, { role }),
+          remove: (userId) => request('DELETE', `${b}/shares/${userId}`),
+        },
+        comments: {
+          list:   (params) => request('GET', `${b}/comments${qs(params)}`),
+          create: (body) => request('POST', `${b}/comments`, body),
+          update: (id, body) => request('PUT', `${b}/comments/${id}`, body),
+          remove: (id) => request('DELETE', `${b}/comments/${id}`),
+        },
+        reader: {
+          list: () => request('GET', `${b}/reader`),
+          get:  (id) => request('GET', `${b}/reader/${id}`),
+        },
         exportUrl: `/api${b}/export`,
         manuscriptUrl: `/api${b}/export/manuscript`,
       };

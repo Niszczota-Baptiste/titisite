@@ -1,29 +1,22 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
+import { useAuth } from '../../auth/AuthContext';
 import './author.css';
-import { AuthorProvider, useAuthor } from './context';
-import { Boards } from './pages/Boards';
-import { Chapters } from './pages/Chapters';
-import { Consistency } from './pages/Consistency';
-import { Dashboard } from './pages/Dashboard';
-import { EntityList } from './pages/EntityList';
-import { EntityPage } from './pages/EntityPage';
-import { Graph } from './pages/Graph';
-import { Ideas } from './pages/Ideas';
-import { Plan } from './pages/Plan';
-import { SearchPage } from './pages/SearchPage';
-import { Settings } from './pages/Settings';
-import { Tasks } from './pages/Tasks';
-import { Timeline } from './pages/Timeline';
-import { Whiteboard } from './pages/Whiteboard';
-import { Writer, WriterIndex } from './pages/Writer';
-import { Shell } from './Shell';
 import { Btn, ErrorLine, Field, PortalContext, formatDateTime } from './ui';
 import { formatCount } from './text';
 
 // Application de l'atelier d'auteur (chargée paresseusement par
 // src/pages/Auteur.jsx une fois le droit vérifié). Routes relatives à /auteur.
+//
+// Un livre s'ouvre selon le niveau d'accès que le SERVEUR renvoie pour lui :
+// propriétaire (atelier complet), omniscient (lecture de tout sauf la boîte à
+// idées, commentaires) ou lecteur (chapitres terminés et validés). Chaque
+// espace est un morceau chargé à part : un invité ne télécharge pas l'atelier.
+
+const OwnerProject = lazy(() => import('./OwnerProject'));
+const GuestProject = lazy(() => import('./guest/GuestProject'));
+const ReaderProject = lazy(() => import('./reader/ReaderProject'));
 
 const THEME_KEY = 'au-theme';
 const LAST_KEY = 'au-last-project';
@@ -49,64 +42,61 @@ export default function AuthorApp() {
   );
 }
 
+function Loading({ children = 'Chargement…' }) {
+  return <div className="au-page"><p className="au-muted">{children}</p></div>;
+}
+
 function ProjectRoot({ theme, setTheme }) {
   const { pid } = useParams();
   const id = Number(pid);
-  useEffect(() => { try { localStorage.setItem(LAST_KEY, String(id)); } catch { /* ignore */ } }, [id]);
-  if (!Number.isInteger(id) || id <= 0) return <Navigate to="/auteur" replace />;
-  return (
-    <AuthorProvider pid={id} key={id}>
-      <ProjectGuard>
-        <Shell theme={theme} setTheme={setTheme}>
-          <Routes>
-            <Route index element={<Dashboard />} />
-            <Route path="personnages" element={<EntityList kind="character" />} />
-            <Route path="lieux" element={<EntityList kind="place" />} />
-            <Route path="univers" element={<EntityList kind="lore" />} />
-            <Route path="evenements" element={<EntityList kind="event" />} />
-            <Route path="e/:id" element={<EntityPage />} />
-            <Route path="idees" element={<Ideas />} />
-            <Route path="chapitres" element={<Chapters />} />
-            <Route path="plan" element={<Plan />} />
-            <Route path="ecrire" element={<WriterIndex />} />
-            <Route path="ecrire/:id" element={<Writer />} />
-            <Route path="tableaux" element={<Boards />} />
-            <Route path="tableaux/:boardId" element={<Whiteboard />} />
-            <Route path="chronologie" element={<Timeline />} />
-            <Route path="graphe" element={<Graph />} />
-            <Route path="taches" element={<Tasks />} />
-            <Route path="recherche" element={<SearchPage />} />
-            <Route path="coherence" element={<Consistency />} />
-            <Route path="reglages" element={<Settings />} />
-            <Route path="*" element={<Navigate to="" replace />} />
-          </Routes>
-        </Shell>
-      </ProjectGuard>
-    </AuthorProvider>
-  );
-}
+  const valid = Number.isInteger(id) && id > 0;
+  const [state, setState] = useState({ id: null, access: null, error: null });
 
-// Projet introuvable (supprimé, ou pas à toi : le serveur répond 404 dans les
-// deux cas) → retour au choix du livre.
-function ProjectGuard({ children }) {
-  const { loadError } = useAuthor();
-  if (loadError?.status === 404) {
+  useEffect(() => {
+    if (!valid) return undefined;
+    let alive = true;
+    setState({ id, access: null, error: null });
+    api.author.p(id).get()
+      .then((p) => { if (alive) setState({ id, access: p.access || 'owner', error: null }); })
+      .catch((error) => { if (alive) setState({ id, access: null, error }); });
+    return () => { alive = false; };
+  }, [id, valid]);
+
+  useEffect(() => { if (state.access) { try { localStorage.setItem(LAST_KEY, String(id)); } catch { /* ignore */ } } }, [id, state.access]);
+
+  if (!valid) return <Navigate to="/auteur" replace />;
+  // Projet introuvable, ou plus partagé : le serveur répond 404/403 dans tous
+  // les cas → retour au choix du livre.
+  if (state.error && [403, 404].includes(state.error.status)) {
     try { localStorage.removeItem(LAST_KEY); } catch { /* ignore */ }
-    return <Navigate to="/auteur" replace />;
+    return <Navigate to="/auteur?choisir" replace />;
   }
-  if (loadError) {
+  if (state.error) {
     return (
       <div className="au-page is-narrow">
-        <ErrorLine error={loadError} />
+        <ErrorLine error={state.error} />
         <Btn onClick={() => window.location.reload()}>Réessayer</Btn>
       </div>
     );
   }
-  return children;
+  if (state.id !== id || !state.access) return <Loading />;
+  const Space = state.access === 'owner' ? OwnerProject : state.access === 'omniscient' ? GuestProject : ReaderProject;
+  return (
+    <Suspense fallback={<Loading>Ouverture…</Loading>}>
+      <Space key={id} pid={id} access={state.access} theme={theme} setTheme={setTheme} />
+    </Suspense>
+  );
 }
+
+const ROLE_LABEL = {
+  omniscient: { icon: '👁️', label: 'Lecture complète + commentaires' },
+  lecteur: { icon: '📖', label: 'Chapitres publiés' },
+};
 
 function ProjectPicker() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canCreate = !!user?.canAuthor;
   const [projects, setProjects] = useState(null);
   const [error, setError] = useState(null);
   const [form, setForm] = useState({ title: '', subtitle: '', targetWords: '' });
@@ -122,9 +112,9 @@ function ProjectPicker() {
         if (target) { navigate(`/auteur/${target.id}`, { replace: true }); return; }
       }
       setProjects(list);
-      setShowForm(list.length === 0);
+      setShowForm(list.length === 0 && canCreate);
     }).catch(setError);
-  }, [navigate]);
+  }, [navigate, canCreate]);
 
   const create = async (e) => {
     e.preventDefault();
@@ -145,8 +135,12 @@ function ProjectPicker() {
       <div style={{ width: '100%', maxWidth: 620 }}>
         <div style={{ textAlign: 'center', marginBottom: 26 }}>
           <div style={{ fontSize: 40 }} aria-hidden>✒️</div>
-          <h1 style={{ fontFamily: 'var(--au-head)', fontSize: 28, fontWeight: 700, letterSpacing: '-0.6px', margin: '6px 0' }}>Atelier d&apos;auteur</h1>
-          <p className="au-muted">Le cerveau de ton livre : personnages, univers, chapitres, idées — tout relié.</p>
+          <h1 style={{ fontFamily: 'var(--au-head)', fontSize: 28, fontWeight: 700, letterSpacing: '-0.6px', margin: '6px 0' }}>
+            {canCreate ? 'Atelier d\'auteur' : 'Livres partagés avec toi'}
+          </h1>
+          <p className="au-muted">
+            {canCreate ? 'Le cerveau de ton livre : personnages, univers, chapitres, idées — tout relié.' : 'Choisis un livre à lire.'}
+          </p>
         </div>
         <ErrorLine error={error} onClose={() => setError(null)} />
         {projects === null && !error && <p className="au-muted" style={{ textAlign: 'center' }}>Chargement…</p>}
@@ -158,14 +152,19 @@ function ProjectPicker() {
                 <div style={{ fontFamily: 'var(--au-head)', fontWeight: 700, fontSize: 17 }}>{p.title}</div>
                 {p.subtitle && <div className="au-muted">{p.subtitle}</div>}
                 <div className="au-faint" style={{ fontSize: 12, marginTop: 6 }}>
-                  {formatCount(p.words)} mots · {p.entityCount} éléments · modifié le {formatDateTime(p.updatedAt)}
+                  {p.access === 'owner'
+                    ? `${formatCount(p.words)} mots · ${p.entityCount} éléments · modifié le ${formatDateTime(p.updatedAt)}`
+                    : `${ROLE_LABEL[p.access]?.icon || ''} ${ROLE_LABEL[p.access]?.label || ''}${p.ownerName ? ` · partagé par ${p.ownerName}` : ''}`}
                 </div>
               </div>
             ))}
           </div>
         )}
-        {projects && !showForm && <Btn onClick={() => setShowForm(true)} style={{ width: '100%' }}>＋ Nouveau livre</Btn>}
-        {projects && showForm && (
+        {projects?.length === 0 && !canCreate && (
+          <p className="au-muted" style={{ textAlign: 'center' }}>Aucun livre ne t&apos;est partagé pour le moment.</p>
+        )}
+        {projects && canCreate && !showForm && <Btn onClick={() => setShowForm(true)} style={{ width: '100%' }}>＋ Nouveau livre</Btn>}
+        {projects && canCreate && showForm && (
           <form className="au-card" onSubmit={create}>
             <div className="au-card-title">{projects.length ? 'Nouveau livre' : 'Commencer ton livre'}</div>
             <Field label="Titre (provisoire, ça se change)">

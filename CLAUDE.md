@@ -45,6 +45,18 @@ Single-process Node app:
   `server/author/*` ; front `src/components/author/*` (CSS `au-`, thème
   clair/sombre), `api.author.p(pid).*`. Les tables `writing_*` (espace public)
   ne sont PAS réutilisées : `/api/ecriture` est public.
+  **Partage en lecture** (`author_project_shares`, Réglages → Partage) à des
+  comptes existants : `omniscient` (tout sauf la boîte à idées, les tâches,
+  la corbeille, l'historique, la cohérence et les tableaux non partagés ;
+  commente via `author_comments`, pas la table `comments` globale) et
+  `lecteur` (chapitres « Terminé » ET publiés, `validated_at` retiré par
+  déclencheur SQL quand le statut change). `resolveAuthorAccess` pose
+  `req.access` ; routeur propriétaire `p` et routeur invité `g` (liste
+  blanche, 404/403 `read_only` sinon) distincts ; toute lecture invitée passe
+  par `server/author/sharing.js` (filtre `GUEST_KINDS`, liens `[[…]]` vers une
+  idée neutralisés). Front : `OwnerProject` / `guest/GuestProject` /
+  `reader/ReaderProject` chargés selon l'accès ; `/auth/me` expose
+  `authorShared`. Test anti-fuite : `test/author-sharing.test.js`.
 - Public-site collections (`projects`, `tracks`, `education`, `experience`,
   `currently`) use a **JSON-blob table per name** (`server/db.js#listAll/insert/update/remove/reorder`).
   CRUD UI uses `ItemList` (`src/components/admin/ItemList.jsx`) — pass

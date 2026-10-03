@@ -33,15 +33,30 @@ export function Chapters() {
   const hasActs = cols?.some((c) => c.actId !== null);
 
   const setStatus = async (ch, status) => {
-    try { await P.entities.update(ch.id, { revision: ch.revision, status }); bump(); } catch (err) {
+    try {
+      await P.entities.update(ch.id, { revision: ch.revision, status });
+      if (ch.validatedAt && status !== 'termine') toast.info('Chapitre retiré des lecteurs : il n\'est plus « Terminé ».');
+      bump();
+    } catch (err) {
       toast.error(err.status === 409 ? 'Ce chapitre a été modifié ailleurs — rechargé.' : humanError(err));
       load();
     }
   };
 
+  const validate = async (ch, value) => {
+    try {
+      await P.entities.validate(ch.id, value);
+      toast.success(value ? 'Chapitre ouvert aux lecteurs' : 'Chapitre retiré des lecteurs');
+      bump();
+    } catch (err) { toast.error(humanError(err)); }
+  };
+
   const actions = (ch, col) => [
     { label: 'Écrire', icon: '✍️', onClick: () => navigate(`/auteur/${pid}/ecrire/${ch.id}`) },
     { label: 'Ouvrir la fiche', icon: '↗', onClick: () => navigate(`/auteur/${pid}/e/${ch.id}`) },
+    ch.status === 'termine' && (ch.validatedAt
+      ? { label: 'Retirer des lecteurs', icon: '📕', onClick: () => validate(ch, false) }
+      : { label: 'Valider pour les lecteurs', icon: '📖', onClick: () => validate(ch, true) }),
     { sep: true },
     ...CHAPTER_STATUSES.filter((s) => s.key !== ch.status).map((s) => ({ label: `Statut : ${s.label}`, icon: '●', onClick: () => setStatus(ch, s.key) })),
     { sep: true },
@@ -130,7 +145,10 @@ function ChapterRow({ pid, ch, dnd, colKey, onStatus, onMenu }) {
       <span className="au-drag-handle" data-dnd-handle aria-label="Déplacer (glisser)" title="Glisser pour réordonner">⠿</span>
       <span className="au-chnum">{ch.number}</span>
       <Link to={`/auteur/${pid}/e/${ch.id}`} className="au-chmain">
-        <span className="au-row-title" style={{ display: 'block' }}>{ch.title}</span>
+        <span className="au-row-title" style={{ display: 'block' }}>
+          {ch.title}
+          {ch.validatedAt && <span className="au-validated" title="Validé : visible par les lecteurs">📖 publié</span>}
+        </span>
         <span className="au-row-meta" style={{ display: 'block' }}>{ch.summary || <span className="au-faint">Pas encore de résumé</span>}</span>
       </Link>
       <span className="au-chstats au-desktop-only">

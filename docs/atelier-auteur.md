@@ -2,7 +2,8 @@
 
 Espace **privé** de conception d'un livre : un « cerveau d'auteur » qui relie
 personnages, lieux, lore, événements, chapitres, idées, tableaux blancs et
-tâches. Une seule personne y a accès : le compte propriétaire.
+tâches. Une seule personne l'écrit : le compte propriétaire. Il peut l'ouvrir
+**en lecture** à d'autres comptes (voir « Partage »).
 
 - Front : `src/pages/Auteur.jsx` (garde d'affichage + chargement paresseux) →
   `src/components/author/` (application, pages dans `pages/`).
@@ -10,7 +11,9 @@ tâches. Une seule personne y a accès : le compte propriétaire.
   moteur de cohérence). Migration : `server/author/schema.js#migrateAuthor`,
   appelée par `db.js#migrate`.
 - Tests : `test/author.test.js` (intégration, garde d'accès comprise),
-  `test/author-text.test.js` (fonctions pures : comptage, snapshots, règles).
+  `test/author-sharing.test.js` (rôles invités, balayage anti-fuite),
+  `test/author-text.test.js` (fonctions pures : comptage, snapshots, règles,
+  neutralisation des liens).
 
 ## Accès : trois verrous, tous côté serveur
 
@@ -52,6 +55,74 @@ En plus :
   (`DELETE /api/users/:id` → 409, FK `RESTRICT` en dernier recours).
 - `/auteur` exclu des statistiques de fréquentation, `noindex`, MiniPlayer masqué.
 
+## Partage : omniscient et lecteur
+
+Le propriétaire ouvre un livre à un **compte existant** (créé dans
+Administration → Utilisateurs, rôle « membre » suffit) depuis Réglages →
+Partage, par e-mail. Deux rôles, **tous deux en lecture seule** :
+
+| Rôle | Voit | Peut |
+|---|---|---|
+| `omniscient` | tout le livre : fiches, chapitres à tous les statuts, plan, chronologie, graphe, recherche, tableaux **partagés** | commenter (fiche, passage cité d'un chapitre, fil général du livre), corriger/supprimer ses propres commentaires |
+| `lecteur` | les chapitres **« Terminé » ET publiés**, dans une liseuse (titre + texte, rien d'autre) | lire |
+
+Jamais servis à un invité, quel que soit le rôle : la **boîte à idées**
+(`kind = 'note'`), les tâches, la corbeille, l'historique des versions, la
+cohérence, les réglages et exports, les tableaux non partagés.
+
+### Comment c'est garanti (serveur)
+
+- **Garde d'entrée** `requireAuthorAccess` : propriétaire, ou compte ayant au
+  moins un partage *actif* (le propriétaire du livre doit encore être
+  l'auteur désigné — sinon ses partages se ferment d'eux-mêmes).
+- **`resolveAuthorAccess`** pose `req.access` = `owner` | `omniscient` |
+  `lecteur` (sinon 404). Les routes du propriétaire et celles des invités sont
+  **deux routeurs distincts** (`p` et `g` dans `server/routes/author.js`) : une
+  requête invitée n'atteint jamais un gestionnaire d'écriture. Le routeur
+  invité est une **liste blanche** : tout le reste répond 404 en lecture, 403
+  `read_only` en écriture.
+- Les lectures invitées passent **toutes** par `server/author/sharing.js`, qui
+  filtre sur `GUEST_KINDS` (liste blanche dans `enums.js` : un futur type est
+  privé tant qu'on ne l'ouvre pas) : listes, compteurs de relations, index,
+  recherche, graphe, tags (un tag porté seulement par des idées n'existe pas),
+  tableaux (nœuds d'idées et images d'idées retirés), épingles de carte,
+  médias, tableau de bord.
+- **Liens `[[…]]` vers une idée** : la cible d'un lien est le titre de l'idée.
+  `scrubWikiLinks` (`text.js`) la remplace par le texte affiché dans tout ce
+  qui sort vers un invité ; la liseuse réduit *tous* les liens à leur texte.
+  Les extraits de recherche sont rendus lisibles (`cleanSnippet`). Limite
+  connue : une recherche peut encore *trouver* une fiche par un mot qui n'est
+  que dans la cible d'un lien caché (l'extrait, lui, ne la montre pas).
+- **Médias** : servis à un omniscient seulement s'ils sont rangés sur un
+  élément visible vivant ou posés sur un tableau partagé ; jamais au lecteur.
+- **Publication** : `PUT /entities/:id/validation` (propriétaire), refusée hors
+  statut « Terminé ». Un **déclencheur SQL** (`trg_author_chapters_unvalidate`)
+  retire la publication dès que le statut quitte « Terminé », quel que soit le
+  chemin (fiche, éditeur, kanban) : il faut republier après une réécriture.
+- **Commentaires** : table `author_comments` (FK élément en cascade, auteur en
+  `SET NULL` — un compte supprimé laisse ses remarques), PAS la table
+  `comments` globale qui laisse passer tout admin. Le propriétaire répond,
+  marque « traité », supprime ; « à traiter » exclut ses propres messages.
+- Testé par un **balayage** (`test/author-sharing.test.js`) : des marqueurs
+  posés dans une idée (titre, alias, corps, tag, tâche, tableau privé,
+  commentaire) sont cherchés dans la réponse de *chaque* lecture invitée, avec
+  un témoin qui prouve qu'ils sont bien visibles côté propriétaire.
+
+### Interface
+
+- `src/components/author/AuthorApp.jsx` demande au serveur le niveau d'accès du
+  livre puis charge **un morceau à part** : `OwnerProject` (atelier complet),
+  `guest/GuestProject` (omniscient : pages en lecture, `Graph` et `SearchPage`
+  réutilisés via `kindOrder`/`guest` du contexte) ou `reader/ReaderProject`
+  (liseuse). Un invité ne télécharge pas l'atelier.
+- Propriétaire : Réglages → 👥 Partage, 💬 Commentaires (navigation + rappel sur
+  le tableau de bord), fil de commentaires sur chaque fiche et dans le panneau
+  de l'éditeur, bouton « 📖 Publier » sur un chapitre terminé (badge « publié »
+  dans la liste), « 👁️ Partager avec les omniscients » sur un tableau,
+  `/auteur/:id/apercu` = ce que voit un lecteur.
+- Invité : lien « 📖 Livres partagés » dans l'en-tête des projets ; pastille
+  « Lecture seule » ; sélectionner un passage d'un chapitre propose de le citer.
+
 ## Modèle de données
 
 « Class table inheritance » : chaque élément est une ligne de
@@ -76,6 +147,8 @@ Toutes les relations sont donc de **vraies clés étrangères**.
 | `author_boards`, `author_board_nodes`, `author_board_edges` | tableaux blancs : un nœud par ligne (FK vers un élément ou un média), flèches en FK composites |
 | `author_issue_dismissals` | problèmes de cohérence ignorés (clé stable) |
 | `author_fts` | FTS5 (`rowid` = id d'élément, `remove_diacritics`), synchronisée explicitement par `entities.js` |
+| `author_project_shares` | partages (projet, compte, rôle `omniscient`/`lecteur`) |
+| `author_comments` | commentaires (élément ou livre entier), citation, « traité » |
 
 Les listes extensibles (types, statuts, relations) n'ont **pas de CHECK** :
 elles vivent dans `server/author/enums.js` (+ miroir d'affichage
@@ -147,7 +220,8 @@ renvoyant des problèmes `{ key, severity, title, detail, entityIds }` — la
 | un champ de fiche | colonne (`schema.js`, `ensureColumn` si la table existe déjà en prod), `KIND_FIELDS`, puis la définition de champ dans `kinds.js` (le rendu suit) |
 | une relation | `RELATION_KINDS` (`enums.js`) + `RELATIONS` (`kinds.js`) ; `defaultRelation` si un couple de types doit la proposer |
 | une règle de cohérence | `RULES` (`consistency.js`) + son test |
-| un module (page) | composant dans `pages/`, route dans `AuthorApp.jsx`, entrée dans `nav.js` |
+| un module (page) | composant dans `pages/`, route dans `OwnerProject.jsx`, entrée dans `nav.js` |
+| un module visible des invités | une lecture filtrée dans `sharing.js` + sa route dans le routeur `g`, la page dans `guest/` + `GUEST_NAV`, et une ligne dans le balayage de `test/author-sharing.test.js` |
 
 ## Configuration
 

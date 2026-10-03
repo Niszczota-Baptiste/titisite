@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../auth.js';
 import { UPLOADS_DIR, safeUnlink, uploadAuthorImage } from '../uploads.js';
 import {
-  requireAuthor, requireAuthorHeader, resolveAuthorProject,
+  isAuthor, requireAuthor, requireAuthorAccess, requireAuthorHeader, resolveAuthorAccess, sharedProjectsFor,
 } from '../author/access.js';
 import {
   applyBoardOps, createBoard, deleteBoard, getBoard, listBoards, setBoardView, updateBoardMeta,
@@ -13,7 +13,7 @@ import {
   createEntity, entityIndex, getEntity, liveEntity, listEntities, markVisited, moveEvent, purgeEntity,
   reorderNotes, restoreEntity, searchEntities, setFavorite, trashEntity, updateEntity,
 } from '../author/entities.js';
-import { KINDS, NOTE_STATUSES, REVISION_FIELDS, own } from '../author/enums.js';
+import { GUEST_KINDS, KINDS, NOTE_STATUSES, REVISION_FIELDS, own } from '../author/enums.js';
 import { exportManuscript, exportProject } from '../author/export.js';
 import {
   deleteMedia, insertMedia, listProjectMedia, mediaFileOwned, processAuthorImage, updateMedia,
@@ -24,6 +24,12 @@ import {
 } from '../author/relations.js';
 import { getRevision, insertRevision, listRevisions } from '../author/revisions.js';
 import {
+  commentCounts, createComment, deleteComment, deleteShare, guestBoard, guestBoards, guestEntity, guestList,
+  guestOverview, guestPins, guestProject, guestTags, hiddenNames, listComments, listShares, mediaFileShared,
+  readerChapter, readerChapters, scrubSnippet, scrubWikiLinks, setChapterValidation, updateComment, updateShare,
+  upsertShare,
+} from '../author/sharing.js';
+import {
   createAct, createBeat, createCategory, createPin, createProject, createTask, createTimeline,
   deleteAct, deleteBeat, deleteCategory, deletePin, deleteProject, deleteTask, deleteTimeline,
   getPlan, listCategories, listPins, listProjects, listTasks, listTimelines, projectFromRow,
@@ -32,17 +38,21 @@ import {
 } from '../author/structure.js';
 import { AuthorValidationError, cleanText } from '../author/validate.js';
 
-// Atelier d'auteur (« cerveau d'auteur ») — API privée du propriétaire.
+// Atelier d'auteur (« cerveau d'auteur ») — API privée du propriétaire, et
+// lecture partagée pour ses invités.
 //
-// TOUT est derrière : requireAuth (cookie de session) → requireAuthor (rôle
-// admin + drapeau can_author, sans outrepassement) → en-tête anti-CSRF sur les
-// écritures → et, pour les données, resolveAuthorProject (le projet doit
-// appartenir à l'appelant, sinon 404). Aucune route publique, aucun fichier
-// servi en statique. Cf. docs/atelier-auteur.md.
+// TOUT est derrière : requireAuth (cookie de session) → requireAuthorAccess
+// (propriétaire = rôle admin + drapeau can_author sans outrepassement, OU
+// compte invité avec un partage actif) → en-tête anti-CSRF sur les écritures
+// → et, pour les données, resolveAuthorAccess (propriétaire du projet, ou
+// partage sur CE projet, sinon 404). Le propriétaire est servi par le routeur
+// `p`, les invités par le routeur `g` — deux routeurs distincts : une requête
+// invitée n'atteint jamais un gestionnaire d'écriture du contenu. Aucune route
+// publique, aucun fichier servi en statique. Cf. docs/atelier-auteur.md.
 
 export const authorRouter = Router();
 
-authorRouter.use(requireAuth, requireAuthor, requireAuthorHeader);
+authorRouter.use(requireAuth, requireAuthorAccess, requireAuthorHeader);
 
 // Limiteurs propres en plus du global /api/* (600/min). L'autosave de
 // l'éditeur et du tableau blanc écrit souvent : plafond large mais fini.
@@ -85,7 +95,8 @@ const notFound = (res) => res.status(404).json({ error: 'not_found' });
 authorRouter.get('/media/:filename', (req, res) => {
   const { filename } = req.params;
   if (!/^[\w-]+\.webp$/.test(filename)) return res.status(400).end();
-  if (!mediaFileOwned(filename, req.user.id)) return res.status(404).end();
+  const allowed = (isAuthor(req.user) && mediaFileOwned(filename, req.user.id)) || mediaFileShared(filename, req.user.id);
+  if (!allowed) return res.status(404).end();
   res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   return res.sendFile(filename, { root: UPLOADS_DIR }, (err) => {
     if (err && !res.headersSent) res.status(404).end();
@@ -94,14 +105,22 @@ authorRouter.get('/media/:filename', (req, res) => {
 
 // ── Projets ─────────────────────────────────────────────────────────────────
 
-authorRouter.get('/projects', (req, res) => res.json(listProjects(req.user.id)));
+// Les livres du propriétaire, puis ceux qu'on a partagés avec l'appelant.
+authorRouter.get('/projects', (req, res) => {
+  const own = isAuthor(req.user) ? listProjects(req.user.id).map((p) => ({ ...p, access: 'owner' })) : [];
+  const shared = sharedProjectsFor(req.user.id).map((r) => ({
+    id: r.id, title: r.title, subtitle: r.subtitle, color: r.color, access: r.share_role, ownerName: r.owner_name,
+  }));
+  res.json([...own, ...shared]);
+});
 
-authorRouter.post('/projects', h((req, res) => {
+authorRouter.post('/projects', requireAuthor, h((req, res) => {
   res.status(201).json(createProject(req.user.id, req.body || {}));
 }));
 
-const p = Router({ mergeParams: true });
-authorRouter.use('/projects/:pid', resolveAuthorProject, p);
+const p = Router({ mergeParams: true }); // propriétaire
+const g = Router({ mergeParams: true }); // invités (omniscient, lecteur)
+authorRouter.use('/projects/:pid', resolveAuthorAccess, (req, res, next) => (req.access === 'owner' ? p : g)(req, res, next));
 
 // Toute écriture réussie rafraîchit la date du projet (tri « récents »).
 p.use((req, res, next) => {
@@ -111,7 +130,7 @@ p.use((req, res, next) => {
   next();
 });
 
-p.get('/', (req, res) => res.json(projectFromRow(req.project)));
+p.get('/', (req, res) => res.json({ ...projectFromRow(req.project), access: 'owner' }));
 
 p.put('/', h((req, res) => res.json(updateProject(req.project.id, req.body || {}))));
 
@@ -128,7 +147,7 @@ p.delete('/', h((req, res) => {
 p.get('/overview', (req, res) => {
   let issueCount = null;
   try { issueCount = checkProject(req.project.id).issues.length; } catch { /* le tableau de bord reste servi */ }
-  res.json(overview(projectFromRow(req.project), { issueCount }));
+  res.json({ ...overview(projectFromRow(req.project), { issueCount }), comments: commentCounts(req.project.id) });
 });
 
 // ── Éléments ────────────────────────────────────────────────────────────────
@@ -184,6 +203,15 @@ p.put('/entities/:id', h((req, res) => {
 p.delete('/entities/:id', (req, res) => (trashEntity(req.project.id, idOf(req.params.id)) ? res.status(204).end() : notFound(res)));
 p.post('/entities/:id/restore', (req, res) => (restoreEntity(req.project.id, idOf(req.params.id)) ? res.status(204).end() : notFound(res)));
 p.delete('/entities/:id/purge', (req, res) => (purgeEntity(req.project.id, idOf(req.params.id)) ? res.status(204).end() : notFound(res)));
+
+// Ouvrir un chapitre « terminé » au rôle lecteur (ou le retirer). Geste
+// structurel : pas de révision. Quitter « terminé » retire la validation
+// (déclencheur SQL, cf. schema.js).
+p.put('/entities/:id/validation', h((req, res) => {
+  if (typeof req.body?.value !== 'boolean') return res.status(422).json({ error: 'invalid_type', field: 'value' });
+  const out = setChapterValidation(req.project.id, idOf(req.params.id), req.body.value);
+  return out.notFound ? notFound(res) : res.json(out);
+}));
 
 p.post('/entities/:id/visit', (req, res) => (markVisited(req.project.id, idOf(req.params.id)) ? res.status(204).end() : notFound(res)));
 p.put('/entities/:id/favorite', (req, res) => (
@@ -480,3 +508,124 @@ p.get('/export/manuscript', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.send(exportManuscript(req.project.id));
 });
+
+// ── Partage (propriétaire) ──────────────────────────────────────────────────
+
+p.get('/shares', (req, res) => res.json(listShares(req.project.id)));
+p.post('/shares', h((req, res) => {
+  const { share, created } = upsertShare(req.project.id, req.user.id, req.body || {});
+  res.status(created ? 201 : 200).json(share);
+}));
+p.put('/shares/:userId', h((req, res) => {
+  const share = updateShare(req.project.id, idOf(req.params.userId), req.body || {});
+  return share ? res.json(share) : notFound(res);
+}));
+p.delete('/shares/:userId', (req, res) => (
+  deleteShare(req.project.id, idOf(req.params.userId)) ? res.status(204).end() : notFound(res)
+));
+
+// ── Commentaires & liseuse : communs aux deux routeurs ─────────────────────
+// `guest` borne tout aux éléments visibles et retire les gestes réservés au
+// propriétaire (marquer traité, supprimer le message d'un autre).
+
+function readerRoutes(router) {
+  router.get('/reader', (req, res) => res.json(readerChapters(req.project.id)));
+  router.get('/reader/:id', (req, res) => {
+    const ch = readerChapter(req.project.id, idOf(req.params.id));
+    return ch ? res.json(ch) : notFound(res);
+  });
+}
+
+function commentRoutes(router, { guest }) {
+  router.get('/comments', (req, res) => {
+    const opts = { guest, viewerId: req.user.id, open: req.query.open === '1', limit: req.query.limit };
+    if (req.query.entity !== undefined) {
+      const ent = liveEntity(req.project.id, req.query.entity);
+      if (!ent || (guest && !GUEST_KINDS.includes(ent.kind))) return notFound(res);
+      opts.entityId = ent.id;
+    } else if (req.query.general === '1') opts.general = true;
+    return res.json(listComments(req.project.id, opts));
+  });
+  router.post('/comments', h((req, res) => {
+    const out = createComment(req.project.id, req.user, req.body || {}, { guest });
+    return out.notFound ? notFound(res) : res.status(201).json(out.comment);
+  }));
+  router.put('/comments/:id', h((req, res) => {
+    const out = updateComment(req.project.id, req.user, idOf(req.params.id), req.body || {}, { guest });
+    if (out.notFound) return notFound(res);
+    if (out.forbidden) return res.status(403).json({ error: 'forbidden' });
+    return res.json(out.comment);
+  }));
+  router.delete('/comments/:id', (req, res) => {
+    const out = deleteComment(req.project.id, req.user, idOf(req.params.id), { guest });
+    if (out.notFound) return notFound(res);
+    if (out.forbidden) return res.status(403).json({ error: 'forbidden' });
+    return res.status(204).end();
+  });
+}
+
+readerRoutes(p); // aperçu « ce que voient les lecteurs »
+commentRoutes(p, { guest: false });
+
+// ── Routeur invité ──────────────────────────────────────────────────────────
+// Lecture seule, liste blanche : ce qui n'est pas déclaré ici n'existe pas
+// pour un invité (404 en lecture, 403 read_only en écriture). Les lectures
+// passent toutes par server/author/sharing.js, qui retire la boîte à idées.
+
+g.get('/', (req, res) => res.json(guestProject(req.project, req.access)));
+readerRoutes(g);
+
+// Tout ce qui suit : rôle omniscient seulement. Pour un lecteur, ça n'existe pas.
+g.use((req, res, next) => (req.access === 'omniscient' ? next() : notFound(res)));
+
+g.get('/overview', (req, res) => res.json(guestOverview(req.project.id)));
+
+g.get('/entities', (req, res) => res.json(guestList(req.project.id, listQuery(req.query))));
+g.get('/entities/:id', (req, res) => {
+  const ent = guestEntity(req.project.id, idOf(req.params.id));
+  return ent ? res.json(ent) : notFound(res);
+});
+g.get('/index', (req, res) => res.json(entityIndex(req.project.id, { allowKinds: GUEST_KINDS })));
+
+g.get('/search', (req, res) => {
+  const q = String(req.query.q || '').slice(0, 200);
+  const kinds = req.query.kinds ? String(req.query.kinds).split(',') : [];
+  const rows = searchEntities(req.project.id, q, {
+    kinds, tagId: req.query.tag ? idOf(req.query.tag) : null, limit: req.query.limit, allowKinds: GUEST_KINDS,
+  });
+  res.json(rows.map((r) => ({ ...r, snippet: scrubSnippet(r.snippet) })));
+});
+
+g.get('/graph', (req, res) => {
+  const asked = req.query.kinds ? String(req.query.kinds).split(',') : GUEST_KINDS;
+  const kinds = asked.filter((k) => GUEST_KINDS.includes(k));
+  res.json(kinds.length ? graphData(req.project.id, { kinds }) : { nodes: [], edges: [] });
+});
+
+g.get('/tags', (req, res) => res.json(guestTags(req.project.id)));
+g.get('/categories', (req, res) => res.json(listCategories(req.project.id)));
+g.get('/timelines', (req, res) => res.json(listTimelines(req.project.id)));
+
+g.get('/plan', (req, res) => {
+  const plan = getPlan(req.project.id);
+  const hidden = hiddenNames(req.project.id);
+  const clean = (items) => items.map((it) => ({ ...it, summary: scrubWikiLinks(it.summary, hidden) }));
+  res.json({ acts: plan.acts.map((a) => ({ ...a, items: clean(a.items) })), unassigned: clean(plan.unassigned) });
+});
+
+g.get('/boards', (req, res) => res.json(guestBoards(req.project.id)));
+g.get('/boards/:id', (req, res) => {
+  const board = guestBoard(req.project.id, idOf(req.params.id));
+  return board ? res.json(board) : notFound(res);
+});
+
+g.get('/places/:id/pins', (req, res) => {
+  const pins = guestPins(req.project.id, idOf(req.params.id));
+  return pins ? res.json(pins) : notFound(res);
+});
+
+commentRoutes(g, { guest: true });
+
+g.use((req, res) => (req.method === 'GET'
+  ? notFound(res)
+  : res.status(403).json({ error: 'read_only' })));

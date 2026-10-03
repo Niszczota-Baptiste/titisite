@@ -79,6 +79,10 @@ const ERRORS = {
   extension_not_allowed: 'Format refusé (JPEG, PNG ou WebP).',
   file_too_large: 'Image trop lourde (15 Mo max).',
   confirmation_mismatch: 'Le titre retapé ne correspond pas.',
+  read_only: 'Lecture seule : ce livre ne t\'appartient pas.',
+  not_finished: 'Le chapitre doit être « Terminé » pour être publié.',
+  unknown_user: 'Aucun compte avec cet e-mail. Crée-le d\'abord dans Administration → Utilisateurs (rôle « membre »).',
+  self_share: 'C\'est ton propre compte.',
 };
 export function humanError(err) {
   if (!err) return '';

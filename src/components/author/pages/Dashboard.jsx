@@ -119,6 +119,13 @@ export function Dashboard() {
         </Link>
       )}
 
+      {data.comments?.open > 0 && (
+        <Link to={`${base}/commentaires`} className="au-card is-link au-inbox-callout">
+          💬 <strong>{data.comments.open}</strong> commentaire{data.comments.open > 1 ? 's' : ''} de tes lecteurs à lire
+          <span style={{ marginLeft: 'auto' }}>Lire →</span>
+        </Link>
+      )}
+
       <div className="au-dash-grid">
         <div className="au-card">
           <div className="au-card-title">🕘 Reprendre</div>

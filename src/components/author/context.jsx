@@ -1,10 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
+import { KIND_ORDER } from './kinds';
 import { normTitle } from './markdown';
 
 // Contexte d'un projet ouvert : client API borné au projet, référentiels
 // (catégories, lignes de temps, tags), compteurs de la navigation, état global
 // de sauvegarde, palette et capture rapide.
+//
+// `access` = 'owner' (propriétaire) ou 'omniscient' (invité en lecture) : le
+// serveur ne sert à l'invité que des lectures filtrées, l'interface masque en
+// plus tout geste d'écriture (`guest`) et la boîte à idées (`kindOrder`).
 
 const AuthorCtx = createContext(null);
 
@@ -16,7 +21,9 @@ export function useAuthor() {
 
 const SAVE_RANK = { conflict: 5, error: 4, saving: 3, dirty: 2, saved: 1, idle: 0, loading: 0 };
 
-export function AuthorProvider({ pid, children }) {
+export function AuthorProvider({ pid, access = 'owner', children }) {
+  const guest = access !== 'owner';
+  const kindOrder = useMemo(() => (guest ? KIND_ORDER.filter((k) => k !== 'note') : KIND_ORDER), [guest]);
   const P = useMemo(() => api.author.p(pid), [pid]);
   const [project, setProject] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -36,8 +43,8 @@ export function AuthorProvider({ pid, children }) {
   }, [P]);
 
   const refreshCounts = useCallback(() => P.overview().then((o) => setCounts({
-    ...o.counts, inbox: o.ideas.inbox, ideasPending: o.ideas.pending, tasks: o.tasks.open,
-    issues: o.issueCount, trash: o.trash, words: o.chapters.words,
+    ...o.counts, inbox: o.ideas?.inbox, ideasPending: o.ideas?.pending, tasks: o.tasks?.open,
+    issues: o.issueCount, trash: o.trash, words: o.chapters.words, comments: o.comments?.open,
   })).catch(() => {}), [P]);
 
   useEffect(() => {
@@ -109,12 +116,12 @@ export function AuthorProvider({ pid, children }) {
   const categoriesOf = useCallback((domain) => categories.filter((c) => c.domain === domain), [categories]);
 
   const value = useMemo(() => ({
-    pid, P, project, setProject, categories, setCategories, categoriesOf, timelines, setTimelines, tags, reloadTags,
+    pid, P, access, guest, kindOrder, project, setProject, categories, setCategories, categoriesOf, timelines, setTimelines, tags, reloadTags,
     counts, refreshCounts, version, bump, reloadMeta, loadError,
     search, createEntity, index, resolve,
     saveState, reportSave,
     paletteOpen, setPaletteOpen, captureOpen, setCaptureOpen,
-  }), [pid, P, project, categories, categoriesOf, timelines, tags, reloadTags, counts, refreshCounts, version, bump,
+  }), [pid, P, access, guest, kindOrder, project, categories, categoriesOf, timelines, tags, reloadTags, counts, refreshCounts, version, bump,
     reloadMeta, loadError, search, createEntity, index, resolve, saveState, reportSave, paletteOpen, captureOpen]);
 
   return <AuthorCtx.Provider value={value}>{children}</AuthorCtx.Provider>;
