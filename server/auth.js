@@ -21,7 +21,7 @@ export function signToken(user) {
   return jwt.sign(
     { sub: user.id, role: user.role, tv: user.token_version ?? 0 },
     SECRET,
-    { expiresIn: TOKEN_TTL, jwtid: newJti() },
+    { algorithm: 'HS256', expiresIn: TOKEN_TTL, jwtid: newJti() },
   );
 }
 
@@ -94,7 +94,7 @@ export function requireAuth(req, res, next) {
   const token = readToken(req);
   if (!token) return res.status(401).json({ error: 'missing_token' });
   try {
-    const decoded = jwt.verify(token, SECRET);
+    const decoded = jwt.verify(token, SECRET, { algorithms: ['HS256'] });
     prepareRevocationStmts();
     if (decoded.jti && _isRevoked.get(decoded.jti)) {
       return res.status(401).json({ error: 'revoked_token' });
