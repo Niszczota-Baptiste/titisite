@@ -498,7 +498,41 @@ function maybeSnapshot(id, field, prev, next, t) {
   if (shouldSnapshot(prev, next, lastSnapshotAt(id, field), t)) insertRevision(id, field, prev);
 }
 
-export function createEntity(projectId, kind, input = {}) {
+// ── Création idempotente (hors connexion) ──────────────────────────────────
+
+const CLIENT_REF_RE = /^[A-Za-z0-9_-]{8,64}$/;
+
+export function cleanClientRef(v) {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v !== 'string' || !CLIENT_REF_RE.test(v)) throw new AuthorValidationError('invalid_client_ref', 'clientRef');
+  return v;
+}
+
+export function entityByClientRef(projectId, clientRef) {
+  const row = db.prepare(`SELECT id FROM author_entities WHERE project_id = ? AND client_ref = ?`).get(projectId, clientRef);
+  return row ? getEntity(projectId, row.id, { withDeleted: true }) : null;
+}
+
+// Crée l'élément, ou renvoie celui que la même référence client a déjà créé
+// (rejeu d'une file hors connexion). `existed` distingue les deux (201/200).
+export function createEntityOnce(projectId, kind, input, clientRef) {
+  const ref = cleanClientRef(clientRef);
+  if (!ref) return { entity: createEntity(projectId, kind, input), existed: false };
+  const found = entityByClientRef(projectId, ref);
+  if (found) return { entity: found, existed: true };
+  try {
+    return { entity: createEntity(projectId, kind, input, { clientRef: ref }), existed: false };
+  } catch (err) {
+    // Deux rejeux simultanés (deux onglets) : l'index unique a tranché.
+    if (String(err?.code || '').startsWith('SQLITE_CONSTRAINT')) {
+      const again = entityByClientRef(projectId, ref);
+      if (again) return { entity: again, existed: true };
+    }
+    throw err;
+  }
+}
+
+export function createEntity(projectId, kind, input = {}, { clientRef = null } = {}) {
   if (!KINDS.includes(kind)) throw new AuthorValidationError('invalid_kind', 'kind');
   const { common, specific } = validateFields(kind, input, projectId, { partial: false });
   const tags = input.tags !== undefined ? cleanTagNames(input.tags) : null;
@@ -515,9 +549,9 @@ export function createEntity(projectId, kind, input = {}) {
   db.transaction(() => {
     const cols = Object.keys(common);
     const info = db.prepare(`
-      INSERT INTO author_entities (project_id, kind, ${cols.join(', ')}, created_at, updated_at)
-      VALUES (?, ?, ${cols.map(() => '?').join(', ')}, ?, ?)
-    `).run(projectId, kind, ...cols.map((c) => common[c]), t, t);
+      INSERT INTO author_entities (project_id, kind, ${cols.join(', ')}, client_ref, created_at, updated_at)
+      VALUES (?, ?, ${cols.map(() => '?').join(', ')}, ?, ?, ?)
+    `).run(projectId, kind, ...cols.map((c) => common[c]), clientRef, t, t);
     id = Number(info.lastInsertRowid);
 
     const extra = { ...specific };

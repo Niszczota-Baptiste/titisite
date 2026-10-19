@@ -4,6 +4,7 @@ import { useConfirm } from '../../../ui/ConfirmProvider';
 import { useToast } from '../../../ui/ToastProvider';
 import { useAuthor } from '../context';
 import { NOTE_STATUSES, PRIORITIES, noteStatus } from '../kinds';
+import { PendingLocal } from '../offline/PendingLocal';
 import { useShellPage } from '../Shell';
 import { Btn, Empty, ErrorLine, PromptDialog, TagChip, Tabs, cx, entityPath, humanError, normalizeQuery, relativeTime, useMenu } from '../ui';
 import { moveInList, useDnd } from '../useDnd';
@@ -69,7 +70,12 @@ export function Ideas() {
   const addQuick = async (e) => {
     e.preventDefault();
     if (!quick.trim()) return;
-    try { await P.notes.quick(quick.trim()); setQuick(''); bump(); } catch (err) { setError(err); }
+    try {
+      const res = await P.notes.quick(quick.trim());
+      setQuick('');
+      if (res?.queued) toast.success('Idée gardée sur l\'appareil — envoyée au retour du réseau');
+      bump();
+    } catch (err) { setError(err); }
   };
 
   const addIn = async (status, title) => {
@@ -126,6 +132,7 @@ export function Ideas() {
       </div>
 
       <ErrorLine error={error} onClose={() => setError(null)} />
+      <PendingLocal kinds={['note']} ideas />
       {notes && notes.length === 0 && (
         <Empty icon="💡" title="Aucune idée pour l'instant" action={<Btn variant="primary" onClick={() => setCaptureOpen(true)}>Capturer une idée</Btn>}>
           Touche <strong>I</strong> n&apos;importe où pour en noter une en quelques secondes.

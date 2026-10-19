@@ -5,6 +5,7 @@ import { useToast } from '../../../ui/ToastProvider';
 import { useAuthor } from '../context';
 import { KINDS } from '../kinds';
 import { useShellPage } from '../Shell';
+import { PendingLocal } from '../offline/PendingLocal';
 import {
   Btn, Dialog, Empty, ErrorLine, Field, KindAvatar, TagChip, Tabs, cx, entityPath, humanError, relativeTime, useLongPress, useMenu,
 } from '../ui';
@@ -127,6 +128,7 @@ export function EntityList({ kind }) {
       )}
 
       <ErrorLine error={error} onClose={() => setError(null)} />
+      <PendingLocal kinds={[kind]} />
 
       {!loading && items.length === 0 ? (
         <Empty icon={meta.icon} title={params.toString() ? 'Aucun résultat' : `Aucun ${meta.label.toLowerCase()} pour l'instant`}

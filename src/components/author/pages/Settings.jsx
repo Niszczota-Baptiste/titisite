@@ -5,6 +5,7 @@ import { useConfirm } from '../../../ui/ConfirmProvider';
 import { useToast } from '../../../ui/ToastProvider';
 import { useAuthor } from '../context';
 import { kindMeta } from '../kinds';
+import { OfflinePanel } from '../offline/SyncBadge';
 import { SharingPanel } from '../sharing';
 import { useShellPage } from '../Shell';
 import {
@@ -23,6 +24,7 @@ export function Settings() {
       <div className="au-page-head"><div><h1>⚙️ Réglages</h1><div className="au-sub">{project.title}</div></div></div>
       <ProjectForm />
       <Section id="settings:sharing" title="👥 Partage"><SharingPanel /></Section>
+      <Section id="settings:offline" title="📴 Hors connexion"><OfflinePanel /></Section>
       <Section id="settings:categories" title="🗂️ Catégories">
         <CategoriesEditor domain="lore" title="Lore (factions, religions, magie…)" />
         <CategoriesEditor domain="place" title="Types de lieux" />

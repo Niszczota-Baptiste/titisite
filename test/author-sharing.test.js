@@ -362,3 +362,39 @@ describe('partage — changement de rôle et révocation', () => {
     assert.deepEqual((await owner.get(`${base}/shares`)).json, []);
   });
 });
+
+describe('hors connexion — créations idempotentes', () => {
+  it('une création rejouée avec la même référence client ne fait pas de doublon', async () => {
+    const ref = 'offline-ref-0001';
+    const a = await owner.post(`${base}/entities`, wb({ kind: 'chapter', title: 'Écrit dans le train', content: 'Hors ligne.', clientRef: ref }));
+    assert.equal(a.status, 201, a.text);
+    const b = await owner.post(`${base}/entities`, wb({ kind: 'chapter', title: 'Écrit dans le train', content: 'Hors ligne.', clientRef: ref }));
+    assert.equal(b.status, 200);
+    assert.equal(b.json.id, a.json.id);
+    const list = (await owner.get(`${base}/entities?kind=chapter&limit=1000`)).json.items;
+    assert.equal(list.filter((e) => e.title === 'Écrit dans le train').length, 1);
+    // Même référence, autre projet : indépendant.
+    const other = (await owner.post('/api/author/projects', wb({ title: 'Autre livre' }))).json;
+    const c = await owner.post(`/api/author/projects/${other.id}/entities`, wb({ kind: 'note', title: 'x', clientRef: ref }));
+    assert.equal(c.status, 201);
+    assert.notEqual(c.json.id, a.json.id);
+  });
+
+  it('capture d\'idée rejouée : une seule idée ; référence invalide refusée', async () => {
+    const q1 = await owner.post(`${base}/notes/quick`, wb({ text: 'Idée du métro', clientRef: 'quick-ref-0001' }));
+    const q2 = await owner.post(`${base}/notes/quick`, wb({ text: 'Idée du métro', clientRef: 'quick-ref-0001' }));
+    assert.equal(q1.status, 201);
+    assert.equal(q2.status, 200);
+    assert.equal(q2.json.id, q1.json.id);
+    const bad = await owner.post(`${base}/entities`, wb({ kind: 'note', title: 'x', clientRef: 'a b<script>' }));
+    assert.equal(bad.status, 422);
+    assert.equal(bad.json.error, 'invalid_client_ref');
+  });
+
+  it('deux rejeux simultanés ne créent qu\'un élément', async () => {
+    const body = wb({ kind: 'character', title: 'Jumeau', clientRef: 'race-ref-00001' });
+    const [r1, r2] = await Promise.all([owner.post(`${base}/entities`, body), owner.post(`${base}/entities`, body)]);
+    assert.deepEqual([r1.status, r2.status].sort(), [200, 201]);
+    assert.equal(r1.json.id, r2.json.id);
+  });
+});

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthor } from './context';
 import { GUEST_NAV, NAV } from './nav';
+import { SyncBadge } from './offline/SyncBadge';
 import { Palette } from './Palette';
 import { QuickCapture } from './QuickCapture';
 import { Btn, Dialog, Kbd, MOD, cx, relativeTime, useHotkey } from './ui';
@@ -31,15 +32,21 @@ export function useFocusMode() {
 const SAVE_TEXT = {
   idle: 'Sauvegardé', saved: 'Sauvegardé', loading: 'Sauvegardé', dirty: 'Modifié…',
   saving: 'Sauvegarde en cours…', error: 'Erreur de sauvegarde', conflict: 'Conflit à résoudre',
+  offline: 'Gardé sur l\'appareil', local: 'Sur l\'appareil (à synchroniser)',
 };
-const SAVE_COLOR = { dirty: 'var(--au-warn)', saving: 'var(--au-acc)', error: 'var(--au-danger)', conflict: 'var(--au-danger)' };
+const SAVE_COLOR = {
+  dirty: 'var(--au-warn)', saving: 'var(--au-acc)', error: 'var(--au-danger)', conflict: 'var(--au-danger)',
+  offline: 'var(--au-warn)', local: 'var(--au-warn)',
+};
 
 function SaveIndicator() {
   const { saveState } = useAuthor();
   const [, tick] = useState(0);
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 30000); return () => clearInterval(t); }, []);
   const s = saveState.status;
-  const title = s === 'error'
+  const title = s === 'offline' || s === 'local'
+    ? 'Hors connexion : tes modifications sont enregistrées sur cet appareil et partiront toutes seules au retour du réseau.'
+    : s === 'error'
     ? 'La sauvegarde a échoué : tes modifications sont gardées dans ce navigateur et renvoyées automatiquement.'
     : saveState.at ? `Dernière sauvegarde ${relativeTime(Math.floor(saveState.at / 1000))}` : 'Tout est enregistré.';
   return (
@@ -198,6 +205,7 @@ export function Shell({ theme, setTheme, children }) {
                 );
               })}
             </nav>
+            <SyncBadge />
             {guest ? <span className="au-pill au-readonly-pill" title="Tu lis ce livre : tu peux commenter, pas modifier.">👁️ Lecture seule</span> : <SaveIndicator />}
             {!guest && <Btn variant="ghost" size="small" className="au-desktop-only" onClick={() => setCaptureOpen(true)} title="Capturer une idée (I)">＋ Idée</Btn>}
             <Btn variant="ghost" size="small" onClick={() => setPaletteOpen(true)} title={`Rechercher (${MOD} K)`} aria-label="Rechercher">

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useConfirm } from '../../../ui/ConfirmProvider';
 import { useToast } from '../../../ui/ToastProvider';
 import { useAuthor } from '../context';
+import { isNetworkError } from '../offline/net.js';
 import { kindMeta } from '../kinds';
 import { Btn, ErrorLine, cx, entityPath, humanError, relativeTime } from '../ui';
 
@@ -114,7 +115,19 @@ export function CommentsThread({ entityId = null, title = '💬 Commentaires', q
   const [error, setError] = useState(null);
   const load = useCallback(() => {
     const params = entityId ? { entity: entityId } : { general: 1 };
-    return P.comments.list(params).then(setItems).catch(setError);
+    return P.comments.list(params).then(setItems).catch(async (err) => {
+      if (!isNetworkError(err)) { setError(err); return; }
+      // Hors connexion : le fil est extrait de la liste complète gardée sur
+      // l'appareil (la page « Commentaires » et le téléchargement du livre la
+      // mettent de côté). Sinon, on le dit sans alarmer.
+      try {
+        const all = await P.comments.list({});
+        setItems(all.filter((c) => c.entityId === (entityId || null)).sort((a, b) => a.createdAt - b.createdAt || a.id - b.id));
+      } catch {
+        setItems(null);
+        setError({ message: 'Commentaires indisponibles hors connexion.' });
+      }
+    });
   }, [P, entityId]);
   useEffect(() => { load(); }, [load, version]);
 

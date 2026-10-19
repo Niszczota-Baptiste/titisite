@@ -181,6 +181,65 @@ elles vivent dans `server/author/enums.js` (+ miroir d'affichage
   essai toutes les 5 s, indicateur « Erreur de sauvegarde ».
 - **Exports** : sauvegarde JSON complète et manuscrit Markdown (Réglages).
 
+## Hors connexion
+
+L'atelier fonctionne sans réseau (train, avion, serveur injoignable) et se
+synchronise tout seul au retour du réseau. Il faut l'avoir ouvert **une fois en
+ligne** sur l'appareil (installation du service worker + téléchargement du
+livre).
+
+| Sans réseau | Comment |
+|---|---|
+| Ouvrir l'atelier, recharger la page | service worker `/auteur-sw.js` (portée `/auteur`) : `index.html` + les morceaux JS/CSS de l'atelier, mis de côté à l'installation |
+| Lire tout le livre | lectures `GET /api/author/*` en *réseau d'abord* (délai 6 s), repli sur la dernière copie ; « livre disponible hors connexion » = `offline/pack.js` relit chaque écran et chaque fiche (incrémental, complet une fois par jour, miniatures et cartes comprises) |
+| Écrire dans un chapitre / une fiche | `useEntityDoc` : brouillon local écrit **avant** le réseau, avec la révision et les valeurs serveur de départ ; état « Gardé sur l'appareil » |
+| Créer un élément | `offline/offlineApi.js` : id temporaire < 0, élément gardé sur l'appareil (`au-local:<livre>`), création mise en file |
+| Capturer une idée | mise en file (`au-outbox`) |
+| Chercher | titres et alias de l'index gardé (le plein texte vit sur le serveur) |
+| Relations, plan, tableaux, images, tâches, commentaires, publication | attendent le réseau (message « Hors connexion ») |
+
+**Synchronisation** (`offline/sync.js`, pur et testé ; `offline/engine.js` la
+relance au retour du réseau, à la reprise de l'onglet et toutes les 20 s tant
+que quelque chose attend — `online` ne se déclenche pas quand c'est le serveur
+qui revient) :
+
+1. la file d'envoi, dans l'ordre. Chaque création porte une **référence
+   client** (`clientRef`, colonne `author_entities.client_ref`, unique par
+   livre) : un rejeu après une réponse perdue, ou depuis deux onglets, renvoie
+   l'élément déjà créé (200) au lieu d'un doublon. L'id temporaire est alors
+   relié à l'id réel (`au-idmap`) et la page ouverte bascule dessus ; ce qui a
+   été tapé pendant l'envoi devient un brouillon de l'élément réel ;
+2. les brouillons d'éléments existants qu'aucun éditeur n'a ouverts, en PUT
+   partiel sous révision. Un 409 se fusionne **champ par champ**
+   (`offline/merge.js`) : champ resté intact côté serveur → ma valeur ; champ
+   modifié des deux côtés → « conflit », gardé sur l'appareil et présenté dans
+   la modale habituelle à la réouverture. Jamais d'écrasement silencieux.
+
+Au premier échec **réseau** la passe s'arrête ; un **refus** du serveur
+(élément supprimé, validation) marque l'élément « en échec » sans effacer le
+texte (Copier / Réessayer / Abandonner dans le panneau 📴). L'état réseau vient
+des requêtes réelles (`offline/net.js`, alimenté par `src/api/client.js`), pas
+de `navigator.onLine`.
+
+**Confidentialité** : les copies de lecture (Cache Storage) appartiennent à un
+compte. Elles sont effacées à la déconnexion (`clearSession`) et dès qu'un
+autre compte se connecte sur le navigateur (`ensureAuthorCacheOwner`, avant
+toute lecture). Le travail non synchronisé, lui, reste (c'est la seule copie)
+et ne repart qu'avec le compte qui l'a écrit. Les écritures ne passent jamais
+par le service worker.
+
+**Build** : le plugin `auteurServiceWorker` (`vite.config.js`) part du gabarit
+`src/sw/auteur-sw.js` et y inscrit la liste exacte des fichiers de l'atelier
+(page Auteur et ses imports dynamiques ; jamais ceux du point d'entrée, qui
+sont tout le site). La version change avec cette liste : chaque déploiement
+installe un nouveau service worker, qui garde la version précédente pour les
+onglets déjà ouverts. `server/index.js` sert `auteur-sw.js` sans cache HTTP.
+Rien n'est enregistré en développement (`npm run dev`).
+
+Tests : `test/author-offline.test.js` (fusion, file, coupure en cours de
+synchronisation, conflits, comptes) et les créations idempotentes dans
+`test/author-sharing.test.js`.
+
 ## Moteur de cohérence
 
 `server/author/consistency.js` : `loadWorld()` prend une photographie du
@@ -221,6 +280,7 @@ renvoyant des problèmes `{ key, severity, title, detail, entityIds }` — la
 | une relation | `RELATION_KINDS` (`enums.js`) + `RELATIONS` (`kinds.js`) ; `defaultRelation` si un couple de types doit la proposer |
 | une règle de cohérence | `RULES` (`consistency.js`) + son test |
 | un module (page) | composant dans `pages/`, route dans `OwnerProject.jsx`, entrée dans `nav.js` |
+| une lecture d'écran à garder hors connexion | l'appel identique dans `offline/pack.js#prefetchProject` (mêmes paramètres que la page) |
 | un module visible des invités | une lecture filtrée dans `sharing.js` + sa route dans le routeur `g`, la page dans `guest/` + `GUEST_NAV`, et une ligne dans le balayage de `test/author-sharing.test.js` |
 
 ## Configuration

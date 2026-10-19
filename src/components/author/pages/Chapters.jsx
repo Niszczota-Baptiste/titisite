@@ -5,6 +5,7 @@ import { useToast } from '../../../ui/ToastProvider';
 import { useAuthor } from '../context';
 import { CHAPTER_STATUSES, chapterStatus } from '../kinds';
 import { useShellPage } from '../Shell';
+import { PendingLocal } from '../offline/PendingLocal';
 import { formatCount } from '../text';
 import { Btn, Empty, ErrorLine, ProgressBar, cx, humanError, relativeTime, useMenu } from '../ui';
 import { useDnd } from '../useDnd';
@@ -91,6 +92,7 @@ export function Chapters() {
       </div>
 
       <ErrorLine error={error} onClose={() => setError(null)} />
+      <PendingLocal kinds={['chapter']} />
       {cols && stats.count === 0 && !cols.some((c) => c.items.length) && (
         <Empty icon="📖" title="Aucun chapitre" action={<Btn variant="primary" onClick={() => setCreating({ actId: null })}>＋ Premier chapitre</Btn>}>
           Les chapitres se rangent ensuite par actes dans la vue Plan.

@@ -62,7 +62,10 @@ export function EntityPage() {
   const tl = timelines.find((t) => t.id === e.timelineId);
 
   const trash = async () => {
-    if (!(await confirm({ title: 'Mettre à la corbeille ?', message: `« ${e.title} » et ses relations seront masqués ; tout reste restaurable depuis Réglages → Corbeille.`, confirmLabel: 'Mettre à la corbeille', danger: true }))) return;
+    const ok = e.local
+      ? await confirm({ title: 'Supprimer ce brouillon ?', message: `« ${e.title || 'Sans titre'} » a été créé hors connexion et n'existe que sur cet appareil : il sera effacé.`, confirmLabel: 'Supprimer', danger: true })
+      : await confirm({ title: 'Mettre à la corbeille ?', message: `« ${e.title} » et ses relations seront masqués ; tout reste restaurable depuis Réglages → Corbeille.`, confirmLabel: 'Mettre à la corbeille', danger: true });
+    if (!ok) return;
     try {
       await doc.save();
       await P.entities.remove(e.id);
@@ -78,7 +81,10 @@ export function EntityPage() {
     bump();
   };
 
-  const menuItems = [
+  const menuItems = e.local ? [
+    e.kind === 'chapter' && { label: 'Écrire ce chapitre', icon: '✍️', onClick: () => navigate(`/auteur/${pid}/ecrire/${e.id}`) },
+    { label: 'Supprimer ce brouillon', icon: '🗑', danger: true, onClick: trash },
+  ] : [
     e.kind === 'chapter' && { label: 'Écrire ce chapitre', icon: '✍️', onClick: () => navigate(`/auteur/${pid}/ecrire/${e.id}`) },
     e.kind === 'event' && { label: 'Voir sur la chronologie', icon: '⏳', onClick: () => navigate(`/auteur/${pid}/chronologie?focus=${e.id}`) },
     { label: 'Voir dans le graphe', icon: '🕸️', onClick: () => navigate(`/auteur/${pid}/graphe?focus=${e.id}`) },
@@ -104,18 +110,19 @@ export function EntityPage() {
             {cat && <span>· {cat.icon} {cat.name}</span>}
             {tl && <span>· {tl.name}{e.dateLabel ? ` — ${e.dateLabel}` : ''}</span>}
             <span className="au-faint">· modifié {relativeTime(e.updatedAt)}</span>
+            {e.local && <span className="au-pill au-net-pill is-off" title="Créé hors connexion : il sera envoyé au retour du réseau.">📴 pas encore synchronisé</span>}
           </div>
           <FieldInput def={{ key: 'title', label: 'Titre', type: 'text', big: true }} doc={e} setField={doc.setField} />
         </div>
         <div className="au-entity-actions">
-          <Btn variant="ghost" icon on={e.isFavorite} onClick={toggleFav} title={e.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'} aria-pressed={e.isFavorite}>{e.isFavorite ? '★' : '☆'}</Btn>
+          {!e.local && <Btn variant="ghost" icon on={e.isFavorite} onClick={toggleFav} title={e.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'} aria-pressed={e.isFavorite}>{e.isFavorite ? '★' : '☆'}</Btn>}
           {e.kind === 'chapter' && <Btn variant="primary" onClick={() => navigate(`/auteur/${pid}/ecrire/${e.id}`)}>✍️ Écrire</Btn>}
           <Btn variant="ghost" icon onClick={(ev) => openMenu(ev, menuItems)} aria-label="Plus d'actions">⋯</Btn>
         </div>
       </header>
 
       {e.kind === 'chapter' && <ChapterStrip e={e} />}
-      {e.kind === 'chapter' && (
+      {e.kind === 'chapter' && !e.local && (
         <div className="au-card" style={{ marginBottom: 18 }}>
           <ChapterPublish ch={e} beforeAction={doc.save} onChange={() => doc.refresh()} />
         </div>
@@ -140,13 +147,19 @@ export function EntityPage() {
               </Section>
             );
           })}
-          {e.kind === 'place' && (
+          {e.kind === 'place' && !e.local && (
             <div className="au-card" style={{ marginBottom: 18 }}><PlaceMap place={e} onChanged={reloadEntity} /></div>
           )}
         </div>
 
         <aside className="au-entity-side">
-          <div className="au-card"><RelationsPanel entity={e} onChanged={reloadEntity} /></div>
+          {e.local && (
+            <div className="au-card au-offline-note">
+              📴 Créé hors connexion. Le texte et les champs s&apos;enregistrent sur cet appareil ; relations, images,
+              tâches et commentaires seront disponibles dès sa synchronisation.
+            </div>
+          )}
+          {!e.local && <div className="au-card"><RelationsPanel entity={e} onChanged={reloadEntity} /></div>}
 
           <div className="au-card">
             <div className="au-card-title">🏷️ Classement</div>
@@ -156,11 +169,11 @@ export function EntityPage() {
             <AliasesEditor value={e.aliases} onChange={(list) => doc.setField('aliases', list)} kind={e.kind} />
           </div>
 
-          <div className="au-card"><MediaPanel entity={e} onChanged={reloadEntity} /></div>
+          {!e.local && <div className="au-card"><MediaPanel entity={e} onChanged={reloadEntity} /></div>}
 
-          <TasksCard entity={e} onChanged={reloadEntity} />
+          {!e.local && <TasksCard entity={e} onChanged={reloadEntity} />}
 
-          {e.kind !== 'note' && <div className="au-card"><CommentsThread entityId={e.id} /></div>}
+          {e.kind !== 'note' && !e.local && <div className="au-card"><CommentsThread entityId={e.id} /></div>}
 
           {e.boards.length > 0 && (
             <div className="au-card">

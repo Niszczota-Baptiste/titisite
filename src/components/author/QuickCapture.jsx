@@ -28,12 +28,12 @@ export function QuickCapture({ open, onClose }) {
     setBusy(true);
     setError(null);
     try {
-      await P.notes.quick(text, tagNames);
+      const res = await P.notes.quick(text, tagNames);
       update('');
       setTagNames([]);
       bump();
       if (tagNames.length) reloadTags();
-      toast.success('Idée capturée dans l\'inbox');
+      toast.success(res?.queued ? 'Idée gardée sur l\'appareil — envoyée au retour du réseau' : 'Idée capturée dans l\'inbox');
       if (!keepOpen) onClose();
     } catch (err) {
       setError(err);

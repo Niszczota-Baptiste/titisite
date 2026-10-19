@@ -10,7 +10,7 @@ import {
 } from '../author/boards.js';
 import { checkProject, dismissIssue, invalidateConsistency } from '../author/consistency.js';
 import {
-  createEntity, entityIndex, getEntity, liveEntity, listEntities, markVisited, moveEvent, purgeEntity,
+  createEntityOnce, entityIndex, getEntity, liveEntity, listEntities, markVisited, moveEvent, purgeEntity,
   reorderNotes, restoreEntity, searchEntities, setFavorite, trashEntity, updateEntity,
 } from '../author/entities.js';
 import { GUEST_KINDS, KINDS, NOTE_STATUSES, REVISION_FIELDS, own } from '../author/enums.js';
@@ -175,9 +175,12 @@ p.get('/entities', (req, res) => res.json(listEntities(req.project.id, listQuery
 
 p.get('/index', (req, res) => res.json(entityIndex(req.project.id)));
 
+// `clientRef` (facultatif) rend la création idempotente : la file hors
+// connexion peut la rejouer sans risque de doublon (200 = déjà créé).
 p.post('/entities', h((req, res) => {
   const body = req.body || {};
-  res.status(201).json(createEntity(req.project.id, String(body.kind || ''), body));
+  const { entity, existed } = createEntityOnce(req.project.id, String(body.kind || ''), body, body.clientRef);
+  res.status(existed ? 200 : 201).json(entity);
 }));
 
 p.get('/entities/:id', (req, res) => {
@@ -279,10 +282,10 @@ p.post('/notes/quick', h((req, res) => {
     title = `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 60))}…`;
     body = text;
   }
-  const note = createEntity(req.project.id, 'note', {
+  const { entity, existed } = createEntityOnce(req.project.id, 'note', {
     title, body, inbox: true, status: 'brute', tags: Array.isArray(req.body?.tags) ? req.body.tags : [],
-  });
-  res.status(201).json(note);
+  }, req.body?.clientRef);
+  res.status(existed ? 200 : 201).json(entity);
 }));
 
 p.put('/notes/order', h((req, res) => {

@@ -1,8 +1,11 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import './author.css';
+import { startSync } from './offline/engine.js';
+import { setupOffline } from './offline/setup.js';
+import { offlineStore } from './offline/store.js';
 import { Btn, ErrorLine, Field, PortalContext, formatDateTime } from './ui';
 import { formatCount } from './text';
 
@@ -22,12 +25,28 @@ const THEME_KEY = 'au-theme';
 const LAST_KEY = 'au-last-project';
 
 export default function AuthorApp() {
+  const { user } = useAuth();
   const [theme, setThemeState] = useState(() => { try { return localStorage.getItem(THEME_KEY) || 'dark'; } catch { return 'dark'; } });
   const [portal, setPortal] = useState(null);
+  const [ready, setReady] = useState(false);
   const setTheme = useCallback((t) => {
     setThemeState(t);
     try { localStorage.setItem(THEME_KEY, t); } catch { /* ignore */ }
   }, []);
+
+  // Hors connexion : copies de lecture vérifiées pour CE compte (effacées si un
+  // autre s'est connecté) AVANT la première lecture, service worker, et
+  // synchronisation de fond pour le propriétaire.
+  useEffect(() => {
+    if (!user?.id) return;
+    let alive = true;
+    setupOffline(user).finally(() => { if (alive) setReady(true); });
+    if (user.canAuthor) startSync(user.id);
+    return () => { alive = false; };
+  }, [user]);
+  useTempRedirect();
+
+  if (!ready) return <div className="au-root" data-theme={theme}><Loading>Ouverture de l&apos;atelier…</Loading></div>;
 
   return (
     <div className="au-root" data-theme={theme}>
@@ -44,6 +63,26 @@ export default function AuthorApp() {
 
 function Loading({ children = 'Chargement…' }) {
   return <div className="au-page"><p className="au-muted">{children}</p></div>;
+}
+
+// Un élément créé hors connexion vient d'être créé sur le serveur : la page
+// ouverte sur son id temporaire bascule sur l'id réel (la saisie en cours a
+// déjà été reportée sur l'élément réel par offlineApi/sync).
+function useTempRedirect() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  useEffect(() => {
+    const check = () => {
+      // /auteur/<livre>/(e|ecrire)/<id temporaire>[/…]
+      const [, root, pidPart, seg, idPart, ...rest] = window.location.pathname.split('/');
+      if (root !== 'auteur' || !['e', 'ecrire'].includes(seg) || !(Number(idPart) < 0)) return;
+      const hit = offlineStore.mapped(Number(pidPart), Number(idPart));
+      if (hit) navigate(`/auteur/${pidPart}/${seg}/${hit.id}${rest.length ? `/${rest.join('/')}` : ''}`, { replace: true });
+    };
+    check();
+    window.addEventListener('au-mapped', check);
+    return () => window.removeEventListener('au-mapped', check);
+  }, [navigate, location.pathname]);
 }
 
 function ProjectRoot({ theme, setTheme }) {

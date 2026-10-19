@@ -252,6 +252,7 @@ export function Writer() {
           <div className="au-writer-nav">
             <Btn size="small" variant="ghost" icon disabled={!prev} onClick={() => prev && navigate(`/auteur/${pid}/ecrire/${prev.id}`)} title="Chapitre précédent" aria-label="Chapitre précédent">‹</Btn>
             <select className="au-select au-writer-select" value={chapterId} onChange={(e) => navigate(`/auteur/${pid}/ecrire/${e.target.value}`)} aria-label="Changer de chapitre">
+              {ch.local && <option value={ch.id}>📴 {ch.title || 'Sans titre'}</option>}
               {chapters.map((c) => <option key={c.id} value={c.id}>{c.number}. {c.title}</option>)}
             </select>
             <Btn size="small" variant="ghost" icon disabled={!next} onClick={() => next && navigate(`/auteur/${pid}/ecrire/${next.id}`)} title="Chapitre suivant" aria-label="Chapitre suivant">›</Btn>
@@ -264,7 +265,7 @@ export function Writer() {
           </div>
           <div className="au-writer-right">
             <Btn size="small" variant="ghost" on={preview} onClick={() => setPreview((p) => !p)} title="Aperçu mis en page">{preview ? '✎' : '👁'}<span className="au-desktop-only">{preview ? 'Écrire' : 'Aperçu'}</span></Btn>
-            <Btn size="small" variant="ghost" className="au-desktop-only" onClick={async () => { await doc.save(); setHistory(true); }} title="Historique des versions">🕘 Versions</Btn>
+            {!ch.local && <Btn size="small" variant="ghost" className="au-desktop-only" onClick={async () => { await doc.save(); setHistory(true); }} title="Historique des versions">🕘 Versions</Btn>}
             <Btn size="small" variant="ghost" icon onClick={() => setSettings(true)} title="Réglages d'affichage" aria-label="Réglages d'affichage">Aa</Btn>
             <Btn size="small" variant="ghost" icon className="au-desktop-only" on={prefs.side} onClick={() => setPrefs({ side: !prefs.side })} title="Panneau du chapitre" aria-label="Panneau du chapitre">◧</Btn>
             <Btn size="small" variant="ghost" icon className="au-mobile-only" onClick={() => setSideMobile(true)} aria-label="Infos du chapitre">ⓘ</Btn>
@@ -320,7 +321,10 @@ export function Writer() {
         {sessionDelta !== 0 && <span style={{ color: sessionDelta > 0 ? 'var(--au-ok)' : 'var(--au-warn)' }}>{sessionDelta > 0 ? '+' : ''}{formatCount(sessionDelta)} cette séance</span>}
         {target > 0 && <span className="au-writer-goal"><ProgressBar value={stats.words / target} /> {Math.round((stats.words / target) * 100)} %</span>}
         <span className={cx('au-writer-save', `is-${status}`)}>
-          {{ saving: 'Sauvegarde…', dirty: 'Modifié', error: '⚠ Non enregistré — nouvel essai…', conflict: '⚠ Conflit' }[status] || '✓ Enregistré'}
+          {{
+            saving: 'Sauvegarde…', dirty: 'Modifié', error: '⚠ Non enregistré — nouvel essai…', conflict: '⚠ Conflit',
+            offline: '📴 Gardé sur l\'appareil', local: '📴 Sur l\'appareil (à synchroniser)',
+          }[status] || '✓ Enregistré'}
         </span>
         {focus && <Btn size="small" variant="ghost" onClick={() => setFocus(false)}>Quitter le focus <Kbd>Échap</Kbd></Btn>}
       </div>
@@ -328,7 +332,7 @@ export function Writer() {
       <RevisionsDialog open={history} onClose={() => setHistory(false)} entity={ch} field="content" current={content} onRestored={() => doc.reload()} />
       <PromptDialog open={snapOpen} title="📌 Enregistrer une version" label="Nom de la version" placeholder="avant la réécriture de la fin" confirmLabel="Enregistrer" onClose={() => setSnapOpen(false)} onSubmit={snapshot} />
       <Dialog open={settings} onClose={() => setSettings(false)} title="Affichage de l'éditeur" width={460}
-        footer={<><Btn variant="ghost" onClick={() => setSnapOpen(true)} style={{ marginRight: 'auto' }}>📌 Enregistrer une version…</Btn><Btn variant="primary" onClick={() => setSettings(false)}>OK</Btn></>}>
+        footer={<>{!ch.local && <Btn variant="ghost" onClick={() => setSnapOpen(true)} style={{ marginRight: 'auto' }}>📌 Enregistrer une version…</Btn>}<Btn variant="primary" onClick={() => setSettings(false)}>OK</Btn></>}>
         <Field label={`Taille du texte — ${prefs.size}px`}>
           <input type="range" min="15" max="26" value={prefs.size} onChange={(e) => setPrefs({ size: Number(e.target.value) })} style={{ width: '100%' }} />
         </Field>
@@ -348,10 +352,12 @@ export function Writer() {
         </p>
       </Dialog>
       <Dialog open={sideMobile} onClose={() => setSideMobile(false)} title={`Chapitre ${ch.number || ''}`}>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-          <Btn size="small" onClick={async () => { setSideMobile(false); await doc.save(); setHistory(true); }}>🕘 Versions</Btn>
-          <Btn size="small" onClick={() => { setSideMobile(false); setSnapOpen(true); }}>📌 Enregistrer une version</Btn>
-        </div>
+        {!ch.local && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+            <Btn size="small" onClick={async () => { setSideMobile(false); await doc.save(); setHistory(true); }}>🕘 Versions</Btn>
+            <Btn size="small" onClick={() => { setSideMobile(false); setSnapOpen(true); }}>📌 Enregistrer une version</Btn>
+          </div>
+        )}
         <ChapterSide ch={ch} doc={doc} />
       </Dialog>
     </div>
@@ -367,18 +373,20 @@ function ChapterSide({ ch, doc }) {
           {CHAPTER_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
       </Field>
-      <ChapterPublish ch={ch} beforeAction={doc.save} onChange={() => doc.refresh()} />
+      {ch.local
+        ? <p className="au-offline-note">📴 Chapitre créé hors connexion : il sera envoyé (et numéroté) au retour du réseau.</p>
+        : <ChapterPublish ch={ch} beforeAction={doc.save} onChange={() => doc.refresh()} />}
       <Field label="Objectif de mots">
         <FieldInput def={{ key: 'targetWords', label: 'Objectif', type: 'number' }} doc={ch} setField={doc.setField} />
       </Field>
       <Field label="Résumé">
         <FieldInput def={{ key: 'summary', label: 'Résumé', type: 'area', rows: 3 }} doc={ch} setField={doc.setField} />
       </Field>
-      <RelationsPanel entity={ch} onChanged={doc.refresh} compact />
+      {!ch.local && <RelationsPanel entity={ch} onChanged={doc.refresh} compact />}
       <Field label="Notes de chapitre" className="au-writer-notes">
         <FieldInput def={{ key: 'body', label: 'Notes', type: 'area', rows: 4 }} doc={ch} setField={doc.setField} />
       </Field>
-      <CommentsThread entityId={ch.id} />
+      {!ch.local && <CommentsThread entityId={ch.id} />}
       <Link to={`/auteur/${pid}/e/${ch.id}`} className="au-btn is-ghost is-small">Fiche complète du chapitre →</Link>
     </div>
   );

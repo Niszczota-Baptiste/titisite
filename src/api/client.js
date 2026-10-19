@@ -15,8 +15,45 @@ export function setStoredUser(user) {
   } catch { /* ignore quota */ }
 }
 
+// Déconnexion (ou session expirée) : on efface aussi les copies hors
+// connexion de l'atelier d'auteur — données privées gardées par le service
+// worker. (Le travail pas encore synchronisé, lui, reste : c'est la seule
+// copie, et il ne repart qu'avec le compte qui l'a écrit.)
+const AUTHOR_OFFLINE_CACHES = ['au-data-v1', 'au-media-v1'];
+
 export function clearSession() {
   setStoredUser(null);
+  if (typeof caches !== 'undefined') {
+    for (const name of AUTHOR_OFFLINE_CACHES) caches.delete(name).catch(() => {});
+  }
+}
+
+// Les copies hors connexion appartiennent à UN compte : si un autre compte se
+// connecte sur ce navigateur, elles sont effacées avant toute lecture.
+export async function ensureAuthorCacheOwner(userId) {
+  if (typeof caches === 'undefined' || !userId) return;
+  try {
+    const meta = await caches.open('au-meta');
+    const hit = await meta.match('/__au/user');
+    const prev = hit ? await hit.json() : null;
+    if (prev === userId) return;
+    await Promise.all(AUTHOR_OFFLINE_CACHES.map((n) => caches.delete(n)));
+    await meta.put('/__au/user', new Response(JSON.stringify(userId), { headers: { 'Content-Type': 'application/json' } }));
+  } catch { /* stockage indisponible (navigation privée) */ }
+}
+
+// Atelier d'auteur : signale l'état du réseau à chaque appel (écouté par
+// src/components/author/offline/net.js). Une réponse servie par le cache du
+// service worker (`X-Au-Cache`) veut dire : pas de réseau.
+function authorNet(online) {
+  try { window.dispatchEvent(new CustomEvent('au-net', { detail: { online } })); } catch { /* hors navigateur */ }
+}
+
+function offlineError() {
+  const err = new Error('offline');
+  err.status = 0;
+  err.offline = true;
+  return err;
 }
 
 // Fire-and-forget analytics event. Never throws — a blocked beacon (ad-blocker,
@@ -73,13 +110,23 @@ async function request(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
   if (path.startsWith('/playlist/')) headers['X-Playlist-Request'] = '1';
   // Atelier d'auteur : en-tête anti-CSRF exigé par le serveur sur les écritures.
-  if (path.startsWith('/author/')) headers['X-Author-Request'] = '1';
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers,
-    credentials: 'include',
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const author = path.startsWith('/author/');
+  if (author) headers['X-Author-Request'] = '1';
+  let res;
+  try {
+    res = await fetch(`/api${path}`, {
+      method,
+      headers,
+      credentials: 'include',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (err) {
+    // Pas de réseau : pour l'atelier, une erreur reconnaissable (`offline`)
+    // que l'autosave et la file hors connexion savent traiter.
+    if (author) { authorNet(false); throw offlineError(); }
+    throw err;
+  }
+  if (author) authorNet(!res.headers.get('X-Au-Cache'));
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
   if (!res.ok) {
@@ -1015,7 +1062,7 @@ export const api = {
           restore: (id, rid) => request('POST', `${b}/entities/${id}/revisions/${rid}/restore`),
         },
         notes: {
-          quick: (text, tags) => request('POST', `${b}/notes/quick`, { text, tags }),
+          quick: (text, tags, clientRef) => request('POST', `${b}/notes/quick`, { text, tags, clientRef }),
           order: (status, ids, inbox = false) => request('PUT', `${b}/notes/order`, { status, ids, inbox }),
         },
         moveEvent: (id, body) => request('PUT', `${b}/events/${id}/move`, body),

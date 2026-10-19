@@ -379,7 +379,9 @@ if (IS_PROD) {
     // index.html is the SPA entry point and must always be fresh.
     app.use(express.static(distDir, {
       setHeaders(res, filePath) {
-        if (path.basename(filePath) === 'index.html') {
+        // index.html et le service worker de l'atelier (/auteur-sw.js, régénéré
+        // à chaque build) doivent toujours être revérifiés.
+        if (path.basename(filePath) === 'index.html' || path.basename(filePath) === 'auteur-sw.js') {
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
           res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');

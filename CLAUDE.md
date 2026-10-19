@@ -57,6 +57,18 @@ Single-process Node app:
   idée neutralisés). Front : `OwnerProject` / `guest/GuestProject` /
   `reader/ReaderProject` chargés selon l'accès ; `/auth/me` expose
   `authorShared`. Test anti-fuite : `test/author-sharing.test.js`.
+  **Hors connexion** : service worker `/auteur-sw.js` (portée `/auteur`, généré
+  au build depuis `src/sw/auteur-sw.js` par le plugin `auteurServiceWorker` de
+  `vite.config.js`, servi sans cache HTTP) — app + lectures `GET
+  /api/author/*` en réseau d'abord avec repli sur copie ; écritures jamais via
+  le SW. Côté propriétaire, `src/components/author/offline/` : brouillons
+  locaux avec révision + valeurs de base (`useEntityDoc`), créations à id
+  temporaire < 0 et idées en file (`offlineApi.js`), passe de synchro pure
+  (`sync.js`, fusion champ par champ `merge.js`), créations idempotentes par
+  `clientRef` (`author_entities.client_ref`), téléchargement du livre
+  (`pack.js`). Copies effacées à la déconnexion / au changement de compte
+  (`ensureAuthorCacheOwner` dans `src/api/client.js`). Voir
+  `docs/atelier-auteur.md#hors-connexion`.
 - Public-site collections (`projects`, `tracks`, `education`, `experience`,
   `currently`) use a **JSON-blob table per name** (`server/db.js#listAll/insert/update/remove/reorder`).
   CRUD UI uses `ItemList` (`src/components/admin/ItemList.jsx`) — pass

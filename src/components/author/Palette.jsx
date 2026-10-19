@@ -43,8 +43,8 @@ function PaletteInner({ onClose, theme, setTheme }) {
     const text = q.trim();
     if (text && !guest) {
       list.push({ id: 'capture', icon: '💡', label: `Capturer l'idée « ${text} »`, run: async () => {
-        await P.notes.quick(text);
-        toast.success('Idée capturée dans l\'inbox');
+        const res = await P.notes.quick(text);
+        toast.success(res?.queued ? 'Idée gardée sur l\'appareil — envoyée au retour du réseau' : 'Idée capturée dans l\'inbox');
         onClose();
       } });
       for (const k of KIND_ORDER) {

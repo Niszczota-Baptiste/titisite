@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useAuthor } from '../context';
+import { localSearch, useAuthor } from '../context';
+import { isNetworkError } from '../offline/net.js';
 import { KINDS, kindMeta } from '../kinds';
 import { useShellPage } from '../Shell';
 import { Empty, ErrorLine, Highlight, KindAvatar, TagChip, cx, entityPath } from '../ui';
@@ -10,7 +11,8 @@ import { Empty, ErrorLine, Highlight, KindAvatar, TagChip, cx, entityPath } from
 // express.
 
 export function SearchPage() {
-  const { pid, P, tags, guest, kindOrder } = useAuthor();
+  const { pid, P, tags, guest, kindOrder, index } = useAuthor();
+  const [local, setLocal] = useState(false);
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState(params.get('q') || '');
   const [results, setResults] = useState(null);
@@ -37,7 +39,13 @@ export function SearchPage() {
     const run = query
       ? P.search(query, { kinds: kinds.join(',') || undefined, tag: tag || undefined, limit: 100 })
       : P.entities.list({ tag, kinds: kinds.join(',') || undefined, limit: 200 }).then((r) => r.items.map((e) => ({ ...e, snippet: e.summary })));
-    run.then((r) => { if (alive) setResults(r); }).catch((e) => { if (alive) setError(e); });
+    setLocal(false);
+    run.then((r) => { if (alive) setResults(r); }).catch((e) => {
+      if (!alive) return;
+      // Hors connexion : recherche dans les titres et alias gardés sur l'appareil.
+      if (isNetworkError(e) && query) { setLocal(true); setResults(localSearch(index, query, kinds)); return; }
+      setError(e);
+    });
     return () => { alive = false; };
   }, [P, query, tag, params]); // eslint-disable-line
 
@@ -67,7 +75,9 @@ export function SearchPage() {
       {results && results.length === 0 && <Empty icon="🔍" title="Aucun résultat">Essaie un autre mot ou retire un filtre.</Empty>}
       {results && results.length > 0 && (
         <div className="au-list">
-          <div className="au-faint" style={{ fontSize: 12, margin: '4px 0 8px' }}>{results.length} résultat{results.length > 1 ? 's' : ''}</div>
+          <div className="au-faint" style={{ fontSize: 12, margin: '4px 0 8px' }}>
+            {results.length} résultat{results.length > 1 ? 's' : ''}{local ? ' — hors connexion : titres et alias seulement' : ''}
+          </div>
           {results.map((r) => (
             <Link key={r.id} to={r.kind === 'chapter' && query && !guest ? `/auteur/${pid}/ecrire/${r.id}` : entityPath(pid, r)} className="au-row" style={{ alignItems: 'flex-start' }}>
               <KindAvatar entity={r} />

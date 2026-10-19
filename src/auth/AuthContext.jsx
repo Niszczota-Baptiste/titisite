@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, clearSession, getStoredUser, setStoredUser } from '../api/client';
+import { api, clearSession, ensureAuthorCacheOwner, getStoredUser, setStoredUser } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -13,13 +13,21 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     api.me().then(
-      (me) => { setUser(me); setStoredUser(me); },
-      () => { clearSession(); setUser(null); },
+      (me) => { setUser(me); setStoredUser(me); ensureAuthorCacheOwner(me.id); },
+      (err) => {
+        // Hors connexion (aucune réponse du serveur) : on garde l'utilisateur
+        // mis en cache pour que l'atelier d'auteur reste utilisable ; le
+        // serveur revérifiera la session au premier appel. Seul un refus
+        // explicite (401/403) déconnecte.
+        if (!err?.status) return;
+        clearSession(); setUser(null);
+      },
     ).finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(async (email, password) => {
     const out = await api.login(email, password);
+    await ensureAuthorCacheOwner(out.user.id);
     setUser(out.user);
     return out.user;
   }, []);

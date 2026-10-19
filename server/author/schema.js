@@ -110,6 +110,11 @@ export function migrateAuthor(db, ensureColumn) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_author_entities_updated ON author_entities(project_id, updated_at DESC);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_author_entities_opened ON author_entities(project_id, last_opened_at DESC);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_author_entities_fav ON author_entities(project_id, is_favorite) WHERE is_favorite = 1;`);
+  // Référence de création choisie par le client (mode hors connexion) : une
+  // création rejouée après une coupure — réponse perdue, deux onglets — renvoie
+  // l'élément déjà créé au lieu d'en faire un doublon. Unique par projet.
+  ensureColumn('author_entities', 'client_ref', 'TEXT');
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_author_entities_client_ref ON author_entities(project_id, client_ref) WHERE client_ref IS NOT NULL;`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS author_characters (

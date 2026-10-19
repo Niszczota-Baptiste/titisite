@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthor } from './context';
+import { registerOpenDoc } from './offline/engine.js';
+import { pick, same, wire } from './offline/fields.js';
+import { mergeDraft } from './offline/merge.js';
+import { isNetworkError, subscribeNet } from './offline/net.js';
+import { offlineStore } from './offline/store.js';
 
 // Chargement + sauvegarde automatique d'un élément (fiche, chapitre, idée).
 //
@@ -13,8 +18,15 @@ import { useAuthor } from './context';
 //      champ : un champ que le serveur n'a pas touché garde ma valeur et la
 //      sauvegarde repart seule ; seul un champ modifié DES DEUX CÔTÉS ouvre la
 //      modale de conflit. Rien n'est jamais écrasé en silence.
-//   4. Erreur réseau → état « erreur », nouvel essai toutes les 5 s, le
-//      brouillon local reste en place.
+//   4. Pas de réseau → état « hors connexion » : le brouillon local (écrit
+//      immédiatement, avec la révision ET les valeurs serveur de départ) est
+//      la copie de travail ; nouvel essai toutes les 5 s et dès que le réseau
+//      revient. Onglet fermé entre-temps : la synchronisation de fond
+//      (offline/sync.js) l'enverra, ou il sera réappliqué à la réouverture —
+//      fusionné champ par champ (offline/merge.js), jamais en écrasant un
+//      champ modifié ailleurs.
+//   5. Élément créé hors connexion (id < 0) : tout reste sur l'appareil
+//      (offline/offlineApi.js) jusqu'à sa création côté serveur.
 
 const RETRY_MS = 5000;
 
@@ -22,23 +34,8 @@ const RETRY_MS = 5000;
 // médias, tâches…) : on peut les rafraîchir sans toucher au brouillon.
 const EXTRA_KEYS = ['links', 'media', 'cover', 'tasks', 'boards', 'map', 'mapMediaId', 'isFavorite', 'number', 'actId', 'actTitle', 'wordCount', 'charCount', 'contentUpdatedAt', 'validatedAt'];
 
-function norm(key, v) {
-  if (key === 'tags') return JSON.stringify((v || []).map((t) => (typeof t === 'string' ? t : t.name).toLowerCase()).sort());
-  if (key === 'aliases') return JSON.stringify((v || []).map((a) => [a.alias, a.kind]));
-  if (v === undefined || v === null) return '';
-  return typeof v === 'object' ? JSON.stringify(v) : String(v);
-}
-const same = (key, a, b) => norm(key, a) === norm(key, b);
-
-// Valeur envoyée au serveur pour une clé (les tags partent en noms).
-function wire(key, v) {
-  if (key === 'tags') return (v || []).map((t) => (typeof t === 'string' ? t : t.name));
-  if (key === 'aliases') return (v || []).map((a) => ({ alias: a.alias, kind: a.kind, note: a.note || '' }));
-  return v;
-}
-
 export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
-  const { pid, P, reportSave, bump, reloadTags } = useAuthor();
+  const { pid, P, uid, reportSave, bump, reloadTags } = useAuthor();
   const [base, setBase] = useState(null);
   const [draft, setDraft] = useState({});
   const [status, setStatusState] = useState('loading');
@@ -65,20 +62,33 @@ export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
     reportSave(saveKey, s);
   }, [reportSave, saveKey]);
 
+  // Brouillon local : les champs modifiés, la révision sur laquelle ils ont été
+  // écrits et les valeurs serveur de départ de ces champs (pour fusionner plus
+  // tard sans écraser). Renvoie false si le stockage est plein.
+  const writeBackupNow = useCallback(() => {
+    clearTimeout(backupTimer.current);
+    try {
+      const fields = draftRef.current;
+      const keys = Object.keys(fields);
+      if (keys.length === 0) { localStorage.removeItem(storageKey); return true; }
+      const b = baseRef.current || {};
+      localStorage.setItem(storageKey, JSON.stringify({
+        fields, base: pick(b, keys), revision: b.revision, ts: Date.now(),
+        uid, title: fields.title ?? b.title, kind: b.kind,
+      }));
+      offlineStore.emit();
+      return true;
+    } catch { return false; }
+  }, [storageKey, uid]);
+
   const writeBackup = useCallback(() => {
     clearTimeout(backupTimer.current);
-    backupTimer.current = setTimeout(() => {
-      try {
-        const fields = draftRef.current;
-        if (Object.keys(fields).length === 0) localStorage.removeItem(storageKey);
-        else localStorage.setItem(storageKey, JSON.stringify({ fields, revision: baseRef.current?.revision, ts: Date.now() }));
-      } catch { /* quota : le réseau reste la voie principale */ }
-    }, 250);
-  }, [storageKey]);
+    backupTimer.current = setTimeout(writeBackupNow, 250);
+  }, [writeBackupNow]);
 
   const clearBackup = useCallback(() => {
     clearTimeout(backupTimer.current);
-    try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+    try { localStorage.removeItem(storageKey); offlineStore.emit(); } catch { /* ignore */ }
   }, [storageKey]);
 
   // ── Chargement ─────────────────────────────────────────────────────────
@@ -92,14 +102,35 @@ export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
       setBase(e);
       setDraft({});
       setConflict(null);
-      setStatus('idle');
-      // Brouillon local plus récent que le serveur et différent → proposé.
+      setStatus(e.local ? 'local' : 'idle');
+      // Brouillon resté sur l'appareil (hors connexion, onglet fermé avant
+      // l'envoi) : réappliqué tout seul, fusionné avec l'état serveur. Un champ
+      // modifié des deux côtés ouvre la modale de conflit — rien n'est perdu
+      // ni écrasé en silence.
       try {
         const raw = JSON.parse(localStorage.getItem(storageKey) || 'null');
-        if (raw?.fields && raw.ts > (e.updatedAt || 0) * 1000
-          && Object.entries(raw.fields).some(([k, v]) => !same(k, v, e[k]))) setBackup(raw);
-        else if (raw) localStorage.removeItem(storageKey);
-      } catch { /* ignore */ }
+        if (raw?.fields) {
+          // Élément créé hors connexion : rien à fusionner, tout est d'ici.
+          const { apply, clash } = e.local
+            ? { apply: Object.fromEntries(Object.entries(raw.fields).filter(([k, v]) => !same(k, v, e[k]))), clash: [] }
+            : mergeDraft(raw, e);
+          const next = { ...apply };
+          for (const k of clash) next[k] = raw.fields[k];
+          if (Object.keys(next).length === 0) {
+            localStorage.removeItem(storageKey);
+          } else {
+            draftRef.current = next;
+            setDraft(next);
+            if (clash.length) {
+              setConflict({ server: e, keys: clash });
+              setStatus('conflict');
+            } else {
+              setStatus('dirty');
+              setTimeout(() => saveRef.current?.(), 0);
+            }
+          }
+        }
+      } catch { /* brouillon illisible : ignoré */ }
       P.entities.visit(id).catch(() => {});
     } catch (err) {
       setError(err);
@@ -140,7 +171,7 @@ export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
       setBase(res);
       setDraft(next);
       setError(null);
-      if (Object.keys(next).length === 0) { clearBackup(); setStatus('saved'); } else { writeBackup(); setStatus('dirty'); schedule(); }
+      if (Object.keys(next).length === 0) { clearBackup(); setStatus(res.local ? 'local' : 'saved'); } else { writeBackup(); setStatus('dirty'); schedule(); }
       if ('tags' in sent) reloadTags();
       if ('title' in sent || 'status' in sent || 'categoryId' in sent || 'timelineId' in sent || 'sortKey' in sent) bump();
       onSavedRef.current?.(res);
@@ -159,6 +190,7 @@ export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
         draftRef.current = next;
         setBase(server);
         setDraft(next);
+        writeBackupNow(); // le brouillon suit la nouvelle base
         if (clash.length === 0) {
           saving.current = false;
           if (Object.keys(next).length) { setStatus('dirty'); schedule(0); } else { clearBackup(); setStatus('saved'); }
@@ -166,6 +198,12 @@ export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
         }
         setConflict({ server, keys: clash });
         setStatus('conflict');
+      } else if (isNetworkError(err)) {
+        // Hors connexion : la copie locale fait foi, on réessaiera.
+        const kept = writeBackupNow();
+        setError(kept ? null : new Error('local_storage_full'));
+        setStatus(kept ? 'offline' : 'error');
+        schedule(RETRY_MS);
       } else {
         setError(err);
         setStatus('error');
@@ -175,8 +213,17 @@ export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
       saving.current = false;
       if (again.current) { again.current = false; if (Object.keys(draftRef.current).length) schedule(0); }
     }
-  }, [P, id, setStatus, clearBackup, writeBackup, schedule, reloadTags, bump]);
+  }, [P, id, setStatus, clearBackup, writeBackup, writeBackupNow, schedule, reloadTags, bump]);
   saveRef.current = save;
+
+  // Le réseau revient : on pousse tout de suite ce qui attend.
+  useEffect(() => subscribeNet((net) => {
+    if (net.online && Object.keys(draftRef.current).length && !conflictRef.current) saveRef.current?.();
+  }), []);
+
+  // Cet élément est ouvert ici : la synchronisation de fond le laisse à
+  // l'autosave de cet éditeur.
+  useEffect(() => registerOpenDoc(pid, id), [pid, id]);
 
   const setFields = useCallback((patch) => {
     if (!baseRef.current) return;
@@ -188,7 +235,7 @@ export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
     draftRef.current = next;
     setDraft(next);
     writeBackup();
-    if (Object.keys(next).length === 0) { clearTimeout(timer.current); setStatus('saved'); return; }
+    if (Object.keys(next).length === 0) { clearTimeout(timer.current); setStatus(baseRef.current.local ? 'local' : 'saved'); return; }
     if (!conflictRef.current) { setStatus('dirty'); schedule(); }
   }, [writeBackup, schedule, setStatus]);
 
@@ -243,9 +290,12 @@ export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
   useEffect(() => {
     const flush = () => {
       const keys = Object.keys(draftRef.current);
+      if (keys.length) writeBackupNow(); // la copie locale d'abord, synchrone
       if (!keys.length || !baseRef.current || conflictRef.current) return;
       const body = { revision: baseRef.current.revision };
       for (const k of keys) body[k] = wire(k, draftRef.current[k]);
+      // Élément créé hors connexion : l'enregistrement local est synchrone.
+      if (baseRef.current.local) { P.entities.update(id, body).catch(() => {}); return; }
       try {
         fetch(`/api/author/projects/${pid}/entities/${id}`, {
           method: 'PUT', credentials: 'include', keepalive: true,
@@ -261,7 +311,7 @@ export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
       window.removeEventListener('pagehide', flush);
       document.removeEventListener('visibilitychange', onHide);
     };
-  }, [pid, id]);
+  }, [P, pid, id, writeBackupNow]);
 
   // Démontage (navigation interne) : on pousse immédiatement.
   useEffect(() => () => {

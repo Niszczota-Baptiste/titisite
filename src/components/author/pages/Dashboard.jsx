@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthor } from '../context';
 import { CHAPTER_STATUSES, KINDS, chapterStatus, kindMeta } from '../kinds';
 import { useShellPage } from '../Shell';
+import { PendingLocal } from '../offline/PendingLocal';
 import { formatCount } from '../text';
 import { Btn, Empty, ErrorLine, KindAvatar, ProgressBar, entityPath, relativeTime } from '../ui';
 
@@ -71,6 +72,8 @@ export function Dashboard() {
           <span className="au-btn is-small" style={{ marginLeft: 'auto' }}>Continuer →</span>
         </Link>
       )}
+
+      <PendingLocal ideas />
 
       <div className="au-card" style={{ marginBottom: 18 }}>
         <div className="au-progress-head">
