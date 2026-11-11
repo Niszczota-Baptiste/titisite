@@ -2,13 +2,18 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthState, useNet, usePending, useSyncState } from '../../components/author/offline/hooks.js';
 import { relativeTime } from '../../components/author/ui';
 import { useEnv } from '../env';
+import { useInbox, useInboxSync } from '../inbox/hooks.js';
+import { SessionCard } from '../SessionCard';
 import { pickRecent, useProjects } from '../useProjects';
 
 // Accueil de l'application : la création d'abord. Capturer et enregistrer ne
 // demandent ni réseau, ni compte, ni projet ; écrire, reprendre et explorer
 // ouvrent l'atelier du site relié.
 
-function statusLine({ session, net, auth, pending, sync }) {
+function statusLine({ session, net, auth, pending: site, sync, inbox, inboxSync }) {
+  // Ce qui attend l'envoi : le travail de l'atelier (brouillons, créations) ET
+  // les captures classées de la boîte de réception.
+  const pending = { ...site, failed: site.failed + inbox.failed, total: site.total + inbox.queued };
   if (session.status === 'local') return { tone: 'local', text: 'Atelier local — tout reste sur cet appareil.' };
   if (session.status === 'signedOut') return { tone: 'warn', text: 'Non connecté — tes captures restent sur cet appareil.' };
   if (session.status === 'denied') return { tone: 'bad', text: 'Ce compte n\'a pas accès à l\'atelier.' };
@@ -17,7 +22,7 @@ function statusLine({ session, net, auth, pending, sync }) {
   if (pending.conflicts) return { tone: 'bad', text: `Conflit à résoudre (${pending.conflicts})` };
   if (pending.failed) return { tone: 'bad', text: `Échec nécessitant une action (${pending.failed})` };
   if (!net.online) return { tone: 'warn', text: pending.total ? `Hors connexion — ${pending.total} en attente d'envoi, sauvegardé sur cet appareil` : 'Hors connexion — sauvegardé sur cet appareil' };
-  if (sync.running) return { tone: 'sync', text: 'Synchronisation…' };
+  if (sync.running || inboxSync.running) return { tone: 'sync', text: 'Synchronisation…' };
   if (pending.total) return { tone: 'sync', text: `${pending.total} en attente d'envoi` };
   return { tone: 'ok', text: 'Synchronisé' };
 }
@@ -32,7 +37,9 @@ export function Home() {
   const pending = usePending(session.user?.id ?? null);
   const projects = useProjects(session);
   const recent = pickRecent(projects.list);
-  const status = statusLine({ session, net, auth, pending, sync });
+  const inbox = useInbox(session.owner);
+  const inboxSync = useInboxSync();
+  const status = statusLine({ session, net, auth, pending, sync, inbox: inbox.summary, inboxSync });
 
   const openAtelier = (suffix = '') => {
     if (session.status === 'local') { navigate('/serveur'); return; }
@@ -72,6 +79,18 @@ export function Home() {
           <span><strong>Explorer mes idées</strong><small>Une piste, un rapprochement, une question</small></span>
         </button>
       </nav>
+
+      {inbox.summary.total > 0 && (
+        <Link to="/boite" className="au-card is-link am-section am-inbox-link">
+          <strong>📥 Boîte de réception</strong>
+          <span className="au-muted">
+            {[inbox.summary.local && `${inbox.summary.local} à classer`, inbox.summary.queued && `${inbox.summary.queued} en attente d'envoi`,
+              inbox.summary.failed && `${inbox.summary.failed} refusée(s)`].filter(Boolean).join(' · ')}
+          </span>
+        </Link>
+      )}
+
+      <SessionCard />
 
       {session.status === 'local' && (
         <section className="au-card am-section">

@@ -36,7 +36,14 @@ export async function processAuthorImage(file) {
 
 // `purpose` : 'gallery' (défaut), 'cover' (devient la couverture de
 // l'élément), 'map' (image de carte d'un lieu), 'board' (sans élément).
-export function insertMedia(projectId, processed, { entityId = null, purpose = 'gallery', originalName = '', caption = '' }) {
+// `clientRef` (facultatif) : envoi rejouable — la même référence renvoie
+// l'image déjà reçue (`existed`) au lieu d'en créer une seconde.
+export function mediaByClientRef(projectId, clientRef) {
+  if (!clientRef) return null;
+  return mediaFromRow(db.prepare(`SELECT * FROM author_media WHERE project_id = ? AND client_ref = ? AND kind = 'image'`).get(projectId, clientRef));
+}
+
+export function insertMedia(projectId, processed, { entityId = null, purpose = 'gallery', originalName = '', caption = '', clientRef = null }) {
   let entity = null;
   if (entityId) {
     entity = liveEntity(projectId, entityId);
@@ -49,11 +56,11 @@ export function insertMedia(projectId, processed, { entityId = null, purpose = '
       ? db.prepare(`SELECT COALESCE(MAX(position), -1) + 1 AS n FROM author_media WHERE entity_id = ?`).get(entity.id).n
       : 0;
     const info = db.prepare(`
-      INSERT INTO author_media (project_id, entity_id, filename, thumb_filename, original_name, mime_type, width, height, size, caption, position)
-      VALUES (?, ?, ?, ?, ?, 'image/webp', ?, ?, ?, ?, ?)
+      INSERT INTO author_media (project_id, entity_id, filename, thumb_filename, original_name, mime_type, width, height, size, caption, position, client_ref)
+      VALUES (?, ?, ?, ?, ?, 'image/webp', ?, ?, ?, ?, ?, ?)
     `).run(projectId, entity?.id ?? null, processed.filename, processed.thumbFilename,
       cleanText(originalName, 255, 'originalName').slice(0, 255), processed.width, processed.height, processed.size,
-      cleanText(caption, 300, 'caption'), position);
+      cleanText(caption, 300, 'caption'), position, clientRef);
     id = Number(info.lastInsertRowid);
     if (entity && purpose === 'cover') {
       db.prepare(`UPDATE author_entities SET cover_media_id = ? WHERE id = ?`).run(id, entity.id);

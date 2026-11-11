@@ -61,6 +61,38 @@
 .am-project strong { font-family: var(--au-head); font-size: 0.98rem; overflow-wrap: anywhere; }
 .am-project span { font-size: 0.8rem; }
 
+/* ── Capture ───────────────────────────────────────────────────────── */
+.am-capture { display: flex; flex-direction: column; min-height: 100dvh; }
+.am-saved { margin-left: auto; font-size: 0.78rem; color: var(--au-muted); }
+.am-capture-text { flex: 1; min-height: 38dvh; font-family: var(--au-serif); font-size: 1.15rem; line-height: 1.65; resize: none; }
+.am-capture-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.am-link { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-size: 0.86rem; color: var(--au-muted); }
+.am-link span { overflow-wrap: anywhere; flex: 1; min-width: 0; }
+.am-thumbs, .am-inbox-imgs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.am-thumb { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; border: 1px solid var(--au-border); display: grid; place-items: center; }
+.am-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.am-thumb button { position: absolute; top: 0; right: 0; width: 32px; height: 32px; border: none; border-radius: 0 0 0 10px; background: rgba(0, 0, 0, 0.6); color: #fff; cursor: pointer; }
+
+/* ── Boîte de réception ────────────────────────────────────────────── */
+.am-inbox { display: grid; gap: 10px; }
+.am-inbox-item { display: grid; gap: 8px; }
+.am-inbox-item header { display: flex; gap: 8px; align-items: baseline; }
+.am-inbox-item header strong { font-family: var(--au-head); font-size: 1rem; overflow-wrap: anywhere; }
+.am-inbox-item.is-failed { border-color: color-mix(in srgb, var(--au-danger) 45%, transparent); }
+.am-inbox-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.92rem; color: var(--au-muted); }
+.am-inbox-img { max-width: 100%; max-height: 220px; border-radius: 10px; border: 1px solid var(--au-border); }
+.am-inbox-audio { display: grid; gap: 4px; }
+.am-inbox-audio audio { width: 100%; }
+.am-inbox-origin { margin: 0; font-size: 0.78rem; }
+.am-inbox-item .am-status { margin: 0; }
+.am-inbox-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.am-inbox-link { display: flex; flex-direction: column; gap: 2px; }
+.am-inbox-link span { font-size: 0.84rem; }
+
+/* ── Session créative ──────────────────────────────────────────────── */
+.am-session-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.am-session-now { margin: 0 0 10px; }
+
 @media (prefers-reduced-motion: reduce) {
   .am-root *, .am-root *::before, .am-root *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }

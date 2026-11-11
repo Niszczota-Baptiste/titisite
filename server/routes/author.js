@@ -21,7 +21,7 @@ import {
 import { GUEST_KINDS, KINDS, NOTE_STATUSES, REVISION_FIELDS, own } from '../author/enums.js';
 import { exportManuscript, exportProject } from '../author/export.js';
 import {
-  deleteMedia, insertMedia, listProjectMedia, mediaFileOwned, mediaRow, processAuthorImage, updateMedia,
+  deleteMedia, insertMedia, listProjectMedia, mediaByClientRef, mediaFileOwned, mediaRow, processAuthorImage, updateMedia,
 } from '../author/media.js';
 import { publicationPreview, publishAudio } from '../author/publish.js';
 import { overview } from '../author/overview.js';
@@ -469,11 +469,16 @@ p.post('/media', uploadLimiter, uploadAuthorImage.single('image'), h(async (req,
     safeUnlink(req.file.filename);
     return notFound(res);
   }
+  // Envoi rejoué par l'application (réponse perdue) : l'image est déjà là.
+  let clientRef = null;
+  try { clientRef = cleanClientRef(req.body?.clientRef); } catch (err) { safeUnlink(req.file.filename); throw err; }
+  const already = mediaByClientRef(req.project.id, clientRef);
+  if (already) { safeUnlink(req.file.filename); return res.status(200).json(already); }
   const processed = await processAuthorImage(req.file);
   if (!processed) return res.status(415).json({ error: 'not_an_image' });
   try {
     return res.status(201).json(insertMedia(req.project.id, processed, {
-      entityId, purpose, originalName: req.file.originalname || '', caption: req.body?.caption || '',
+      entityId, purpose, originalName: req.file.originalname || '', caption: req.body?.caption || '', clientRef,
     }));
   } catch (err) {
     safeUnlink(processed.filename);

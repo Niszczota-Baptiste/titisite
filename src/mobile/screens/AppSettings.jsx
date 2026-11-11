@@ -4,7 +4,11 @@ import { useConfirm } from '../../ui/ConfirmProvider';
 import { syncNow } from '../../components/author/offline/engine.js';
 import { useNet, usePending, useSyncState } from '../../components/author/offline/hooks.js';
 import { Btn, formatDateTime } from '../../components/author/ui';
+import { formatBytes } from '../../components/author/audio/time.js';
 import { useEnv } from '../env';
+import { audioOverWifiOnly, runInbox, setAudioOverWifiOnly } from '../inbox/engine.js';
+import { useInbox } from '../inbox/hooks.js';
+import { vault } from '../platform/vault.js';
 import { forgetProjects } from '../useProjects';
 import { SignIn } from './SignIn';
 
@@ -37,6 +41,10 @@ export function AppSettings() {
   const sync = useSyncState();
   const pending = usePending(session.user?.id ?? null);
   const sw = useServiceWorkerState();
+  const inbox = useInbox(session.owner);
+  const [wifiOnly, setWifiOnly] = useState(audioOverWifiOnly);
+  const [storage, setStorage] = useState(null);
+  useEffect(() => { vault.stats().then(setStorage).catch(() => setStorage(null)); }, [inbox.summary.total]);
 
   const signOut = async () => {
     const ok = await confirm({
@@ -96,6 +104,18 @@ export function AppSettings() {
           <p className="au-faint am-note">Le détail (conflits, échecs, copie hors connexion d&apos;un projet) se trouve dans chaque projet, pastille en haut de l&apos;écran.</p>
         </section>
       )}
+
+      <section className="au-card am-section">
+        <div className="au-card-title">Sur cet appareil</div>
+        <p className="am-kv"><span className="au-faint">Captures gardées</span><strong>{inbox.summary.total}{inbox.hidden ? ` (+ ${inbox.hidden} d'un autre compte)` : ''}</strong></p>
+        <p className="am-kv"><span className="au-faint">Images et sons</span><strong>{formatBytes(storage?.bytes ?? inbox.summary.bytes)}</strong></p>
+        {storage?.freeBytes != null && <p className="am-kv"><span className="au-faint">Espace libre</span><strong>{formatBytes(storage.freeBytes)}</strong></p>}
+        <label className="au-check-row">
+          <input type="checkbox" className="au-check" checked={wifiOnly} onChange={(e) => { setAudioOverWifiOnly(e.target.checked); setWifiOnly(e.target.checked); if (!e.target.checked) runInbox(); }} />
+          Envoyer les sons seulement en Wi-Fi
+        </label>
+        <p className="au-faint am-note">Le texte et les images partent dès que le site est joignable. Une capture reçue par le site est retirée de l&apos;appareil ; pas avant.</p>
+      </section>
 
       {linked && (
         <section className="au-card am-section">

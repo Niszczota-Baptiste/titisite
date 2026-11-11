@@ -414,6 +414,20 @@ describe('idées : provenance et « à revoir plus tard »', () => {
   });
 });
 
+describe('images : envoi rejouable par référence client', () => {
+  it('la même référence ne crée pas une seconde image', async () => {
+    const { default: sharp } = await import('sharp');
+    const png = await sharp({ create: { width: 30, height: 20, channels: 3, background: '#335577' } }).png().toBuffer();
+    const fd = () => { const f = new FormData(); f.append('image', new Blob([png], { type: 'image/png' }), 'croquis.png'); f.append('clientRef', 'image-ref-0001'); return f; };
+    const first = await owner.post(`${base}/media`, { body: fd(), headers: H });
+    assert.equal(first.status, 201, JSON.stringify(first.json));
+    const again = await owner.post(`${base}/media`, { body: fd(), headers: H });
+    assert.equal(again.status, 200);
+    assert.equal(again.json.id, first.json.id);
+    assert.equal((await owner.get(`${base}/media`)).json.filter((m) => m.originalName === 'croquis.png').length, 1);
+  });
+});
+
 describe('projets : nature', () => {
   it('nature facultative, validée, et « livre » par défaut', async () => {
     const def = await owner.post('/api/author/projects', wb({ title: 'Sans nature' }));
