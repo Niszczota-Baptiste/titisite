@@ -1,6 +1,7 @@
 # dependencies / build output
 node_modules
 dist
+dist-atelier
 dist-ssr
 .vite
 

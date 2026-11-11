@@ -5,6 +5,8 @@ import { GUEST_NAV, NAV } from './nav';
 import { SyncBadge } from './offline/SyncBadge';
 import { Palette } from './Palette';
 import { QuickCapture } from './QuickCapture';
+import { HOME_LABEL, HOME_PATH } from './runtime.js';
+import { SessionBanner } from './session';
 import { Btn, Dialog, Kbd, MOD, cx, relativeTime, useHotkey } from './ui';
 
 // Coquille de l'atelier : barre latérale (ordinateur), barre d'onglets + bouton
@@ -29,14 +31,18 @@ export function useFocusMode() {
 }
 
 
+// Cinq états à ne pas confondre : synchronisé ; sauvegardé sur cet appareil
+// (hors connexion, session à rétablir) ; en attente d'envoi ; conflit à
+// résoudre ; échec nécessitant une action.
 const SAVE_TEXT = {
-  idle: 'Sauvegardé', saved: 'Sauvegardé', loading: 'Sauvegardé', dirty: 'Modifié…',
-  saving: 'Sauvegarde en cours…', error: 'Erreur de sauvegarde', conflict: 'Conflit à résoudre',
-  offline: 'Gardé sur l\'appareil', local: 'Sur l\'appareil (à synchroniser)',
+  idle: 'Synchronisé', saved: 'Synchronisé', loading: 'Synchronisé', dirty: 'Modifié…',
+  saving: 'Envoi en cours…', error: 'Échec — action requise', conflict: 'Conflit à résoudre',
+  offline: 'Sauvegardé sur cet appareil', local: 'En attente d\'envoi',
+  auth: 'Session expirée — sauvegardé sur cet appareil', denied: 'Accès refusé — sauvegardé sur cet appareil',
 };
 const SAVE_COLOR = {
   dirty: 'var(--au-warn)', saving: 'var(--au-acc)', error: 'var(--au-danger)', conflict: 'var(--au-danger)',
-  offline: 'var(--au-warn)', local: 'var(--au-warn)',
+  offline: 'var(--au-warn)', local: 'var(--au-warn)', auth: 'var(--au-danger)', denied: 'var(--au-danger)',
 };
 
 function SaveIndicator() {
@@ -46,13 +52,17 @@ function SaveIndicator() {
   const s = saveState.status;
   const title = s === 'offline' || s === 'local'
     ? 'Hors connexion : tes modifications sont enregistrées sur cet appareil et partiront toutes seules au retour du réseau.'
+    : s === 'auth'
+    ? 'Session expirée : tes modifications sont enregistrées sur cet appareil et partiront dès que tu te seras reconnecté.'
+    : s === 'denied'
+    ? 'Ce compte n\'a pas accès à l\'atelier : tes modifications restent sur cet appareil.'
     : s === 'error'
-    ? 'La sauvegarde a échoué : tes modifications sont gardées dans ce navigateur et renvoyées automatiquement.'
-    : saveState.at ? `Dernière sauvegarde ${relativeTime(Math.floor(saveState.at / 1000))}` : 'Tout est enregistré.';
+    ? 'Le site a refusé cette sauvegarde : tes modifications sont gardées sur cet appareil. Ouvre le détail pour copier, réessayer ou abandonner.'
+    : saveState.at ? `Dernier envoi ${relativeTime(Math.floor(saveState.at / 1000))}` : 'Tout est sur le site.';
   return (
     <span className={cx('au-save', `is-${s}`)} title={title} role="status" aria-live="polite">
       <span className="au-dot" style={{ '--dot': SAVE_COLOR[s] || 'var(--au-ok)' }} />
-      <span className="au-desktop-only">{SAVE_TEXT[s] || 'Sauvegardé'}</span>
+      <span className="au-desktop-only">{SAVE_TEXT[s] || 'Synchronisé'}</span>
     </span>
   );
 }
@@ -180,9 +190,9 @@ export function Shell({ theme, setTheme, children }) {
                 <span className="au-nav-text">Mes livres partagés</span>
               </Link>
             ) : (
-              <Link to="/admin" className="au-nav-item" title="Retour au tableau de bord admin">
+              <Link to={HOME_PATH} className="au-nav-item" title={HOME_LABEL}>
                 <span className="au-nav-ico" aria-hidden>↩</span>
-                <span className="au-nav-text">Administration</span>
+                <span className="au-nav-text">{HOME_LABEL}</span>
               </Link>
             )}
           </div>
@@ -213,6 +223,7 @@ export function Shell({ theme, setTheme, children }) {
             </Btn>
             <Btn variant="ghost" size="small" icon className="au-desktop-only" onClick={() => setHelp(true)} title="Raccourcis clavier (?)" aria-label="Raccourcis clavier">?</Btn>
           </header>
+          <SessionBanner />
           <main className={cx('au-content', page.full && 'is-full')} id="au-content">
             {children}
           </main>
@@ -245,7 +256,7 @@ export function Shell({ theme, setTheme, children }) {
           </button>
           {guest
             ? <Link to="/auteur?choisir"><span className="au-tab-ico" aria-hidden>↩</span>Mes livres</Link>
-            : <Link to="/admin"><span className="au-tab-ico" aria-hidden>↩</span>Administration</Link>}
+            : <Link to={HOME_PATH}><span className="au-tab-ico" aria-hidden>↩</span>{HOME_LABEL}</Link>}
         </div>
       </Dialog>
 

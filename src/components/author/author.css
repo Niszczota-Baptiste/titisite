@@ -399,6 +399,8 @@ mark.au-hl { background: rgba(var(--au-acc-rgb), 0.28); color: inherit; border-r
 .au-check { width: 18px; height: 18px; accent-color: var(--au-acc); flex-shrink: 0; cursor: pointer; }
 .au-check-row { display: flex; align-items: center; gap: 9px; margin: 8px 0; font-size: 13.5px; cursor: pointer; }
 .au-prio { font-weight: 800; font-size: 12px; letter-spacing: -1px; }
+/* Session expirée / accès refusé : sous la barre du haut, visible même en mode focus. */
+.au-session-banner { margin: 8px 14px 0; background: color-mix(in srgb, var(--au-danger) 10%, transparent); border-color: color-mix(in srgb, var(--au-danger) 40%, transparent); }
 .au-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 14px; border-radius: 10px; background: rgba(var(--au-acc-rgb), 0.1); border: 1px solid rgba(var(--au-acc-rgb), 0.35); font-size: 13px; }
 .au-dropzone { border: 1.5px dashed var(--au-border-strong); border-radius: 12px; padding: 22px 14px; text-align: center; color: var(--au-muted); font-size: 13px; cursor: pointer; }
 .au-dropzone:hover { background: var(--au-hover); }

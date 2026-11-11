@@ -24,7 +24,7 @@ export function useAuthor() {
 }
 
 // « Hors connexion » passe avant « en cours » : c'est l'état à connaître.
-const SAVE_RANK = { conflict: 5, error: 4, offline: 3.5, saving: 3, dirty: 2, local: 1.5, saved: 1, idle: 0, loading: 0 };
+const SAVE_RANK = { conflict: 5, denied: 4.6, auth: 4.5, error: 4, offline: 3.5, saving: 3, dirty: 2, local: 1.5, saved: 1, idle: 0, loading: 0 };
 
 // Recherche de secours sans réseau : titres et alias de l'index (la recherche
 // plein texte vit sur le serveur).

@@ -5,7 +5,7 @@ import { useAuthor } from '../context';
 import { kindMeta } from '../kinds';
 import { Btn, Dialog, ProgressBar, cx, formatDateTime, relativeTime } from '../ui';
 import { syncNow } from './engine.js';
-import { useNet, usePending, useSyncState } from './hooks.js';
+import { useAuthState, useNet, usePending, useSyncState } from './hooks.js';
 import { offlineStore } from './store.js';
 
 // Indicateur de la barre du haut : hors connexion, travail en attente, conflit
@@ -14,6 +14,7 @@ import { offlineStore } from './store.js';
 export function SyncBadge() {
   const { uid, guest } = useAuthor();
   const net = useNet();
+  const auth = useAuthState();
   const sync = useSyncState();
   const pending = usePending(uid);
   const [open, setOpen] = useState(false);
@@ -23,16 +24,19 @@ export function SyncBadge() {
   }
   let label = null;
   let tone = '';
-  if (!net.online) { label = pending.total ? `📴 Hors connexion · ${pending.total} en attente` : '📴 Hors connexion'; tone = 'is-off'; }
+  if (!net.online) { label = pending.total ? `📴 Hors connexion · ${pending.total} en attente d'envoi` : '📴 Hors connexion'; tone = 'is-off'; }
+  else if (auth.state === 'expired') { label = pending.total ? `🔑 Session expirée · ${pending.total} en attente d'envoi` : '🔑 Session expirée'; tone = 'is-bad'; }
+  else if (auth.state === 'forbidden') { label = '🚫 Accès refusé'; tone = 'is-bad'; }
   else if (sync.running) { label = '⟳ Synchronisation…'; tone = 'is-sync'; }
-  else if (problems) { label = `⚠ ${problems} à vérifier`; tone = 'is-bad'; }
-  else if (pending.total) { label = `⟳ ${pending.total} à synchroniser`; tone = 'is-sync'; }
+  else if (pending.conflicts) { label = `⚠ Conflit à résoudre${pending.conflicts > 1 ? ` (${pending.conflicts})` : ''}`; tone = 'is-bad'; }
+  else if (problems) { label = `⚠ ${problems} échec${problems > 1 ? 's' : ''} — action requise`; tone = 'is-bad'; }
+  else if (pending.total) { label = `⟳ ${pending.total} en attente d'envoi`; tone = 'is-sync'; }
   return (
     <>
       {label ? (
         <button type="button" className={cx('au-pill au-net-pill', tone)} onClick={() => setOpen(true)}>
           <span className="au-desktop-only">{label}</span>
-          <span className="au-mobile-only" aria-label={label}>{!net.online ? '📴' : problems ? '⚠' : '⟳'}{pending.total ? ` ${pending.total}` : ''}</span>
+          <span className="au-mobile-only" aria-label={label}>{!net.online ? '📴' : auth.state === 'expired' ? '🔑' : auth.state === 'forbidden' ? '🚫' : problems ? '⚠' : '⟳'}{pending.total ? ` ${pending.total}` : ''}</span>
         </button>
       ) : (
         <button type="button" className="au-btn is-ghost is-small is-icon au-desktop-only" onClick={() => setOpen(true)} title="Hors connexion : état et réglages" aria-label="Hors connexion">📶</button>

@@ -1,0 +1,66 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Mon Atelier — accueil et écrans propres au téléphone (préfixe am-).
+   Reprend les jetons de l'atelier (.au-root) : même palette, même thème
+   clair/sombre. Interface calme : aucun effet décoratif du portfolio.
+   Polices du système seulement (rien n'est chargé à distance).
+   ══════════════════════════════════════════════════════════════════════ */
+
+.am-root {
+  --au-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+  --au-head: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+  --au-serif: 'Noto Serif', Georgia, 'Times New Roman', serif;
+  --au-mono: ui-monospace, 'Roboto Mono', monospace;
+}
+
+.am-splash {
+  min-height: 100dvh; display: grid; place-items: center; padding: 24px; text-align: center;
+  color: var(--au-muted); font-size: 0.95rem;
+}
+
+.am-screen { max-width: 680px; margin: 0 auto; padding: 18px 16px calc(32px + env(safe-area-inset-bottom)); }
+.am-narrow { max-width: 520px; }
+.am-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.am-head h1, .am-home-head h1 { font-family: var(--au-head); font-weight: 700; letter-spacing: -0.4px; margin: 0; font-size: 1.45rem; }
+.am-lead { margin: 0 0 16px; font-size: 0.95rem; overflow-wrap: anywhere; }
+.am-note { font-size: 0.82rem; margin: 10px 0; }
+.am-h2 { font-family: var(--au-head); font-size: 0.8rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--au-faint); margin: 0 0 8px; }
+.am-form { display: grid; gap: 4px; margin-bottom: 14px; }
+.am-field { display: block; }
+.am-field .au-field-label, .am-field .au-field-hint { display: block; }
+.am-section { margin-top: 16px; }
+.am-section > p { margin: 0 0 10px; }
+.am-kv { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin: 0 0 8px; font-size: 0.92rem; }
+.am-kv strong { text-align: right; overflow-wrap: anywhere; font-weight: 600; }
+.am-ok { border-color: color-mix(in srgb, var(--au-ok) 45%, transparent); }
+
+/* ── Accueil ───────────────────────────────────────────────────────── */
+.am-home-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 6px 0 18px; }
+.am-status { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; font-size: 0.86rem; color: var(--au-muted); }
+.am-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--au-ok); flex-shrink: 0; }
+.am-status.is-warn .am-status-dot, .am-status.is-sync .am-status-dot { background: var(--au-warn); }
+.am-status.is-bad .am-status-dot { background: var(--au-danger); }
+.am-status.is-local .am-status-dot { background: var(--au-faint); }
+
+.am-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.am-action {
+  display: flex; align-items: center; gap: 12px; min-height: 76px; padding: 12px 14px; text-align: left;
+  border: 1px solid var(--au-border); border-radius: var(--au-radius); background: var(--au-surface);
+  color: var(--au-text); cursor: pointer; width: 100%;
+}
+.am-action:active { background: var(--au-surface-2); }
+.am-action:disabled { opacity: 0.5; }
+.am-action.is-main { grid-column: 1 / -1; min-height: 88px; border-color: rgba(var(--au-acc-rgb), 0.45); background: rgba(var(--au-acc-rgb), 0.1); }
+.am-action-ico { font-size: 1.6rem; flex-shrink: 0; width: 2.2rem; text-align: center; }
+.am-action strong { display: block; font-family: var(--au-head); font-size: 1rem; font-weight: 650; }
+.am-action small { display: block; color: var(--au-muted); font-size: 0.8rem; margin-top: 2px; overflow-wrap: anywhere; }
+/* Écrans étroits (360 dp) ou très grands caractères : une colonne. */
+@media (max-width: 379px) { .am-actions { grid-template-columns: 1fr; } }
+
+.am-list { display: grid; gap: 8px; margin-bottom: 10px; }
+.am-project { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; }
+.am-project strong { font-family: var(--au-head); font-size: 0.98rem; overflow-wrap: anywhere; }
+.am-project span { font-size: 0.8rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .am-root *, .am-root *::before, .am-root *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

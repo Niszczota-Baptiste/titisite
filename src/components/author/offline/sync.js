@@ -1,6 +1,6 @@
 import { pick, same, wire, wireAll } from './fields.js';
 import { mergeDraft } from './merge.js';
-import { isNetworkError } from './net.js';
+import { isNetworkError, pauseReason } from './net.js';
 
 // Synchronisation du travail fait hors connexion. Une passe, dans l'ordre :
 //   1. la file d'envoi (créations d'éléments, captures d'idées) — chaque envoi
@@ -11,15 +11,18 @@ import { isNetworkError } from './net.js';
 //      révision : un 409 se fusionne champ par champ (merge.js) ; un champ
 //      modifié des deux côtés reste sur l'appareil, marqué « conflit », et
 //      s'ouvre dans la modale habituelle quand on rouvre l'élément.
-// Au premier échec RÉSEAU la passe s'arrête (on réessaiera) ; un REFUS du
-// serveur (validation, élément supprimé, accès retiré) marque l'élément « en
-// échec » sans jamais effacer le texte.
+// Au premier échec RÉSEAU la passe s'arrête (on réessaiera). Elle s'arrête
+// aussi, SANS rien marquer en échec, quand le problème n'est pas l'élément
+// mais la session (expirée → se reconnecter), l'accès du compte, ou le serveur
+// (saturé, en panne) : `report.paused` dit pourquoi. Seul un REFUS du contenu
+// lui-même (validation, élément supprimé) marque l'élément « en échec », sans
+// jamais effacer le texte.
 //
 // `api`, `store`, `isOpen` sont injectés : la fonction se teste sans
 // navigateur (test/author-offline.test.js).
 
 export async function runSync({ api, store, uid, isOpen = () => false, onMapped = () => {} }) {
-  const report = { created: 0, ideas: 0, saved: 0, conflicts: 0, failed: 0, offline: false };
+  const report = { created: 0, ideas: 0, saved: 0, conflicts: 0, failed: 0, offline: false, paused: null };
 
   for (const op of store.outbox()) {
     if (op.uid !== uid || op.failed) continue;
@@ -51,6 +54,7 @@ export async function runSync({ api, store, uid, isOpen = () => false, onMapped 
       }
     } catch (err) {
       if (isNetworkError(err)) { report.offline = true; return report; }
+      if (pauseReason(err)) { report.paused = pauseReason(err); return report; }
       store.updateOp(op.id, { failed: true, error: err.message || `HTTP ${err.status}` });
       report.failed += 1;
     }
@@ -69,6 +73,7 @@ export async function runSync({ api, store, uid, isOpen = () => false, onMapped 
         break;
       } catch (err) {
         if (isNetworkError(err)) { report.offline = true; return report; }
+        if (pauseReason(err)) { report.paused = pauseReason(err); return report; }
         if (err.status === 409 && err.body?.entity) {
           const server = err.body.entity;
           const { apply, clash } = mergeDraft(draft, server);

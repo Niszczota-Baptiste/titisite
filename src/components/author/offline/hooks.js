@@ -1,10 +1,15 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { getSyncState, isDocOpen, subscribeSync } from './engine.js';
-import { getNet, subscribeNet } from './net.js';
+import { getAuth, getNet, subscribeAuth, subscribeNet } from './net.js';
 import { offlineStore } from './store.js';
 
 export function useNet() {
   return useSyncExternalStore((fn) => subscribeNet(fn), getNet, getNet);
+}
+
+// 'ok' | 'expired' (se reconnecter) | 'forbidden' (compte sans accès).
+export function useAuthState() {
+  return useSyncExternalStore((fn) => subscribeAuth(fn), getAuth, getAuth);
 }
 
 export function useSyncState() {

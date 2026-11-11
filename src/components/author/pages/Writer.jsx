@@ -322,9 +322,10 @@ export function Writer() {
         {target > 0 && <span className="au-writer-goal"><ProgressBar value={stats.words / target} /> {Math.round((stats.words / target) * 100)} %</span>}
         <span className={cx('au-writer-save', `is-${status}`)}>
           {{
-            saving: 'Sauvegarde…', dirty: 'Modifié', error: '⚠ Non enregistré — nouvel essai…', conflict: '⚠ Conflit',
-            offline: '📴 Gardé sur l\'appareil', local: '📴 Sur l\'appareil (à synchroniser)',
-          }[status] || '✓ Enregistré'}
+            saving: 'Envoi…', dirty: 'Modifié', error: '⚠ Échec — action requise', conflict: '⚠ Conflit à résoudre',
+            offline: '📴 Sauvegardé sur cet appareil', local: '📴 En attente d\'envoi',
+            auth: '🔑 Session expirée — sauvegardé sur cet appareil', denied: '🚫 Accès refusé — sauvegardé sur cet appareil',
+          }[status] || '✓ Synchronisé'}
         </span>
         {focus && <Btn size="small" variant="ghost" onClick={() => setFocus(false)}>Quitter le focus <Kbd>Échap</Kbd></Btn>}
       </div>

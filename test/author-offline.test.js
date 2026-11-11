@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { mergeDraft } from '../src/components/author/offline/merge.js';
+import { pauseReason } from '../src/components/author/offline/net.js';
 import { makeStore, newTempId } from '../src/components/author/offline/store.js';
 import { runSync } from '../src/components/author/offline/sync.js';
 
@@ -114,7 +115,7 @@ describe('hors connexion — synchronisation', () => {
 
     const mapped = [];
     const report = await runSync({ api: srv.api, store, uid, onMapped: (p, t, e) => mapped.push([t, e.id]) });
-    assert.deepEqual(report, { created: 1, ideas: 1, saved: 1, conflicts: 0, failed: 0, offline: false });
+    assert.deepEqual(report, { created: 1, ideas: 1, saved: 1, conflicts: 0, failed: 0, offline: false, paused: null });
     assert.deepEqual(srv.calls.map((c) => c[0]), ['create', 'quick', 'update']);
     assert.equal(srv.entities.get(1).content, 'Après');
     const realId = mapped[0][1];
@@ -200,5 +201,78 @@ describe('hors connexion — synchronisation', () => {
     assert.equal(srv.entities.get(realId).content, 'Début, puis la suite');
     assert.equal(store.readDraft(pid, realId), null);
     assert.deepEqual(srv.calls.map((c) => c[0]), ['create', 'update']);
+  });
+});
+
+describe('atelier hors connexion — conflit non tranché et session', () => {
+  const httpError = (status, message) => Object.assign(new Error(message), { status, body: { error: message } });
+
+  it('un conflit constaté reste un conflit, même si le brouillon a été réécrit sur la révision du serveur', () => {
+    // L'éditeur a reçu un 409, a aligné sa base sur le serveur, puis l'onglet a
+    // été fermé avant le choix de l'auteur. Sans le marqueur, ce brouillon
+    // ressemblerait à une saisie ordinaire et écraserait l'autre version.
+    const server = { revision: 8, content: 'Version du web.', title: 'L\'orage' };
+    const draft = { revision: 8, base: { content: 'Version du web.' }, fields: { content: 'Version du téléphone.' }, conflict: true, conflictKeys: ['content'] };
+    assert.deepEqual(mergeDraft(draft, server), { apply: {}, clash: ['content'] });
+    // Le même brouillon sans marqueur s'appliquerait (révision identique) : c'est le marqueur qui protège.
+    assert.deepEqual(mergeDraft({ ...draft, conflict: false }, server), { apply: { content: 'Version du téléphone.' }, clash: [] });
+    // Un champ hors conflit du même brouillon continue de partir normalement.
+    const mixed = { ...draft, fields: { ...draft.fields, title: 'L\'orage (révisé)' }, base: { ...draft.base, title: 'L\'orage' } };
+    assert.deepEqual(mergeDraft(mixed, server), { apply: { title: 'L\'orage (révisé)' }, clash: ['content'] });
+    // Si le serveur a finalement la même valeur, il n'y a plus rien à trancher.
+    assert.deepEqual(mergeDraft(draft, { ...server, content: 'Version du téléphone.' }), { apply: {}, clash: [] });
+  });
+
+  it('distingue coupure réseau, session expirée, accès refusé, serveur indisponible et refus du contenu', () => {
+    assert.equal(pauseReason(offline()), null);
+    assert.equal(pauseReason(httpError(401, 'invalid_token')), 'session');
+    assert.equal(pauseReason(httpError(403, 'forbidden')), 'access');
+    assert.equal(pauseReason(httpError(429, 'rate_limited')), 'rate');
+    assert.equal(pauseReason(httpError(503, 'HTTP 503')), 'server');
+    assert.equal(pauseReason(httpError(403, 'csrf_header_missing')), null);
+    assert.equal(pauseReason(httpError(422, 'too_long')), null);
+    assert.equal(pauseReason(httpError(404, 'not_found')), null);
+  });
+
+  it('session expirée pendant la synchronisation : la passe s\'arrête, rien n\'est marqué en échec, tout repart après reconnexion', async () => {
+    const store = makeStore(memoryStorage());
+    const srv = fakeServer();
+    srv.seed({ id: 7, title: 'Chapitre', content: 'Avant' });
+    store.writeDraft(1, 7, { revision: 1, base: { content: 'Avant' }, fields: { content: 'Après' }, uid: 1, ts: Date.now() });
+    store.pushOp({ type: 'quick', pid: 1, uid: 1, payload: { text: 'Une idée', tags: [] }, clientRef: 'ref-idee-0001' });
+    let expired = true;
+    const guarded = Object.fromEntries(Object.entries(srv.api).map(([name, fn]) => [name, async (...args) => {
+      if (expired) throw httpError(401, 'invalid_token');
+      return fn(...args);
+    }]));
+
+    const paused = await runSync({ api: guarded, store, uid: 1 });
+    assert.equal(paused.paused, 'session');
+    assert.equal(paused.failed, 0);
+    assert.equal(store.outbox().length, 1, 'l\'idée attend toujours');
+    assert.equal(store.outbox()[0].failed, undefined);
+    assert.equal(store.readDraft(1, 7).failed, undefined, 'le brouillon n\'est pas marqué en échec');
+    assert.equal(srv.entities.get(7).content, 'Avant');
+
+    expired = false; // reconnexion
+    const done = await runSync({ api: guarded, store, uid: 1 });
+    assert.equal(done.paused, null);
+    assert.equal(done.ideas, 1);
+    assert.equal(done.saved, 1);
+    assert.equal(srv.entities.get(7).content, 'Après');
+    assert.equal(store.pending(1).total, 0);
+  });
+
+  it('compte sans accès : même traitement, le travail reste rattaché à son auteur', async () => {
+    const store = makeStore(memoryStorage());
+    const srv = fakeServer();
+    srv.seed({ id: 3, title: 'Fiche', body: 'a' });
+    store.writeDraft(1, 3, { revision: 1, base: { body: 'a' }, fields: { body: 'b' }, uid: 1, ts: Date.now() });
+    const refused = Object.fromEntries(Object.keys(srv.api).map((name) => [name, async () => { throw httpError(403, 'forbidden'); }]));
+    const r = await runSync({ api: refused, store, uid: 1 });
+    assert.equal(r.paused, 'access');
+    assert.equal(store.pending(1).failed, 0);
+    assert.equal(store.pending(1).total, 1);
+    assert.equal(store.pending(2).total, 0, 'un autre compte ne voit pas ce brouillon');
   });
 });

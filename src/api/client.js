@@ -49,6 +49,15 @@ function authorNet(online) {
   try { window.dispatchEvent(new CustomEvent('au-net', { detail: { online } })); } catch { /* hors navigateur */ }
 }
 
+// Atelier d'auteur : signale l'état de la SESSION (écouté par offline/net.js).
+// 401 = session expirée ou révoquée ; 403 `forbidden` = ce compte n'a pas (ou
+// plus) accès à l'atelier ; toute réponse acceptée = session valide. Ce n'est
+// ni une coupure réseau ni un refus du contenu : le travail non envoyé reste
+// sur l'appareil et repart après reconnexion.
+function authorSession(state) {
+  try { window.dispatchEvent(new CustomEvent('au-auth', { detail: { state } })); } catch { /* hors navigateur */ }
+}
+
 function offlineError() {
   const err = new Error('offline');
   err.status = 0;
@@ -126,9 +135,17 @@ async function request(method, path, body) {
     if (author) { authorNet(false); throw offlineError(); }
     throw err;
   }
-  if (author) authorNet(!res.headers.get('X-Au-Cache'));
-  if (res.status === 204) return null;
+  const cached = !!res.headers.get('X-Au-Cache');
+  if (author) authorNet(!cached);
+  if (res.status === 204) { if (author) authorSession('ok'); return null; }
   const data = await res.json().catch(() => null);
+  if (author && !cached) {
+    if (res.status === 401) authorSession('expired');
+    else if (res.status === 403 && data?.error === 'forbidden') authorSession('forbidden');
+    else if (res.ok) authorSession('ok');
+  }
+  // Une (re)connexion réussie lève l'état « session expirée » de l'atelier.
+  if (path === '/auth/login' && res.ok) authorSession('ok');
   if (!res.ok) {
     const err = new Error(data?.error || `HTTP ${res.status}`);
     err.status = res.status;

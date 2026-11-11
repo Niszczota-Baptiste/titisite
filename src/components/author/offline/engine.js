@@ -1,5 +1,5 @@
 import { api } from '../../../api/client';
-import { getNet, subscribeNet } from './net.js';
+import { getNet, subscribeAuth, subscribeNet } from './net.js';
 import { offlineStore } from './store.js';
 import { runSync } from './sync.js';
 
@@ -88,6 +88,8 @@ export function startSync(uid) {
   offlineStore.prune(offlineStore.projectsWithLocalData());
   const kick = () => { clearTimeout(timer); timer = setTimeout(syncNow, 400); };
   subscribeNet((s) => { if (s.online) kick(); });
+  // Session rétablie (reconnexion) : ce qui attendait repart tout de suite.
+  subscribeAuth((a) => { if (a.state === 'ok') kick(); });
   window.addEventListener('online', kick);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') kick(); });
   // Filet : toutes les 20 s tant que quelque chose attend — `online` ne se
