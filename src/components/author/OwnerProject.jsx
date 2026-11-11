@@ -7,10 +7,12 @@ import { Consistency } from './pages/Consistency';
 import { Dashboard } from './pages/Dashboard';
 import { EntityList } from './pages/EntityList';
 import { EntityPage } from './pages/EntityPage';
+import { Explore } from './pages/Explore';
 import { Graph } from './pages/Graph';
 import { Ideas } from './pages/Ideas';
 import { Plan } from './pages/Plan';
 import { SearchPage } from './pages/SearchPage';
+import { Sounds } from './pages/Sounds';
 import { Settings } from './pages/Settings';
 import { Tasks } from './pages/Tasks';
 import { Timeline } from './pages/Timeline';
@@ -44,6 +46,8 @@ export default function OwnerProject({ pid, theme, setTheme }) {
                 <Route path="plan" element={<Plan />} />
                 <Route path="ecrire" element={<WriterIndex />} />
                 <Route path="ecrire/:id" element={<Writer />} />
+                <Route path="sons" element={<Sounds />} />
+                <Route path="explorer" element={<Explore />} />
                 <Route path="tableaux" element={<Boards />} />
                 <Route path="tableaux/:boardId" element={<Whiteboard />} />
                 <Route path="chronologie" element={<Timeline />} />

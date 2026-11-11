@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CommentsThread } from '../comments/CommentsThread';
 import { useAuthor } from '../context';
-import { LINK_SECTIONS, chapterStatus, kindMeta } from '../kinds';
+import { LINK_SECTIONS, chapterStatus, kindMeta, PRIVATE_KINDS } from '../kinds';
 import { Markdown } from '../markdown';
 import { useShellPage } from '../Shell';
 import { formatCount } from '../text';
@@ -200,7 +200,7 @@ function ChapterText({ e, ctx, onCite }) {
 }
 
 function RelationsView({ e, pid }) {
-  const groups = LINK_SECTIONS.filter((s) => s.kind !== 'note')
+  const groups = LINK_SECTIONS.filter((s) => !PRIVATE_KINDS.includes(s.kind))
     .map((s) => ({ ...s, links: e.links.filter((l) => l.other.kind === s.kind) }))
     .filter((g) => g.links.length);
   return (

@@ -61,6 +61,10 @@ export async function prefetchProject(P, pid, { onProgress = () => {}, force = f
       kind, sort: kind === 'event' ? 'date' : 'updated', limit: 60, offset: 0,
     })),
     () => P.reader.list(),
+    // Atelier musical : idées musicales et liste des prises (le texte et les
+    // repères ; les fichiers audio eux-mêmes ne sont pas téléchargés ici).
+    () => P.entities.list({ kind: 'sound', sort: 'updated', limit: 200 }),
+    () => P.audio.list(),
   ];
 
   // Fiches : toutes au premier passage, puis seulement celles qui ont bougé.

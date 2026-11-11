@@ -75,6 +75,14 @@ const ERRORS = {
   tag_exists: 'Ce tag existe déjà.',
   category_exists: 'Cette catégorie existe déjà.',
   not_an_image: 'Ce fichier n\'est pas une image lisible.',
+  not_audio: 'Ce fichier n\'est pas un son reconnu (m4a, aac, mp3, ogg, wav, flac ou webm).',
+  invalid_entity: 'Une prise se range sur une idée musicale.',
+  invalid_range: 'La fin doit venir après le début.',
+  too_many_markers: 'Trop de repères sur cette prise.',
+  already_published: 'Cette prise a déjà été publiée.',
+  confirmation_required: 'La publication doit être confirmée.',
+  invalid_destination: 'Destination de publication inconnue.',
+  missing_file: 'Aucun fichier reçu.',
   mime_not_allowed: 'Format refusé (JPEG, PNG ou WebP).',
   extension_not_allowed: 'Format refusé (JPEG, PNG ou WebP).',
   file_too_large: 'Image trop lourde (15 Mo max).',
@@ -251,11 +259,18 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
 
 export function Dialog({ open, onClose, title, children, footer, width = 560, initialFocus = true }) {
   const ref = useRef(null);
+  // `onClose` est souvent une fonction recréée à chaque rendu du parent : elle
+  // ne doit PAS relancer l'effet ci-dessous, sinon le focus est ramené de force
+  // sur le premier champ à chaque rafraîchissement (compteurs, état du réseau…)
+  // — la frappe change de champ, et une composition en cours (clavier coréen)
+  // est cassée. Le focus initial n'est posé qu'à l'ouverture.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return undefined;
     const prev = document.activeElement;
     const onKey = (e) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose?.(); return; }
+      if (e.key === 'Escape') { e.stopPropagation(); closeRef.current?.(); return; }
       if (e.key !== 'Tab' || !ref.current) return;
       const f = [...ref.current.querySelectorAll(FOCUSABLE)];
       if (!f.length) return;
@@ -271,7 +286,7 @@ export function Dialog({ open, onClose, title, children, footer, width = 560, in
       return () => { clearTimeout(t); window.removeEventListener('keydown', onKey, true); prev?.focus?.(); };
     }
     return () => { window.removeEventListener('keydown', onKey, true); prev?.focus?.(); };
-  }, [open, onClose, initialFocus]);
+  }, [open, initialFocus]);
   if (!open) return null;
   return (
     <Portal>

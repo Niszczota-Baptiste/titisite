@@ -892,3 +892,88 @@ span.au-net-pill { cursor: default; }
 p.au-offline-note { margin: 4px 0 12px; }
 .au-offline-pending { margin-bottom: 16px; border-color: color-mix(in srgb, var(--au-warn) 40%, transparent); }
 .au-offline-pending .au-card-title { gap: 8px; flex-wrap: wrap; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Atelier musical : lecteur, prises, repères, enregistreur, métronome.
+   Espace immédiatement lisible : gros bouton, temps en clair, rien d'animé
+   qui ne serve pas à dire « ça enregistre ».
+   ══════════════════════════════════════════════════════════════════════ */
+
+.au-player { display: grid; gap: 8px; }
+.au-player-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.au-player-time { font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
+.au-player-jumps { display: flex; gap: 4px; margin-left: auto; }
+.au-player-track { position: relative; height: 34px; display: flex; align-items: center; }
+.au-player-seek { width: 100%; height: 34px; margin: 0; accent-color: var(--au-acc); background: transparent; position: relative; z-index: 1; }
+.au-player-loop { position: absolute; top: 9px; height: 16px; border-radius: 4px; background: rgba(var(--au-acc-rgb), 0.28); border: 1px solid rgba(var(--au-acc-rgb), 0.6); pointer-events: none; }
+.au-player-a { position: absolute; top: 5px; height: 24px; width: 2px; background: var(--au-warn); pointer-events: none; }
+.au-player-mark { position: absolute; top: 0; z-index: 2; width: 18px; height: 12px; margin-left: -9px; padding: 0; border: none; background: none; cursor: pointer; }
+.au-player-mark::after { content: ''; position: absolute; left: 5px; top: 1px; border: 4px solid transparent; border-top: 8px solid var(--au-warn); }
+.au-player-mark.is-loop::after, .au-player-mark.is-extract::after { border-top-color: var(--au-acc); }
+.au-player-mark.is-interruption::after { border-top-color: var(--au-danger); }
+.au-player-loopbar { font-size: 12.5px; }
+.au-player.is-compact .au-player-track { height: 28px; }
+
+.au-take-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.au-take { display: flex; align-items: center; gap: 6px; border: 1px solid var(--au-border); border-radius: 10px; background: var(--au-surface); }
+.au-take.is-sel { border-color: rgba(var(--au-acc-rgb), 0.55); background: rgba(var(--au-acc-rgb), 0.08); }
+.au-take-main { flex: 1; min-width: 0; text-align: left; background: none; border: none; padding: 9px 12px; cursor: pointer; display: grid; gap: 2px; min-height: 44px; }
+.au-take-title { font-weight: 600; overflow-wrap: anywhere; }
+.au-take-meta { font-size: 12px; }
+.au-take-open { border-top: 1px solid var(--au-border); padding-top: 12px; }
+.au-take-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.au-marker-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
+.au-marker { display: flex; align-items: flex-start; gap: 4px; border-left: 3px solid var(--au-warn); padding-left: 8px; }
+.au-marker.is-loop, .au-marker.is-extract { border-left-color: var(--au-acc); }
+.au-marker.is-interruption { border-left-color: var(--au-danger); }
+.au-marker-go { flex: 1; min-width: 0; text-align: left; background: none; border: none; cursor: pointer; padding: 6px 4px; display: grid; gap: 2px; min-height: 40px; }
+.au-marker-time { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--au-muted); }
+.au-marker-note { font-size: 12.5px; overflow-wrap: anywhere; }
+
+.au-rec-idle, .au-rec-live, .au-rec-done { display: grid; gap: 12px; }
+.au-rec-options { display: grid; gap: 4px; }
+.au-rec-button {
+  display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 72px; width: 100%;
+  border-radius: 16px; border: 1px solid color-mix(in srgb, var(--au-danger) 55%, transparent);
+  background: color-mix(in srgb, var(--au-danger) 14%, transparent); color: var(--au-text);
+  font-family: var(--au-head); font-size: 18px; font-weight: 700; cursor: pointer;
+}
+.au-rec-button:disabled { opacity: 0.5; }
+.au-rec-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--au-danger); flex-shrink: 0; }
+.au-rec-dot.is-live { animation: auRecPulse 1.2s ease-in-out infinite; }
+.au-rec-state { display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 700; font-size: 15px; color: var(--au-danger); }
+.au-rec-state.is-paused { color: var(--au-warn); }
+.au-rec-state.is-paused .au-rec-dot { background: var(--au-warn); animation: none; }
+.au-rec-time { text-align: center; font-family: var(--au-head); font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+.au-rec-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+@keyframes auRecPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .au-rec-dot.is-live { animation: none; } }
+
+.au-metro-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.au-metro-bpm { display: flex; align-items: center; gap: 6px; }
+.au-metro-bpm .au-input { width: 84px; text-align: center; font-variant-numeric: tabular-nums; }
+.au-metro-beats { display: flex; gap: 5px; margin-left: auto; }
+.au-metro-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--au-border-strong); }
+.au-metro-dot.is-on { background: var(--au-acc); border-color: var(--au-acc); }
+.au-metro-dot.is-accent.is-on { background: var(--au-warn); border-color: var(--au-warn); }
+.au-metro-note { font-size: 11.5px; margin: 0; }
+
+.au-sound-list { display: grid; gap: 10px; }
+.au-sound { display: grid; gap: 8px; margin-bottom: 10px; }
+.au-sound-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.au-sound-title { font-family: var(--au-head); font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }
+.au-sound-meta { font-size: 12px; }
+.au-sound-summary { margin: 0; font-size: 13px; }
+.au-sound-file { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.au-sound-file .au-select { flex: 1; min-width: 160px; }
+
+.au-publish-takes { display: grid; gap: 6px; margin-bottom: 14px; }
+.au-publish-take { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--au-border); border-radius: 10px; cursor: pointer; min-height: 44px; }
+.au-publish-take.is-sel { border-color: rgba(var(--au-acc-rgb), 0.6); background: rgba(var(--au-acc-rgb), 0.08); }
+
+/* ── Explorer : des pistes, jamais du canon ─────────────────────────── */
+.au-trail { margin-bottom: 14px; border-style: dashed; }
+.au-trail-pill { --pill: var(--au-warn); margin-left: 4px; }
+.au-trail-text { font-family: var(--au-serif); font-size: 17px; line-height: 1.5; margin: 0 0 10px; overflow-wrap: anywhere; }
+.au-trail-sub { font-size: 12.5px; margin: 0 0 10px; }
+.au-trail-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }

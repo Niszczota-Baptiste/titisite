@@ -177,7 +177,12 @@ export function uploadFile(path, formData, { onProgress } = {}) {
         reject(err);
       }
     };
-    xhr.onerror = () => reject(new Error('network_error'));
+    xhr.onerror = () => {
+      // Atelier : même forme d'erreur que request() — l'appelant sait que c'est
+      // le réseau (on réessaiera), pas un refus du fichier.
+      if (path.startsWith('/author/')) { authorNet(false); reject(offlineError()); return; }
+      reject(new Error('network_error'));
+    };
     xhr.onabort = () => reject(new Error('aborted'));
     xhr.send(formData);
   });
@@ -1079,7 +1084,8 @@ export const api = {
           restore: (id, rid) => request('POST', `${b}/entities/${id}/revisions/${rid}/restore`),
         },
         notes: {
-          quick: (text, tags, clientRef) => request('POST', `${b}/notes/quick`, { text, tags, clientRef }),
+          // `extra` (facultatif) : provenance d'une capture — { origin, capturedAt, revisitOn }.
+          quick: (text, tags, clientRef, extra) => request('POST', `${b}/notes/quick`, { text, tags, clientRef, ...(extra || {}) }),
           order: (status, ids, inbox = false) => request('PUT', `${b}/notes/order`, { status, ids, inbox }),
         },
         moveEvent: (id, body) => request('PUT', `${b}/events/${id}/move`, body),
@@ -1144,6 +1150,26 @@ export const api = {
           update: (id, body) => request('PUT', `${b}/media/${id}`, body),
           remove: (id) => request('DELETE', `${b}/media/${id}`),
         },
+        // Atelier musical : prises audio PRIVÉES (jamais /api/tracks ni
+        // /api/audio). `clientRef` rend l'envoi rejouable sans doublon ;
+        // publier est un geste séparé (publication = aperçu, publish = acte).
+        audio: {
+          list:    () => request('GET', `${b}/audio`),
+          byRef:   (ref) => request('GET', `${b}/audio/by-ref/${encodeURIComponent(ref)}`),
+          upload:  (formData, opts) => uploadFile(`${b}/audio`, formData, opts),
+          get:     (id) => request('GET', `${b}/media/${id}/audio`),
+          update:  (id, body) => request('PUT', `${b}/media/${id}`, body),
+          remove:  (id) => request('DELETE', `${b}/media/${id}`),
+          downloadUrl: (id) => `/api${b}/media/${id}/download`,
+          markers: {
+            list:   (id) => request('GET', `${b}/media/${id}/markers`),
+            create: (id, body) => request('POST', `${b}/media/${id}/markers`, body),
+            update: (markerId, body) => request('PUT', `${b}/markers/${markerId}`, body),
+            remove: (markerId) => request('DELETE', `${b}/markers/${markerId}`),
+          },
+          publication: (id, params) => request('GET', `${b}/media/${id}/publication${qs(params)}`),
+          publish:     (id, body) => request('POST', `${b}/media/${id}/publish`, body),
+        },
         pins: {
           list:   (placeId) => request('GET', `${b}/places/${placeId}/pins`),
           create: (placeId, body) => request('POST', `${b}/places/${placeId}/pins`, body),
@@ -1152,7 +1178,8 @@ export const api = {
         },
         consistency: {
           get:     () => request('GET', `${b}/consistency`),
-          dismiss: (key, value = true) => request('POST', `${b}/consistency/dismiss`, { key, value }),
+          // `reason` (facultative) : pourquoi l'alerte est voulue.
+          dismiss: (key, value = true, reason) => request('POST', `${b}/consistency/dismiss`, { key, value, reason }),
         },
         trash: () => request('GET', `${b}/trash`),
         // Partage : le propriétaire gère les invités ; les invités (omniscient)

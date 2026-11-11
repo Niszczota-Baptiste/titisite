@@ -32,7 +32,7 @@ const RETRY_MS = 5000;
 
 // Parties d'une fiche qui ne sont PAS des champs de formulaire (relations,
 // médias, tâches…) : on peut les rafraîchir sans toucher au brouillon.
-const EXTRA_KEYS = ['links', 'media', 'cover', 'tasks', 'boards', 'map', 'mapMediaId', 'isFavorite', 'number', 'actId', 'actTitle', 'wordCount', 'charCount', 'contentUpdatedAt', 'validatedAt'];
+const EXTRA_KEYS = ['links', 'media', 'audio', 'referenceMediaId', 'cover', 'tasks', 'boards', 'map', 'mapMediaId', 'isFavorite', 'number', 'actId', 'actTitle', 'wordCount', 'charCount', 'contentUpdatedAt', 'validatedAt'];
 
 export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
   const { pid, P, uid, reportSave, bump, reloadTags } = useAuthor();
@@ -286,7 +286,7 @@ export function useEntityDoc(id, { debounce = 1200, onSaved } = {}) {
     }
     const kind = baseRef.current?.kind;
     for (const k of c.keys) {
-      const revisable = k === 'body' || (k === 'content' && kind === 'chapter');
+      const revisable = k === 'body' || (k === 'content' && kind === 'chapter') || (k === 'lyrics' && kind === 'sound');
       const mine = draftRef.current[k];
       if (revisable && typeof mine === 'string' && mine.trim()) {
         try { await P.revisions.create(id, { field: k, body: mine, label: 'Version locale — conflit' }); } catch { /* best effort */ }

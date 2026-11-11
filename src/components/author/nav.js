@@ -17,6 +17,8 @@ export const NAV = [
   { label: 'Créer', items: [
     { to: 'idees', label: 'Brainstorming', icon: '💡', count: 'inbox', countHint: 'dans l\'inbox' },
     { to: 'tableaux', label: 'Tableaux blancs', icon: '🧩' },
+    { to: 'sons', label: 'Sons & musique', icon: '🎵', count: 'sound' },
+    { to: 'explorer', label: 'Explorer', icon: '🧭' },
   ] },
   { label: 'Suivi', items: [
     { to: 'commentaires', label: 'Commentaires', icon: '💬', count: 'comments', countHint: 'à traiter' },

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
-import { KIND_ORDER } from './kinds';
+import { KIND_ORDER, PRIVATE_KINDS } from './kinds';
 import { normTitle } from './markdown';
 import { isNetworkError } from './offline/net.js';
 import { withOffline } from './offline/offlineApi.js';
@@ -40,7 +40,7 @@ export function localSearch(index, q, kinds) {
 
 export function AuthorProvider({ pid, access = 'owner', children }) {
   const guest = access !== 'owner';
-  const kindOrder = useMemo(() => (guest ? KIND_ORDER.filter((k) => k !== 'note') : KIND_ORDER), [guest]);
+  const kindOrder = useMemo(() => (guest ? KIND_ORDER.filter((k) => !PRIVATE_KINDS.includes(k)) : KIND_ORDER), [guest]);
   const { user } = useAuth();
   const uid = user?.id ?? null;
   const uidRef = useRef(uid);

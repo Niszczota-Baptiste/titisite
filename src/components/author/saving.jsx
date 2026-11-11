@@ -11,6 +11,8 @@ import { Btn, Dialog, ErrorLine, cx, formatDateTime, humanError, relativeTime } 
 
 const FIELD_LABELS = {
   title: 'Titre', summary: 'Résumé', body: 'Texte', content: 'Contenu du chapitre', tags: 'Tags', aliases: 'Alias',
+  lyrics: 'Paroles', tempo: 'Tempo', timeSignature: 'Mesure', keySignature: 'Tonalité', chords: 'Accords',
+  instruments: 'Instruments', structure: 'Structure', mood: 'Ambiance', revisitOn: 'À revoir plus tard',
 };
 
 export function BackupBanner({ backup, onRestore, onDiscard }) {

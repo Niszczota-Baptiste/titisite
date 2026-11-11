@@ -5,7 +5,9 @@ import { CommentsThread } from '../comments/CommentsThread';
 import { useToast } from '../../../ui/ToastProvider';
 import { useAuthor } from '../context';
 import { FieldInput } from '../fields';
-import { KINDS, KIND_ORDER, chapterStatus, kindMeta } from '../kinds';
+import { KINDS, KIND_ORDER, PRIVATE_KINDS, chapterStatus, kindMeta } from '../kinds';
+import { Metronome } from '../audio/Metronome';
+import { TakesPanel } from '../audio/TakesPanel';
 import { MediaPanel } from '../MediaPanel';
 import { PlaceMap } from '../PlaceMap';
 import { RelationsPanel } from '../RelationsPanel';
@@ -88,7 +90,7 @@ export function EntityPage() {
     e.kind === 'chapter' && { label: 'Écrire ce chapitre', icon: '✍️', onClick: () => navigate(`/auteur/${pid}/ecrire/${e.id}`) },
     e.kind === 'event' && { label: 'Voir sur la chronologie', icon: '⏳', onClick: () => navigate(`/auteur/${pid}/chronologie?focus=${e.id}`) },
     { label: 'Voir dans le graphe', icon: '🕸️', onClick: () => navigate(`/auteur/${pid}/graphe?focus=${e.id}`) },
-    { label: 'Historique du texte', icon: '🕘', onClick: async () => { await doc.save(); setHistory(true); } },
+    { label: e.kind === 'sound' ? 'Historique des paroles' : 'Historique du texte', icon: '🕘', onClick: async () => { await doc.save(); setHistory(true); } },
     e.kind === 'note' && { label: 'Transformer en fiche…', icon: '✨', onClick: () => setConvert(true) },
     { label: e.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris', icon: '⭐', onClick: toggleFav },
     { sep: true },
@@ -130,11 +132,18 @@ export function EntityPage() {
 
       <div className="au-entity-grid">
         <div className="au-entity-main">
+          {e.kind === 'sound' && (
+            <div className="au-card" style={{ marginBottom: 18 }}>
+              {e.local
+                ? <p className="au-offline-note" style={{ margin: 0 }}>📴 Idée créée hors connexion : les prises pourront y être rangées dès sa synchronisation. En attendant, enregistre depuis l&apos;accueil — la prise est gardée sur l&apos;appareil.</p>
+                : <TakesPanel entity={e} onChanged={reloadEntity} bpm={e.tempo} signature={e.timeSignature} />}
+            </div>
+          )}
           {meta.sections.map((s, si) => {
             const fields = s.fields.filter((f) => !(si === 0 && f.key === 'title'));
             if (!fields.length) return null;
             return (
-              <Section key={s.id} id={`${e.kind}:${s.id}`} title={s.title}>
+              <Section key={s.id} id={`${e.kind}:${s.id}`} title={s.title} defaultOpen={s.defaultOpen !== false}>
                 <div className="au-grid2">
                   {fields.map((f) => (
                     <div key={f.key} className={cx('au-field', !f.half && 'is-full')}>
@@ -173,7 +182,11 @@ export function EntityPage() {
 
           {!e.local && <TasksCard entity={e} onChanged={reloadEntity} />}
 
-          {e.kind !== 'note' && !e.local && <div className="au-card"><CommentsThread entityId={e.id} /></div>}
+          {e.kind === 'sound' && (
+            <div className="au-card"><Metronome bpm={e.tempo} signature={e.timeSignature} onBpm={(v) => doc.setField('tempo', v)} /></div>
+          )}
+
+          {!PRIVATE_KINDS.includes(e.kind) && !e.local && <div className="au-card"><CommentsThread entityId={e.id} /></div>}
 
           {e.boards.length > 0 && (
             <div className="au-card">
@@ -185,8 +198,8 @@ export function EntityPage() {
       </div>
 
       {menu}
-      <RevisionsDialog open={history} onClose={() => setHistory(false)} entity={e} field="body" current={e.body}
-        onRestored={() => doc.reload()} />
+      <RevisionsDialog open={history} onClose={() => setHistory(false)} entity={e} field={e.kind === 'sound' ? 'lyrics' : 'body'}
+        current={e.kind === 'sound' ? e.lyrics : e.body} onRestored={() => doc.reload()} />
       {convert && <ConvertNoteDialog note={e} onClose={() => setConvert(false)} onDone={(created) => { setConvert(false); doc.setField('status', 'a_integrer'); navigate(entityPath(pid, created)); }} />}
     </div>
   );

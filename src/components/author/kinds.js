@@ -6,7 +6,11 @@
 // auto-extensible), markdown (corps avec aperçu), select, number, date,
 // category (catégorie configurable du domaine), timeline, priority.
 
-export const KIND_ORDER = ['character', 'place', 'lore', 'event', 'chapter', 'note'];
+export const KIND_ORDER = ['character', 'place', 'lore', 'event', 'chapter', 'note', 'sound'];
+
+// Types jamais montrés à un invité (miroir de PRIVATE_KINDS côté serveur, qui
+// seul fait foi) : la boîte à idées et l'atelier musical.
+export const PRIVATE_KINDS = ['note', 'sound'];
 
 const STORY_ROLES = ['Protagoniste', 'Antagoniste', 'Deutéragoniste', 'Mentor', 'Allié', 'Rival', 'Personnage secondaire', 'Figurant'];
 
@@ -135,9 +139,54 @@ export const KINDS = {
       { id: 'contenu', title: 'Contenu', fields: [
         { key: 'body', label: 'Contenu', type: 'markdown' },
       ] },
+      { id: 'incubation', title: 'À revoir plus tard', defaultOpen: false, fields: [
+        { key: 'revisitOn', label: 'La reproposer à partir du', type: 'date', hint: 'Aucun rappel : le mode Explorer la ressortira ce jour-là.' },
+      ] },
     ],
   },
+  // Idée musicale : une mélodie, un rythme, une chanson en cours. Ses prises
+  // audio (privées) sont gérées par audio/TakesPanel ; tous les repères
+  // musicaux sont facultatifs.
+  sound: {
+    label: 'Idée musicale', plural: 'Sons & musique', icon: '🎵', color: '#d1678e', route: 'sons', newLabel: 'Nouvelle idée musicale',
+    sections: [
+      { id: 'identite', title: 'Idée musicale', fields: [
+        { key: 'title', label: 'Titre', type: 'text', big: true },
+        { key: 'summary', label: 'En une phrase', type: 'area', rows: 2 },
+        { key: 'mood', label: 'Ambiance', type: 'text', placeholder: 'brumeuse, tendue, lumineuse…' },
+      ] },
+      { id: 'paroles', title: 'Paroles', fields: [
+        { key: 'lyrics', label: 'Paroles', type: 'markdown' },
+      ] },
+      { id: 'reperes', title: 'Repères musicaux (facultatifs)', defaultOpen: false, fields: [
+        { key: 'tempo', label: 'Tempo (bpm)', type: 'number', half: true },
+        { key: 'timeSignature', label: 'Mesure', type: 'text', half: true, suggestions: ['4/4', '3/4', '6/8', '2/4', '5/4', '7/8', '12/8'] },
+        { key: 'keySignature', label: 'Tonalité', type: 'text', half: true, placeholder: 'La mineur' },
+        { key: 'instruments', label: 'Instruments', type: 'text', half: true },
+        { key: 'chords', label: 'Accords', type: 'area', rows: 2 },
+        { key: 'structure', label: 'Structure', type: 'area', rows: 3, placeholder: 'Intro / Couplet / Refrain / Pont…' },
+      ] },
+      { id: 'notes', title: 'Notes', fields: [
+        { key: 'body', label: 'Notes', type: 'markdown' },
+      ] },
+    ],
+    listMeta: (e) => [e.tempo && `${e.tempo} bpm`, e.keySignature, e.mood].filter(Boolean).join(' · '),
+  },
 };
+
+// Nature d'un projet (miroir de PROJECT_KINDS côté serveur). Elle oriente
+// l'accueil du projet et le vocabulaire ; tous les outils restent disponibles.
+export const PROJECT_KINDS = [
+  { key: 'livre', label: 'Roman', icon: '📖', hint: 'Chapitres, plan, personnages, univers.' },
+  { key: 'nouvelle', label: 'Nouvelle', icon: '📄', hint: 'Un texte court, peu de structure.' },
+  { key: 'poesie', label: 'Poésie', icon: '🪶', hint: 'Des textes brefs, à réunir en recueil.' },
+  { key: 'scene', label: 'Scène', icon: '🎭', hint: 'Théâtre, scénario, dialogue.' },
+  { key: 'univers', label: 'Univers', icon: '🌍', hint: 'Personnages, lieux, lore, chronologie.' },
+  { key: 'musique', label: 'Musique', icon: '🎵', hint: 'Paroles, mélodies, rythmes, compositions.' },
+  { key: 'mixte', label: 'Projet mixte', icon: '🧩', hint: 'Récit, images et musique ensemble.' },
+  { key: 'libre', label: 'Libre', icon: '✦', hint: 'Juste des idées, sans structure.' },
+];
+export const projectKind = (k) => PROJECT_KINDS.find((p) => p.key === k) || PROJECT_KINDS[0];
 
 export const kindMeta = (k) => KINDS[k] || { label: k, plural: k, icon: '•', color: '#c9a8e8', sections: [] };
 
@@ -189,9 +238,12 @@ export const RELATIONS = {
   cause:      { label: 'Cause', reverse: 'Causé par', group: 'Temps' },
   precede:    { label: 'Précède', reverse: 'Suit', group: 'Temps' },
   contredit:  { label: 'Contredit', symmetric: true, group: 'Cohérence' },
+  accompagne: { label: 'Accompagne', reverse: 'Accompagné par', group: 'Musique' },
+  theme_de:   { label: 'Thème de', reverse: 'A pour thème', group: 'Musique' },
+  inspire:    { label: 'Inspire', reverse: 'Inspiré par', group: 'Musique' },
   lie_a:      { label: 'Lié à', symmetric: true, group: 'Divers' },
 };
-export const RELATION_GROUPS = ['Relations', 'Monde', 'Récit', 'Temps', 'Cohérence', 'Divers'];
+export const RELATION_GROUPS = ['Relations', 'Monde', 'Récit', 'Temps', 'Musique', 'Cohérence', 'Divers'];
 
 export const CHARACTER_RELATIONS = ['ami', 'famille', 'amour', 'allie', 'rival', 'ennemi', 'mentor', 'parent'];
 
@@ -216,6 +268,18 @@ export function defaultRelation(fromKind, toKind) {
     'chapter>lore': 'mentionne',
     'chapter>character': '~apparait_dans',
     'lore>lore': 'lie_a',
+    'sound>chapter': 'accompagne',
+    'sound>event': 'accompagne',
+    'sound>character': 'theme_de',
+    'sound>place': 'theme_de',
+    'sound>lore': '~inspire',
+    'sound>note': '~inspire',
+    'chapter>sound': '~accompagne',
+    'event>sound': '~accompagne',
+    'character>sound': '~theme_de',
+    'place>sound': '~theme_de',
+    'lore>sound': 'inspire',
+    'note>sound': 'inspire',
   };
   return map[key] || 'lie_a';
 }
@@ -255,4 +319,5 @@ export const LINK_SECTIONS = [
   { kind: 'event', title: 'Événements' },
   { kind: 'chapter', title: 'Chapitres' },
   { kind: 'note', title: 'Idées' },
+  { kind: 'sound', title: 'Musique' },
 ];
