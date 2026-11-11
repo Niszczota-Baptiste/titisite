@@ -8,14 +8,18 @@
 // favoris, liens…) et ses champs propres dans la table de son type
 // (« class table inheritance ») : les liens entre éléments sont ainsi de vraies
 // clés étrangères, quel que soit leur type.
-export const KINDS = ['character', 'place', 'lore', 'event', 'chapter', 'note'];
+// 'sound' = idée musicale (mélodie, rythme, chanson en cours) : ses paroles,
+// ses repères (tempo, tonalité, accords…) et ses PRISES audio privées.
+export const KINDS = ['character', 'place', 'lore', 'event', 'chapter', 'note', 'sound'];
 
 // ── Partage ─────────────────────────────────────────────────────────────────
 // Types jamais servis à un invité, quel que soit son rôle : la boîte à idées
 // reste l'espace personnel du propriétaire. Toute lecture invitée filtre sur
 // GUEST_KINDS (liste blanche) plutôt que d'exclure PRIVATE_KINDS : un futur
 // type est privé tant qu'on ne l'a pas explicitement ouvert.
-export const PRIVATE_KINDS = ['note'];
+// Les idées musicales et leurs prises audio sont privées elles aussi : aucune
+// règle de partage n'a été définie pour elles.
+export const PRIVATE_KINDS = ['note', 'sound'];
 export const GUEST_KINDS = ['character', 'place', 'lore', 'event', 'chapter'];
 export const SHARE_ROLES = ['omniscient', 'lecteur'];
 export const VALIDATED_STATUS = 'termine';
@@ -27,6 +31,7 @@ export const KIND_TABLE = {
   event: 'author_events',
   chapter: 'author_chapters',
   note: 'author_notes',
+  sound: 'author_sounds',
 };
 
 // Champs communs à tous les types (colonnes de author_entities).
@@ -89,11 +94,28 @@ export const KIND_FIELDS = {
     { key: 'category', col: 'category', type: 'text', max: 80, fts: true },
     { key: 'noteDate', col: 'note_date', type: 'date' },
     { key: 'inbox', col: 'inbox', type: 'bool' },
+    // Incubation : « à revoir plus tard » — une date, rien d'autre (ni rappel
+    // répété ni série à tenir). Le mode Explorer la repropose le moment venu.
+    { key: 'revisitOn', col: 'revisit_on', type: 'date' },
+    // Provenance d'une capture (« saisie », « partage : Chrome », « import »…)
+    // et moment où elle a été saisie sur l'appareil (secondes Unix).
+    { key: 'origin', col: 'origin', type: 'text', max: 120 },
+    { key: 'capturedAt', col: 'captured_at', type: 'int', min: 0, max: 99_999_999_999, nullable: true },
+  ],
+  sound: [
+    { key: 'lyrics', col: 'lyrics', type: 'text', max: 200_000, fts: true },
+    { key: 'tempo', col: 'tempo', type: 'number', min: 20, max: 400 },
+    { key: 'timeSignature', col: 'time_signature', type: 'text', max: 12 },
+    { key: 'keySignature', col: 'key_signature', type: 'text', max: 40, fts: true },
+    { key: 'chords', col: 'chords', type: 'text', max: 4000, fts: true },
+    { key: 'instruments', col: 'instruments', type: 'text', max: 1000, fts: true },
+    { key: 'structure', col: 'structure', type: 'text', max: 8000, fts: true },
+    { key: 'mood', col: 'mood', type: 'text', max: 400, fts: true },
   ],
 };
 
 // Champs dont l'historique est conservé (snapshots automatiques + manuels).
-export const REVISION_FIELDS = { content: 'chapter', body: '*' };
+export const REVISION_FIELDS = { content: 'chapter', lyrics: 'sound', body: '*' };
 
 // ── Chapitres ───────────────────────────────────────────────────────────────
 // `weight` = part du travail considérée faite à ce statut ; la progression
@@ -134,6 +156,11 @@ export const RELATION_KINDS = {
   cause:         { label: 'Cause', reverse: 'Causé par' },
   precede:       { label: 'Précède', reverse: 'Suit' },
   contredit:     { label: 'Contredit', symmetric: true },
+  // Musique ↔ récit : une idée musicale accompagne une scène, sert de thème à
+  // un personnage ou à un lieu, s'inspire d'un élément.
+  accompagne:    { label: 'Accompagne', reverse: 'Accompagné par' },
+  theme_de:      { label: 'Thème de', reverse: 'A pour thème' },
+  inspire:       { label: 'Inspire', reverse: 'Inspiré par' },
   lie_a:         { label: 'Lié à', symmetric: true },
 };
 export const RELATION_KEYS = Object.keys(RELATION_KINDS);
@@ -176,3 +203,31 @@ export const BOARD_EDGE_STYLES = ['solid', 'dashed'];
 export const BOARD_ARROWS = ['end', 'both', 'none'];
 export const BOARD_MAX_NODES = 5000;
 export const BOARD_MAX_OPS = 2000;
+
+// ── Projets ─────────────────────────────────────────────────────────────────
+// Nature d'un projet : elle oriente l'interface (ce qui est mis en avant, le
+// vocabulaire) sans jamais retirer un outil ni imposer une structure. Les
+// projets créés avant ce champ sont des livres.
+export const PROJECT_KINDS = ['livre', 'nouvelle', 'poesie', 'scene', 'univers', 'musique', 'mixte', 'libre'];
+export const DEFAULT_PROJECT_KIND = 'livre';
+
+// ── Médias privés ───────────────────────────────────────────────────────────
+// 'image' : réencodée en WebP (media.js). 'audio' : prise conservée telle
+// quelle, jamais retouchée (audio.js). Les deux ne sortent que par
+// /api/author/media/:filename, derrière la garde.
+export const MEDIA_KINDS = ['image', 'audio'];
+export const AUDIO_SOURCES = ['recorded', 'imported', 'shared'];
+// État de la prise tel que l'appareil l'a constaté : 'ok' (terminée
+// normalement) ou 'recovered' (enregistrement interrompu, récupéré après
+// vérification — peut être plus court que prévu).
+export const AUDIO_INTEGRITY = ['ok', 'recovered'];
+// Repères posés sur une prise. 'loop' et 'extract' sont des plages (début +
+// fin) : une extraction est un repère, l'original n'est jamais découpé.
+export const MARKER_KINDS = ['marker', 'loop', 'extract', 'interruption'];
+export const MARKERS_MAX_PER_MEDIA = 500;
+
+// ── Cohérence ───────────────────────────────────────────────────────────────
+// Nature d'une alerte : 'calculee' (déduite des données), 'declaree' (une
+// contradiction que l'auteur a lui-même posée), 'suggestion' (piste, jamais un
+// défaut). Aucune ne corrige quoi que ce soit.
+export const ISSUE_NATURES = ['calculee', 'declaree', 'suggestion'];

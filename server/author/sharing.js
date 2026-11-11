@@ -88,6 +88,7 @@ export function guestEntity(projectId, id) {
   const hidden = hiddenNames(projectId);
   ent.links = ent.links.filter((l) => GUEST_KINDS.includes(l.other.kind)).map((l) => scrubObject(l, hidden));
   delete ent.tasks;
+  delete ent.audio;
   const shared = new Set(db.prepare(`SELECT id FROM author_boards WHERE project_id = ? AND shared = 1`).all(projectId).map((b) => b.id));
   ent.boards = ent.boards.filter((b) => shared.has(b.id));
   ent.media = ent.media.map((m) => scrubObject(m, hidden));
@@ -200,7 +201,9 @@ export function guestPins(projectId, placeId) {
 // Fichier servi à un invité : partage omniscient actif sur le projet du
 // média, ET le média est montré quelque part où l'invité a accès — rangé sur
 // un élément visible vivant, ou posé sur un tableau partagé. Un nom de
-// fichier deviné ou glané ailleurs ne suffit pas.
+// fichier deviné ou glané ailleurs ne suffit pas. IMAGES seulement : aucune
+// prise audio n'est jamais servie à un invité (aucune règle de partage n'a
+// été définie pour l'atelier musical).
 export function mediaFileShared(filename, userId) {
   return !!db.prepare(`
     SELECT 1 FROM author_media m
@@ -209,6 +212,7 @@ export function mediaFileShared(filename, userId) {
     JOIN users o ON o.id = p.owner_id AND o.role = 'admin' AND o.can_author = 1
     LEFT JOIN author_entities e ON e.id = m.entity_id
     WHERE (m.filename = ? OR m.thumb_filename = ?)
+      AND m.kind = 'image'
       AND (
         (m.entity_id IS NOT NULL AND e.deleted_at IS NULL AND e.kind IN ${IN_GUEST})
         OR (m.entity_id IS NULL AND EXISTS (

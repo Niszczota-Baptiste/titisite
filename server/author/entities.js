@@ -25,13 +25,15 @@ const LIST_COLS = {
   lore: ['category_id'],
   event: ['timeline_id', 'sort_key', 'end_sort_key', 'date_label', 'importance'],
   chapter: ['act_id', 'position', 'status', 'word_count', 'char_count', 'target_words', 'content_updated_at', 'validated_at'],
-  note: ['status', 'priority', 'category', 'note_date', 'inbox', 'position'],
+  note: ['status', 'priority', 'category', 'note_date', 'inbox', 'position', 'revisit_on', 'origin'],
+  sound: ['tempo', 'time_signature', 'key_signature', 'mood', 'reference_media_id'],
 };
 
 // Colonnes calculées/de rangement exposées en plus des champs éditables.
 const EXTRA_COLS = {
   chapter: ['act_id', 'position', 'word_count', 'char_count', 'content_updated_at', 'validated_at'],
   place: ['map_media_id'],
+  sound: ['reference_media_id'],
 };
 
 // ── Mappers ─────────────────────────────────────────────────────────────────
@@ -50,6 +52,35 @@ export function mediaFromRow(r) {
     caption: r.caption,
     position: r.position,
     createdAt: r.created_at,
+  };
+}
+
+// Prise audio privée (author_media.kind = 'audio'). `url` pointe vers la même
+// route gardée que les images ; `sha256` et `size` permettent à l'appareil de
+// vérifier ce que le serveur a reçu avant de libérer sa copie.
+export function audioFromRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    kind: 'audio',
+    entityId: r.entity_id,
+    url: mediaUrl(r.filename),
+    label: r.label,
+    notes: r.notes,
+    originalName: r.original_name,
+    mimeType: r.mime_type,
+    size: r.size,
+    sha256: r.sha256,
+    durationMs: r.duration_ms,
+    source: r.source,
+    integrity: r.integrity,
+    capturedAt: r.captured_at,
+    clientRef: r.client_ref,
+    position: r.position,
+    createdAt: r.created_at,
+    markerCount: r.marker_count ?? undefined,
+    publishedAt: r.published_at,
+    publishedTrackId: r.published_track_id,
   };
 }
 
@@ -182,7 +213,15 @@ export function getEntity(projectId, id, { withDeleted = false } = {}) {
   out.tags = tagsFor([id]).get(id) || [];
   out.aliases = aliasesFor(id);
   out.links = linksFor(projectId, id);
-  out.media = db.prepare(`SELECT * FROM author_media WHERE entity_id = ? ORDER BY position, id`).all(id).map(mediaFromRow);
+  out.media = db.prepare(`SELECT * FROM author_media WHERE entity_id = ? AND kind = 'image' ORDER BY position, id`).all(id).map(mediaFromRow);
+  // Prises audio : seulement sur une idée musicale. Jamais mêlées aux images
+  // (la galerie et le tableau blanc n'attendent que des images).
+  out.audio = row.kind === 'sound'
+    ? db.prepare(`
+        SELECT m.*, (SELECT COUNT(*) FROM author_media_markers k WHERE k.media_id = m.id) AS marker_count
+        FROM author_media m WHERE m.entity_id = ? AND m.kind = 'audio' ORDER BY m.position, m.id
+      `).all(id).map(audioFromRow)
+    : [];
   out.cover = row.cover_media_id
     ? mediaFromRow(db.prepare(`SELECT * FROM author_media WHERE id = ?`).get(row.cover_media_id))
     : null;
@@ -357,6 +396,22 @@ export function listEntities(projectId, opts = {}) {
   });
   if (opts.sort === 'position' && kind === 'chapter') {
     items = items.sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9));
+  }
+  // Idées musicales : nombre de prises et prise de référence (écoute depuis la liste).
+  if (kind === 'sound' && items.length) {
+    const ids = items.map((it) => it.id);
+    const marks = ids.map(() => '?').join(',');
+    const counts = new Map(db.prepare(`
+      SELECT entity_id, COUNT(*) AS n FROM author_media WHERE kind = 'audio' AND entity_id IN (${marks}) GROUP BY entity_id
+    `).all(...ids).map((r) => [r.entity_id, r.n]));
+    const refIds = items.map((it) => it.referenceMediaId).filter(Boolean);
+    const refs = refIds.length
+      ? new Map(db.prepare(`SELECT * FROM author_media WHERE kind = 'audio' AND id IN (${refIds.map(() => '?').join(',')})`).all(...refIds).map((r) => [r.id, r]))
+      : new Map();
+    for (const it of items) {
+      it.audioCount = counts.get(it.id) || 0;
+      it.reference = audioFromRow(refs.get(it.referenceMediaId)) || null;
+    }
   }
   return { items, total, limit, offset };
 }
@@ -606,6 +661,11 @@ export function updateEntity(projectId, id, input = {}, { force = false, skipSna
         specific.content_updated_at = t;
       }
     }
+    // Paroles d'une idée musicale : même filet que le texte d'un chapitre.
+    if (row.kind === 'sound' && 'lyrics' in specific && !skipSnapshot) {
+      const prev = db.prepare(`SELECT lyrics FROM author_sounds WHERE entity_id = ?`).get(id)?.lyrics || '';
+      if (prev !== specific.lyrics) maybeSnapshot(id, 'lyrics', prev, specific.lyrics, t);
+    }
     const cols = Object.keys(common);
     db.prepare(`
       UPDATE author_entities SET ${cols.map((c) => `${c} = ?, `).join('')}revision = revision + 1, updated_at = ?
@@ -700,7 +760,9 @@ export function restoreEntity(projectId, id) {
 
 // Suppression définitive — seulement depuis la corbeille. Les médias de
 // l'élément restent dans la médiathèque du projet (FK SET NULL) : une image
-// posée sur un tableau ne disparaît pas avec la fiche.
+// posée sur un tableau ne disparaît pas avec la fiche, et les prises audio
+// d'une idée musicale purgée restent dans les sons du projet (une prise ne se
+// supprime que par un geste qui la vise elle).
 export function purgeEntity(projectId, id) {
   const ok = db.prepare(`DELETE FROM author_entities WHERE id = ? AND project_id = ? AND deleted_at IS NOT NULL`)
     .run(id, projectId).changes > 0;

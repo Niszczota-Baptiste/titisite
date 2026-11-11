@@ -4,8 +4,12 @@ import { chapterNumbers } from './entities.js';
 import { getPlan, projectFromRow } from './structure.js';
 
 // Exports du projet : une sauvegarde JSON complète (filet de sécurité
-// indépendant du serveur — tout sauf les fichiers image, listés par nom) et le
-// manuscrit Markdown des chapitres dans l'ordre du plan.
+// indépendant du serveur — tout sauf les fichiers image et audio, listés par
+// nom avec leur taille et leur empreinte) et le manuscrit Markdown des
+// chapitres dans l'ordre du plan. Version 2 : nature du projet, idées
+// musicales (kinds.sound), prises audio dans `media` (kind = 'audio') et leurs
+// repères (`mediaMarkers`) ; une lecture écrite pour la version 1 reste valable
+// (rien n'a été retiré ni renommé).
 
 export function exportProject(projectId) {
   const project = projectFromRow(db.prepare(`SELECT * FROM author_projects WHERE id = ?`).get(projectId));
@@ -22,7 +26,7 @@ export function exportProject(projectId) {
   `).all(projectId);
   return {
     format: 'titisite-author-export',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     project,
     entities,
@@ -38,10 +42,12 @@ export function exportProject(projectId) {
     beats: scoped('author_beats'),
     tasks: scoped('author_tasks'),
     media: scoped('author_media'),
+    mediaMarkers: scoped('author_media_markers'),
     mapPins: scoped('author_map_pins'),
     boards: scoped('author_boards'),
     boardNodes: db.prepare(`SELECT n.* FROM author_board_nodes n JOIN author_boards b ON b.id = n.board_id WHERE b.project_id = ?`).all(projectId),
     boardEdges: db.prepare(`SELECT ed.* FROM author_board_edges ed JOIN author_boards b ON b.id = ed.board_id WHERE b.project_id = ?`).all(projectId),
+    issueDismissals: db.prepare(`SELECT issue_key, reason, created_at FROM author_issue_dismissals WHERE project_id = ? ORDER BY issue_key`).all(projectId),
   };
 }
 

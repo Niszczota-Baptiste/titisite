@@ -173,6 +173,29 @@ export const uploadLoreImage = makeUploader(ALLOWED_LORE_IMAGE, LORE_IMAGE_MAX_B
 export const AUTHOR_IMAGE_MAX_BYTES = Number(process.env.AUTHOR_IMAGE_MAX_BYTES || 15 * 1024 * 1024); // 15 MB
 export const uploadAuthorImage = makeUploader(ALLOWED_LORE_IMAGE, AUTHOR_IMAGE_MAX_BYTES);
 
+// Prises audio PRIVÉES de l'atelier d'auteur (idées musicales) : conservées
+// telles quelles — jamais réencodées, c'est l'original —, vérifiées par leurs
+// premiers octets côté route (server/author/audio.js#sniffAudio) et servies
+// uniquement par /api/author/media/:f derrière la garde. Rien à voir avec
+// uploadAudio (pistes PUBLIQUES du portfolio). Plafond large : une prise d'une
+// heure en AAC pèse 30 à 60 Mo, deux heures en qualité haute jusqu'à 200 Mo.
+export const ALLOWED_AUTHOR_AUDIO = {
+  mime: new Set([
+    'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac', 'audio/aacp', 'audio/x-aac',
+    'audio/mpeg', 'audio/mp3',
+    'audio/ogg', 'audio/opus', 'audio/vorbis',
+    'audio/wav', 'audio/x-wav', 'audio/wave',
+    'audio/flac', 'audio/x-flac',
+    'audio/webm',
+    // Android et certains navigateurs n'annoncent pas toujours un type audio
+    // pour ces conteneurs ; l'extension ET les premiers octets font alors foi.
+    'video/mp4', 'video/webm', 'application/ogg', 'application/octet-stream',
+  ]),
+  ext: new Set(['.m4a', '.mp4', '.aac', '.mp3', '.ogg', '.opus', '.wav', '.flac', '.webm']),
+};
+export const AUTHOR_AUDIO_MAX_BYTES = Number(process.env.AUTHOR_AUDIO_MAX_BYTES || 250 * 1024 * 1024); // 250 MB
+export const uploadAuthorAudio = makeUploader(ALLOWED_AUTHOR_AUDIO, AUTHOR_AUDIO_MAX_BYTES);
+
 // Schematics WorldEdit à importer (.schem Sponge / .litematic Litematica) :
 // NBT gzip sans MIME dédié → octet-stream toléré, l'extension fait foi. Lu en
 // mémoire, parsé vers le presse-papier, jamais persisté tel quel.

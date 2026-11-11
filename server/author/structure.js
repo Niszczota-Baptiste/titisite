@@ -1,6 +1,6 @@
 import { db } from '../db.js';
 import { safeUnlink } from '../uploads.js';
-import { CATEGORY_DOMAINS, DEFAULT_CATEGORIES, DEFAULT_TIMELINES } from './enums.js';
+import { CATEGORY_DOMAINS, DEFAULT_CATEGORIES, DEFAULT_PROJECT_KIND, DEFAULT_TIMELINES, PROJECT_KINDS } from './enums.js';
 import { chapterNumbers, liveEntity, nowS } from './entities.js';
 import { AuthorValidationError, asId, cleanColor, cleanText } from './validate.js';
 
@@ -20,6 +20,7 @@ export function projectFromRow(r) {
     description: r.description,
     targetWords: r.target_words,
     color: r.color,
+    kind: PROJECT_KINDS.includes(r.kind) ? r.kind : DEFAULT_PROJECT_KIND,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -41,6 +42,10 @@ function projectInput(input, { partial }) {
   if (input.subtitle !== undefined) out.subtitle = cleanText(input.subtitle, 300, 'subtitle', { trim: true });
   if (input.description !== undefined) out.description = cleanText(input.description, 20_000, 'description');
   if (input.color !== undefined) out.color = cleanColor(input.color) || '#c9a8e8';
+  if (input.kind !== undefined) {
+    if (!PROJECT_KINDS.includes(input.kind)) throw new AuthorValidationError('invalid_value', 'kind');
+    out.kind = input.kind;
+  }
   if (input.targetWords !== undefined) {
     if (input.targetWords === null || input.targetWords === '') out.target_words = null;
     else {

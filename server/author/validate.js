@@ -56,6 +56,7 @@ function coerce(def, value, projectId) {
       if (value === null || value === '' || value === undefined) return null;
       const n = Number(value);
       if (!Number.isFinite(n) || Math.abs(n) > 1e12) throw new AuthorValidationError('invalid_number', f);
+      if ((def.min !== undefined && n < def.min) || (def.max !== undefined && n > def.max)) throw new AuthorValidationError('invalid_number', f);
       return n;
     }
     case 'bool':

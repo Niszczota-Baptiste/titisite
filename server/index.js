@@ -109,12 +109,19 @@ app.use(helmet({
 
 // Permissions-Policy: disable browser features this site doesn't need.
 // Helmet v8 doesn't set this header by default, so we add it manually.
-app.use((_req, res, next) => {
+app.use((req, res, next) => {
   // geolocation=(self) — needed by the /stairs page's "Ma position" button to
   // capture coordinates via navigator.geolocation. All other features stay off.
+  //
+  // microphone : fermé partout, SAUF pour le document de l'atelier d'auteur
+  // (/auteur…), où le propriétaire peut enregistrer une idée musicale. La
+  // politique s'applique au document chargé : arriver sur /auteur par un lien
+  // interne depuis une autre page garde le micro fermé jusqu'au rechargement
+  // (l'interface le dit). L'application Mon Atelier, elle, enregistre en natif.
+  const atelier = req.method === 'GET' && (req.path === '/auteur' || req.path.startsWith('/auteur/'));
   res.setHeader(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()',
+    `camera=(), microphone=${atelier ? '(self)' : '()'}, geolocation=(self), payment=(), usb=(), interest-cohort=()`,
   );
   next();
 });

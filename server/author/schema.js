@@ -476,6 +476,88 @@ export function migrateAuthor(db, ensureColumn) {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_author_comments_target ON author_comments(project_id, entity_id, created_at);`);
 
+  // ── Atelier mobile & atelier musical (ajouts additifs) ───────────────────
+  // Rien n'est réécrit : les lignes existantes gardent leur sens (un projet
+  // sans nature est un livre, un média sans nature est une image).
+
+  // Nature du projet (roman, nouvelle, poésie, scène, univers, musique, mixte,
+  // libre) : oriente l'interface, n'impose aucune structure. Cf. enums.js.
+  ensureColumn('author_projects', 'kind', `TEXT NOT NULL DEFAULT 'livre'`);
+
+  // Idées : « à revoir plus tard » (une date), provenance et moment de la
+  // capture sur l'appareil.
+  ensureColumn('author_notes', 'revisit_on', 'TEXT');
+  ensureColumn('author_notes', 'origin', `TEXT NOT NULL DEFAULT ''`);
+  ensureColumn('author_notes', 'captured_at', 'INTEGER');
+
+  // Idée musicale : paroles, repères facultatifs (tempo, mesure, tonalité,
+  // accords, instruments, structure, ambiance) et prise de référence parmi
+  // ses prises audio (author_media.kind = 'audio').
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS author_sounds (
+      entity_id          INTEGER PRIMARY KEY REFERENCES author_entities(id) ON DELETE CASCADE,
+      lyrics             TEXT NOT NULL DEFAULT '',
+      tempo              REAL,
+      time_signature     TEXT NOT NULL DEFAULT '',
+      key_signature      TEXT NOT NULL DEFAULT '',
+      chords             TEXT NOT NULL DEFAULT '',
+      instruments        TEXT NOT NULL DEFAULT '',
+      structure          TEXT NOT NULL DEFAULT '',
+      mood               TEXT NOT NULL DEFAULT '',
+      reference_media_id INTEGER REFERENCES author_media(id) ON DELETE SET NULL
+    );
+  `);
+
+  // Médias audio PRIVÉS : les prises restent dans author_media (même garde,
+  // même route de lecture que les images), distinguées par `kind`. Elles ne
+  // passent jamais par la collection publique `tracks` ni par /api/audio —
+  // publier est un geste séparé et explicite (publish.js), qui COPIE le
+  // fichier ; `published_track_id` en garde la trace.
+  //   - client_ref : référence choisie par l'appareil, unique par projet — un
+  //     envoi rejoué après une réponse perdue renvoie la prise déjà reçue ;
+  //   - sha256 / size : empreinte du fichier reçu, que l'appareil compare
+  //     avant de libérer sa copie locale ;
+  //   - integrity : 'ok' ou 'recovered' (enregistrement interrompu, récupéré).
+  ensureColumn('author_media', 'kind', `TEXT NOT NULL DEFAULT 'image'`);
+  ensureColumn('author_media', 'duration_ms', 'INTEGER');
+  ensureColumn('author_media', 'label', `TEXT NOT NULL DEFAULT ''`);
+  ensureColumn('author_media', 'notes', `TEXT NOT NULL DEFAULT ''`);
+  ensureColumn('author_media', 'source', `TEXT NOT NULL DEFAULT ''`);
+  ensureColumn('author_media', 'integrity', `TEXT NOT NULL DEFAULT ''`);
+  ensureColumn('author_media', 'captured_at', 'INTEGER');
+  ensureColumn('author_media', 'sha256', 'TEXT');
+  ensureColumn('author_media', 'client_ref', 'TEXT');
+  ensureColumn('author_media', 'published_track_id', 'INTEGER');
+  ensureColumn('author_media', 'published_at', 'INTEGER');
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_author_media_client_ref ON author_media(project_id, client_ref) WHERE client_ref IS NOT NULL;`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_author_media_kind ON author_media(project_id, kind, id DESC);`);
+
+  // Repères temporels d'une prise : point (t_ms) ou plage (t_ms → end_ms) pour
+  // une boucle ou une extraction. Une extraction ne découpe rien : c'est un
+  // repère nommé sur l'original.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS author_media_markers (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES author_projects(id) ON DELETE CASCADE,
+      media_id   INTEGER NOT NULL REFERENCES author_media(id) ON DELETE CASCADE,
+      t_ms       INTEGER NOT NULL,
+      end_ms     INTEGER,
+      kind       TEXT NOT NULL DEFAULT 'marker',
+      label      TEXT NOT NULL DEFAULT '',
+      note       TEXT NOT NULL DEFAULT '',
+      client_ref TEXT,
+      created_at ${TS},
+      updated_at ${TS}
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_author_media_markers_media ON author_media_markers(media_id, t_ms, id);`);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_author_media_markers_ref ON author_media_markers(media_id, client_ref) WHERE client_ref IS NOT NULL;`);
+
+  // Cohérence : pourquoi une alerte est ignorée (ambiguïté voulue, narrateur
+  // peu fiable, récit non linéaire…). Les clés et décisions existantes ne
+  // bougent pas.
+  ensureColumn('author_issue_dismissals', 'reason', `TEXT NOT NULL DEFAULT ''`);
+
   // Recherche plein-texte. Table FTS ordinaire synchronisée EXPLICITEMENT par
   // server/author/entities.js (pas de triggers, même choix que lore_fts) ;
   // remove_diacritics : « elise » trouve « Élise ».

@@ -331,21 +331,49 @@ function versionKey(projectId) {
       (SELECT COALESCE(MAX(updated_at), 0) || ':' || COUNT(*) || ':' || COALESCE(SUM(deleted_at IS NOT NULL), 0)
          FROM author_entities WHERE project_id = ?) AS e,
       (SELECT COUNT(*) || ':' || COALESCE(MAX(id), 0) FROM author_links WHERE project_id = ?) AS l,
-      (SELECT COUNT(*) FROM author_issue_dismissals WHERE project_id = ?) AS d,
+      (SELECT COUNT(*) || ':' || COALESCE(SUM(length(reason)), 0) || ':' || COALESCE(MAX(created_at), 0)
+         FROM author_issue_dismissals WHERE project_id = ?) AS d,
       (SELECT COALESCE(MAX(updated_at), 0) || ':' || COUNT(*) FROM author_acts WHERE project_id = ?) AS a
   `).get(projectId, projectId, projectId, projectId);
   return `${r.e}|${r.l}|${r.d}|${r.a}`;
+}
+
+// Nature d'une alerte, d'après la règle qui l'a produite (préfixe de sa clé —
+// les clés elles-mêmes ne changent pas, les décisions enregistrées restent
+// valables) :
+//   - 'calculee'   : déduite des données (dates, apparitions, anciens noms) ;
+//   - 'declaree'   : une contradiction que l'auteur a lui-même posée ;
+//   - 'suggestion' : une piste (relations à créer), jamais un défaut.
+// Aucune n'est corrigée automatiquement : une ambiguïté voulue, un narrateur
+// peu fiable ou un récit non linéaire s'ignorent, avec leur raison.
+const NATURE_BY_RULE = {
+  ancien_nom: 'calculee',
+  apparition_anticipee: 'calculee',
+  ubiquite: 'calculee',
+  chronologie: 'calculee',
+  fin_avant_debut: 'calculee',
+  chapitre_vide: 'calculee',
+  contradiction: 'declaree',
+  mention_non_liee: 'suggestion',
+};
+
+export function issueNature(key) {
+  const rule = String(key || '').split(':')[0];
+  return Object.prototype.hasOwnProperty.call(NATURE_BY_RULE, rule) ? NATURE_BY_RULE[rule] : 'calculee';
 }
 
 export function checkProject(projectId) {
   const key = versionKey(projectId);
   const hit = memo.get(projectId);
   if (hit && hit.key === key) return hit.result;
-  const dismissed = new Set(db.prepare(`SELECT issue_key FROM author_issue_dismissals WHERE project_id = ?`).all(projectId).map((r) => r.issue_key));
-  const all = runRules(loadWorld(projectId));
+  const dismissed = new Map(db.prepare(`SELECT issue_key, reason, created_at FROM author_issue_dismissals WHERE project_id = ?`)
+    .all(projectId).map((r) => [r.issue_key, r]));
+  const all = runRules(loadWorld(projectId)).map((i) => ({ ...i, nature: issueNature(i.key) }));
   const result = {
     issues: all.filter((i) => !dismissed.has(i.key)),
-    dismissed: all.filter((i) => dismissed.has(i.key)),
+    dismissed: all.filter((i) => dismissed.has(i.key)).map((i) => ({
+      ...i, reason: dismissed.get(i.key).reason || '', dismissedAt: dismissed.get(i.key).created_at,
+    })),
     rules: RULES.map((r) => ({ id: r.id, label: r.label })),
   };
   memo.set(projectId, { key, result });
@@ -358,8 +386,17 @@ export function invalidateConsistency(projectId) {
   memo.delete(projectId);
 }
 
-export function dismissIssue(projectId, key, value) {
+// Ignorer une alerte (avec, si l'auteur le veut, la raison), changer cette
+// raison, ou lever la décision. Ne touche à aucune donnée du livre. `reason`
+// absent = on garde celle déjà enregistrée.
+export function dismissIssue(projectId, key, value, reason) {
   memo.delete(projectId);
-  if (value) db.prepare(`INSERT OR IGNORE INTO author_issue_dismissals (project_id, issue_key) VALUES (?, ?)`).run(projectId, key);
-  else db.prepare(`DELETE FROM author_issue_dismissals WHERE project_id = ? AND issue_key = ?`).run(projectId, key);
+  if (!value) {
+    db.prepare(`DELETE FROM author_issue_dismissals WHERE project_id = ? AND issue_key = ?`).run(projectId, key);
+    return;
+  }
+  db.prepare(`INSERT OR IGNORE INTO author_issue_dismissals (project_id, issue_key) VALUES (?, ?)`).run(projectId, key);
+  if (reason !== undefined) {
+    db.prepare(`UPDATE author_issue_dismissals SET reason = ? WHERE project_id = ? AND issue_key = ?`).run(reason, projectId, key);
+  }
 }

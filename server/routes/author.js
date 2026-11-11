@@ -1,23 +1,29 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../auth.js';
-import { UPLOADS_DIR, safeUnlink, uploadAuthorImage } from '../uploads.js';
+import path from 'node:path';
+import { UPLOADS_DIR, safeUnlink, uploadAuthorAudio, uploadAuthorImage, uploadPath } from '../uploads.js';
 import {
   isAuthor, requireAuthor, requireAuthorAccess, requireAuthorHeader, resolveAuthorAccess, sharedProjectsFor,
 } from '../author/access.js';
+import {
+  AUDIO_CONTENT_TYPES, audioRow, createMarker, deleteMarker, downloadName, getAudio, listMarkers, listProjectAudio,
+  receiveAudio, updateAudio, updateMarker,
+} from '../author/audio.js';
 import {
   applyBoardOps, createBoard, deleteBoard, getBoard, listBoards, setBoardView, updateBoardMeta,
 } from '../author/boards.js';
 import { checkProject, dismissIssue, invalidateConsistency } from '../author/consistency.js';
 import {
-  createEntityOnce, entityIndex, getEntity, liveEntity, listEntities, markVisited, moveEvent, purgeEntity,
+  cleanClientRef, createEntityOnce, entityIndex, getEntity, liveEntity, listEntities, markVisited, moveEvent, purgeEntity,
   reorderNotes, restoreEntity, searchEntities, setFavorite, trashEntity, updateEntity,
 } from '../author/entities.js';
 import { GUEST_KINDS, KINDS, NOTE_STATUSES, REVISION_FIELDS, own } from '../author/enums.js';
 import { exportManuscript, exportProject } from '../author/export.js';
 import {
-  deleteMedia, insertMedia, listProjectMedia, mediaFileOwned, processAuthorImage, updateMedia,
+  deleteMedia, insertMedia, listProjectMedia, mediaFileOwned, mediaRow, processAuthorImage, updateMedia,
 } from '../author/media.js';
+import { publicationPreview, publishAudio } from '../author/publish.js';
 import { overview } from '../author/overview.js';
 import {
   createLink, createTag, deleteLink, deleteTag, graphData, listTags, updateLink, updateTag,
@@ -92,11 +98,19 @@ const notFound = (res) => res.status(404).json({ error: 'not_found' });
 // ── Fichiers médias ─────────────────────────────────────────────────────────
 // Double défense : nom de fichier contraint (pas de traversée) ET connu en base
 // dans un projet de l'appelant. Cache privé (jamais partagé par un proxy).
+//
+// Images (WebP) ET prises audio privées passent par ici — et seulement par ici.
+// Une prise n'est servie qu'à son propriétaire (mediaFileShared ne connaît que
+// les images) ; /api/audio (public) ne la connaît pas : elle n'est dans aucune
+// ligne de `tracks`. Les requêtes partielles (Range) sont gérées par sendFile :
+// le lecteur peut se déplacer dans une longue prise sans tout télécharger.
 authorRouter.get('/media/:filename', (req, res) => {
   const { filename } = req.params;
-  if (!/^[\w-]+\.webp$/.test(filename)) return res.status(400).end();
+  if (!/^[\w-]+\.(?:webp|m4a|mp4|aac|mp3|ogg|opus|wav|flac|webm)$/.test(filename)) return res.status(400).end();
   const allowed = (isAuthor(req.user) && mediaFileOwned(filename, req.user.id)) || mediaFileShared(filename, req.user.id);
   if (!allowed) return res.status(404).end();
+  const audioType = AUDIO_CONTENT_TYPES[path.extname(filename)];
+  if (audioType) res.setHeader('Content-Type', audioType);
   res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   return res.sendFile(filename, { root: UPLOADS_DIR }, (err) => {
     if (err && !res.headersSent) res.status(404).end();
@@ -282,8 +296,12 @@ p.post('/notes/quick', h((req, res) => {
     title = `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 60))}…`;
     body = text;
   }
+  // Provenance (facultative) d'une capture venue de l'application : d'où elle
+  // vient et quand elle a été saisie sur l'appareil.
+  const extra = {};
+  for (const k of ['origin', 'capturedAt', 'revisitOn']) if (req.body?.[k] !== undefined && req.body[k] !== null) extra[k] = req.body[k];
   const { entity, existed } = createEntityOnce(req.project.id, 'note', {
-    title, body, inbox: true, status: 'brute', tags: Array.isArray(req.body?.tags) ? req.body.tags : [],
+    title, body, inbox: true, status: 'brute', tags: Array.isArray(req.body?.tags) ? req.body.tags : [], ...extra,
   }, req.body?.clientRef);
   res.status(existed ? 200 : 201).json(entity);
 }));
@@ -465,10 +483,83 @@ p.post('/media', uploadLimiter, uploadAuthorImage.single('image'), h(async (req,
 }));
 
 p.put('/media/:id', h((req, res) => {
-  const media = updateMedia(req.project.id, idOf(req.params.id), req.body || {});
+  const row = mediaRow(req.project.id, idOf(req.params.id));
+  if (!row) return notFound(res);
+  const media = row.kind === 'audio'
+    ? updateAudio(req.project.id, row.id, req.body || {})
+    : updateMedia(req.project.id, row.id, req.body || {});
   return media ? res.json(media) : notFound(res);
 }));
+// Supprimer une prise est définitif (le fichier part avec) : l'interface le
+// demande explicitement, prise par prise. Une piste déjà publiée à partir
+// d'elle reste publique (c'est une copie) — la dépublier se fait côté site.
 p.delete('/media/:id', (req, res) => (deleteMedia(req.project.id, idOf(req.params.id)) ? res.status(204).end() : notFound(res)));
+
+// ── Atelier musical : prises audio privées ─────────────────────────────────
+// Envoyées par l'application (ou importées depuis le web), jamais réencodées.
+// `clientRef` rend l'envoi rejouable : 201 = reçue, 200 = déjà reçue.
+
+p.get('/audio', (req, res) => res.json(listProjectAudio(req.project.id)));
+
+// Avant de renvoyer un gros fichier après une réponse perdue : est-il déjà là ?
+p.get('/audio/by-ref/:ref', h((req, res) => {
+  const ref = cleanClientRef(req.params.ref);
+  const hit = ref && listProjectAudio(req.project.id).find((a) => a.clientRef === ref);
+  return hit ? res.json(hit) : notFound(res);
+}));
+
+p.post('/audio', uploadLimiter, uploadAuthorAudio.single('audio'), h(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'missing_file' });
+  try {
+    const { media, existed } = await receiveAudio(req.project.id, req.file, req.body || {});
+    return res.status(existed ? 200 : 201).json(media);
+  } catch (err) {
+    if (err instanceof AuthorValidationError && err.code === 'not_audio') return res.status(415).json({ error: 'not_audio' });
+    throw err;
+  }
+}));
+
+p.get('/media/:id/audio', (req, res) => {
+  const media = getAudio(req.project.id, idOf(req.params.id));
+  return media ? res.json(media) : notFound(res);
+});
+
+// Récupérer l'original d'une prise (export) : le fichier tel qu'il a été reçu.
+p.get('/media/:id/download', (req, res) => {
+  const row = audioRow(req.project.id, idOf(req.params.id));
+  if (!row) return notFound(res);
+  res.setHeader('Cache-Control', 'no-store');
+  return res.download(uploadPath(row.filename), downloadName(row), (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
+});
+
+p.get('/media/:id/markers', (req, res) => {
+  const list = listMarkers(req.project.id, idOf(req.params.id));
+  return list ? res.json(list) : notFound(res);
+});
+p.post('/media/:id/markers', h((req, res) => {
+  const out = createMarker(req.project.id, idOf(req.params.id), req.body || {});
+  return out ? res.status(out.existed ? 200 : 201).json(out.marker) : notFound(res);
+}));
+p.put('/markers/:id', h((req, res) => {
+  const marker = updateMarker(req.project.id, idOf(req.params.id), req.body || {});
+  return marker ? res.json(marker) : notFound(res);
+}));
+p.delete('/markers/:id', (req, res) => (deleteMarker(req.project.id, idOf(req.params.id)) ? res.status(204).end() : notFound(res)));
+
+// Publication : geste séparé, jamais implicite. GET = aperçu de ce qui serait
+// publié (ne change rien) ; POST exige la destination ET `confirm: true`.
+p.get('/media/:id/publication', h((req, res) => {
+  const out = publicationPreview(req.project.id, idOf(req.params.id), { title: req.query.title, genre: req.query.genre });
+  return out ? res.json(out) : notFound(res);
+}));
+p.post('/media/:id/publish', h(async (req, res) => {
+  const out = await publishAudio(req.project.id, idOf(req.params.id), req.body || {});
+  if (out.notFound) return notFound(res);
+  if (out.conflict) return res.status(409).json(out.conflict);
+  return res.status(201).json(out);
+}));
 
 // ── Cartes : épingles cliquables sur l'image d'un lieu ─────────────────────
 
@@ -488,7 +579,10 @@ p.delete('/pins/:id', (req, res) => (deletePin(req.project.id, idOf(req.params.i
 p.get('/consistency', (req, res) => res.json(checkProject(req.project.id)));
 p.post('/consistency/dismiss', h((req, res) => {
   const key = cleanText(req.body?.key, 400, 'key', { trim: true, required: true });
-  dismissIssue(req.project.id, key, req.body?.value !== false);
+  // `reason` (facultative) : pourquoi cette alerte est voulue — ambiguïté,
+  // narrateur peu fiable, récit non linéaire… Absente = raison inchangée.
+  const reason = req.body?.reason !== undefined ? cleanText(req.body.reason, 500, 'reason', { trim: true }) : undefined;
+  dismissIssue(req.project.id, key, req.body?.value !== false, reason);
   res.status(204).end();
 }));
 

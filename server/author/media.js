@@ -65,9 +65,15 @@ export function insertMedia(projectId, processed, { entityId = null, purpose = '
   return mediaFromRow(db.prepare(`SELECT * FROM author_media WHERE id = ?`).get(id));
 }
 
+// Médiathèque d'IMAGES du projet (galerie, tableau blanc). Les prises audio
+// ont leur propre liste (audio.js#listProjectAudio).
 export function listProjectMedia(projectId) {
-  return db.prepare(`SELECT * FROM author_media WHERE project_id = ? ORDER BY id DESC LIMIT 2000`)
+  return db.prepare(`SELECT * FROM author_media WHERE project_id = ? AND kind = 'image' ORDER BY id DESC LIMIT 2000`)
     .all(projectId).map(mediaFromRow);
+}
+
+export function mediaRow(projectId, id) {
+  return db.prepare(`SELECT * FROM author_media WHERE id = ? AND project_id = ?`).get(id, projectId) || null;
 }
 
 export function updateMedia(projectId, id, input = {}) {
