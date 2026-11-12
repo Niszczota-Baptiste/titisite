@@ -9,7 +9,8 @@ import {
 import { FieldInput } from '../fields';
 import { CHAPTER_STATUSES, chapterStatus, kindMeta } from '../kinds';
 import { Markdown, normTitle } from '../markdown';
-import { MARK_TYPES, findMarks, markSummary, newMark, resolveMark, swapVariant } from '../marks.js';
+import { AssistDialog } from '../AssistDialog';
+import { MARK_TYPES, cleanMarks, findMarks, markSummary, newMark, resolveMark, swapVariant } from '../marks.js';
 import { RelationsPanel } from '../RelationsPanel';
 import { CommentsThread } from '../comments/CommentsThread';
 import { BackupBanner, ConflictDialog, RevisionsDialog } from '../saving';
@@ -81,7 +82,7 @@ export function WriterIndex() {
 export function Writer() {
   const { id } = useParams();
   const chapterId = Number(id);
-  const { pid, P, version, index } = useAuthor();
+  const { pid, P, version, index, project } = useAuthor();
   const doc = useEntityDoc(chapterId, { debounce: 900 });
   const { doc: ch, status } = doc;
   const navigate = useNavigate();
@@ -98,6 +99,8 @@ export function Writer() {
   const [find, setFind] = useState(null); // { query, i } — recherche dans le texte
   const [cards, setCards] = useState(false); // fiches citées dans le chapitre
   const [peek, setPeek] = useState(null); // { name, ent, data, error } — aperçu d'une fiche
+  const [assistInfo, setAssistInfo] = useState(null); // assistance facultative : existe ? activée ici ?
+  const [assist, setAssist] = useState(null); // extrait soumis : { text, raw, start, end, cleaned, canWrap }
   const ta = useRef(null);
   const findAnchor = useRef(0);
   const findInput = useRef(null);
@@ -258,6 +261,39 @@ export function Writer() {
   };
   const closeCards = () => { setCards(false); setPeek(null); restoreSel(); };
 
+  // ── Assistance facultative : un extrait choisi, des propositions, mon geste ──
+  useEffect(() => {
+    let alive = true;
+    P.assist.info().then((i) => { if (alive) setAssistInfo(i); }).catch(() => { if (alive) setAssistInfo(null); });
+    return () => { alive = false; };
+  }, [P, project?.aiAssist]);
+  const openAssist = () => {
+    const t = ta.current;
+    if (!t || preview) return;
+    const { selectionStart: a, selectionEnd: b, value } = t;
+    const raw = value.slice(a, b);
+    if (!raw.trim()) { toast.info('Sélectionne d\'abord le passage à soumettre : seul ce passage sera envoyé.'); return; }
+    rememberSel();
+    const text = cleanMarks(raw).trim();
+    setAssist({ text, raw, start: a, end: b, cleaned: text !== raw.trim(), canWrap: !raw.includes('{{') && !raw.includes('\n\n') });
+  };
+  const closeAssist = () => { setAssist(null); restoreSel(); };
+  const keepSuggestion = (kind, text) => {
+    const x = assist;
+    if (!x) return;
+    keptSel.current = null; // le texte change : on ne restaure pas l'ancienne sélection
+    setAssist(null);
+    const flat = text.replace(/\s*\n+\s*/g, ' ').trim();
+    if (kind === 'question') {
+      const gap = /\s$/.test(x.raw) ? '' : ' ';
+      applyRange({ start: x.end, end: x.end, text: `${gap}{{question: ${flat}}}` });
+      toast.success('Notée comme question pour toi — elle ne fait pas partie du texte');
+    } else {
+      applyRange({ start: x.start, end: x.end, text: `{{variante: ${x.raw} || ${flat}}}` });
+      toast.success('Gardée comme variante — ton passage reste la version du texte');
+    }
+  };
+
   // ── Machine à écrire : la ligne en cours reste vers le milieu de l'écran ──
   const keepCaretInView = useCallback(() => {
     const t = ta.current;
@@ -410,6 +446,9 @@ export function Writer() {
           <div className="au-writer-right">
             <Btn size="small" variant="ghost" icon on={!!find} onClick={() => (find ? closeFind() : openFind())} title={`Rechercher dans le chapitre (${MOD}F)`} aria-label="Rechercher dans le chapitre">🔍</Btn>
             <Btn size="small" variant="ghost" icon onMouseDown={(e) => e.preventDefault()} onClick={openCards} title="Fiches citées dans ce chapitre (Alt Entrée sur un lien)" aria-label="Fiches citées dans ce chapitre">🗂</Btn>
+            {assistInfo?.enabled && (
+              <Btn size="small" variant="ghost" icon onMouseDown={(e) => e.preventDefault()} onClick={openAssist} title="Demander des propositions sur le passage sélectionné" aria-label="Demander des propositions sur le passage sélectionné">✨</Btn>
+            )}
             <Btn size="small" variant="ghost" on={preview} onClick={() => setPreview((p) => !p)} title="Aperçu mis en page">{preview ? '✎' : '👁'}<span className="au-desktop-only">{preview ? 'Écrire' : 'Aperçu'}</span></Btn>
             {!ch.local && <Btn size="small" variant="ghost" className="au-desktop-only" onClick={async () => { await doc.save(); setHistory(true); }} title="Historique des versions">🕘 Versions</Btn>}
             <Btn size="small" variant="ghost" icon onClick={() => setSettings(true)} title="Réglages d'affichage" aria-label="Réglages d'affichage">Aa</Btn>
@@ -550,6 +589,7 @@ export function Writer() {
         )}
         <ChapterSide ch={ch} doc={doc} marks={marks} markOps={markOps} />
       </Dialog>
+      <AssistDialog open={!!assist} onClose={closeAssist} P={P} info={assistInfo} excerpt={assist} onKeep={keepSuggestion} />
       <Dialog open={cards} onClose={closeCards} title={peek ? `${peek.ent ? (peek.ent.icon || kindMeta(peek.ent.kind).icon) : '🫥'} ${peek.ent?.title || peek.name}` : '🗂 Fiches citées dans ce chapitre'} width={520} initialFocus={false}
         footer={<>
           {peek && linked.length > 1 && <Btn variant="ghost" onClick={() => setPeek(null)} style={{ marginRight: 'auto' }}>← Toutes les fiches citées</Btn>}

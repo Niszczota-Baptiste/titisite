@@ -1012,3 +1012,12 @@ p.au-offline-note { margin: 4px 0 12px; }
 .au-avail li { display: flex; gap: 8px; align-items: flex-start; }
 .au-avail-matrix { margin-top: 10px; font-size: 12px; color: var(--au-muted); }
 .au-avail-matrix p { margin: 0 0 4px; }
+
+/* Assistance d'écriture : ce qui part, ce qui revient */
+.au-assist-excerpt { margin: 4px 0; padding: 8px 12px; border-left: 3px solid var(--au-acc); background: color-mix(in srgb, var(--au-acc) 8%, transparent); white-space: pre-wrap; max-height: 28vh; overflow-y: auto; font-family: var(--au-serif); font-size: 15px; border-radius: 0 6px 6px 0; }
+.au-assist-over { color: var(--au-danger); }
+.au-assist-results { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.au-assist-item { border: 1px solid var(--au-border); border-radius: 8px; padding: 8px 10px; }
+.au-assist-text { margin: 0; white-space: pre-wrap; font-family: var(--au-serif); font-size: 15px; }
+.au-assist-why { margin: 4px 0 0; font-size: 12px; }
+.au-assist-ops { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; flex-wrap: wrap; }

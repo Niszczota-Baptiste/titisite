@@ -25,6 +25,7 @@ export function Settings() {
       <ProjectForm />
       <Section id="settings:sharing" title="👥 Partage"><SharingPanel /></Section>
       <Section id="settings:offline" title="📴 Hors connexion"><OfflinePanel /></Section>
+      <Section id="settings:assist" title="✨ Assistance d'écriture (facultative)" defaultOpen={false}><AssistSettings /></Section>
       <Section id="settings:categories" title="🗂️ Catégories">
         <CategoriesEditor domain="lore" title="Lore (factions, religions, magie…)" />
         <CategoriesEditor domain="place" title="Types de lieux" />
@@ -34,6 +35,44 @@ export function Settings() {
       <Section id="settings:trash" title="🗑 Corbeille"><Trash /></Section>
       <Section id="settings:export" title="💾 Sauvegardes & export"><Exports /></Section>
       <Section id="settings:danger" title="⚠️ Zone sensible" defaultOpen={false}><Danger /></Section>
+    </div>
+  );
+}
+
+// Assistance facultative : éteinte par défaut, activée projet par projet. Le
+// texte dit exactement ce qui part, quand, et vers qui.
+function AssistSettings() {
+  const { P, project, setProject } = useAuthor();
+  const toast = useToast();
+  const [info, setInfo] = useState(null);
+  useEffect(() => { P.assist.info().then(setInfo).catch(() => setInfo({ available: false, unknown: true })); }, [P, project.aiAssist]);
+  // La case répond tout de suite ; elle revient en arrière si le site refuse.
+  const [on, setOn] = useState(!!project.aiAssist);
+  useEffect(() => { setOn(!!project.aiAssist); }, [project.aiAssist]);
+  const toggle = async (value) => {
+    setOn(value);
+    try { setProject(await P.update({ aiAssist: value })); } catch (err) { setOn(!value); toast.error(humanError(err)); }
+  };
+  if (!info) return <p className="au-muted">…</p>;
+  if (!info.available) {
+    return (
+      <p className="au-muted" style={{ fontSize: 13 }}>
+        {info.unknown ? 'État indisponible pour l\'instant (hors connexion ?).' : 'Non configurée sur ce site : aucune clé n\'est installée côté serveur. Rien n\'est envoyé nulle part.'}
+      </p>
+    );
+  }
+  return (
+    <div>
+      <label className="au-check-row">
+        <input type="checkbox" className="au-check" checked={on} onChange={(e) => toggle(e.target.checked)} />
+        Activer l&apos;assistance pour ce projet
+      </label>
+      <ul className="au-muted" style={{ fontSize: 13, paddingLeft: 18, margin: '8px 0 0' }}>
+        <li>Rien ne part tout seul : dans l&apos;éditeur, tu sélectionnes un passage, tu vois exactement ce qui sera envoyé, puis tu confirmes.</li>
+        <li>Seul cet extrait (au plus {info.maxChars} signes) et ta consigne sont transmis, par le serveur du site, à l&apos;API Claude d&apos;Anthropic. Jamais le projet, le chapitre entier, les fiches ni les idées.</li>
+        <li>Les réponses sont des propositions : aucune n&apos;entre dans ton texte sans que tu la choisisses, et celle que tu gardes devient une variante — ton passage reste là.</li>
+        <li>La clé d&apos;accès reste sur le serveur ; ni le navigateur ni l&apos;application ne la voient.</li>
+      </ul>
     </div>
   );
 }

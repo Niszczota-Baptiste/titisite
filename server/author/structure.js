@@ -21,6 +21,7 @@ export function projectFromRow(r) {
     targetWords: r.target_words,
     color: r.color,
     kind: PROJECT_KINDS.includes(r.kind) ? r.kind : DEFAULT_PROJECT_KIND,
+    aiAssist: !!r.ai_assist,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -45,6 +46,11 @@ function projectInput(input, { partial }) {
   if (input.kind !== undefined) {
     if (!PROJECT_KINDS.includes(input.kind)) throw new AuthorValidationError('invalid_value', 'kind');
     out.kind = input.kind;
+  }
+  // Strictement booléen : l'assistance ne s'allume pas par une valeur approximative.
+  if (input.aiAssist !== undefined) {
+    if (typeof input.aiAssist !== 'boolean') throw new AuthorValidationError('invalid_value', 'aiAssist');
+    out.ai_assist = input.aiAssist ? 1 : 0;
   }
   if (input.targetWords !== undefined) {
     if (input.targetWords === null || input.targetWords === '') out.target_words = null;

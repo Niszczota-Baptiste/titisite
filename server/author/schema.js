@@ -483,6 +483,9 @@ export function migrateAuthor(db, ensureColumn) {
   // Nature du projet (roman, nouvelle, poésie, scène, univers, musique, mixte,
   // libre) : oriente l'interface, n'impose aucune structure. Cf. enums.js.
   ensureColumn('author_projects', 'kind', `TEXT NOT NULL DEFAULT 'livre'`);
+  // Assistance d'écriture (facultative) : éteinte par défaut, activée projet par
+  // projet par son propriétaire. Cf. server/author/assist.js.
+  ensureColumn('author_projects', 'ai_assist', `INTEGER NOT NULL DEFAULT 0`);
 
   // Idées : « à revoir plus tard » (une date), provenance et moment de la
   // capture sur l'appareil.

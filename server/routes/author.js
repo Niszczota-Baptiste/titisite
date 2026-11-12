@@ -13,6 +13,9 @@ import {
 import {
   applyBoardOps, createBoard, deleteBoard, getBoard, listBoards, setBoardView, updateBoardMeta,
 } from '../author/boards.js';
+import {
+  ASSIST_BRIEF_MAX, ASSIST_MAX_CHARS, ASSIST_TASKS, AssistError, assistAvailable, assistInfo, suggest,
+} from '../author/assist.js';
 import { checkProject, dismissIssue, invalidateConsistency } from '../author/consistency.js';
 import {
   cleanClientRef, createEntityOnce, entityIndex, getEntity, liveEntity, listEntities, markVisited, moveEvent, purgeEntity,
@@ -68,6 +71,11 @@ const writeLimiter = rateLimit({
 });
 const uploadLimiter = rateLimit({
   windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'rate_limited' },
+});
+// Assistance d'écriture : chaque demande est un appel facturé à une API tierce.
+const assistLimiter = rateLimit({
+  windowMs: 10 * 60_000, max: 30, standardHeaders: true, legacyHeaders: false,
   message: { error: 'rate_limited' },
 });
 authorRouter.use((req, res, next) => (req.method === 'GET' ? next() : writeLimiter(req, res, next)));
@@ -589,6 +597,29 @@ p.post('/consistency/dismiss', h((req, res) => {
   const reason = req.body?.reason !== undefined ? cleanText(req.body.reason, 500, 'reason', { trim: true }) : undefined;
   dismissIssue(req.project.id, key, req.body?.value !== false, reason);
   res.status(204).end();
+}));
+
+// ── Assistance d'écriture (facultative, propriétaire seulement) ─────────────
+// Aucune route équivalente côté invité. Voir server/author/assist.js pour les
+// règles : clé côté serveur, activation par projet, extrait choisi seulement,
+// propositions rendues sans rien écrire.
+
+// (req.project est la ligne SQL brute : colonne ai_assist.)
+p.get('/assist', (req, res) => res.json(assistInfo({ aiAssist: !!req.project.ai_assist })));
+p.post('/assist', assistLimiter, h(async (req, res) => {
+  if (!assistAvailable()) return res.status(404).json({ error: 'assist_unavailable' });
+  if (!req.project.ai_assist) return res.status(403).json({ error: 'assist_disabled' });
+  const task = String(req.body?.task || '');
+  if (!Object.prototype.hasOwnProperty.call(ASSIST_TASKS, task)) throw new AuthorValidationError('invalid_value', 'task');
+  const text = cleanText(req.body?.text, ASSIST_MAX_CHARS, 'text', { trim: true, required: true });
+  const brief = req.body?.brief !== undefined ? cleanText(req.body.brief, ASSIST_BRIEF_MAX, 'brief', { trim: true }) : '';
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(await suggest({ task, text, brief }));
+  } catch (err) {
+    if (err instanceof AssistError) return res.status(err.status).json({ error: err.code });
+    throw err;
+  }
 }));
 
 // ── Corbeille & exports ─────────────────────────────────────────────────────

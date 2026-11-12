@@ -1181,6 +1181,13 @@ export const api = {
           // `reason` (facultative) : pourquoi l'alerte est voulue.
           dismiss: (key, value = true, reason) => request('POST', `${b}/consistency/dismiss`, { key, value, reason }),
         },
+        // Assistance d'écriture facultative : `info` dit si elle existe sur ce
+        // site et si elle est activée pour ce projet ; `ask` envoie UN extrait
+        // choisi (jamais le projet) et rend des propositions, sans rien écrire.
+        assist: {
+          info: () => request('GET', `${b}/assist`),
+          ask:  (body) => request('POST', `${b}/assist`, body),
+        },
         trash: () => request('GET', `${b}/trash`),
         // Partage : le propriétaire gère les invités ; les invités (omniscient)
         // et lui se parlent par les commentaires ; la liseuse sert les
