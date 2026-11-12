@@ -96,3 +96,9 @@
 @media (prefers-reduced-motion: reduce) {
   .am-root *, .am-root *::before, .am-root *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Prise en cours pendant qu'on est ailleurs dans l'application */
+.am-live-take { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 14px; border-radius: 12px;
+  border: 1px solid var(--au-danger, #c0392b); background: color-mix(in srgb, var(--au-danger, #c0392b) 10%, transparent);
+  color: inherit; text-decoration: none; min-height: 48px; }
+.am-live-take-go { margin-left: auto; font-size: 13px; text-decoration: underline; white-space: nowrap; }

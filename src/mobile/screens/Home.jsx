@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { formatMs } from '../../components/author/audio/time.js';
 import { useAuthState, useNet, usePending, useSyncState } from '../../components/author/offline/hooks.js';
 import { relativeTime } from '../../components/author/ui';
 import { useEnv } from '../env';
 import { useInbox, useInboxSync } from '../inbox/hooks.js';
+import { onRecorderState, recorderStatus } from '../platform/recorder.js';
 import { SessionCard } from '../SessionCard';
 import { pickRecent, useProjects } from '../useProjects';
 
@@ -27,8 +30,22 @@ function statusLine({ session, net, auth, pending: site, sync, inbox, inboxSync 
   return { tone: 'ok', text: 'Synchronisé' };
 }
 
+// Une prise continue quand on quitte l'écran d'enregistrement (service de
+// l'application) : l'accueil le dit et y ramène.
+function useLiveTake() {
+  const [rec, setRec] = useState({ status: 'idle', elapsedMs: 0 });
+  useEffect(() => {
+    let alive = true;
+    recorderStatus().then((s) => { if (alive) setRec(s); });
+    const off = onRecorderState((s) => setRec(s));
+    return () => { alive = false; off(); };
+  }, []);
+  return rec.status === 'recording' || rec.status === 'paused' ? rec : null;
+}
+
 export function Home() {
   const env = useEnv();
+  const liveTake = useLiveTake();
   const { session, config } = env;
   const navigate = useNavigate();
   const net = useNet();
@@ -56,6 +73,14 @@ export function Home() {
         </div>
         <Link to="/reglages" className="au-btn is-ghost is-icon" aria-label="Réglages de l'application">⚙</Link>
       </header>
+
+      {liveTake && (
+        <Link to="/enregistrer" className="am-live-take" role="status">
+          <span className="au-rec-dot is-live" aria-hidden />
+          <span><strong>{liveTake.status === 'paused' ? 'Enregistrement en pause' : 'Enregistrement en cours'}</strong> · {formatMs(liveTake.elapsedMs)}</span>
+          <span className="am-live-take-go">Revenir à la prise</span>
+        </Link>
+      )}
 
       <nav className="am-actions" aria-label="Créer">
         <Link to="/capturer" className="am-action is-main">

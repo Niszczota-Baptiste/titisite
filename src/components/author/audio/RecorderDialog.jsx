@@ -5,7 +5,7 @@ import { Btn, Dialog, cx } from '../ui';
 import { AudioPlayer } from './AudioPlayer';
 import { useMetronome } from './Metronome';
 import { beatsFromSignature, recordingPlan } from './metronome.js';
-import { createRecorder, recorderMessage } from './recorderPort.js';
+import { createRecorder, getTakeFallback, noticeText, recorderMessage } from './recorderPort.js';
 import { defaultTakeLabel, formatBytes, formatMs } from './time.js';
 
 // Enregistrer une prise. Le micro n'est demandé qu'au moment d'appuyer sur
@@ -14,7 +14,7 @@ import { defaultTakeLabel, formatBytes, formatMs } from './time.js';
 // (envoi vers l'atelier, ou mise en attente sur l'appareil) et peut échouer :
 // la prise reste alors ici, à réessayer ou à télécharger.
 
-export function RecorderDialog({ open, onClose, onTake, bpm = null, signature = '', title = '🎙️ Enregistrer une prise' }) {
+export function RecorderDialog({ open, onClose, onTake, bpm = null, signature = '', title = '🎙️ Enregistrer une prise', context = null }) {
   const confirm = useConfirm();
   const recorder = useRef(null);
   const [rec, setRec] = useState({ status: 'idle', elapsedMs: 0 });
@@ -34,6 +34,7 @@ export function RecorderDialog({ open, onClose, onTake, bpm = null, signature = 
   useEffect(() => {
     if (!open) return undefined;
     let off = () => {};
+    let offTake = () => {};
     let alive = true;
     setError(null); setTake(null); setSaveError(null); setMarks(0); setLabel(defaultTakeLabel());
     createRecorder().then((r) => {
@@ -41,8 +42,10 @@ export function RecorderDialog({ open, onClose, onTake, bpm = null, signature = 
       recorder.current = r;
       setRec(r.getState());
       off = r.subscribe(setRec);
+      // Prise arrêtée depuis la notification de l'application : elle arrive ici.
+      offTake = r.onTake?.((t) => { if (alive && t) setTake(t); }) || (() => {});
     }).catch((e) => setError(e));
-    return () => { alive = false; off(); recorder.current?.cancel?.(); recorder.current = null; };
+    return () => { alive = false; off(); offTake(); recorder.current?.cancel?.(); recorder.current = null; };
   }, [open]);
 
   // Une prise non rangée ne doit pas disparaître sur une fermeture d'onglet.
@@ -107,6 +110,24 @@ export function RecorderDialog({ open, onClose, onTake, bpm = null, signature = 
     }
   };
 
+  // L'envoi a échoué : garder la prise sur l'appareil (boîte de réception de
+  // l'application), d'où elle partira au retour du réseau.
+  const fallback = getTakeFallback();
+  const keepLocally = async () => {
+    if (!take || saving || !fallback) return;
+    setSaving(true);
+    try {
+      await fallback.run({ take, label: label.trim() || defaultTakeLabel(), context });
+      take.release?.();
+      setTake(null);
+      onClose();
+    } catch (e) {
+      setSaveError(e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const close = () => {
     if (live || saving) return; // on n'interrompt pas une prise par un clic à côté
     if (take) { discard(); return; }
@@ -150,7 +171,7 @@ export function RecorderDialog({ open, onClose, onTake, bpm = null, signature = 
             {counting ? 'Décompte…' : rec.status === 'paused' ? 'En pause' : rec.status === 'stopping' ? 'Fin de la prise…' : 'Enregistrement en cours'}
           </div>
           <div className="au-rec-time">{formatMs(rec.elapsedMs, { tenths: true })}</div>
-          {rec.notice && <p className="au-offline-note">{recorderMessage({ code: rec.notice })}</p>}
+          {rec.notice && <p className="au-offline-note">{noticeText(rec.notice)}</p>}
           {!counting && (
             <div className="au-rec-actions">
               {rec.status === 'paused'
@@ -177,9 +198,13 @@ export function RecorderDialog({ open, onClose, onTake, bpm = null, signature = 
           {saveError && (
             <div className="au-error" role="alert" style={{ display: 'block' }}>
               {isNetworkError(saveError) || !saveError.status
-                ? 'Hors connexion : la prise n\'a pas pu être envoyée. Elle est encore ici — réessaie, ou télécharge le fichier pour ne pas la perdre.'
+                ? `Hors connexion : la prise n'a pas pu être envoyée. Elle est encore ici — ${fallback ? 'garde-la sur cet appareil, elle partira au retour du réseau' : 'réessaie, ou télécharge le fichier pour ne pas la perdre'}.`
                 : `Le site a refusé la prise (${saveError.message}). Elle est encore ici.`}
-              <div style={{ marginTop: 8 }}><a className="au-btn is-small" href={take.previewUrl} download={take.name}>Télécharger le fichier</a></div>
+              <div style={{ marginTop: 8 }}>
+                {fallback
+                  ? <Btn size="small" onClick={keepLocally} disabled={saving}>{fallback.label}</Btn>
+                  : <a className="au-btn is-small" href={take.previewUrl} download={take.name}>Télécharger le fichier</a>}
+              </div>
             </div>
           )}
           <div className="au-rec-actions">

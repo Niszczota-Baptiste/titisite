@@ -7,7 +7,7 @@ import { AudioPlayer } from './AudioPlayer';
 import { PublishDialog } from './PublishDialog';
 import { RecorderDialog } from './RecorderDialog';
 import { MARKER_LABELS, formatBytes, formatMs, normalizeLoop, sortMarkers } from './time.js';
-import { sendTake } from './upload.js';
+import { newTakeRef, sendTake } from './upload.js';
 
 // Prises d'une idée musicale : les versions d'une même idée, l'une d'elles
 // servant de référence. On écoute, on se déplace, on pose des repères
@@ -65,7 +65,7 @@ function MarkerDialog({ state, onClose, onSubmit }) {
 }
 
 export function TakesPanel({ entity, onChanged, bpm = null, signature = '' }) {
-  const { P } = useAuthor();
+  const { P, project, pid } = useAuthor();
   const toast = useToast();
   const confirm = useConfirm();
   const [openMenu, menu] = useMenu();
@@ -100,7 +100,10 @@ export function TakesPanel({ entity, onChanged, bpm = null, signature = '' }) {
   const guard = async (fn) => { try { await fn(); } catch (err) { toast.error(humanError(err.body?.error || err)); } };
 
   const addTake = async ({ take, label }) => {
-    await sendTake(P, take, { entityId: entity.id, label, onProgress: setProgress });
+    // Référence choisie une fois par prise : un nouvel essai (ou l'envoi différé
+    // par la boîte de réception de l'application) ne crée jamais de doublon.
+    if (!take.ref) take.ref = `c-${newTakeRef()}`;
+    await sendTake(P, take, { clientRef: `${take.ref}-a0`, entityId: entity.id, label, onProgress: setProgress });
     setProgress(null);
     toast.success('Prise rangée dans l\'atelier privé');
     onChanged?.();
@@ -245,7 +248,7 @@ export function TakesPanel({ entity, onChanged, bpm = null, signature = '' }) {
       <MarkerDialog state={markerDialog} onClose={() => setMarkerDialog(null)} onSubmit={submitMarker} />
       <PromptDialog open={!!rename} title="Renommer la prise" label="Nom" initial={rename?.label || ''} confirmLabel="Renommer"
         onClose={() => setRename(null)} onSubmit={(v) => guard(async () => { const t = rename; setRename(null); await P.audio.update(t.id, { label: v }); onChanged?.(); })} />
-      <RecorderDialog open={recording} onClose={() => setRecording(false)} onTake={addTake} bpm={bpm} signature={signature} />
+      <RecorderDialog open={recording} onClose={() => setRecording(false)} onTake={addTake} bpm={bpm} signature={signature} context={{ pid, entityId: entity.id, title: project?.title || '' }} />
       {publish && <PublishDialog open onClose={() => setPublish(null)} takes={takes} initialId={publish} defaultTitle={entity.title} onPublished={() => onChanged?.()} />}
     </div>
   );

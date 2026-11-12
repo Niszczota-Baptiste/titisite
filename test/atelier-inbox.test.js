@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { fileItem } from '../src/mobile/inbox/file.js';
 import {
-  composeText, findUrl, hiddenCount, inboxSummary, isEmpty, itemKind, itemTitle, newItem, refFor, visibleItems,
+  composeText, findUrl, hiddenCount, inboxSummary, isEmpty, itemKind, itemTitle, newItem, refFor, takeItem, visibleItems,
 } from '../src/mobile/inbox/model.js';
 
 // Boîte de réception locale de l'application Mon Atelier : modèle des captures
@@ -177,5 +177,41 @@ describe('boîte de réception — classement rejouable', () => {
     assert.equal(Object.keys(out.progress.mediaIds).length, 3);
     // Les étapes déjà confirmées n'ont pas été rejouées au dernier essai.
     assert.deepEqual(srv.calls.slice(-2).map((c) => c[0]), ['take', 'image']);
+  });
+});
+
+describe('boîte de réception — prise faite dans un projet, hors connexion', () => {
+  const file = { id: 'f1', role: 'audio', name: 'prise.m4a', mime: 'audio/mp4', size: 9, durationMs: 4000, markers: [{ tMs: 1200, label: 'refrain', kind: 'marker' }] };
+  const context = { pid: 7, entityId: 42, title: 'Chansons' };
+
+  it('elle est adressée d\'office au même élément, en attente d\'envoi', () => {
+    const item = takeItem({ file, take: { ref: 'c-0b6f2c1e-1111-4222-8333-444455556666' }, context, owner: 'https://site.test#3', serverUrl: 'https://site.test' });
+    assert.equal(item.state, 'queued');
+    assert.deepEqual(item.target, { serverUrl: 'https://site.test', pid: 7, title: 'Chansons', entityId: 42 });
+    assert.equal(item.origin, 'enregistrement');
+    assert.equal(item.owner, 'https://site.test#3');
+  });
+
+  it('sans site relié elle reste une capture locale à classer', () => {
+    const item = takeItem({ file, take: {}, context, owner: null, serverUrl: null });
+    assert.equal(item.state, 'local');
+    assert.equal(item.target, null);
+    assert.match(item.id, /^c-/);
+  });
+
+  it('l\'essai direct dont la réponse s\'est perdue n\'est pas refait : même référence, une seule prise', async () => {
+    const srv = fakeProject();
+    const take = { ref: 'c-0b6f2c1e-1111-4222-8333-444455556666', markers: file.markers, source: 'recorded', integrity: 'ok' };
+    // 1. Dans le projet : l'envoi atteint le site, la réponse se perd.
+    srv.failNext('lost');
+    await assert.rejects(() => srv.sendTake(srv.P, take, { clientRef: `${take.ref}-a0`, entityId: 42, label: 'Refrain' }), /offline/);
+    assert.equal(srv.byRef.size, 1);
+    // 2. « Garder sur cet appareil » puis envoi différé par la boîte de réception.
+    const item = takeItem({ file: { ...file, label: 'Refrain' }, take, context, owner: 'o', serverUrl: 'https://site.test' });
+    assert.equal(refFor(item, '-a0'), `${take.ref}-a0`);
+    const out = await fileItem({ P: srv.P, item, files, sendTake: srv.sendTake });
+    assert.equal(out.entityId, 42, 'aucune idée musicale créée en double : la prise rejoint l\'élément visé');
+    assert.equal(srv.byRef.size, 1, 'une seule prise côté site');
+    assert.deepEqual(srv.calls.filter((c) => c[0] === 'entity'), []);
   });
 });

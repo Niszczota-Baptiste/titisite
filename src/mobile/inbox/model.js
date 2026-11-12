@@ -99,3 +99,18 @@ export function inboxSummary(items, owner) {
 // Référence client d'un morceau de la capture : stable d'un essai à l'autre,
 // c'est elle qui empêche les doublons côté site.
 export const refFor = (item, suffix = '') => `${item.id}${suffix}`.slice(0, 64);
+
+// Capture d'une prise qui n'a pas pu être envoyée depuis un projet (hors
+// connexion). Elle garde la référence de l'essai direct (`take.ref`) — un envoi
+// arrivé sans que sa réponse soit revenue n'est donc pas refait — et, si l'on
+// sait où elle allait, elle est déjà adressée : en attente d'envoi vers le même
+// élément, sans rien redemander.
+export function takeItem({ file, take, context = null, owner = null, serverUrl = null, now = Date.now() }) {
+  const item = newItem({ files: [file], origin: 'enregistrement', owner, now });
+  if (take?.ref) item.id = take.ref;
+  if (context?.pid && serverUrl) {
+    item.target = { serverUrl, pid: context.pid, title: context.title || '', ...(context.entityId ? { entityId: context.entityId } : {}) };
+    item.state = 'queued';
+  }
+  return item;
+}

@@ -1,22 +1,22 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../auth/AuthContext';
-import { setRecorderFactory } from '../components/author/audio/recorderPort.js';
+import { setRecorderFactory, setTakeFallback } from '../components/author/audio/recorderPort.js';
 import { PortalContext } from '../components/author/ui';
 import { useToast } from '../ui/ToastProvider';
 import { EnvCtx, ownerKey } from './env';
 import { startInboxSync, stopInboxSync } from './inbox/engine.js';
-import { newItem } from './inbox/model.js';
+import { newItem, takeItem } from './inbox/model.js';
 import { isNative } from './platform/bridge.js';
 import { loadConfig } from './platform/config.js';
 import { launchAction, onAction, onShare, pendingShare } from './platform/intake.js';
-import { createNativeRecorder, recoverTakes } from './platform/recorder.js';
+import { createNativeRecorder, onRecorderState, recoverTakes } from './platform/recorder.js';
 import { vault } from './platform/vault.js';
 import { AppSettings } from './screens/AppSettings';
 import { Capture } from './screens/Capture';
 import { Home } from './screens/Home';
 import { Inbox } from './screens/Inbox';
-import { Record } from './screens/Record';
+import { Record, takeAsFile } from './screens/Record';
 import { ServerSetup } from './screens/ServerSetup';
 import { ShareIntake } from './screens/ShareIntake';
 import { SignIn } from './screens/SignIn';
@@ -92,15 +92,47 @@ function useArrivals(env) {
   const toast = useToast();
   const { owner, status } = env.session;
 
+  // Prises dues et pas encore rangées : arrêtées depuis la notification, laissées
+  // à l'écran quand l'application a été fermée, ou coupées net (application
+  // tuée, batterie vide) puis réparées. Elles entrent dans la boîte de
+  // réception ; une prise réparée y est signalée comme telle.
+  const collectTakes = useCallback(async () => {
+    const takes = await recoverTakes();
+    if (!takes.length) return;
+    for (const t of takes) await vault.put(newItem({ files: [t.nativeFile], origin: 'enregistrement', owner }));
+    const repaired = takes.filter((t) => t.integrity === 'recovered').length;
+    toast.info(repaired
+      ? `${repaired} prise(s) interrompue(s) récupérée(s) — à vérifier dans la boîte de réception.`
+      : `${takes.length} prise(s) rangée(s) dans la boîte de réception.`);
+  }, [owner]); // eslint-disable-line
+
+  useEffect(() => {
+    collectTakes();
+    // Fin d'une prise sans écran d'enregistrement pour la recevoir, ou retour
+    // dans l'application : on regarde s'il reste quelque chose à ranger.
+    const offState = onRecorderState((s) => { if (s.status === 'idle') collectTakes(); });
+    const onVisible = () => { if (document.visibilityState === 'visible') collectTakes(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { offState(); document.removeEventListener('visibilitychange', onVisible); };
+  }, [collectTakes]);
+
+  // Une prise faite dans un projet mais impossible à envoyer (hors connexion) :
+  // gardée sur l'appareil, déjà adressée au bon élément, envoyée au retour du réseau.
+  useEffect(() => {
+    const serverUrl = env.config.serverUrl;
+    setTakeFallback({
+      label: 'Garder sur cet appareil, envoyer plus tard',
+      run: async ({ take, label, context }) => {
+        const item = takeItem({ file: await takeAsFile(take, label), take, context, owner, serverUrl: env.linked ? serverUrl : null });
+        await vault.put(item);
+        toast.success(item.target ? 'Prise gardée sur cet appareil — elle partira au retour du réseau' : 'Prise gardée dans la boîte de réception');
+      },
+    });
+    return () => setTakeFallback(null);
+  }, [owner, env.linked, env.config.serverUrl]); // eslint-disable-line
+
   useEffect(() => {
     let alive = true;
-    // Une prise interrompue (application fermée de force, batterie vide) est
-    // récupérée et rangée dans la boîte de réception, signalée comme telle.
-    recoverTakes().then(async (takes) => {
-      if (!alive || !takes.length) return;
-      for (const t of takes) await vault.put(newItem({ files: [t.nativeFile], origin: 'enregistrement', owner }));
-      toast.info(`${takes.length} prise(s) interrompue(s) récupérée(s) — à vérifier dans la boîte de réception.`);
-    });
     const go = (action) => {
       if (action === 'capture') navigate('/capturer');
       else if (action === 'record') navigate('/enregistrer');

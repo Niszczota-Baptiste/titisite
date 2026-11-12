@@ -12,12 +12,20 @@
 //   recorder.pause() / resume()
 //   recorder.mark(label?)             pose un repère à l'instant courant
 //   recorder.stop()        → Take     termine et rend la prise
-//   recorder.cancel()                 abandonne (rien n'est gardé)
+//   recorder.cancel()                 quitte l'écran d'enregistrement. Navigateur :
+//                                     abandonne la prise en cours. Application : la
+//                                     prise CONTINUE (service + notification) et se
+//                                     retrouve en rouvrant l'écran.
 //   recorder.subscribe(fn) → off      état : { status, elapsedMs, notice, error }
+//   recorder.onTake?(fn) → off        prise terminée hors de l'interface (bouton
+//                                     « Arrêter » de la notification)
 //
 //   Take = { name, mime, sizeBytes, durationMs, capturedAt, source: 'recorded',
 //            integrity: 'ok' | 'recovered', markers: [{ tMs, label, kind }],
 //            previewUrl, toBlob(), release() }
+//
+//   `release()` = l'interface n'a plus besoin de la prise (rangée, envoyée ou
+//   jetée) : ses ressources locales sont libérées.
 //
 // `integrity: 'recovered'` = la prise a été interrompue (micro retiré, appel,
 // arrêt brutal) et ce qui a été capté jusque-là a été récupéré : elle est
@@ -46,4 +54,17 @@ export const RECORDER_ERRORS = {
   interrupted: 'L\'enregistrement a été interrompu. Ce qui a été capté est conservé.',
 };
 
-export const recorderMessage = (err) => RECORDER_ERRORS[err?.code] || RECORDER_ERRORS[err?.message] || `Enregistrement impossible (${err?.message || 'erreur inconnue'}).`;
+// `nativeMessage` : phrase déjà rédigée par l'application (plus précise que le
+// message générique du code d'erreur).
+export const recorderMessage = (err) => err?.nativeMessage || RECORDER_ERRORS[err?.code] || RECORDER_ERRORS[err?.message] || `Enregistrement impossible (${err?.message || 'erreur inconnue'}).`;
+
+// Avis affiché pendant une prise : un code ci-dessus, ou une phrase déjà rédigée.
+export const noticeText = (notice) => RECORDER_ERRORS[notice] || notice;
+
+// Repli d'une prise qui n'a pas pu être envoyée au site. L'application y
+// inscrit sa boîte de réception locale : la prise est gardée sur l'appareil et
+// partira d'elle-même au retour du réseau, vers le même élément.
+//   { label, run({ take, label, context }) → Promise }
+let takeFallback = null;
+export function setTakeFallback(spec) { takeFallback = spec; }
+export const getTakeFallback = () => takeFallback;
