@@ -1,3 +1,4 @@
+import { cleanMarks } from './marks.js';
 import { db } from '../db.js';
 import { KIND_TABLE, KINDS } from './enums.js';
 import { chapterNumbers } from './entities.js';
@@ -51,6 +52,8 @@ export function exportProject(projectId) {
   };
 }
 
+// Manuscrit à lire ou à faire lire : sans les marques de travail (la sauvegarde
+// JSON, elle, garde le texte tel qu'il est écrit).
 export function exportManuscript(projectId) {
   const project = db.prepare(`SELECT title, subtitle FROM author_projects WHERE id = ?`).get(projectId);
   const plan = getPlan(projectId);
@@ -64,7 +67,7 @@ export function exportManuscript(projectId) {
   const writeItems = (items) => {
     for (const it of items) {
       if (it.type !== 'chapter') continue;
-      out.push('', `## ${numbers.get(it.id) ?? ''}. ${it.title}`.replace(/^## \. /, '## '), '', (content.get(it.id) || '').trim());
+      out.push('', `## ${numbers.get(it.id) ?? ''}. ${it.title}`.replace(/^## \. /, '## '), '', cleanMarks(content.get(it.id) || '').trim());
     }
   };
   for (const act of plan.acts) {

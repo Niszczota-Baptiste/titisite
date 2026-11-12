@@ -131,3 +131,70 @@ export function wikiQueryAt(value, caret) {
   if (q.includes(']') || q.includes('\n')) return null;
   return { start: caret - before.length + i, query: q };
 }
+
+// ── Recherche dans le texte ─────────────────────────────────────────────────
+
+// Repli caractère par caractère (sans accents, sans casse) qui GARDE la
+// longueur du texte : les positions trouvées valent dans le texte d'origine.
+function fold(text) {
+  let out = '';
+  for (const ch of String(text)) {
+    const f = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    // Signe combinant isolé, ou caractère qui change de longueur : gardé tel
+    // quel (ou neutralisé) pour ne pas décaler les positions.
+    out += f.length === ch.length ? f : (f.length === 0 ? '\u0000'.repeat(ch.length) : ch.toLowerCase().slice(0, ch.length).padEnd(ch.length, '\u0000'));
+  }
+  return out;
+}
+
+// Toutes les occurrences de `query` dans `text` → [[début, fin], …].
+// « elise » trouve « Élise » ; le hangul est cherché tel quel.
+export function findAll(text, query, limit = 2000) {
+  const q = fold(String(query || '').normalize('NFC'));
+  const hits = [];
+  if (!q.trim()) return hits;
+  const hay = fold(String(text || ''));
+  let from = 0;
+  while (hits.length < limit) {
+    const i = hay.indexOf(q, from);
+    if (i < 0) break;
+    hits.push([i, i + q.length]);
+    from = i + Math.max(1, q.length);
+  }
+  return hits;
+}
+
+// Occurrence à montrer en partant du curseur : la première à partir de `caret`
+// (sinon on reboucle au début). → index dans `hits`, ou -1.
+export function hitFrom(hits, caret) {
+  if (!hits.length) return -1;
+  const i = hits.findIndex(([s]) => s >= caret);
+  return i < 0 ? 0 : i;
+}
+
+// Lien [[Nom]] ou [[Nom|texte]] qui contient le curseur → nom visé, ou null.
+export function wikiTargetAt(value, caret) {
+  const open = value.lastIndexOf('[[', caret);
+  if (open < 0 || caret - open > 200) return null;
+  const close = value.indexOf(']]', open);
+  if (close < 0 || close + 2 < caret) return null;
+  const inner = value.slice(open + 2, close);
+  if (inner.includes('\n') || inner.includes('[[')) return null;
+  return inner.split('|')[0].trim() || null;
+}
+
+// Noms des fiches citées dans un texte, dans l'ordre de première apparition.
+export function wikiTargets(value) {
+  const seen = new Set();
+  const out = [];
+  // Découpe du libellé (« Nom|texte affiché ») faite à la main : l'expression
+  // reste linéaire, même sur un très long chapitre.
+  const re = /\[\[([^\]\n]{1,200})\]\]/g;
+  let m;
+  while ((m = re.exec(String(value || ''))) !== null) {
+    const name = m[1].split('|')[0].trim();
+    const key = name.toLowerCase();
+    if (name && !seen.has(key)) { seen.add(key); out.push(name); }
+  }
+  return out;
+}

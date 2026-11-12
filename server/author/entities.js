@@ -1,6 +1,7 @@
 import { db } from '../db.js';
 import { KIND_FIELDS, KIND_TABLE, KINDS, own, relationMeta } from './enums.js';
 import { insertRevision, lastSnapshotAt, shouldSnapshot } from './revisions.js';
+import { cleanMarks } from './marks.js';
 import { cleanSnippet, countChars, countWords, ftsQuery, normalize } from './text.js';
 import { AuthorValidationError, asId, cleanTagNames, cleanText, validateFields } from './validate.js';
 
@@ -429,8 +430,11 @@ export function ftsSync(id) {
   }
   for (const a of aliasesFor(id)) parts.push(a.alias);
   for (const t of tagsFor([id]).get(id) || []) parts.push(`#${t.name}`);
+  // Les marques de travail ne sont pas indexées : une question que l'auteur se
+  // pose, ou la version écartée d'un passage, ne doit ni ressortir dans un
+  // extrait ni faire « trouver » un chapitre par un invité.
   db.prepare(`INSERT INTO author_fts (rowid, entity_id, project_id, kind, title, body) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(id, id, e.project_id, e.kind, e.title, parts.filter(Boolean).join('\n'));
+    .run(id, id, e.project_id, e.kind, e.title, cleanMarks(parts.filter(Boolean).join('\n')));
 }
 
 // Marqueurs de surlignage : caractères de contrôle que le client découpe en

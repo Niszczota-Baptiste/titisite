@@ -6,6 +6,7 @@ import {
 import { chapterNumbers, getEntity, listEntities, liveEntity, nowS } from './entities.js';
 import { bookProgress } from './overview.js';
 import { listPins } from './structure.js';
+import { cleanMarks } from './marks.js';
 import { cleanSnippet, nameKey, scrubWikiLinks } from './text.js';
 import { AuthorValidationError, cleanText } from './validate.js';
 
@@ -52,8 +53,15 @@ export function scrubSnippet(text) {
   return cleanSnippet(text, { dropCutTarget: true });
 }
 
+// Tout texte servi à un invité : sans les marques de travail de l'auteur
+// (questions, secondes versions — server/author/marks.js), puis sans les liens
+// vers ce qu'il ne voit pas.
+export function guestText(text, hidden) {
+  return scrubWikiLinks(cleanMarks(text), hidden);
+}
+
 function scrubObject(obj, hidden) {
-  for (const [k, v] of Object.entries(obj)) if (typeof v === 'string') obj[k] = scrubWikiLinks(v, hidden);
+  for (const [k, v] of Object.entries(obj)) if (typeof v === 'string') obj[k] = guestText(v, hidden);
   return obj;
 }
 
@@ -76,7 +84,7 @@ export function guestProject(row, access) {
 export function guestList(projectId, opts) {
   const out = listEntities(projectId, { ...opts, trashed: false, allowKinds: GUEST_KINDS });
   const hidden = hiddenNames(projectId);
-  for (const it of out.items) it.summary = scrubWikiLinks(it.summary, hidden);
+  for (const it of out.items) it.summary = guestText(it.summary, hidden);
   return out;
 }
 
@@ -247,7 +255,7 @@ export function readerChapter(projectId, id) {
   const row = db.prepare(`SELECT c.content ${READABLE} AND e.id = ?`).get(projectId, id);
   if (!row) return null;
   const pick = (c) => (c ? { id: c.id, number: c.number, title: c.title } : null);
-  return { ...list[i], content: scrubWikiLinks(row.content, null), prev: pick(list[i - 1]), next: pick(list[i + 1]) };
+  return { ...list[i], content: guestText(row.content, null), prev: pick(list[i - 1]), next: pick(list[i + 1]) };
 }
 
 // Validation par le propriétaire : seulement un chapitre « terminé ». Le

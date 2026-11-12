@@ -2,11 +2,15 @@
 // server/author/text.js — le serveur recalcule et stocke ses propres valeurs ;
 // test/author-text.test.js vérifie que les deux comptent pareil.
 
+import { cleanMarks } from './marks.js';
+
 const SPLIT_RE = /[^\p{L}\p{N}'’-]+/u;
 const HAS_WORD_RE = /[\p{L}\p{N}]/u;
 
 export function plainText(md) {
-  return String(md || '')
+  // Les marques de travail ({{question: …}}, seconde version d'une variante) ne
+  // sont pas du texte : elles ne comptent ni dans les mots ni dans les signes.
+  return cleanMarks(String(md || ''))
     .replace(/\r\n/g, '\n')
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
     .replace(/^\s*>\s?/gm, '')

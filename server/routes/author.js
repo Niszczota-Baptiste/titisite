@@ -32,7 +32,7 @@ import { getRevision, insertRevision, listRevisions } from '../author/revisions.
 import {
   commentCounts, createComment, deleteComment, deleteShare, guestBoard, guestBoards, guestEntity, guestList,
   guestOverview, guestPins, guestProject, guestTags, hiddenNames, listComments, listShares, mediaFileShared,
-  readerChapter, readerChapters, scrubSnippet, scrubWikiLinks, setChapterValidation, updateComment, updateShare,
+  guestText, readerChapter, readerChapters, scrubSnippet, scrubWikiLinks, setChapterValidation, updateComment, updateShare,
   upsertShare,
 } from '../author/sharing.js';
 import {
@@ -711,7 +711,7 @@ g.get('/timelines', (req, res) => res.json(listTimelines(req.project.id)));
 g.get('/plan', (req, res) => {
   const plan = getPlan(req.project.id);
   const hidden = hiddenNames(req.project.id);
-  const clean = (items) => items.map((it) => ({ ...it, summary: scrubWikiLinks(it.summary, hidden) }));
+  const clean = (items) => items.map((it) => ({ ...it, summary: guestText(it.summary, hidden) }));
   res.json({ acts: plan.acts.map((a) => ({ ...a, items: clean(a.items) })), unassigned: clean(plan.unassigned) });
 });
 

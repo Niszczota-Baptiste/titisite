@@ -17,7 +17,9 @@ const wb = (body) => ({ body, headers: { 'X-Author-Request': '1' } });
 const W = { headers: { 'X-Author-Request': '1' } };
 
 // Tout ce qui ne doit JAMAIS sortir vers un invité.
-const SECRETS = ['SECRETIDEE', 'Le Pacte Secret', 'PACTEALIAS', 'intrigue-cachee', 'TACHE-PRIVEE', 'TABLEAU-PRIVE', 'COMMENT-SUR-IDEE'];
+const SECRETS = ['SECRETIDEE', 'Le Pacte Secret', 'PACTEALIAS', 'intrigue-cachee', 'TACHE-PRIVEE', 'TABLEAU-PRIVE', 'COMMENT-SUR-IDEE',
+  // Marques de travail de l'auteur dans un texte par ailleurs visible.
+  'QUESTION-AUTEUR', 'VARIANTE-ECARTEE', 'NOTE-FICHE-AUTEUR'];
 
 let owner;
 let omni;
@@ -70,13 +72,14 @@ describe('partage — mise en place', () => {
     ids.note = note.id;
     const elise = await create('character', {
       title: 'Élise Varnier', summary: 'Cartographe.',
-      body: 'Elle a signé [[Le Pacte Secret|un pacte]] à [[Valcendre]].', tags: ['protagoniste'],
+      body: 'Elle a signé {{question: NOTE-FICHE-AUTEUR}} [[Le Pacte Secret|un pacte]] à [[Valcendre]].', tags: ['protagoniste'],
     });
     ids.elise = elise.id;
     const place = await create('place', { title: 'Valcendre', summary: 'Cité des cendres.' });
     ids.place = place.id;
     ids.ch1 = (await create('chapter', {
-      title: 'Prologue', status: 'termine', content: 'Élise relit [[Le Pacte Secret|le pacte]]. Puis [[Élise Varnier|elle]] part.',
+      title: 'Prologue', status: 'termine',
+      content: 'Élise relit [[Le Pacte Secret|le pacte]]. {{question: QUESTION-AUTEUR sait-elle déjà ?}} Puis [[Élise Varnier|elle]] {{variante: part || VARIANTE-ECARTEE reste}}.',
     })).id;
     ids.ch2 = (await create('chapter', { title: 'Brouillon', status: 'premier_jet', content: 'BROUILLON-TEXTE' })).id;
     ids.ch3 = (await create('chapter', { title: 'Fini non validé', status: 'termine', content: 'NONVALIDE-TEXTE' })).id;
@@ -165,6 +168,7 @@ describe('partage — rôle omniscient', () => {
       '', '/overview', '/entities', '/entities?kind=note', '/entities?kinds=note,character', '/entities?sort=opened',
       `/entities/${ids.elise}`, `/entities/${ids.place}`, `/entities/${ids.ch1}`, '/index',
       '/search?q=pacte', '/search?q=SECRETIDEE', '/search?q=PACTEALIAS', '/search?q=elise', '/search?q=%23intrigue',
+      '/search?q=QUESTION-AUTEUR', '/search?q=VARIANTE-ECARTEE', '/search?q=NOTE-FICHE-AUTEUR',
       '/graph', '/graph?kinds=note', '/tags', '/categories', '/timelines', '/plan',
       '/boards', `/boards/${ids.boardShared}`, `/places/${ids.place}/pins`, '/comments', '/reader',
     ];
@@ -189,6 +193,26 @@ describe('partage — rôle omniscient', () => {
     const ov = (await omni.get(`${base}/overview`)).json;
     assert.equal(ov.counts.note, undefined);
     assert.equal(ov.counts.chapter, 3);
+  });
+
+  it('les marques de travail de l\'auteur ne sortent pas : ni lues, ni trouvées, ni exportées', async () => {
+    // Le propriétaire garde son texte tel qu'il l'a écrit…
+    const mine = (await owner.get(`${base}/entities/${ids.ch1}`)).json;
+    assert.ok(mine.content.includes('{{question: QUESTION-AUTEUR') && mine.content.includes('VARIANTE-ECARTEE'));
+    // 12 = le texte gardé, cibles des liens comprises (règle de comptage existante) ;
+    // la question et la version écartée en ajouteraient cinq.
+    assert.equal(mine.wordCount, 12, 'seul le texte gardé est compté');
+    // … l'invité lit le texte gardé, sans trou ni accolade.
+    const theirs = (await omni.get(`${base}/entities/${ids.ch1}`)).json;
+    assert.equal(theirs.content, 'Élise relit le pacte. Puis [[Élise Varnier|elle]] part.');
+    // Une marque ne fait « trouver » un chapitre à personne : elle n'est pas indexée.
+    for (const q of ['QUESTION-AUTEUR', 'VARIANTE-ECARTEE', 'NOTE-FICHE-AUTEUR']) {
+      assert.deepEqual((await omni.get(`${base}/search?q=${q}`)).json.items ?? (await omni.get(`${base}/search?q=${q}`)).json, [], `invité : ${q}`);
+    }
+    // Le manuscrit exporté est le texte à lire ; la sauvegarde garde tout.
+    const manuscript = (await owner.get(`${base}/export/manuscript`)).text;
+    assert.ok(manuscript.includes('elle]] part.') && !manuscript.includes('QUESTION-AUTEUR') && !manuscript.includes('VARIANTE-ECARTEE'));
+    assert.ok((await owner.get(`${base}/export`)).text.includes('QUESTION-AUTEUR'));
   });
 
   it('une idée, un tableau privé ou un outil du propriétaire répondent 404', async () => {

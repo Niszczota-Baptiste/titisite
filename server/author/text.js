@@ -8,13 +8,17 @@
 // dans un traitement de texte.
 // (Découpe sur tout le reste plutôt qu'une expression à quantificateurs
 // imbriqués : linéaire, et sans risque de ReDoS sur un long chapitre.)
+import { cleanMarks } from './marks.js';
+
 const SPLIT_RE = /[^\p{L}\p{N}'’-]+/u;
 const HAS_WORD_RE = /[\p{L}\p{N}]/u;
 
 // Retire la syntaxe Markdown qui n'est pas du texte (marqueurs de titre, de
 // citation, de liste, d'emphase, séparateurs, URL des liens).
 export function plainText(md) {
-  return String(md || '')
+  // Les marques de travail ({{question: …}}, seconde version d'une variante) ne
+  // sont pas du texte : elles ne comptent ni dans les mots ni dans les signes.
+  return cleanMarks(String(md || ''))
     .replace(/\r\n/g, '\n')
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
     .replace(/^\s*>\s?/gm, '')

@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
+import { MARK_SRC, MARK_TYPES, markType, splitVariant } from './marks.js';
 
 // Rendu Markdown de l'atelier d'auteur — même principe que
 // src/components/writing/markdown.jsx : un sous-ensemble maison qui ne produit
@@ -20,6 +21,7 @@ const INLINE_SRC = [
   '_([^_\\s][^_]*?)_',                         // _italique_
   '`([^`]+?)`',                                // `code`
   '\\[([^\\]]+?)\\]\\(([^)\\s]+?)\\)',         // [label](url)
+  MARK_SRC,                                    // {{reprendre: …}} {{question: …}} {{variante: A || B}} (marks.js)
 ].join('|');
 
 function safeHref(url) {
@@ -38,11 +40,11 @@ function parseInline(text, ctx, keyPrefix) {
   let m;
   let i = 0;
   // eslint-disable-next-line security/detect-non-literal-regexp -- INLINE_SRC est une constante du module
-  const re = new RegExp(INLINE_SRC, 'g');
+  const re = new RegExp(INLINE_SRC, 'gi');
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) nodes.push(text.slice(last, m.index));
     const key = `${keyPrefix}-${i++}`;
-    const [, wiki, wikiLabel, bold, italic, italic2, code, linkLabel, linkUrl] = m;
+    const [, wiki, wikiLabel, bold, italic, italic2, code, linkLabel, linkUrl, markKind, markBody] = m;
     if (wiki !== undefined) {
       const target = ctx.resolve?.(wiki.trim());
       const label = (wikiLabel || wiki).trim();
@@ -60,6 +62,23 @@ function parseInline(text, ctx, keyPrefix) {
       nodes.push(href
         ? <a key={key} href={href} target={/^https?:/i.test(href) ? '_blank' : undefined} rel="noopener noreferrer">{linkLabel}</a>
         : linkLabel);
+    } else if (markKind !== undefined) {
+      // Marques de travail : visibles du seul propriétaire (le serveur les retire
+      // de ce qu'il sert aux invités).
+      const type = markType(markKind);
+      const body = markBody.trim();
+      if (type === 'question') {
+        nodes.push(<span key={key} className="au-mark is-question" title={MARK_TYPES.question.label}><span aria-hidden>❓</span> {body}</span>);
+      } else if (type === 'variante') {
+        const { a, b } = splitVariant(body);
+        nodes.push(
+          <span key={key} className="au-mark is-variant" title={b ? `Autre version : ${b}` : 'Une seule version pour l\'instant'}>
+            {parseInline(a, ctx, key)}<sup aria-label="autre version gardée">🔀</sup>
+          </span>,
+        );
+      } else {
+        nodes.push(<mark key={key} className="au-mark is-todo" title={MARK_TYPES.reprendre.label}>{parseInline(body, ctx, key)}</mark>);
+      }
     }
     last = m.index + m[0].length;
   }

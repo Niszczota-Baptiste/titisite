@@ -3,11 +3,13 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../../../ui/ToastProvider';
 import { useAuthor } from '../context';
 import {
-  autoTypography, caretTop, frenchQuote, insertSeparator, replaceRange, setHeading, toggleLinePrefix, toggleWrap, wikiQueryAt,
+  autoTypography, caretTop, findAll, frenchQuote, hitFrom, insertSeparator, replaceRange, setHeading, toggleLinePrefix, toggleWrap,
+  wikiQueryAt, wikiTargetAt, wikiTargets,
 } from '../editorOps';
 import { FieldInput } from '../fields';
 import { CHAPTER_STATUSES, chapterStatus, kindMeta } from '../kinds';
 import { Markdown, normTitle } from '../markdown';
+import { MARK_TYPES, findMarks, markSummary, newMark, resolveMark, swapVariant } from '../marks.js';
 import { RelationsPanel } from '../RelationsPanel';
 import { CommentsThread } from '../comments/CommentsThread';
 import { BackupBanner, ConflictDialog, RevisionsDialog } from '../saving';
@@ -23,9 +25,22 @@ import { useEntityDoc } from '../useEntityDoc';
 // direct, typographie française automatique, liens [[Nom]] avec suggestions,
 // mode focus, mode « machine à écrire », historique des versions. Le texte
 // s'enregistre seul (et localement à chaque frappe).
+//
+// Marques de travail (marks.js) : « à reprendre », question, variante (deux
+// versions d'un passage) — écrites dans le texte, privées, listées dans le
+// panneau du chapitre. Recherche dans le texte (sans casse ni accents).
+// Aperçu d'une fiche citée sans quitter la page : la sélection et la position
+// de lecture sont retrouvées à la fermeture.
+//
+// Saisie par composition (coréen, accents morts) : aucun raccourci ni
+// correction automatique n'agit tant qu'une composition est en cours — sinon
+// la syllabe en train de se former serait validée ou cassée.
 
 const PREFS_KEY = 'au-writer-prefs';
-const DEFAULT_PREFS = { size: 19, width: 68, font: 'serif', typewriter: false, typo: true, side: true };
+const DEFAULT_PREFS = { size: 19, width: 68, leading: 1.85, font: 'serif', typewriter: false, typo: true, side: true, counters: true };
+
+// Une touche frappée pendant une composition (IME) : à laisser au clavier.
+const composing = (e) => !!e.nativeEvent?.isComposing || e.keyCode === 229;
 
 function usePrefs() {
   const [prefs, setPrefs] = useState(() => {
@@ -80,7 +95,13 @@ export function Writer() {
   const [sideMobile, setSideMobile] = useState(false);
   const [chapters, setChapters] = useState([]);
   const [wiki, setWiki] = useState(null); // { start, query, active }
+  const [find, setFind] = useState(null); // { query, i } — recherche dans le texte
+  const [cards, setCards] = useState(false); // fiches citées dans le chapitre
+  const [peek, setPeek] = useState(null); // { name, ent, data, error } — aperçu d'une fiche
   const ta = useRef(null);
+  const findAnchor = useRef(0);
+  const findInput = useRef(null);
+  const keptSel = useRef(null);
   const scroller = useRef(null);
   const sessionStart = useRef(null);
 
@@ -95,7 +116,7 @@ export function Writer() {
       .catch(() => {});
   }, [P, version]);
 
-  useEffect(() => { sessionStart.current = null; setWiki(null); setPreview(false); }, [chapterId]);
+  useEffect(() => { sessionStart.current = null; setWiki(null); setPreview(false); setFind(null); setCards(false); setPeek(null); }, [chapterId]);
   useEffect(() => () => setFocus(false), [setFocus]);
 
   const content = ch?.content ?? '';
@@ -123,6 +144,120 @@ export function Writer() {
     setWiki(null);
   };
 
+  // ── Curseur visible ─────────────────────────────────────────────────────
+  const revealCaret = useCallback(() => {
+    const t = ta.current;
+    const sc = scroller.current;
+    if (!t || !sc) return;
+    const y = t.offsetTop + caretTop(t);
+    if (y < sc.scrollTop + 48 || y > sc.scrollTop + sc.clientHeight - 96) sc.scrollTop = Math.max(0, y - sc.clientHeight * 0.4);
+  }, []);
+  const jumpTo = (start, end = start) => {
+    setPreview(false);
+    setSideMobile(false);
+    requestAnimationFrame(() => {
+      const t = ta.current;
+      if (!t) return;
+      t.focus({ preventScroll: true });
+      t.setSelectionRange(start, end);
+      revealCaret();
+    });
+  };
+
+  // ── Marques de travail ──────────────────────────────────────────────────
+  const marks = useMemo(() => findMarks(content), [content]);
+  const addMark = (type) => {
+    const t = ta.current;
+    if (!t || preview) return;
+    const { selectionStart: a, selectionEnd: b, value } = t;
+    const sel = value.slice(a, b);
+    const m = newMark(type, sel);
+    if (m.after) {
+      const gap = b > 0 && !/\s/.test(value[b - 1]) ? ' ' : '';
+      replaceRange(t, b, b, gap + m.text, b + gap.length + m.caret);
+    } else replaceRange(t, a, b, m.text, a + m.caret);
+  };
+  // Remplacement d'une plage : par le textarea quand il est affiché (l'annulation
+  // native reste possible), sinon directement dans le document.
+  const applyRange = (r) => {
+    const t = ta.current;
+    if (t && !preview) replaceRange(t, r.start, r.end, r.text, r.start, r.start + r.text.length);
+    else doc.setField('content', content.slice(0, r.start) + r.text + content.slice(r.end));
+  };
+  const markOps = {
+    go: (m) => jumpTo(m.start, m.end),
+    swap: (m) => applyRange(swapVariant(m)),
+    resolve: (m, keep) => applyRange(resolveMark(content, m, keep)),
+  };
+
+  // ── Recherche dans le texte ─────────────────────────────────────────────
+  const hits = useMemo(() => (find?.query ? findAll(content, find.query) : []), [find?.query, content]);
+  const showHit = (i) => {
+    const h = hits[i];
+    const t = ta.current;
+    if (!h || !t) return;
+    t.setSelectionRange(h[0], h[1]);
+    revealCaret();
+    setFind((f) => (f ? { ...f, i } : f));
+  };
+  const openFind = () => {
+    const t = ta.current;
+    setPreview(false);
+    findAnchor.current = t ? t.selectionStart : 0;
+    const sel = t ? t.value.slice(t.selectionStart, t.selectionEnd) : '';
+    setFind((f) => ({ query: sel && !sel.includes('\n') && sel.length < 80 ? sel : f?.query || '', i: -1 }));
+    requestAnimationFrame(() => { findInput.current?.focus(); findInput.current?.select(); });
+  };
+  const closeFind = () => { setFind(null); requestAnimationFrame(() => ta.current?.focus({ preventScroll: true })); };
+  // Nouvelle recherche : la première occurrence à partir du curseur.
+  useEffect(() => {
+    if (!find?.query) return;
+    const i = hitFrom(hits, findAnchor.current);
+    if (i >= 0) showHit(i); else setFind((f) => (f ? { ...f, i: -1 } : f));
+  }, [find?.query]); // eslint-disable-line
+
+  // ── Fiches citées : aperçu sans perdre sa place ─────────────────────────
+  const resolveName = useCallback((n) => {
+    const k = normTitle(n);
+    return index.find((e) => normTitle(e.title) === k || e.aliases.some((a) => normTitle(a) === k)) || null;
+  }, [index]);
+  const linked = useMemo(() => wikiTargets(content).map((name) => ({ name, ent: resolveName(name) })), [content, resolveName]);
+  const rememberSel = () => {
+    const t = ta.current;
+    if (keptSel.current || !t) return;
+    keptSel.current = { s: t.selectionStart, e: t.selectionEnd, top: scroller.current?.scrollTop ?? 0 };
+  };
+  const restoreSel = () => {
+    const k = keptSel.current;
+    keptSel.current = null;
+    if (!k) return;
+    requestAnimationFrame(() => {
+      const t = ta.current;
+      if (!t) return;
+      t.focus({ preventScroll: true });
+      t.setSelectionRange(k.s, k.e);
+      if (scroller.current) scroller.current.scrollTop = k.top;
+    });
+  };
+  const openPeek = (name) => {
+    rememberSel();
+    const ent = resolveName(name);
+    setCards(true);
+    setPeek({ name, ent, data: null, error: null });
+    if (ent) {
+      P.entities.get(ent.id)
+        .then((data) => setPeek((p) => (p && p.name === name ? { ...p, data } : p)))
+        .catch((error) => setPeek((p) => (p && p.name === name ? { ...p, error } : p)));
+    }
+  };
+  const openCards = () => {
+    rememberSel();
+    const t = ta.current;
+    const under = t && !preview ? wikiTargetAt(t.value, t.selectionStart) : null;
+    if (under) openPeek(under); else { setPeek(null); setCards(true); }
+  };
+  const closeCards = () => { setCards(false); setPeek(null); restoreSel(); };
+
   // ── Machine à écrire : la ligne en cours reste vers le milieu de l'écran ──
   const keepCaretInView = useCallback(() => {
     const t = ta.current;
@@ -140,7 +275,7 @@ export function Writer() {
     t.style.height = 'auto';
     t.style.height = `${t.scrollHeight}px`;
     if (scroller.current && keep !== undefined) scroller.current.scrollTop = keep;
-  }, [content, prefs.size, prefs.width, prefs.font, preview]);
+  }, [content, prefs.size, prefs.width, prefs.font, prefs.leading, preview]);
 
   const onChange = (e) => {
     doc.setField('content', e.target.value);
@@ -157,7 +292,9 @@ export function Writer() {
   };
 
   const onKeyDown = (e) => {
+    if (composing(e)) return; // la composition en cours appartient au clavier
     const mod = e.ctrlKey || e.metaKey;
+    if (e.altKey && e.key === 'Enter') { e.preventDefault(); openCards(); return; }
     if (wiki && suggestions.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setWiki({ ...wiki, active: (wiki.active + 1) % suggestions.length }); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); setWiki({ ...wiki, active: (wiki.active - 1 + suggestions.length) % suggestions.length }); return; }
@@ -188,6 +325,7 @@ export function Writer() {
   };
 
   const onKeyUp = (e) => {
+    if (composing(e)) return;
     if (prefs.typo && (e.key === '.' || e.key === '-')) autoTypography(e.target);
   };
 
@@ -197,11 +335,15 @@ export function Writer() {
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); doc.save(); }
       if (mod && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); setFocus((f) => !f); }
+      // Rechercher dans le chapitre (la recherche du navigateur ne sait pas
+      // montrer une occurrence dans une zone de saisie).
+      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f' && (document.activeElement === ta.current || find)) { e.preventDefault(); openFind(); }
+      if (e.key === 'Escape' && find) { closeFind(); return; }
       if (e.key === 'Escape' && focus && !wiki) setFocus(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [doc, focus, setFocus, wiki]);
+  }, [doc, focus, setFocus, wiki, find]); // eslint-disable-line
 
   const snapshot = async (label) => {
     setSnapOpen(false);
@@ -228,6 +370,7 @@ export function Writer() {
   const editorStyle = {
     '--w-size': `${prefs.size}px`,
     '--w-width': `${prefs.width}ch`,
+    '--w-leading': String(prefs.leading),
     '--w-font': prefs.font === 'serif' ? 'var(--au-serif)' : 'var(--au-font)',
   };
   const tools = [
@@ -241,6 +384,7 @@ export function Writer() {
     ['1.', 'Liste numérotée', `${MOD}⇧7`, () => fmt((t) => toggleLinePrefix(t, 'ol'))],
     ['—', 'Séparateur de scène', '', () => fmt(insertSeparator)],
     ['[[', 'Lier une fiche', '[[', () => fmt((t) => replaceRange(t, t.selectionStart, t.selectionEnd, '[[', t.selectionStart + 2))],
+    ...Object.entries(MARK_TYPES).map(([type, meta]) => [meta.icon, `${meta.label} — ${meta.hint}`, '', () => addMark(type)]),
   ];
 
   return (
@@ -264,6 +408,8 @@ export function Writer() {
             ))}
           </div>
           <div className="au-writer-right">
+            <Btn size="small" variant="ghost" icon on={!!find} onClick={() => (find ? closeFind() : openFind())} title={`Rechercher dans le chapitre (${MOD}F)`} aria-label="Rechercher dans le chapitre">🔍</Btn>
+            <Btn size="small" variant="ghost" icon onMouseDown={(e) => e.preventDefault()} onClick={openCards} title="Fiches citées dans ce chapitre (Alt Entrée sur un lien)" aria-label="Fiches citées dans ce chapitre">🗂</Btn>
             <Btn size="small" variant="ghost" on={preview} onClick={() => setPreview((p) => !p)} title="Aperçu mis en page">{preview ? '✎' : '👁'}<span className="au-desktop-only">{preview ? 'Écrire' : 'Aperçu'}</span></Btn>
             {!ch.local && <Btn size="small" variant="ghost" className="au-desktop-only" onClick={async () => { await doc.save(); setHistory(true); }} title="Historique des versions">🕘 Versions</Btn>}
             <Btn size="small" variant="ghost" icon onClick={() => setSettings(true)} title="Réglages d'affichage" aria-label="Réglages d'affichage">Aa</Btn>
@@ -271,6 +417,25 @@ export function Writer() {
             <Btn size="small" variant="ghost" icon className="au-mobile-only" onClick={() => setSideMobile(true)} aria-label="Infos du chapitre">ⓘ</Btn>
             <Btn size="small" icon onClick={() => setFocus(true)} title={`Mode focus (${MOD}⇧F)`} aria-label="Mode focus">⛶</Btn>
           </div>
+        </div>
+      )}
+
+      {find && (
+        <div className="au-find" role="search">
+          <input
+            ref={findInput} className="au-input au-find-input" type="search" value={find.query} placeholder="Rechercher dans le chapitre"
+            aria-label="Rechercher dans le chapitre" enterKeyHint="search"
+            onChange={(e) => { findAnchor.current = ta.current?.selectionStart ?? 0; setFind({ query: e.target.value, i: -1 }); }}
+            onKeyDown={(e) => {
+              if (composing(e)) return;
+              if (e.key === 'Enter' && hits.length) { e.preventDefault(); showHit(((find.i < 0 ? 0 : find.i) + (e.shiftKey ? hits.length - 1 : 1)) % hits.length); }
+              if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFind(); }
+            }}
+          />
+          <span className="au-find-count" aria-live="polite">{find.query ? (hits.length ? `${find.i + 1} / ${hits.length}` : 'Aucun résultat') : ''}</span>
+          <Btn size="small" variant="ghost" icon disabled={!hits.length} onClick={() => showHit((find.i - 1 + hits.length) % hits.length)} aria-label="Occurrence précédente">↑</Btn>
+          <Btn size="small" variant="ghost" icon disabled={!hits.length} onClick={() => showHit((find.i + 1) % hits.length)} aria-label="Occurrence suivante">↓</Btn>
+          <Btn size="small" variant="ghost" icon onClick={closeFind} aria-label="Fermer la recherche">✕</Btn>
         </div>
       )}
 
@@ -285,12 +450,27 @@ export function Writer() {
             </div>
             {preview ? (
               <div className="au-writer-preview" onDoubleClick={() => setPreview(false)}>
-                <Markdown content={content} pid={pid} resolve={(n) => index.find((e) => normTitle(e.title) === normTitle(n) || e.aliases.some((a) => normTitle(a) === normTitle(n))) || null} />
+                <Markdown content={content} pid={pid} resolve={resolveName} />
               </div>
             ) : (
-              <textarea ref={ta} className="au-writer-text" value={content} onChange={onChange} onKeyDown={onKeyDown} onKeyUp={onKeyUp}
-                onClick={(e) => { const w = wikiQueryAt(e.target.value, e.target.selectionStart); setWiki(w ? { ...w, active: 0 } : null); }}
-                placeholder="Il était une fois…" spellCheck lang="fr" aria-label="Texte du chapitre" autoFocus />
+              <div className="au-writer-textwrap">
+                {/* Occurrences de la recherche : calque sous le texte, à la même mise en
+                    page (la sélection d'une zone de saisie sans le focus ne se voit pas). */}
+                {find && hits.length > 0 && (
+                  <div className="au-writer-text au-writer-hl" aria-hidden lang="fr">
+                    {hits.map(([a, b], i) => (
+                      <span key={a}>
+                        {content.slice(i ? hits[i - 1][1] : 0, a)}
+                        <mark className={i === find.i ? 'is-current' : undefined}>{content.slice(a, b)}</mark>
+                      </span>
+                    ))}
+                    {content.slice(hits[hits.length - 1][1])}
+                  </div>
+                )}
+                <textarea ref={ta} className="au-writer-text" value={content} onChange={onChange} onKeyDown={onKeyDown} onKeyUp={onKeyUp}
+                  onClick={(e) => { const w = wikiQueryAt(e.target.value, e.target.selectionStart); setWiki(w ? { ...w, active: 0 } : null); }}
+                  placeholder="Il était une fois…" spellCheck lang="fr" aria-label="Texte du chapitre" autoFocus />
+              </div>
             )}
           </div>
           {wiki && suggestions.length > 0 && !preview && (
@@ -309,17 +489,22 @@ export function Writer() {
         </div>
         {prefs.side && !focus && (
           <aside className="au-writer-side au-desktop-only">
-            <ChapterSide ch={ch} doc={doc} />
+            <ChapterSide ch={ch} doc={doc} marks={marks} markOps={markOps} />
           </aside>
         )}
       </div>
 
       <div className="au-writer-status" aria-live="polite">
-        <span><strong>{formatCount(stats.words)}</strong> mots</span>
-        <span className="au-desktop-only">{formatCount(stats.chars)} signes</span>
-        <span className="au-desktop-only">~{readingMinutes(stats.words)} min de lecture</span>
-        {sessionDelta !== 0 && <span style={{ color: sessionDelta > 0 ? 'var(--au-ok)' : 'var(--au-warn)' }}>{sessionDelta > 0 ? '+' : ''}{formatCount(sessionDelta)} cette séance</span>}
-        {target > 0 && <span className="au-writer-goal"><ProgressBar value={stats.words / target} /> {Math.round((stats.words / target) * 100)} %</span>}
+        {prefs.counters && (
+          <>
+            <span><strong>{formatCount(stats.words)}</strong> mots</span>
+            <span className="au-desktop-only">{formatCount(stats.chars)} signes</span>
+            <span className="au-desktop-only">~{readingMinutes(stats.words)} min de lecture</span>
+            {sessionDelta !== 0 && <span style={{ color: sessionDelta > 0 ? 'var(--au-ok)' : 'var(--au-warn)' }}>{sessionDelta > 0 ? '+' : ''}{formatCount(sessionDelta)} cette séance</span>}
+            {target > 0 && <span className="au-writer-goal"><ProgressBar value={stats.words / target} /> {Math.round((stats.words / target) * 100)} %</span>}
+          </>
+        )}
+        {marks.length > 0 && <button type="button" className="au-writer-marks" onClick={() => markOps.go(marks[0])} title="Aller à la première marque">{marks.length} marque{marks.length > 1 ? 's' : ''}</button>}
         <span className={cx('au-writer-save', `is-${status}`)}>
           {{
             saving: 'Envoi…', dirty: 'Modifié', error: '⚠ Échec — action requise', conflict: '⚠ Conflit à résoudre',
@@ -340,6 +525,9 @@ export function Writer() {
         <Field label={`Largeur de colonne — ${prefs.width} caractères`}>
           <input type="range" min="45" max="100" value={prefs.width} onChange={(e) => setPrefs({ width: Number(e.target.value) })} style={{ width: '100%' }} />
         </Field>
+        <Field label={`Interligne — ${Number(prefs.leading).toFixed(2).replace('.', ',')}`}>
+          <input type="range" min="1.3" max="2.3" step="0.05" value={prefs.leading} onChange={(e) => setPrefs({ leading: Number(e.target.value) })} style={{ width: '100%' }} />
+        </Field>
         <Field label="Police">
           <div className="au-seg">
             <button type="button" className={cx(prefs.font === 'serif' && 'is-on')} onClick={() => setPrefs({ font: 'serif' })} style={{ fontFamily: 'var(--au-serif)' }}>Avec empattements</button>
@@ -348,8 +536,9 @@ export function Writer() {
         </Field>
         <label className="au-check-row"><input type="checkbox" className="au-check" checked={prefs.typewriter} onChange={(e) => setPrefs({ typewriter: e.target.checked })} /> Mode machine à écrire (la ligne en cours reste au centre)</label>
         <label className="au-check-row"><input type="checkbox" className="au-check" checked={prefs.typo} onChange={(e) => setPrefs({ typo: e.target.checked })} /> Typographie française automatique (« », …, —)</label>
+        <label className="au-check-row"><input type="checkbox" className="au-check" checked={prefs.counters} onChange={(e) => setPrefs({ counters: e.target.checked })} /> Afficher les compteurs (mots, signes, objectif)</label>
         <p className="au-faint" style={{ fontSize: 12, marginTop: 10 }}>
-          Raccourcis : <Kbd>{MOD} B</Kbd> gras · <Kbd>{MOD} I</Kbd> italique · <Kbd>{MOD} ⇧ 1-3</Kbd> titres · <Kbd>{MOD} ⇧ 7/8</Kbd> listes · <Kbd>{MOD} ⇧ 9</Kbd> citation · <Kbd>{MOD} S</Kbd> enregistrer · <Kbd>{MOD} ⇧ F</Kbd> focus · <Kbd>[[</Kbd> lier une fiche
+          Raccourcis : <Kbd>{MOD} B</Kbd> gras · <Kbd>{MOD} I</Kbd> italique · <Kbd>{MOD} ⇧ 1-3</Kbd> titres · <Kbd>{MOD} ⇧ 7/8</Kbd> listes · <Kbd>{MOD} ⇧ 9</Kbd> citation · <Kbd>{MOD} S</Kbd> enregistrer · <Kbd>{MOD} F</Kbd> rechercher · <Kbd>{MOD} ⇧ F</Kbd> focus · <Kbd>[[</Kbd> lier une fiche · <Kbd>Alt Entrée</Kbd> voir la fiche sous le curseur
         </p>
       </Dialog>
       <Dialog open={sideMobile} onClose={() => setSideMobile(false)} title={`Chapitre ${ch.number || ''}`}>
@@ -359,16 +548,80 @@ export function Writer() {
             <Btn size="small" onClick={() => { setSideMobile(false); setSnapOpen(true); }}>📌 Enregistrer une version</Btn>
           </div>
         )}
-        <ChapterSide ch={ch} doc={doc} />
+        <ChapterSide ch={ch} doc={doc} marks={marks} markOps={markOps} />
+      </Dialog>
+      <Dialog open={cards} onClose={closeCards} title={peek ? `${peek.ent ? (peek.ent.icon || kindMeta(peek.ent.kind).icon) : '🫥'} ${peek.ent?.title || peek.name}` : '🗂 Fiches citées dans ce chapitre'} width={520} initialFocus={false}
+        footer={<>
+          {peek && linked.length > 1 && <Btn variant="ghost" onClick={() => setPeek(null)} style={{ marginRight: 'auto' }}>← Toutes les fiches citées</Btn>}
+          {peek?.ent && <Link className="au-btn is-ghost" to={`/auteur/${pid}/e/${peek.ent.id}`}>Ouvrir la fiche</Link>}
+          <Btn variant="primary" onClick={closeCards}>Revenir au texte</Btn>
+        </>}>
+        {!peek && (linked.length === 0
+          ? <p className="au-muted">Aucune fiche citée pour l&apos;instant. Tape <Kbd>[[</Kbd> dans le texte pour en lier une.</p>
+          : (
+            <div className="au-peek-list">
+              {linked.map(({ name, ent }) => (
+                <button key={name} type="button" className="au-menu-item" onClick={() => openPeek(name)}>
+                  <span aria-hidden>{ent ? (ent.icon || kindMeta(ent.kind).icon) : '🫥'}</span> {ent?.title || name}
+                  <span className="au-faint" style={{ marginLeft: 'auto', fontSize: 11 }}>{ent ? kindMeta(ent.kind).label : 'aucune fiche à ce nom'}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        {peek && !peek.ent && <p className="au-muted">Aucune fiche ne porte le nom « {peek.name} ». Le lien restera en pointillés tant qu&apos;elle n&apos;existe pas.</p>}
+        {peek?.ent && !peek.data && !peek.error && <p className="au-muted">Ouverture…</p>}
+        {peek?.error && <p className="au-offline-note">Cette fiche n&apos;est pas disponible pour l&apos;instant ({humanError(peek.error)}).</p>}
+        {peek?.data && (
+          <div className="au-peek">
+            <div className="au-faint" style={{ fontSize: 12 }}>{kindMeta(peek.data.kind).label}{peek.data.aliases?.length ? ` · ${peek.data.aliases.map((a) => a.alias).join(', ')}` : ''}</div>
+            {peek.data.summary && <p className="au-peek-summary">{peek.data.summary}</p>}
+            {peek.data.body
+              ? <Markdown content={peek.data.body} pid={pid} resolve={resolveName} />
+              : !peek.data.summary && <p className="au-muted">Fiche encore vide.</p>}
+          </div>
+        )}
       </Dialog>
     </div>
   );
 }
 
-function ChapterSide({ ch, doc }) {
+// Marques posées dans le chapitre : y aller, inverser ou trancher une variante,
+// lever une marque une fois le passage repris ou la question résolue.
+function MarksList({ marks, ops }) {
+  if (!marks.length) return null;
+  return (
+    <Field label={`Marques (${marks.length})`}>
+      <ul className="au-marks">
+        {marks.map((m) => {
+          const meta = MARK_TYPES[m.type];
+          const sum = markSummary(m);
+          return (
+            <li key={`${m.start}-${m.type}`} className={`au-marks-item is-${m.type}`}>
+              <button type="button" className="au-marks-go" onClick={() => ops.go(m)} title="Aller à ce passage">
+                <span aria-hidden>{meta.icon}</span>
+                <span><span className="au-faint">{meta.label}</span><br />{sum.main}{sum.alt !== null && <><br /><span className="au-marks-alt">ou : {sum.alt}</span></>}</span>
+              </button>
+              <div className="au-marks-ops">
+                {m.type === 'variante' ? (
+                  <>
+                    <Btn size="small" variant="ghost" onClick={() => ops.swap(m)} disabled={!m.b} title="L'autre version devient celle du texte">Inverser</Btn>
+                    <Btn size="small" variant="ghost" onClick={() => ops.resolve(m, 'a')} title="Ne garder que la version du texte">Trancher</Btn>
+                  </>
+                ) : <Btn size="small" variant="ghost" onClick={() => ops.resolve(m)}>{m.type === 'question' ? 'Résolue' : 'C\'est repris'}</Btn>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </Field>
+  );
+}
+
+function ChapterSide({ ch, doc, marks = [], markOps }) {
   const { pid } = useAuthor();
   return (
     <div className="au-writer-sidein">
+      <MarksList marks={marks} ops={markOps} />
       <Field label="Statut">
         <select className="au-select" value={ch.status} onChange={(e) => doc.setField('status', e.target.value)}>
           {CHAPTER_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
