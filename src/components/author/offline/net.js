@@ -79,3 +79,25 @@ if (typeof window !== 'undefined') {
   // `online` n'est qu'un indice : la prochaine requête confirmera.
   window.addEventListener('online', () => setOnline(true));
 }
+
+// ── Connexion mesurée (réseau mobile) et gros fichiers ──────────────────────
+//
+// Un son pèse vite des dizaines de mégaoctets : on ne l'envoie ni ne le
+// télécharge sur le réseau mobile sans que ce soit voulu. L'application
+// inscrit ici sa façon de connaître le type de connexion (natif) ; dans un
+// navigateur on se fie à ce qu'il veut bien dire, sinon on suppose le Wi-Fi.
+//   → { connected, unmetered }
+let connectionProbe = null;
+export function setConnectionProbe(fn) { connectionProbe = fn; }
+export async function connectionInfo() {
+  if (connectionProbe) {
+    try { return await connectionProbe(); } catch { /* repli ci-dessous */ }
+  }
+  const c = typeof navigator !== 'undefined' ? navigator.connection : null;
+  const metered = !!c && (c.saveData === true || c.type === 'cellular');
+  return { connected: typeof navigator === 'undefined' || navigator.onLine !== false, unmetered: !metered };
+}
+
+const WIFI_KEY = 'am-upload-audio';
+export const audioWifiOnly = () => { try { return localStorage.getItem(WIFI_KEY) !== 'any'; } catch { return true; } };
+export const setAudioWifiOnly = (v) => { try { localStorage.setItem(WIFI_KEY, v ? 'wifi' : 'any'); } catch { /* ignore */ } };

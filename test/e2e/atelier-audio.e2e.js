@@ -191,6 +191,47 @@ describe('Mon Atelier — capture audio privée, lecture et annotation sur les d
     assert.equal((await fetcher(server.base).get('/api/tracks')).json.filter((t) => t.filename).length, 0, 'toujours rien de public');
   });
 
+  it('téléphone : une prise gardée hors connexion s\'écoute sans réseau — les autres non', async () => {
+    const cached = (url) => pp.evaluate(async (u) => !!(await (await caches.open('au-media-v1')).match(u)), url);
+    const ranged = (url, range) => pp.evaluate(async ([u, r]) => {
+      const res = await fetch(u, { headers: { Range: r } });
+      return { status: res.status, range: res.headers.get('Content-Range'), length: (await res.arrayBuffer()).byteLength };
+    }, [url, range]);
+    const other = (await api.get(`${base}/audio`)).json.find((t) => t.label === 'Plus lente');
+    await pp.waitForFunction(() => !!navigator.serviceWorker?.controller, null, { timeout: 20000 });
+    assert.equal(await cached(take.url), false, 'l\'écoute en ligne n\'a laissé aucune copie sur l\'appareil');
+
+    await pp.getByRole('button', { name: /Actions sur Valse du port/ }).click();
+    await pp.getByText(/Garder hors connexion/).click();
+    await pp.locator('.au-take', { hasText: 'Valse du port' }).getByText('hors connexion', { exact: true }).waitFor();
+    assert.equal(await cached(take.url), true);
+    assert.equal(await cached(other.url), false, 'seule la prise demandée est gardée');
+
+    phoneSim.setOffline(true);
+    try {
+      const part = await ranged(take.url, 'bytes=10-109');
+      assert.deepEqual(part, { status: 206, range: `bytes 10-109/${take.size}`, length: 100 });
+      const tail = await ranged(take.url, 'bytes=-50');
+      assert.deepEqual(tail, { status: 206, range: `bytes ${take.size - 50}-${take.size - 1}/${take.size}`, length: 50 });
+      assert.equal((await ranged(take.url, `bytes=${take.size}-`)).status, 416);
+      assert.equal((await ranged(other.url, 'bytes=0-9')).status, 503, 'une prise non gardée ne se joue pas sans réseau');
+
+      // Lecture réelle, et déplacement dans la piste, sans réseau.
+      await pp.locator('.au-take', { hasText: 'Valse du port' }).locator('.au-take-main').click();
+      await pp.getByRole('button', { name: /Écouter — Valse du port/ }).click();
+      await pp.waitForFunction(() => document.querySelector('.au-takes audio')?.currentTime > 0.3);
+      await pp.getByRole('button', { name: /Mettre en pause/ }).click();
+      await pp.getByLabel(/Position dans la prise/).fill('900');
+      await pp.waitForFunction(() => Math.abs((document.querySelector('.au-takes audio')?.currentTime ?? 0) - 0.9) < 0.15);
+    } finally {
+      phoneSim.setOffline(false);
+    }
+
+    await pp.getByRole('button', { name: /Actions sur Valse du port/ }).click();
+    await pp.getByText('Retirer de cet appareil').click();
+    await pp.waitForFunction(async (u) => !(await (await caches.open('au-media-v1')).match(u)), take.url);
+  });
+
   it('hors connexion sur le web : la prise n\'est pas perdue ni déclarée rangée', async () => {
     await wp.getByRole('button', { name: '● Enregistrer' }).click();
     await wp.locator('.au-rec-button').click();

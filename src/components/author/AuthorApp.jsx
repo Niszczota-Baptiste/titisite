@@ -138,7 +138,7 @@ function ProjectPicker() {
   const canCreate = !!user?.canAuthor;
   const [projects, setProjects] = useState(null);
   const [error, setError] = useState(null);
-  const [form, setForm] = useState({ title: '', subtitle: '', targetWords: '' });
+  const [form, setForm] = useState({ title: '', subtitle: '', targetWords: '', kind: 'livre' });
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
@@ -161,7 +161,7 @@ function ProjectPicker() {
     setBusy(true);
     try {
       const p = await api.author.projects.create({
-        title: form.title.trim(), subtitle: form.subtitle.trim(),
+        title: form.title.trim(), subtitle: form.subtitle.trim(), kind: form.kind,
         targetWords: form.targetWords ? Number(form.targetWords) : null,
       });
       navigate(`/auteur/${p.id}`);
@@ -188,7 +188,9 @@ function ProjectPicker() {
             {projects.map((p) => (
               <div key={p.id} className="au-card is-link" role="link" tabIndex={0}
                 onClick={() => navigate(`/auteur/${p.id}`)} onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/auteur/${p.id}`); }}>
-                <div style={{ fontFamily: 'var(--au-head)', fontWeight: 700, fontSize: 17 }}>{p.title}</div>
+                <div style={{ fontFamily: 'var(--au-head)', fontWeight: 700, fontSize: 17 }}>
+                  {p.kind && p.kind !== 'livre' && <span aria-hidden title={projectKind(p.kind).label}>{projectKind(p.kind).icon} </span>}{p.title}
+                </div>
                 {p.subtitle && <div className="au-muted">{p.subtitle}</div>}
                 <div className="au-faint" style={{ fontSize: 12, marginTop: 6 }}>
                   {p.access === 'owner'
@@ -202,19 +204,32 @@ function ProjectPicker() {
         {projects?.length === 0 && !canCreate && (
           <p className="au-muted" style={{ textAlign: 'center' }}>Aucun livre ne t&apos;est partagé pour le moment.</p>
         )}
-        {projects && canCreate && !showForm && <Btn onClick={() => setShowForm(true)} style={{ width: '100%' }}>＋ Nouveau livre</Btn>}
+        {projects && canCreate && !showForm && <Btn onClick={() => setShowForm(true)} style={{ width: '100%' }}>＋ Nouveau projet</Btn>}
         {projects && canCreate && showForm && (
           <form className="au-card" onSubmit={create}>
-            <div className="au-card-title">{projects.length ? 'Nouveau livre' : 'Commencer ton livre'}</div>
+            <div className="au-card-title">{projects.length ? 'Nouveau projet' : 'Commencer'}</div>
+            {/* La nature du projet oriente son accueil et son vocabulaire ; elle
+                n'impose aucune structure et se change dans les réglages. */}
+            <Field label="Ce que tu crées">
+              <div className="au-chips-row" role="radiogroup" aria-label="Nature du projet">
+                {PROJECT_KINDS.map((k) => (
+                  <button key={k.key} type="button" role="radio" aria-checked={form.kind === k.key} title={k.hint}
+                    className={`au-chip ${form.kind === k.key ? 'is-sel' : ''}`} onClick={() => setForm({ ...form, kind: k.key })}>
+                    <span aria-hidden>{k.icon}</span> {k.label}
+                  </button>
+                ))}
+              </div>
+              <div className="au-faint" style={{ fontSize: 12, marginTop: 6 }}>{projectKind(form.kind).hint} Tous les outils restent disponibles.</div>
+            </Field>
             <Field label="Titre (provisoire, ça se change)">
               <input className="au-input" autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Le Livre des Cendres" />
             </Field>
             <Field label="Sous-titre">
               <input className="au-input" value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} placeholder="Tome I" />
             </Field>
-            <Field label="Objectif de mots (facultatif)">
+            {['livre', 'nouvelle', 'mixte'].includes(form.kind) && <Field label="Objectif de mots (facultatif)">
               <input className="au-input" type="number" min="0" inputMode="numeric" value={form.targetWords} onChange={(e) => setForm({ ...form, targetWords: e.target.value })} placeholder="90000" />
-            </Field>
+            </Field>}
             <Btn type="submit" variant="primary" disabled={busy || !form.title.trim()} style={{ width: '100%' }}>Créer et ouvrir</Btn>
           </form>
         )}

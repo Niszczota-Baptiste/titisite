@@ -1006,3 +1006,9 @@ p.au-offline-note { margin: 4px 0 12px; }
 .au-writer-hl { position: absolute; inset: 0; min-height: 0; color: transparent; pointer-events: none; white-space: pre-wrap; overflow-wrap: break-word; }
 .au-writer-hl mark { color: transparent; background: color-mix(in srgb, var(--au-warn) 38%, transparent); border-radius: 2px; }
 .au-writer-hl mark.is-current { background: color-mix(in srgb, var(--au-acc) 60%, transparent); }
+
+/* Panneau hors connexion : ce qui est réellement sur l'appareil */
+.au-avail { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.au-avail li { display: flex; gap: 8px; align-items: flex-start; }
+.au-avail-matrix { margin-top: 10px; font-size: 12px; color: var(--au-muted); }
+.au-avail-matrix p { margin: 0 0 4px; }

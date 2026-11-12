@@ -2,13 +2,14 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../auth/AuthContext';
 import { setRecorderFactory, setTakeFallback } from '../components/author/audio/recorderPort.js';
+import { setConnectionProbe } from '../components/author/offline/net.js';
 import { PortalContext } from '../components/author/ui';
 import { useToast } from '../ui/ToastProvider';
 import { EnvCtx, ownerKey } from './env';
 import { startInboxSync, stopInboxSync } from './inbox/engine.js';
 import { newItem, takeItem } from './inbox/model.js';
 import { isNative } from './platform/bridge.js';
-import { loadConfig } from './platform/config.js';
+import { loadConfig, networkInfo } from './platform/config.js';
 import { launchAction, onAction, onShare, pendingShare } from './platform/intake.js';
 import { createNativeRecorder, onRecorderState, recoverTakes } from './platform/recorder.js';
 import { vault } from './platform/vault.js';
@@ -25,6 +26,8 @@ import { lastProjectId } from './useProjects';
 // Dans l'application, l'atelier enregistre en natif (service au premier plan,
 // fichier écrit sur l'appareil) ; ailleurs, avec le micro du navigateur.
 if (isNative()) setRecorderFactory(() => createNativeRecorder());
+// Type de connexion : demandé au téléphone (Wi-Fi ou réseau mobile).
+setConnectionProbe(networkInfo);
 
 const AuthorApp = lazy(() => import('../components/author/AuthorApp'));
 

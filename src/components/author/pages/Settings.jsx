@@ -4,7 +4,7 @@ import { triggerDownload } from '../../../api/client';
 import { useConfirm } from '../../../ui/ConfirmProvider';
 import { useToast } from '../../../ui/ToastProvider';
 import { useAuthor } from '../context';
-import { kindMeta } from '../kinds';
+import { PROJECT_KINDS, kindMeta, projectKind } from '../kinds';
 import { OfflinePanel } from '../offline/SyncBadge';
 import { SharingPanel } from '../sharing';
 import { useShellPage } from '../Shell';
@@ -43,16 +43,17 @@ function ProjectForm() {
   const toast = useToast();
   const [form, setForm] = useState({
     title: project.title, subtitle: project.subtitle, description: project.description,
-    targetWords: project.targetWords ?? '', color: project.color,
+    targetWords: project.targetWords ?? '', color: project.color, kind: project.kind || 'livre',
   });
   const [error, setError] = useState(null);
   const dirty = form.title !== project.title || form.subtitle !== project.subtitle || form.description !== project.description
-    || String(form.targetWords ?? '') !== String(project.targetWords ?? '') || form.color !== project.color;
+    || String(form.targetWords ?? '') !== String(project.targetWords ?? '') || form.color !== project.color
+    || form.kind !== (project.kind || 'livre');
   const save = async () => {
     try {
       const p = await P.update({ ...form, targetWords: form.targetWords === '' ? null : Number(form.targetWords) });
       setProject(p);
-      toast.success('Livre mis à jour');
+      toast.success('Projet mis à jour');
     } catch (err) { setError(err); }
   };
   return (
@@ -62,6 +63,12 @@ function ProjectForm() {
       <div className="au-grid2">
         <Field label="Titre" className="is-full"><input className="au-input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
         <Field label="Sous-titre"><input className="au-input" value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} /></Field>
+        <Field label="Nature du projet">
+          <select className="au-select" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+            {PROJECT_KINDS.map((k) => <option key={k.key} value={k.key}>{k.icon} {k.label}</option>)}
+          </select>
+          <div className="au-faint" style={{ fontSize: 12, marginTop: 4 }}>{projectKind(form.kind).hint} Changer de nature ne déplace ni ne supprime rien.</div>
+        </Field>
         <Field label="Objectif de mots"><input className="au-input" type="number" min="0" value={form.targetWords} onChange={(e) => setForm({ ...form, targetWords: e.target.value })} /></Field>
         <Field label="Pitch / description" className="is-full"><textarea className="au-textarea" rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
         <Field label="Couleur" className="is-full"><ColorDots value={form.color} onChange={(c) => setForm({ ...form, color: c })} /></Field>

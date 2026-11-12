@@ -51,9 +51,14 @@ export function Dashboard() {
         </div>
         <div className="au-actions">
           <Btn onClick={() => setCaptureOpen(true)}>💡 Idée</Btn>
-          {data.lastChapter
+          {/* La nature du projet décide seulement de ce qui est mis en avant ici. */}
+          {['musique', 'mixte'].includes(project?.kind) && (
+            <Btn variant={project.kind === 'musique' ? 'primary' : undefined} onClick={() => navigate(`${base}/sons`)}>🎵 Idées musicales</Btn>
+          )}
+          {['univers', 'libre'].includes(project?.kind) && <Btn variant="primary" onClick={() => navigate(`${base}/explorer`)}>🧭 Explorer</Btn>}
+          {!['musique', 'univers', 'libre'].includes(project?.kind) && (data.lastChapter
             ? <Btn variant="primary" onClick={() => navigate(`${base}/ecrire/${data.lastChapter.id}`)}>✍️ Reprendre l&apos;écriture</Btn>
-            : <Btn variant="primary" onClick={() => navigate(`${base}/chapitres`)}>✍️ Écrire</Btn>}
+            : <Btn variant="primary" onClick={() => navigate(`${base}/chapitres`)}>✍️ Écrire</Btn>)}
         </div>
       </div>
 

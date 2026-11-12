@@ -8,6 +8,7 @@ import { PublishDialog } from './PublishDialog';
 import { RecorderDialog } from './RecorderDialog';
 import { MARKER_LABELS, formatBytes, formatMs, normalizeLoop, sortMarkers } from './time.js';
 import { newTakeRef, sendTake } from './upload.js';
+import { audioOfflineReady, cacheAudio, cachedAudioStats, meteredBlock, subscribeAudioCache, uncacheAudio } from '../offline/audioCache.js';
 
 // Prises d'une idée musicale : les versions d'une même idée, l'une d'elles
 // servant de référence. On écoute, on se déplace, on pose des repères
@@ -99,6 +100,36 @@ export function TakesPanel({ entity, onChanged, bpm = null, signature = '' }) {
 
   const guard = async (fn) => { try { await fn(); } catch (err) { toast.error(humanError(err.body?.error || err)); } };
 
+  // Prises gardées sur cet appareil pour l'écoute hors connexion (sur demande).
+  const [kept, setKept] = useState(() => new Set());
+  const [keeping, setKeeping] = useState(null);
+  const takeKey = takes.map((t) => t.url).join('|');
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => cachedAudioStats(takes).then((st) => { if (alive) setKept(st.urls); }).catch(() => {});
+    refresh();
+    const off = subscribeAudioCache(refresh);
+    return () => { alive = false; off(); };
+  }, [takeKey]); // eslint-disable-line
+  const keepOffline = async (t, force = false) => {
+    if (!audioOfflineReady()) { toast.error('L\'écoute hors connexion n\'est pas encore prête sur cet appareil : recharge la page une fois en ligne.'); return; }
+    if (!force && await meteredBlock()) {
+      const ok = await confirm({
+        title: 'Télécharger sur le réseau mobile ?',
+        message: `Cette prise pèse ${formatBytes(t.size)}. Le réglage « sons en Wi-Fi seulement » est actif.`,
+        confirmLabel: 'Télécharger quand même',
+      });
+      if (!ok) return;
+    }
+    setKeeping(t.id);
+    try {
+      await cacheAudio(t);
+      toast.success('Prise disponible hors connexion sur cet appareil');
+    } catch (err) {
+      toast.error(err.code === 'size_mismatch' ? 'Téléchargement incomplet : la prise n\'a pas été gardée.' : 'Téléchargement impossible pour l\'instant.');
+    } finally { setKeeping(null); }
+  };
+
   const addTake = async ({ take, label }) => {
     // Référence choisie une fois par prise : un nouvel essai (ou l'envoi différé
     // par la boîte de réception de l'application) ne crée jamais de doublon.
@@ -150,6 +181,9 @@ export function TakesPanel({ entity, onChanged, bpm = null, signature = '' }) {
     { label: 'Renommer', icon: '✎', onClick: () => setRename(t) },
     t.id !== refId && { label: 'Prendre comme référence', icon: '★', onClick: () => guard(async () => { await P.audio.update(t.id, { reference: true }); onChanged?.(); }) },
     takes.length > 1 && t.id !== sel?.id && { label: 'Comparer avec la prise ouverte', icon: '⇄', onClick: () => { setCompareId(t.id); setSide('A'); } },
+    kept.has(t.url)
+      ? { label: 'Retirer de cet appareil', icon: '📴', onClick: () => guard(() => uncacheAudio(t.url)) }
+      : { label: `Garder hors connexion (${formatBytes(t.size)})`, icon: '📥', onClick: () => keepOffline(t) },
     { label: 'Télécharger l\'original', icon: '⬇', onClick: () => { window.location.href = P.audio.downloadUrl(t.id); } },
     { label: 'Publier…', icon: '📣', onClick: () => setPublish(t.id) },
     { sep: true },
@@ -194,6 +228,8 @@ export function TakesPanel({ entity, onChanged, bpm = null, signature = '' }) {
                   {formatMs(t.durationMs)} · {formatDateTime(t.capturedAt || t.createdAt)}{SOURCE_LABEL[t.source] ? ` · ${SOURCE_LABEL[t.source]}` : ''}
                   {t.integrity === 'recovered' && <span className="au-pill" style={{ '--pill': 'var(--au-warn)', marginLeft: 6 }} title="Enregistrement interrompu : ce qui a été capté a été récupéré, la fin peut manquer.">récupérée</span>}
                   {t.publishedAt && <span className="au-pill" style={{ '--pill': 'var(--au-ok)', marginLeft: 6 }}>publiée</span>}
+                  {kept.has(t.url) && <span className="au-pill" style={{ '--pill': 'var(--au-acc)', marginLeft: 6 }} title="Le fichier entier est sur cet appareil : écoute possible sans réseau.">hors connexion</span>}
+                  {keeping === t.id && <span className="au-faint" style={{ marginLeft: 6 }}>téléchargement…</span>}
                 </span>
               </button>
               <Btn size="small" variant="ghost" icon onClick={(e) => openMenu(e, takeMenu(t))} aria-label={`Actions sur ${t.label || 'la prise'}`}>⋯</Btn>

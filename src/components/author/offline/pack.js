@@ -98,6 +98,9 @@ export async function prefetchProject(P, pid, { onProgress = () => {}, force = f
     at: Date.now(),
     fullAt: full ? Date.now() : prev.fullAt,
     count: all.length,
+    // Ce qui a réellement été mis de côté, pour le dire sans enjoliver.
+    thumbs: full ? Math.min(media.size, MAX_MEDIA) : Math.max(prev?.thumbs || 0, Math.min(media.size, MAX_MEDIA)),
+    thumbsSkipped: Math.max(0, media.size - MAX_MEDIA),
     seen: Object.fromEntries(all.map((e) => [e.id, e.updatedAt])),
   };
   savePack(pid, info);

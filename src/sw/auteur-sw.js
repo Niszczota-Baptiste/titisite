@@ -13,7 +13,8 @@
 //     fraîches) et retombent sur la dernière copie si le réseau manque ou
 //     traîne ; une absence de copie répond 503 { error: 'offline' } ;
 //   - les images (/api/author/media/*, noms immuables) sont servies depuis le
-//     cache une fois vues.
+//     cache une fois vues ; un son n'y entre que sur demande explicite
+//     (« Garder hors connexion »), et en ressort plage par plage.
 // Les écritures ne passent JAMAIS par ici : l'application les garde sur
 // l'appareil et les synchronise elle-même (src/components/author/offline/).
 // Les copies sont privées à ce navigateur et effacées à la déconnexion ou au
@@ -108,13 +109,38 @@ async function asset(req) {
   return res;
 }
 
+// Plage d'octets d'une copie complète : c'est ce qu'attend un lecteur audio
+// (déplacement dans la piste) — une réponse entière à une demande de plage
+// serait refusée.
+async function slice(hit, range) {
+  const blob = await hit.blob();
+  const size = blob.size;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(range).trim());
+  if (!m || (m[1] === '' && m[2] === '')) return new Response(blob, { status: 200, headers: hit.headers });
+  let start; let end;
+  if (m[1] === '') { start = Math.max(0, size - Number(m[2])); end = size - 1; } // « les N derniers octets »
+  else { start = Number(m[1]); end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1); }
+  if (start >= size || start > end) return new Response('', { status: 416, headers: { 'Content-Range': `bytes */${size}` } });
+  const headers = new Headers(hit.headers);
+  headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
+  headers.set('Content-Length', String(end - start + 1));
+  headers.set('Accept-Ranges', 'bytes');
+  headers.set('X-Au-Cache', 'hit');
+  return new Response(blob.slice(start, end + 1), { status: 206, statusText: 'Partial Content', headers });
+}
+
+// Images : gardées une fois vues. Sons : JAMAIS gardés au passage (une écoute
+// en ligne est une lecture par plages, qui ne laisse aucune copie) — seulement
+// quand l'utilisateur le demande (offline/audioCache.js y dépose le fichier
+// entier) ; ils sont alors servis d'ici, plage par plage.
 async function media(req) {
   const cache = await caches.open(MEDIA);
-  const hit = await cache.match(req);
-  if (hit) return hit;
+  const range = req.headers.get('Range');
+  const hit = await cache.match(req.url);
+  if (hit) return range ? slice(hit, range) : hit;
   try {
     const res = await fetch(req);
-    if (res.status === 200) await cache.put(req, res.clone());
+    if (res.status === 200 && !range && (res.headers.get('Content-Type') || '').startsWith('image/')) await cache.put(req.url, res.clone());
     return res;
   } catch {
     return new Response('', { status: 503 });
@@ -145,8 +171,8 @@ self.addEventListener('fetch', (event) => {
   if (req.mode === 'navigate') { event.respondWith(navigation(req)); return; }
   if (url.pathname.startsWith('/assets/')) { event.respondWith(asset(req)); return; }
   if (url.pathname.startsWith('/api/author/media/')) { event.respondWith(media(req)); return; }
-  // Exports (fichiers à télécharger) : jamais mis en cache.
-  if (url.pathname.startsWith('/api/author/') && !/\/export(\/|$)/.test(url.pathname)) {
+  // Exports et téléchargements (fichiers à enregistrer) : jamais mis en cache.
+  if (url.pathname.startsWith('/api/author/') && !/\/(export|download)(\/|$)/.test(url.pathname)) {
     event.respondWith(data(req, url));
   }
 });

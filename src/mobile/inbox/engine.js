@@ -1,6 +1,6 @@
 import { api } from '../../api/client';
 import { sendTake } from '../../components/author/audio/upload.js';
-import { isNetworkError, pauseReason, subscribeAuth, subscribeNet } from '../../components/author/offline/net.js';
+import { audioWifiOnly, isNetworkError, pauseReason, setAudioWifiOnly, subscribeAuth, subscribeNet } from '../../components/author/offline/net.js';
 import { networkInfo } from '../platform/config.js';
 import { vault } from '../platform/vault.js';
 import { fileItem } from './file.js';
@@ -21,9 +21,9 @@ import { audioFiles } from './model.js';
 // Les sons peuvent attendre le Wi-Fi (réglage) : ils restent alors en attente,
 // et l'interface le dit.
 
-const WIFI_KEY = 'am-upload-audio';
-export const audioOverWifiOnly = () => { try { return localStorage.getItem(WIFI_KEY) !== 'any'; } catch { return true; } };
-export const setAudioOverWifiOnly = (v) => { try { localStorage.setItem(WIFI_KEY, v ? 'wifi' : 'any'); } catch { /* ignore */ } };
+// Même réglage que le téléchargement des sons pour l'écoute hors connexion.
+export const audioOverWifiOnly = audioWifiOnly;
+export const setAudioOverWifiOnly = setAudioWifiOnly;
 
 const listeners = new Set();
 let state = { running: false, sending: null, progress: 0, waitingWifi: 0, paused: null, offline: false, lastAt: null };
