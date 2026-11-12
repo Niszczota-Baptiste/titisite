@@ -196,7 +196,8 @@ livre).
 | Créer un élément | `offline/offlineApi.js` : id temporaire < 0, élément gardé sur l'appareil (`au-local:<livre>`), création mise en file |
 | Capturer une idée | mise en file (`au-outbox`) |
 | Chercher | titres et alias de l'index gardé (le plein texte vit sur le serveur) |
-| Relations, plan, tableaux, images, tâches, commentaires, publication | attendent le réseau (message « Hors connexion ») |
+| Écouter une prise audio | seulement si elle a été **gardée sur demande** (`offline/audioCache.js` : fichier entier déposé dans le cache des médias, servi par plages par le service worker). Une écoute en ligne ne laisse aucune copie |
+| Relations, plan, tableaux, images en grand, tâches, commentaires, repères d'une prise, publication, assistance | attendent le réseau (message « Hors connexion ») |
 
 **Synchronisation** (`offline/sync.js`, pur et testé ; `offline/engine.js` la
 relance au retour du réseau, à la reprise de l'onglet et toutes les 20 s tant
@@ -236,9 +237,18 @@ installe un nouveau service worker, qui garde la version précédente pour les
 onglets déjà ouverts. `server/index.js` sert `auteur-sw.js` sans cache HTTP.
 Rien n'est enregistré en développement (`npm run dev`).
 
+Le panneau « Hors connexion » des réglages dit ce qui est **réellement** sur
+l'appareil : texte (nombre d'éléments, date), miniatures (nombre), sons (prises
+gardées et tailles), et ce qui attend le réseau.
+
+L'application Android « Mon Atelier » embarque ce même atelier, précédé d'un
+accueil téléphone et d'une boîte de réception locale :
+[`atelier-mobile.md`](atelier-mobile.md).
+
 Tests : `test/author-offline.test.js` (fusion, file, coupure en cours de
-synchronisation, conflits, comptes) et les créations idempotentes dans
-`test/author-sharing.test.js`.
+synchronisation, conflits, comptes), les créations idempotentes dans
+`test/author-sharing.test.js`, et les parcours de bout en bout
+`test/e2e/*.e2e.js` (`npm run test:atelier`).
 
 ## Moteur de cohérence
 
@@ -256,6 +266,12 @@ coût quadratique. Résultat mémorisé par projet tant que rien ne bouge.
 renvoyant des problèmes `{ key, severity, title, detail, entityIds }` — la
 `key` doit être stable pour que « Ignorer » survive aux recalculs.
 
+Chaque problème porte sa **nature** (`issueNature`, d'après la règle) :
+`calculee` (déduite des dates et des relations), `declaree` (repose sur une
+relation posée par l'auteur, ex. « contredit »), `suggestion` (une piste : la
+mention non reliée). « Ignorer » demande une **raison** facultative
+(`author_issue_dismissals.reason`), gardée et affichée dans « Ignorés ».
+
 ## Interface
 
 - Ordinateur : barre latérale repliable, fil d'Ariane, palette `Ctrl/⌘ K`,
@@ -269,7 +285,26 @@ renvoyant des problèmes `{ key, severity, title, detail, entityIds }` — la
 - Éditeur : Markdown dans une colonne à empattements, formatage par boutons
   et raccourcis (l'annulation native est préservée via `execCommand`),
   typographie française automatique, `[[Nom]]` avec suggestions, mode focus,
-  mode machine à écrire, compteurs et objectif, historique.
+  mode machine à écrire, compteurs et objectif (masquables), interligne,
+  historique. Recherche dans le chapitre (`Ctrl/⌘ F`, sans casse ni accents,
+  occurrences surlignées par un calque sous le texte). Aperçu d'une fiche
+  citée (bouton 🗂 ou `Alt Entrée` sur un lien) : la sélection et la position
+  sont retrouvées à la fermeture. Aucun raccourci ni correction automatique
+  pendant une composition (clavier coréen).
+- **Marques de travail** (`marks.js`), écrites dans le texte :
+  `{{reprendre: passage}}`, `{{question: note}}`, `{{variante: A || B}}` —
+  posées depuis la barre d'outils, listées dans le panneau du chapitre (y
+  aller, inverser, trancher, lever). Elles sont **privées** : le serveur les
+  retire de ce qu'il sert aux invités, du manuscrit exporté, de l'index de
+  recherche et des compteurs (`server/author/marks.js`, copie conforme du
+  client vérifiée par `test/author-marks.test.js`).
+- **Atelier musical** : idées musicales (`sound`), prises audio privées
+  (enregistrer, importer, écouter, repères, boucle A–B, versions et prise de
+  référence, métronome), publication en trois temps. Détail :
+  [`atelier-mobile.md`](atelier-mobile.md#création-musicale-privée).
+- **Assistance facultative** (✨ dans l'éditeur, seulement si activée pour le
+  projet) : des propositions sur un extrait choisi, jamais d'écriture
+  automatique. Détail : [`atelier-mobile.md`](atelier-mobile.md#assistance-facultative).
 
 ## Ajouter…
 
@@ -278,7 +313,10 @@ renvoyant des problèmes `{ key, severity, title, detail, entityIds }` — la
 | un type d'élément | table + `migrateAuthor`, `KINDS`/`KIND_TABLE`/`KIND_FIELDS` (`enums.js`), `LIST_COLS` (`entities.js`), `KINDS` + sections (`kinds.js`), route de liste (`AuthorApp.jsx`) |
 | un champ de fiche | colonne (`schema.js`, `ensureColumn` si la table existe déjà en prod), `KIND_FIELDS`, puis la définition de champ dans `kinds.js` (le rendu suit) |
 | une relation | `RELATION_KINDS` (`enums.js`) + `RELATIONS` (`kinds.js`) ; `defaultRelation` si un couple de types doit la proposer |
-| une règle de cohérence | `RULES` (`consistency.js`) + son test |
+| une règle de cohérence | `RULES` (`consistency.js`) + sa nature dans `NATURE_BY_RULE` + son test |
+| un type de marque de travail | `marks.js` **des deux côtés** (`server/author/` et `src/components/author/`) + un cas dans `test/author-marks.test.js` + un marqueur dans le balayage de `test/author-sharing.test.js` |
+| un format audio accepté | `AUDIO_FAMILIES` + `sniffAudio` (`server/author/audio.js`), l'extension dans la route `/media/:filename`, `ALLOWED_AUTHOR_AUDIO` (`uploads.js`) |
+| une fonction native de l'application | l'adaptateur dans `src/mobile/platform/` (avec son repli navigateur), le plugin Kotlin côté `AndroidApp/apps/mon-atelier`, la ligne du tableau des contrats dans `atelier-mobile.md` |
 | un module (page) | composant dans `pages/`, route dans `OwnerProject.jsx`, entrée dans `nav.js` |
 | une lecture d'écran à garder hors connexion | l'appel identique dans `offline/pack.js#prefetchProject` (mêmes paramètres que la page) |
 | un module visible des invités | une lecture filtrée dans `sharing.js` + sa route dans le routeur `g`, la page dans `guest/` + `GUEST_NAV`, et une ligne dans le balayage de `test/author-sharing.test.js` |
@@ -288,7 +326,15 @@ renvoyant des problèmes `{ key, severity, title, detail, entityIds }` — la
 - `AUTHOR_OWNER_EMAIL` (optionnel) : e-mail du compte propriétaire ; par défaut
   `ADMIN_EMAIL`. Le compte doit avoir le rôle `admin`.
 - `AUTHOR_IMAGE_MAX_BYTES` (optionnel) : taille max d'une image (15 Mo).
+- `AUTHOR_AUDIO_MAX_BYTES` (optionnel) : taille max d'une prise audio (250 Mo) ;
+  garder au-dessus la limite du bloc nginx `/api/author/projects/…/audio`.
+- `ANTHROPIC_API_KEY` + `AUTHOR_ASSIST_MODEL` (optionnels) : assistance
+  d'écriture facultative. Sans clé, elle n'existe pas ; avec, elle reste
+  éteinte tant qu'un projet ne l'active pas.
 
 Aucune dépendance ajoutée. Les tables sont créées au démarrage (migration
 additive) ; `backup.sh` les sauvegarde avec le reste de `data.sqlite`, les
-images vivent dans `uploads/` comme les autres médias.
+images et les prises audio vivent dans `uploads/` comme les autres médias.
+Procédure avant une mise à jour sur des données réelles (sauvegarde,
+répétition sur une copie, retour arrière) :
+[`atelier-mobile.md`](atelier-mobile.md#migrations-et-sauvegarde).

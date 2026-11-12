@@ -69,6 +69,30 @@ Single-process Node app:
   (`pack.js`). Copies effacées à la déconnexion / au changement de compte
   (`ensureAuthorCacheOwner` dans `src/api/client.js`). Voir
   `docs/atelier-auteur.md#hors-connexion`.
+  **Atelier musical** : type `sound` (idée musicale, PRIVÉ — absent de
+  `GUEST_KINDS`), prises audio privées dans `author_media` (`kind='audio'`,
+  contenu vérifié par ses octets, SHA-256, envoi idempotent par `clientRef`,
+  plages derrière la garde ; `server/author/audio.js`), repères
+  `author_media_markers`. `/api/tracks` et `/api/audio` (portfolio PUBLIC) ne
+  reçoivent jamais un brouillon : publier = copie explicite en trois temps
+  (`server/author/publish.js`). Un son n'est gardé hors connexion que sur
+  demande (`offline/audioCache.js`, servi par plages par le service worker).
+  **Marques de travail** `{{reprendre: …}}` / `{{question: …}}` /
+  `{{variante: A || B}}` : privées, retirées côté serveur de tout ce qui sort
+  (invités, manuscrit, FTS, compteurs) — `marks.js` existe des DEUX côtés
+  (`server/author/`, `src/components/author/`), parité testée.
+  **Assistance facultative** (`server/author/assist.js`) : n'existe qu'avec
+  `ANTHROPIC_API_KEY`, éteinte par projet (`author_projects.ai_assist`), seul
+  l'extrait choisi part, propositions jamais écrites par le serveur, aucune
+  route invité.
+  **Application Android « Mon Atelier »** (`docs/atelier-mobile.md`) : bundle
+  `src/mobile/` (`npm run build:atelier` → `dist-atelier/`, embarqué dans l'APK
+  du dépôt AndroidApp) qui réutilise `src/components/author/*` ; le conteneur
+  sert la coquille SOUS L'ORIGINE DU SITE, seules les requêtes `/api` sortent →
+  cookie HttpOnly de première partie, ni CORS ni jeton côté JS : ne jamais en
+  ajouter. Fonctions natives derrière des ports (`src/mobile/platform/*.js`,
+  `recorderPort.js`) avec repli navigateur. Parcours de bout en bout :
+  `npm run test:atelier` (Playwright + banc « conteneur » `test/e2e/container.js`).
 - Public-site collections (`projects`, `tracks`, `education`, `experience`,
   `currently`) use a **JSON-blob table per name** (`server/db.js#listAll/insert/update/remove/reorder`).
   CRUD UI uses `ItemList` (`src/components/admin/ItemList.jsx`) — pass
@@ -549,6 +573,8 @@ npm install
 npm run dev          # backend (3001) + Vite (5173) in parallel
 npm run build        # vite build → dist/
 npm start            # NODE_ENV=production, single Express process
+npm run build:atelier   # bundle de l'application Mon Atelier → dist-atelier/
+npm run test:atelier    # parcours de bout en bout (après build + build:atelier)
 ```
 
 `.env.example` lists every var. Required: `JWT_SECRET`, `ADMIN_EMAIL`,
@@ -602,5 +628,6 @@ First boot creates the DB at `DB_PATH` (default `./data.sqlite`) and seeds:
 | New writing-space field/resource | add the column/table in `server/db.js#migrate`, the mapper + route in `server/routes/writing.js` (public) / `writing-admin.js` (admin), an `api.*` helper in `src/api/client.js`, then the editor in `src/components/admin/editors/writing/` and reader UI in `src/components/writing/` |
 | New 3D-map biome/building | `src/components/writing/map/presets.js` (+ the mesh in `buildings.jsx` for a building), then the matching allowlist in `server/routes/writing-admin.js` — see `docs/carte-3d.md` |
 | New tool/field in the vault workshop | the field in `server/vault/validate.js#normalizeDoc` (it strips anything it doesn't know), then the tool in `src/components/vault/Toolbar.jsx` + its gesture in `PlanCanvas.jsx` + its fiche in `Inspector.jsx` — see `docs/salle-des-coffres.md` |
+| New native capability of the Mon Atelier app | the adapter in `src/mobile/platform/` (with its browser fallback), the Kotlin plugin in the AndroidApp repo (`apps/mon-atelier`), and the contracts table in `docs/atelier-mobile.md` |
 | New element kind / relation / consistency rule in the author space | `server/author/enums.js` (+ `schema.js`, `consistency.js#RULES`) and the display mirror `src/components/author/kinds.js` — see `docs/atelier-auteur.md` |
 | New lore entry type / status / tab | `server/lore/enums.js` + visual meta in `src/components/lore/theme.js`; tabs via `TABS` in `src/pages/Lore.jsx` — see `docs/lore.md` |

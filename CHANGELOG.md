@@ -5,6 +5,69 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — mon-atelier
+
+### « Mon Atelier » : l'atelier d'auteur sur le téléphone, et la musique
+Un seul atelier sur deux supports. L'application Android (dépôt AndroidApp,
+`apps/mon-atelier`) embarque l'interface construite ici (`src/mobile/` +
+`src/components/author/`, `npm run build:atelier`) et la sert **sous l'origine
+du site** : seules les requêtes `/api` sortent, donc le cookie de session reste
+`HttpOnly` et de première partie — ni CORS, ni jeton côté JavaScript, aucun
+changement de l'authentification. Détail : `docs/atelier-mobile.md`.
+
+- **Accueil centré création** : capturer une idée, écrire, enregistrer un son,
+  reprendre un projet, explorer. Capturer et enregistrer fonctionnent sans
+  réseau, sans compte, dès le premier lancement.
+- **Boîte de réception locale** (texte, lien, image, son, provenance gardée) :
+  on classe plus tard, ou jamais. Un partage venu d'une autre application est
+  montré en aperçu avant d'être importé. L'envoi est rejouable : une réponse
+  perdue ne crée jamais de doublon.
+- **Atelier musical privé** : idées musicales (`sound`), prises audio dans
+  `author_media` (`kind='audio'`, contenu vérifié par ses octets, SHA-256,
+  envoi idempotent, lecture par plages derrière la garde), repères, boucle
+  A–B, extraits non destructifs, versions et prise de référence, métronome et
+  tap tempo. **Le portfolio public (`/api/tracks`, `/api/audio`) ne reçoit
+  jamais un brouillon** : publier est une copie explicite en trois temps.
+- **Éditeur** : marques de travail `{{reprendre}}` / `{{question}}` /
+  `{{variante: A || B}}` (privées : retirées côté serveur de ce que voient les
+  invités, du manuscrit, de la recherche et des compteurs), recherche dans le
+  chapitre, aperçu d'une fiche citée sans perdre sa place, interligne,
+  compteurs masquables, composition coréenne préservée.
+- **Continuité** : cinq états jamais confondus (sauvegardé sur l'appareil, en
+  attente d'envoi, synchronisé, conflit, échec), réseau coupé / session expirée
+  / accès refusé distingués, reconnexion sans perdre le travail.
+- **Hors connexion honnête** : le panneau dit ce qui est réellement sur
+  l'appareil (texte, miniatures, sons). Un son n'est gardé que sur demande, et
+  s'écoute alors sans réseau, déplacement dans la piste compris.
+- **Explorer**, idées « à revoir plus tard » (sans notification), nature du
+  projet (roman, nouvelle, poésie, scène, univers, musique, mixte, libre).
+- **Cohérence** : nature de chaque signalement (calculée / déclarée /
+  suggestion), « Ignorer » avec une raison gardée.
+- **Assistance facultative** : éteinte par défaut, activée projet par projet,
+  clé côté serveur ; seul l'extrait choisi part, et une proposition n'entre
+  dans le texte que sur un geste, comme variante ou comme question.
+
+### Corrigé
+- **Écrasement silencieux pendant un conflit** (`useEntityDoc`) : une
+  sauvegarde relancée pendant que la boîte de conflit était affichée partait
+  sur la révision du serveur et écrasait sa version. Le conflit est désormais
+  posé de façon synchrone et gardé avec le brouillon local.
+- **Focus volé dans les dialogues** : `onClose` recréé à chaque rendu relançait
+  le focus initial — la frappe changeait de champ, et une composition en cours
+  (clavier coréen) était cassée.
+- Les téléchargements d'originaux n'entrent plus dans le cache des lectures.
+
+### Déploiement
+- Migrations **additives** (colonnes et tables nouvelles, aucune réécriture).
+  Procédure — sauvegarde, répétition sur une copie, retour arrière — dans
+  `docs/atelier-mobile.md#migrations-et-sauvegarde` ; répétition scriptée sur
+  données de test : `test/tools/migration-rehearsal.mjs`.
+- `deploy/nginx.conf` : bloc d'envoi des prises audio privées (260 Mo).
+- `.env` (facultatif) : `AUTHOR_AUDIO_MAX_BYTES`, `AUTHOR_ASSIST_MODEL`.
+- `Permissions-Policy` : le micro n'est ouvert que pour `/auteur`.
+
+---
+
 ## [Unreleased] — items-customs-minefield
 
 ### Nouveau module « 🧪 Items customs Minefield » (`/items`)
